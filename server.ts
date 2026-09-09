@@ -11,17 +11,16 @@ app.use(express.json({ limit: '10mb' }));
 
 // Helper to execute AMI Action via raw TCP socket :5038
 function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const socket = new net.Socket();
     let buffer = '';
     let loggedIn = false;
     const timeout = setTimeout(() => {
       socket.destroy();
-      resolve(buffer || 'Timeout AMI');
-    }, 4000);
+      resolve(buffer || 'Timeout AMI (4s)');
+    }, 4500);
 
     socket.connect(port, host, () => {
-      // Send Login Action
       const loginPayload = `Action: Login\r\nUsername: ${user}\r\nSecret: ${secret}\r\nEvents: off\r\n\r\n`;
       socket.write(loginPayload);
     });
@@ -30,16 +29,17 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
       const text = data.toString();
       buffer += text;
 
-      if (buffer.includes('Response: Success') && buffer.includes('Message: Authentication accepted') && !loggedIn) {
+      if ((buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success')) && !loggedIn) {
         loggedIn = true;
-        // Send commands
         for (const cmd of commands) {
           socket.write(`Action: Command\r\nCommand: ${cmd}\r\n\r\n`);
         }
-        socket.write(`Action: Logoff\r\n\r\n`);
+        setTimeout(() => {
+          socket.write(`Action: Logoff\r\n\r\n`);
+        }, 300);
       }
 
-      if (buffer.includes('Response: Goodbye') || buffer.includes('ActionID: logoff')) {
+      if (buffer.includes('Response: Goodbye')) {
         clearTimeout(timeout);
         socket.end();
         resolve(buffer);

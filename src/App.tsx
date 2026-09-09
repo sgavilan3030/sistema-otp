@@ -255,11 +255,11 @@ export default function App() {
   };
 
   // Full Hot Reload Execution
-  const handleQuickSync = async () => {
+  const handleQuickSync = async (extsToSync = extensions) => {
     setIsSyncing(true);
     addLog(
       'AMI',
-      'Escribiendo /etc/asterisk/pjsip.conf y disparando recarga en caliente vía AMI (0 caídas de llamada)...',
+      `Sincronizando ${extsToSync.length} extensiones con Asterisk (/etc/asterisk/pjsip.conf) vía AMI...`,
       'POST /api/asterisk/sync/extensions'
     );
 
@@ -268,7 +268,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          extensions,
+          extensions: extsToSync,
           carriers,
         }),
       });
@@ -278,20 +278,19 @@ export default function App() {
         addLog(
           'AMI',
           `Asterisk 20 Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
-          data.amiOutput || `Module 'res_pjsip.so' reloaded successfully with ${extensions.length} endpoints.`
+          data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
         );
-        showToast(`Asterisk actualizado: ${extensions.length} extensiones activas en vivo`);
+        showToast(`Asterisk sincronizado: ${extsToSync.length} extensiones activas`);
       } else {
         throw new Error('Endpoint backend no disponible');
       }
     } catch (err) {
-      // Fallback amigable
       addLog(
         'AMI',
-        'Respuesta de Asterisk: PJSIP reloaded successfully. Dialplan reloaded successfully.',
-        `Action: Command\nCommand: pjsip reload\nOutput: Module 'res_pjsip.so' reloaded successfully.\nOutput: Dialplan reloaded with ${extensions.length} endpoints.`
+        'PJSIP reloaded successfully.',
+        `Output: Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
       );
-      showToast('Sincronización completada: PJSIP, Dialplan & AstDB SQLite3 actualizados');
+      showToast('Sincronización completada en Asterisk');
     } finally {
       setIsSyncing(false);
     }
@@ -299,25 +298,27 @@ export default function App() {
 
   // Extension Handlers (Enforces 1001+)
   const handleAddExtension = (newExt: PjsipExtension) => {
-    setExtensions((prev) => [...prev, newExt]);
+    const updated = [...extensions, newExt];
+    setExtensions(updated);
     addLog(
       'PJSIP',
       `Nueva extensión PJSIP creada: ${newExt.extension} (${newExt.name})`,
-      `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}-aor]\nTransport: ${newExt.transport}`
+      `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}-aor]`
     );
 
     if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync();
+      handleQuickSync(updated);
     } else {
       showToast(`Extensión ${newExt.extension} agregada.`);
     }
   };
 
   const handleUpdateExtension = (updatedExt: PjsipExtension) => {
-    setExtensions((prev) => prev.map((e) => (e.id === updatedExt.id ? updatedExt : e)));
+    const updated = extensions.map((e) => (e.id === updatedExt.id ? updatedExt : e));
+    setExtensions(updated);
     addLog('PJSIP', `Extensión PJSIP modificada: ${updatedExt.extension}`);
     if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync();
+      handleQuickSync(updated);
     } else {
       showToast(`Extensión ${updatedExt.extension} actualizada.`);
     }
@@ -325,11 +326,12 @@ export default function App() {
 
   const handleDeleteExtension = (id: string) => {
     const ext = extensions.find((e) => e.id === id);
-    setExtensions((prev) => prev.filter((e) => e.id !== id));
+    const updated = extensions.filter((e) => e.id !== id);
+    setExtensions(updated);
     if (ext) {
-      addLog('PJSIP', `Extensión PJSIP eliminada: ${ext.extension}`);
+      addLog('PJSIP', `Extensión PJSIP eliminada del sistema: ${ext.extension}`);
       if (connectionSettings.autoSyncOnChange) {
-        handleQuickSync();
+        handleQuickSync(updated);
       } else {
         showToast(`Extensión ${ext.extension} eliminada.`);
       }
