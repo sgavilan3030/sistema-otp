@@ -3,11 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import net from 'net';
 import { exec } from 'child_process';
+import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
 const PORT = 3000;
 
+// Enable gzip/deflate compression for fast asset transfer
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 // Helper to execute AMI Action via raw TCP socket :5038
@@ -281,7 +284,7 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
 // ==========================================
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -289,8 +292,22 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // Cache static assets (JS, CSS, images, audio, webfonts) for 1 year immutable
+    app.use('/assets', express.static(path.join(distPath, 'assets'), {
+      maxAge: '1y',
+      immutable: true,
+      etag: true,
+    }));
+
+    // Cache generic static public files
+    app.use(express.static(distPath, {
+      maxAge: '1h',
+      etag: true,
+    }));
+
+    // SPA fallback: index.html should revalidate so updates are immediate
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
