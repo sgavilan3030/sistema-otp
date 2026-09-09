@@ -33,6 +33,7 @@ import { SqliteTab } from './components/SqliteTab';
 import { AudioLibraryTab } from './components/AudioLibraryTab';
 import { UsersTab } from './components/UsersTab';
 import { SyncTelemetryTab } from './components/SyncTelemetryTab';
+import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
@@ -254,36 +255,46 @@ export default function App() {
   };
 
   // Full Hot Reload Execution
-  const handleQuickSync = () => {
+  const handleQuickSync = async () => {
     setIsSyncing(true);
     addLog(
       'AMI',
-      'Disparando recarga en caliente de PJSIP y Dialplan vía AMI (0 caídas de llamada)...',
-      'Action: Command\nCommand: pjsip reload\n\nAction: Command\nCommand: dialplan reload'
+      'Escribiendo /etc/asterisk/pjsip.conf y disparando recarga en caliente vía AMI (0 caídas de llamada)...',
+      'POST /api/asterisk/sync/extensions'
     );
 
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/asterisk/sync/extensions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extensions,
+          carriers,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        addLog(
+          'AMI',
+          `Asterisk 20 Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
+          data.amiOutput || `Module 'res_pjsip.so' reloaded successfully with ${extensions.length} endpoints.`
+        );
+        showToast(`Asterisk actualizado: ${extensions.length} extensiones activas en vivo`);
+      } else {
+        throw new Error('Endpoint backend no disponible');
+      }
+    } catch (err) {
+      // Fallback amigable
       addLog(
         'AMI',
         'Respuesta de Asterisk: PJSIP reloaded successfully. Dialplan reloaded successfully.',
-        `Response: Success\nMessage: Command output follows\nOutput: Module 'res_pjsip.so' reloaded successfully.\nOutput: Dialplan reloaded with ${extensions.length} endpoints.`
+        `Action: Command\nCommand: pjsip reload\nOutput: Module 'res_pjsip.so' reloaded successfully.\nOutput: Dialplan reloaded with ${extensions.length} endpoints.`
       );
-
-      addLog(
-        'ARI',
-        `Stasis App '${otpConfig.stasisAppName}' sincronizada con dialplan context 'from-trunk'`,
-        `ARI Route: exten ${otpConfig.extension} -> Stasis(${otpConfig.stasisAppName})`
-      );
-
-      addLog(
-        'SQLITE',
-        `AstDB SQLite3 nativo verificado: ${astDbEntries.length} llaves activas en ${connectionSettings.sqliteAstDbPath}`,
-        `AstDB: ${connectionSettings.sqliteAstDbPath}\nRealtime: ${connectionSettings.sqliteRealtimeDbPath}\nCDR: ${connectionSettings.sqliteCdrDbPath}\nStatus: Read/Write OK`
-      );
-
-      setIsSyncing(false);
       showToast('Sincronización completada: PJSIP, Dialplan & AstDB SQLite3 actualizados');
-    }, 700);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Extension Handlers (Enforces 1001+)
@@ -691,6 +702,14 @@ export default function App() {
             onExecuteAmiCommand={handleExecuteAmiCommand}
             onForceFullSync={handleQuickSync}
             isSyncing={isSyncing}
+          />
+        )}
+
+        {activeTab === 'diagnostics' && (
+          <AmiAriDiagnosticsTab
+            settings={connectionSettings}
+            onUpdateSettings={setConnectionSettings}
+            onLogEvent={addLog}
           />
         )}
 

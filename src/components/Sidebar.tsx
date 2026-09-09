@@ -104,6 +104,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Terminal,
     },
     {
+      id: 'diagnostics',
+      label: 'Pruebas AMI & ARI',
+      subtitle: 'Diagnóstico en Vivo',
+      icon: Activity,
+      badge: 'Live',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    },
+    {
       id: 'configs',
       label: 'Archivos .conf',
       subtitle: 'Exportador de Código',

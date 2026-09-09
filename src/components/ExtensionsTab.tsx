@@ -188,14 +188,16 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-add-pjsip-extension"
-          onClick={handleOpenCreateModal}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nueva Extensión PJSIP</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            id="btn-add-pjsip-extension"
+            onClick={handleOpenCreateModal}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nueva Extensión PJSIP</span>
+          </button>
+        </div>
       </div>
 
       {/* Extensions Cards Grid */}
