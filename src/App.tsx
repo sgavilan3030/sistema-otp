@@ -255,11 +255,11 @@ export default function App() {
   };
 
   // Full Hot Reload Execution
-  const handleQuickSync = async (extsToSync = extensions) => {
+  const handleQuickSync = async (extsToSync = extensions, carriersToSync = carriers) => {
     setIsSyncing(true);
     addLog(
       'AMI',
-      `Sincronizando ${extsToSync.length} extensiones con Asterisk (/etc/asterisk/pjsip.conf) vía AMI...`,
+      `Sincronizando ${extsToSync.length} extensiones y ${carriersToSync.length} troncales con Asterisk (/etc/asterisk/pjsip.conf) vía AMI...`,
       'POST /api/asterisk/sync/extensions'
     );
 
@@ -269,7 +269,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           extensions: extsToSync,
-          carriers,
+          carriers: carriersToSync,
         }),
       });
 
@@ -280,7 +280,7 @@ export default function App() {
           `Asterisk 20 Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
           data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
         );
-        showToast(`Asterisk sincronizado: ${extsToSync.length} extensiones activas`);
+        showToast(`Asterisk sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
       } else {
         throw new Error('Endpoint backend no disponible');
       }
@@ -355,24 +355,26 @@ export default function App() {
 
   // Carrier Handlers
   const handleAddCarrier = (newCarrier: CarrierTrunk) => {
-    setCarriers((prev) => [...prev, newCarrier]);
+    const updated = [...carriers, newCarrier];
+    setCarriers(updated);
     addLog(
       'PJSIP',
       `Nuevo Carrier SIP agregado: ${newCarrier.name} (${newCarrier.host})`,
       `AuthType: ${newCarrier.authType}\nInboundContext: ${newCarrier.inboundContext}\nCodecs: ${newCarrier.codecs.join(',')}`
     );
     if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync();
+      handleQuickSync(extensions, updated);
     } else {
       showToast(`Carrier ${newCarrier.name} agregado.`);
     }
   };
 
   const handleUpdateCarrier = (updatedCarrier: CarrierTrunk) => {
-    setCarriers((prev) => prev.map((c) => (c.id === updatedCarrier.id ? updatedCarrier : c)));
+    const updated = carriers.map((c) => (c.id === updatedCarrier.id ? updatedCarrier : c));
+    setCarriers(updated);
     addLog('PJSIP', `Carrier SIP actualizado: ${updatedCarrier.name}`);
     if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync();
+      handleQuickSync(extensions, updated);
     } else {
       showToast(`Carrier ${updatedCarrier.name} actualizado.`);
     }
@@ -380,11 +382,12 @@ export default function App() {
 
   const handleDeleteCarrier = (id: string) => {
     const c = carriers.find((item) => item.id === id);
-    setCarriers((prev) => prev.filter((item) => item.id !== id));
+    const updated = carriers.filter((item) => item.id !== id);
+    setCarriers(updated);
     if (c) {
       addLog('PJSIP', `Carrier SIP eliminado: ${c.name}`);
       if (connectionSettings.autoSyncOnChange) {
-        handleQuickSync();
+        handleQuickSync(extensions, updated);
       } else {
         showToast(`Carrier ${c.name} eliminado.`);
       }
@@ -646,6 +649,8 @@ export default function App() {
             onUpdateCarrier={handleUpdateCarrier}
             onDeleteCarrier={handleDeleteCarrier}
             onPingCarrier={handlePingCarrier}
+            onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
+            isSyncing={isSyncing}
           />
         )}
 

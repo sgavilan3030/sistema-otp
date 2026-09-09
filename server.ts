@@ -152,24 +152,105 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'}) ---\n`;
       pjsipContent += `[${num}]\n`;
       pjsipContent += `type = endpoint\n`;
-      pjsipContent += `context = from-internal\n`;
+      pjsipContent += `context = ${ext.context || 'from-internal'}\n`;
       pjsipContent += `disallow = all\n`;
       pjsipContent += `allow = ${codecs}\n`;
-      pjsipContent += `auth = ${num}-auth\n`;
-      pjsipContent += `aors = ${num}-aor\n`;
+      pjsipContent += `auth = ${num}\n`;
+      pjsipContent += `aors = ${num}\n`;
       pjsipContent += `callerid = ${callerId}\n`;
-      pjsipContent += `direct_media = no\n\n`;
+      pjsipContent += `direct_media = no\n`;
+      pjsipContent += `rtp_symmetric = yes\n`;
+      pjsipContent += `force_rport = yes\n`;
+      pjsipContent += `rewrite_contact = yes\n`;
+      pjsipContent += `transport = transport-udp\n\n`;
 
-      pjsipContent += `[${num}-auth]\n`;
+      pjsipContent += `[${num}]\n`;
       pjsipContent += `type = auth\n`;
       pjsipContent += `auth_type = userpass\n`;
       pjsipContent += `username = ${num}\n`;
       pjsipContent += `password = ${pass}\n\n`;
 
-      pjsipContent += `[${num}-aor]\n`;
+      pjsipContent += `[${num}]\n`;
       pjsipContent += `type = aor\n`;
-      pjsipContent += `max_contacts = ${ext.maxContacts || 2}\n`;
+      pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
       pjsipContent += `remove_existing = yes\n\n`;
+    }
+
+    // Process carriers/trunks if provided
+    if (Array.isArray(carriers) && carriers.length > 0) {
+      pjsipContent += `; ========================================================\n`;
+      pjsipContent += `; TRONCALES / CARRIERS SIP (OUTBOUND & INBOUND)\n`;
+      pjsipContent += `; ========================================================\n\n`;
+
+      for (const carrier of carriers) {
+        if (!carrier.name || !carrier.host) continue;
+        const cName = carrier.name.replace(/\s+/g, '_');
+        const cHost = carrier.host;
+        const cPort = carrier.port || 5060;
+        const cUser = carrier.username || cName;
+        const cSecret = carrier.secret || '';
+        const cContext = carrier.inboundContext || 'trunkinbound';
+        const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
+
+        pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
+
+        // If registration is required with carrier
+        if (carrier.authType === 'registration' && cSecret) {
+          pjsipContent += `[reg_${cName}]\n`;
+          pjsipContent += `type = registration\n`;
+          pjsipContent += `outbound_auth = auth_${cName}\n`;
+          pjsipContent += `server_uri = sip:${cHost}:${cPort}\n`;
+          pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
+          pjsipContent += `contact_user = ${cUser}\n`;
+          pjsipContent += `retry_interval = 60\n`;
+          pjsipContent += `expiration = 3600\n`;
+          pjsipContent += `transport = transport-udp\n\n`;
+        }
+
+        // Endpoint for the Carrier
+        pjsipContent += `[${cName}]\n`;
+        pjsipContent += `type = endpoint\n`;
+        pjsipContent += `context = ${cContext}\n`;
+        pjsipContent += `disallow = all\n`;
+        pjsipContent += `allow = ${cCodecs}\n`;
+        pjsipContent += `aors = ${cName}\n`;
+        if (carrier.authType === 'registration' && cSecret) {
+          pjsipContent += `outbound_auth = auth_${cName}\n`;
+        }
+        if (carrier.outboundCallerId) {
+          pjsipContent += `callerid = ${carrier.outboundCallerId}\n`;
+        }
+        if (carrier.fromuser) {
+          pjsipContent += `from_user = ${carrier.fromuser}\n`;
+        }
+        pjsipContent += `from_domain = ${cHost}\n`;
+        pjsipContent += `direct_media = no\n`;
+        pjsipContent += `rtp_symmetric = yes\n`;
+        pjsipContent += `force_rport = yes\n`;
+        pjsipContent += `rewrite_contact = yes\n`;
+        pjsipContent += `transport = transport-udp\n\n`;
+
+        // Auth section for Carrier
+        if (cSecret) {
+          pjsipContent += `[auth_${cName}]\n`;
+          pjsipContent += `type = auth\n`;
+          pjsipContent += `auth_type = userpass\n`;
+          pjsipContent += `username = ${cUser}\n`;
+          pjsipContent += `password = ${cSecret}\n\n`;
+        }
+
+        // AOR for Carrier
+        pjsipContent += `[${cName}]\n`;
+        pjsipContent += `type = aor\n`;
+        pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
+        pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
+
+        // Identify for incoming IP/host traffic
+        pjsipContent += `[${cName}-identify]\n`;
+        pjsipContent += `type = identify\n`;
+        pjsipContent += `endpoint = ${cName}\n`;
+        pjsipContent += `match = ${cHost}\n\n`;
+      }
     }
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';

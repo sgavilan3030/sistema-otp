@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CarrierTrunk } from '../types';
-import { Plus, Trash2, Edit2, Globe, Eye, Activity, Copy, Check, FileCode, CheckCircle2, Sliders } from 'lucide-react';
+import { Plus, Trash2, Edit2, Globe, Eye, Activity, Copy, Check, FileCode, CheckCircle2, Sliders, RefreshCw } from 'lucide-react';
 
 interface CarriersTabProps {
   carriers: CarrierTrunk[];
@@ -8,6 +8,8 @@ interface CarriersTabProps {
   onUpdateCarrier: (carrier: CarrierTrunk) => void;
   onDeleteCarrier: (id: string) => void;
   onPingCarrier: (id: string) => void;
+  onSyncAsterisk?: () => void;
+  isSyncing?: boolean;
 }
 
 export const CarriersTab: React.FC<CarriersTabProps> = ({
@@ -16,6 +18,8 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   onUpdateCarrier,
   onDeleteCarrier,
   onPingCarrier,
+  onSyncAsterisk,
+  isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCarrier, setEditingCarrier] = useState<CarrierTrunk | null>(null);
@@ -222,14 +226,29 @@ insecure=${carrierInsecure}`;
           </p>
         </div>
 
-        <button
-          id="btn-add-carrier-trunk"
-          onClick={handleOpenCreateModal}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Carrier</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          {onSyncAsterisk && (
+            <button
+              id="btn-sync-carriers-now"
+              onClick={onSyncAsterisk}
+              disabled={isSyncing}
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 shadow-md transition-all disabled:opacity-50 cursor-pointer"
+              title="Aplica inmediatamente los Carriers y Registrations a Asterisk y recarga PJSIP"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Aplicar a Asterisk'}</span>
+            </button>
+          )}
+
+          <button
+            id="btn-add-carrier-trunk"
+            onClick={handleOpenCreateModal}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agregar Carrier</span>
+          </button>
+        </div>
       </div>
 
       {/* Featured Box: Carrier Account Entry & Dialplan Entry exactly as requested */}
