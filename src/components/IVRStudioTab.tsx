@@ -16,6 +16,10 @@ import {
   Monitor,
   Eye,
   EyeOff,
+  PhoneCall,
+  Send,
+  Radio,
+  Sparkles,
 } from 'lucide-react';
 
 interface IVRStudioTabProps {
@@ -45,7 +49,48 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
 
+  const [testPhone, setTestPhone] = useState('16104803845');
+  const [isTriggeringCall, setIsTriggeringCall] = useState(false);
+  const [callFeedback, setCallFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleOriginateTestCall = async () => {
+    if (!testPhone.trim()) return;
+    setIsTriggeringCall(true);
+    setCallFeedback(null);
+    try {
+      const res = await fetch('/api/asterisk/call/originate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination: testPhone.trim(),
+          carrier: 'televox',
+          callerId: '+18005550199',
+          agentExten: '1001',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCallFeedback({
+          text: `¡Llamada disparada exitosamente a ${testPhone}! Tu teléfono sonará en segundos. Contesta para probar el IVR.`,
+          type: 'success',
+        });
+      } else {
+        setCallFeedback({
+          text: `Error al originar llamada: ${data.error || 'Fallo desconocido'}`,
+          type: 'error',
+        });
+      }
+    } catch (err: any) {
+      setCallFeedback({
+        text: `Error de conexión: ${err.message}`,
+        type: 'error',
+      });
+    } finally {
+      setIsTriggeringCall(false);
+    }
+  };
 
   // Filter only extensions >= 1001
   const validExtensions = extensions.filter((e) => {
@@ -130,6 +175,96 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           <span>{savedFeedback}</span>
         </div>
       )}
+
+      {/* Real-time IVR Testing Banner */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-amber-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400">
+              <PhoneCall className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Prueba en Vivo del IVR con Asterisk 20</span>
+                <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
+                  Listo para Probar
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Verifica la interacción por voz y captura DTMF directamente desde tu softphone o hacia tu teléfono móvil.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Option A: Direct Test via X-Lite */}
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-400 mb-1">
+                <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                <span>OPCIÓN 1: Probar desde X-Lite (Sin Costo)</span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Desde tu extensión <strong>1001</strong> en X-Lite, simplemente marca el número:
+              </p>
+              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-lg font-bold text-amber-400">
+                <span>8888</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Asterisk responderá de inmediato, emitirá un beep y podrás digitar tu código OTP o presionar <strong>1</strong> para transferirte.
+              </p>
+            </div>
+          </div>
+
+          {/* Option B: Originate Outbound Call to Cellphone */}
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>OPCIÓN 2: Disparar Llamada Real Saliente a tu Celular</span>
+            </div>
+            <p className="text-xs text-slate-300">
+              Asterisk llamará a tu número a través de la troncal <strong>televox</strong> y al contestar entrarás al IVR:
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                id="input-originate-phone"
+                type="text"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="ej. 16104803845"
+                className="flex-1 px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-amber-500 focus:outline-none"
+              />
+              <button
+                id="btn-trigger-ivr-call"
+                onClick={handleOriginateTestCall}
+                disabled={isTriggeringCall || !testPhone.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 disabled:opacity-50 transition-all shrink-0"
+              >
+                {isTriggeringCall ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{isTriggeringCall ? 'Llamando...' : 'Llamar a mi Celular'}</span>
+              </button>
+            </div>
+
+            {callFeedback && (
+              <div
+                className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                  callFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{callFeedback.text}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Visual Flow Representation */}
       <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">

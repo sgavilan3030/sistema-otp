@@ -273,11 +273,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += `; 2. Acceso directo Stasis OTP Simulator\n`;
-    dialplanContent += `exten => 8888,1,NoOp(Acceso Stasis OTP Simulator)\n`;
-    dialplanContent += ` same => n,Answer()\n`;
-    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += `; 2. Acceso directo IVR OTP y Press 1 para pruebas\n`;
+    dialplanContent += `exten => 8888,1,NoOp(Prueba Directa IVR desde Extension \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
     dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
@@ -301,9 +299,36 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `[trunkinbound]\n`;
-    dialplanContent += `exten => _.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
+    dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `; CONTEXTO IVR INTERACTIVO (OTP & PRESS 1)\n`;
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `[ivr-otp]\n`;
+    dialplanContent += `exten => s,1,NoOp(=== BIENVENIDO AL IVR INTERACTIVO ANONYMOUS OTP ===)\n`;
     dialplanContent += ` same => n,Answer()\n`;
-    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,8)\n`;
+    dialplanContent += ` same => n,NoOp(=== DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
+    dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
+    dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP CAPTURADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,SayDigits(\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += `; Caso: Presiono 1 -> Conectar con Agente en Extension 1001\n`;
+    dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A AGENTE 1001 ===)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/1001,45,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += `; Caso: Sin entrada o timeout\n`;
+    dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
     dialplanContent += ` same => n,Hangup()\n`;
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
@@ -419,6 +444,54 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
     res.json({
       success: true,
       fileWritten,
+      amiOutput,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to originate real calls to client or extension connecting to IVR
+app.post('/api/asterisk/call/originate', async (req, res) => {
+  try {
+    const {
+      destination,
+      carrier = 'televox',
+      callerId = '+18005550199',
+      mode = 'otp',
+      agentExten = '1001',
+    } = req.body;
+
+    if (!destination) {
+      return res.status(400).json({ success: false, error: 'El número de destino es requerido' });
+    }
+
+    const cleanDest = destination.trim().replace(/[^0-9]/g, '');
+
+    // Determine channel: if <= 4 digits, internal extension, else trunk
+    let channel = '';
+    if (cleanDest.length <= 4) {
+      channel = `PJSIP/${cleanDest}`;
+    } else {
+      channel = `PJSIP/${cleanDest}@${carrier}`;
+    }
+
+    // Trigger originate via Asterisk CLI & AMI
+    const amiCommands = [
+      `channel originate ${channel} extension s@ivr-otp`,
+    ];
+
+    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', amiCommands);
+
+    exec(`asterisk -rx "channel originate ${channel} extension s@ivr-otp"`, (err, stdout, stderr) => {
+      if (err) console.error('Originate CLI Error:', err);
+      else console.log('Originate CLI OK:', stdout);
+    });
+
+    res.json({
+      success: true,
+      message: `Llamada originada hacia ${cleanDest}. Conectará con el IVR al contestar.`,
+      channel,
       amiOutput,
     });
   } catch (error: any) {
