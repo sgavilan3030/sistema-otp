@@ -634,6 +634,8 @@ export default function App() {
             onUpdateExtension={handleUpdateExtension}
             onDeleteExtension={handleDeleteExtension}
             onSimulateQualify={handleSimulateQualify}
+            onSyncAsterisk={() => handleQuickSync(extensions)}
+            isSyncing={isSyncing}
           />
         )}
 

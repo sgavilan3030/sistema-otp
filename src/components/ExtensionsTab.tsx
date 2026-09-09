@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, ShieldCheck } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, ShieldCheck, RefreshCw } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -8,6 +8,8 @@ interface ExtensionsTabProps {
   onUpdateExtension: (extension: PjsipExtension) => void;
   onDeleteExtension: (id: string) => void;
   onSimulateQualify: (extNumber: string) => void;
+  onSyncAsterisk?: () => void;
+  isSyncing?: boolean;
 }
 
 export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
@@ -16,6 +18,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onUpdateExtension,
   onDeleteExtension,
   onSimulateQualify,
+  onSyncAsterisk,
+  isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExt, setEditingExt] = useState<PjsipExtension | null>(null);
@@ -189,6 +193,19 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
+          {onSyncAsterisk && (
+            <button
+              id="btn-sync-asterisk-now"
+              onClick={onSyncAsterisk}
+              disabled={isSyncing}
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 shadow-md transition-all disabled:opacity-50"
+              title="Aplica inmediatamente la lista actual de extensiones en Asterisk y recarga PJSIP sin caídas de llamada"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Aplicar a Asterisk'}</span>
+            </button>
+          )}
+
           <button
             id="btn-add-pjsip-extension"
             onClick={handleOpenCreateModal}

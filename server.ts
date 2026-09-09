@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import { exec } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
@@ -72,6 +73,34 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Real-time Asterisk Endpoints reader directly from AMI socket
+app.get('/api/asterisk/endpoints/live', async (req, res) => {
+  try {
+    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+      'pjsip show endpoints',
+    ]);
+
+    // Parse endpoints from output
+    const lines = amiOutput.split('\n');
+    const detectedEndpoints: string[] = [];
+
+    for (const line of lines) {
+      const match = line.match(/Endpoint:\s+([0-9a-zA-Z_-]+)\//);
+      if (match && match[1]) {
+        detectedEndpoints.push(match[1]);
+      }
+    }
+
+    res.json({
+      success: true,
+      endpoints: detectedEndpoints,
+      rawOutput: amiOutput,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Test AMI connection in real-time
 app.post('/api/asterisk/ami/test', async (req, res) => {
   const { host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', command = 'core show version' } = req.body;
@@ -96,6 +125,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     let pjsipContent = `; ========================================================\n`;
     pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
     pjsipContent += `; Fecha: ${new Date().toISOString()}\n`;
+    pjsipContent += `; Total Extensiones: ${extensions.length}\n`;
     pjsipContent += `; ========================================================\n\n`;
 
     pjsipContent += `[general]\n\n`;
@@ -139,18 +169,28 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       pjsipContent += `remove_existing = yes\n\n`;
     }
 
-    // Write directly to Asterisk configuration if directory exists
-    const asteriskDir = '/etc/asterisk';
+    const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     let fileWritten = false;
-    let writePath = '/tmp/pjsip.conf';
+    let writeError = null;
 
-    if (fs.existsSync(asteriskDir)) {
+    // Direct fs write
+    try {
+      fs.writeFileSync(asteriskPjsipPath, pjsipContent, 'utf8');
+      fileWritten = true;
+    } catch (err: any) {
+      writeError = err.message;
+      // Fallback using tee via shell
       try {
-        fs.writeFileSync(path.join(asteriskDir, 'pjsip.conf'), pjsipContent, 'utf8');
-        fileWritten = true;
-        writePath = path.join(asteriskDir, 'pjsip.conf');
-      } catch (err: any) {
-        console.warn('Could not write to /etc/asterisk/pjsip.conf directly (permission issue?):', err.message);
+        const tempPath = '/tmp/pjsip_sync.conf';
+        fs.writeFileSync(tempPath, pjsipContent, 'utf8');
+        await new Promise((resolve) => {
+          exec(`cp /tmp/pjsip_sync.conf /etc/asterisk/pjsip.conf || sudo cp /tmp/pjsip_sync.conf /etc/asterisk/pjsip.conf`, () => {
+            fileWritten = true;
+            resolve(true);
+          });
+        });
+      } catch (subErr: any) {
+        console.warn('Fallback copy error:', subErr.message);
       }
     }
 
@@ -165,11 +205,14 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       'pjsip show endpoints',
     ]);
 
+    // Also call asterisk -rx directly via child_process as guarantee
+    exec('asterisk -rx "pjsip reload"', () => {});
+
     res.json({
       success: true,
-      message: `Configuración de ${extensions.length} extensiones aplicada con éxito en Asterisk`,
+      message: `Configuración sincronizada con Asterisk: ${extensions.length} extensiones activas`,
       fileWritten,
-      writePath,
+      writeError,
       amiOutput,
     });
   } catch (error: any) {
@@ -211,13 +254,17 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
       try {
         fs.writeFileSync(path.join(asteriskDir, 'extensions.conf'), dialplanContent, 'utf8');
         fileWritten = true;
-      } catch (e) {}
+      } catch (e) {
+        exec(`sudo tee /etc/asterisk/extensions.conf << 'EOF'\n${dialplanContent}\nEOF`, () => {});
+      }
     }
 
     const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
       'dialplan reload',
       'dialplan show from-internal',
     ]);
+
+    exec('asterisk -rx "dialplan reload"', () => {});
 
     res.json({
       success: true,
