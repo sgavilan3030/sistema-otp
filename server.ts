@@ -194,7 +194,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
         pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
 
-        // If registration is required with carrier
+        // 1. If registration is required with carrier
         if (carrier.authType === 'registration' && cSecret) {
           pjsipContent += `[reg_${cName}]\n`;
           pjsipContent += `type = registration\n`;
@@ -207,7 +207,22 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
           pjsipContent += `transport = transport-udp\n\n`;
         }
 
-        // Endpoint for the Carrier
+        // 2. Auth section for Carrier (MUST BE BEFORE ENDPOINT)
+        if (cSecret) {
+          pjsipContent += `[auth_${cName}]\n`;
+          pjsipContent += `type = auth\n`;
+          pjsipContent += `auth_type = userpass\n`;
+          pjsipContent += `username = ${cUser}\n`;
+          pjsipContent += `password = ${cSecret}\n\n`;
+        }
+
+        // 3. AOR for Carrier (MUST BE BEFORE ENDPOINT)
+        pjsipContent += `[${cName}]\n`;
+        pjsipContent += `type = aor\n`;
+        pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
+        pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
+
+        // 4. Endpoint for the Carrier
         pjsipContent += `[${cName}]\n`;
         pjsipContent += `type = endpoint\n`;
         pjsipContent += `context = ${cContext}\n`;
@@ -220,8 +235,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         if (carrier.outboundCallerId) {
           pjsipContent += `callerid = ${carrier.outboundCallerId}\n`;
         }
-        if (carrier.fromuser) {
-          pjsipContent += `from_user = ${carrier.fromuser}\n`;
+        if (carrier.fromuser || cUser) {
+          pjsipContent += `from_user = ${carrier.fromuser || cUser}\n`;
         }
         pjsipContent += `from_domain = ${cHost}\n`;
         pjsipContent += `direct_media = no\n`;
@@ -230,22 +245,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         pjsipContent += `rewrite_contact = yes\n`;
         pjsipContent += `transport = transport-udp\n\n`;
 
-        // Auth section for Carrier
-        if (cSecret) {
-          pjsipContent += `[auth_${cName}]\n`;
-          pjsipContent += `type = auth\n`;
-          pjsipContent += `auth_type = userpass\n`;
-          pjsipContent += `username = ${cUser}\n`;
-          pjsipContent += `password = ${cSecret}\n\n`;
-        }
-
-        // AOR for Carrier
-        pjsipContent += `[${cName}]\n`;
-        pjsipContent += `type = aor\n`;
-        pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
-        pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
-
-        // Identify for incoming IP/host traffic
+        // 5. Identify for incoming IP/host traffic
         pjsipContent += `[${cName}-identify]\n`;
         pjsipContent += `type = identify\n`;
         pjsipContent += `endpoint = ${cName}\n`;
@@ -253,17 +253,70 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       }
     }
 
+    // Generate extensions.conf (Dialplan) with outbound routing to Carrier
+    const activeCarrier = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].name)
+      ? carriers[0].name.replace(/\s+/g, '_')
+      : 'televox';
+    const outboundCid = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].outboundCallerId)
+      ? carriers[0].outboundCallerId
+      : '+18005550199';
+
+    let dialplanContent = `; ========================================================\n`;
+    dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
+    dialplanContent += `; Auto-generado por Anonymous OTP Asterisk Platform\n`;
+    dialplanContent += `; ========================================================\n\n`;
+    dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
+
+    dialplanContent += `[from-internal]\n`;
+    dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999)\n`;
+    dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; 2. Acceso directo Stasis OTP Simulator\n`;
+    dialplanContent += `exten => 8888,1,NoOp(Acceso Stasis OTP Simulator)\n`;
+    dialplanContent += ` same => n,Answer()\n`;
+    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
+    dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; 4. Regla Saliente 10 digitos (antepone 1)\n`;
+    dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; 5. Regla Saliente Generica para cualquier otro numero saliente\n`;
+    dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `[trunkinbound]\n`;
+    dialplanContent += `exten => _.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Answer()\n`;
+    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
+    dialplanContent += ` same => n,Hangup()\n`;
+
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
+    const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
     let fileWritten = false;
     let writeError = null;
 
-    // Direct fs write
+    // Direct fs write for PJSIP
     try {
       fs.writeFileSync(asteriskPjsipPath, pjsipContent, 'utf8');
       fileWritten = true;
     } catch (err: any) {
       writeError = err.message;
-      // Fallback using tee via shell
       try {
         const tempPath = '/tmp/pjsip_sync.conf';
         fs.writeFileSync(tempPath, pjsipContent, 'utf8');
@@ -278,23 +331,36 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       }
     }
 
+    // Direct fs write for Extensions Dialplan
+    try {
+      fs.writeFileSync(asteriskDialplanPath, dialplanContent, 'utf8');
+    } catch (err: any) {
+      try {
+        fs.writeFileSync('/tmp/extensions_sync.conf', dialplanContent, 'utf8');
+        exec(`cp /tmp/extensions_sync.conf /etc/asterisk/extensions.conf || sudo cp /tmp/extensions_sync.conf /etc/asterisk/extensions.conf`, () => {});
+      } catch (subErr: any) {}
+    }
+
     // Also write to local app dir for safety
     try {
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), pjsipContent, 'utf8');
+      fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), dialplanContent, 'utf8');
     } catch (e) {}
 
     // Send Hot Reload to Asterisk AMI immediately
     const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
       'pjsip reload',
+      'dialplan reload',
       'pjsip show endpoints',
+      'dialplan show from-internal',
     ]);
 
     // Also call asterisk -rx directly via child_process as guarantee
-    exec('asterisk -rx "pjsip reload"', () => {});
+    exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
 
     res.json({
       success: true,
-      message: `Configuración sincronizada con Asterisk: ${extensions.length} extensiones activas`,
+      message: `Configuración sincronizada con Asterisk: ${extensions.length} extensiones y troncal ${activeCarrier} con rutas salientes`,
       fileWritten,
       writeError,
       amiOutput,
