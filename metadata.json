@@ -1,0 +1,6 @@
+{
+  "name": "Asterisk 20 Governor",
+  "description": "Sistema de gobierno y sincronización para Asterisk 20 con base de datos nativa SQLite3 (AstDB, Realtime y CDR): extensiones PJSIP (≥ 1001), troncales SIP, audioteca de locuciones pregrabadas, panel de usuarios y permisos RBAC, IVR Press-1 y captura de OTP en tiempo real vía ARI/AMI.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
