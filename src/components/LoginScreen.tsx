@@ -25,11 +25,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   theme = 'light',
   onToggleTheme,
 }) => {
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => {
+    try {
+      return localStorage.getItem('ast20_remembered_username') || '';
+    } catch {
+      return '';
+    }
+  });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('ast20_remembered_username'));
+    } catch {
+      return false;
+    }
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -129,11 +141,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setTimeout(() => {
       setIsSubmitting(false);
-      if (rememberMe) {
-        localStorage.setItem('ast_session_user_token', foundUser.id);
-      } else {
+      try {
+        if (rememberMe) {
+          localStorage.setItem('ast20_remembered_username', identifier.trim());
+        } else {
+          localStorage.removeItem('ast20_remembered_username');
+        }
         localStorage.removeItem('ast_session_user_token');
-      }
+      } catch (e) {}
       onLogin(foundUser);
     }, 200);
   };
@@ -266,7 +281,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="rounded border-slate-300 text-emerald-600 focus:ring-0"
                 />
-                <span>Recordar sesión</span>
+                <span>Recordar usuario</span>
               </label>
             </div>
 

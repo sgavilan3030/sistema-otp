@@ -148,10 +148,16 @@ export default function App() {
     }
   }, [theme]);
 
-  // Login authentication state: Iniciar autenticado para ver directamente la interfaz operativa completa
+  // Login authentication state: Por seguridad se exige autenticación obligatoria al ingresar al dominio
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const saved = localStorage.getItem('ast_session_user_token');
-    return saved !== 'logged_out';
+    try {
+      // Limpiar residuos de bypass previo en almacenamiento local
+      localStorage.removeItem('ast_session_user_token');
+      // Solo autenticar si existe una sesión activa verificada en la pestaña actual
+      return sessionStorage.getItem('ast_session_active') === 'true';
+    } catch {
+      return false;
+    }
   });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
@@ -609,6 +615,10 @@ export default function App() {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    try {
+      sessionStorage.removeItem('ast_session_active');
+      localStorage.removeItem('ast_session_user_token');
+    } catch (e) {}
     showToast('Has cerrado sesión correctamente.', 'info');
     addLog('SYSTEM', `[LOGOUT] Sesión finalizada por el operador.`);
   };
@@ -616,6 +626,10 @@ export default function App() {
   const handleLoginSuccess = (user: SystemUser) => {
     setCurrentUserId(user.id);
     setIsAuthenticated(true);
+    try {
+      sessionStorage.setItem('ast_session_active', 'true');
+      localStorage.setItem('ast20_current_user_id', user.id);
+    } catch (e) {}
     showToast(`¡Bienvenido, ${user.name}! Sesión iniciada.`);
     addLog('SYSTEM', `[LOGIN] Operador autenticado en Asterisk: ${user.name} (${user.role})`);
   };
