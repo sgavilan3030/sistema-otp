@@ -25,6 +25,7 @@ import {
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
+import { ProductionOperationsTab } from './components/ProductionOperationsTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
 import { CarriersTab } from './components/CarriersTab';
@@ -39,7 +40,7 @@ import { CallSimulatorModal } from './components/CallSimulatorModal';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('prompt');
+  const [activeTab, setActiveTab] = useState<string>('production');
 
   // Core Data States with localStorage persistence
   const [extensions, setExtensions] = useState<PjsipExtension[]>(() => {
@@ -621,6 +622,15 @@ export default function App() {
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {activeTab === 'production' && (
+          <ProductionOperationsTab
+            extensions={extensions}
+            carriers={carriers}
+            onTriggerSync={handleQuickSync}
+            isSyncing={isSyncing}
+          />
+        )}
+
         {activeTab === 'prompt' && (
           <PromptMaestroTab
             amiPort={connectionSettings.amiPort}

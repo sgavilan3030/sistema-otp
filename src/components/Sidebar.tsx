@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Rocket,
   PhoneCall,
   RefreshCw,
   Server,
@@ -47,6 +48,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   carrierCount = 2,
 }) => {
   const navItems = [
+    {
+      id: 'production',
+      label: 'Centro de Producción',
+      subtitle: 'Lanzador & Captura OTP',
+      icon: Rocket,
+      badge: 'PROD',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    },
     {
       id: 'prompt',
       label: 'Prompt Maestro AI',

