@@ -74,7 +74,7 @@ export default defineConfig(() => {
     },
     build: {
       target: 'esnext',
-      minify: 'esbuild',
+      minify: 'esbuild' as const,
       cssMinify: true,
       sourcemap: false,
       rollupOptions: {
@@ -92,10 +92,10 @@ export default defineConfig(() => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      allowedHosts: true,
+      allowedHosts: true as true,
     },
     preview: {
-      allowedHosts: true,
+      allowedHosts: true as true,
       port: 3000,
       host: '0.0.0.0',
     },

