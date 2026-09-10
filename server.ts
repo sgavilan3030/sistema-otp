@@ -455,6 +455,9 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
 });
 
 // Endpoint to originate real calls to client or extension connecting to IVR
+// Guard against accidental duplicate calls to the same number within 3 seconds
+const recentOriginateRequests = new Map<string, number>();
+
 app.post('/api/asterisk/call/originate', async (req, res) => {
   try {
     const {
@@ -471,6 +474,17 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     const cleanDest = destination.trim().replace(/[^0-9]/g, '');
 
+    // Prevent double-click originating duplicate calls
+    const now = Date.now();
+    const lastTime = recentOriginateRequests.get(cleanDest) || 0;
+    if (now - lastTime < 3000) {
+      return res.status(429).json({
+        success: false,
+        error: `Ya se está procesando una llamada a ${cleanDest}. Por favor espera unos segundos.`,
+      });
+    }
+    recentOriginateRequests.set(cleanDest, now);
+
     // Determine channel: if <= 4 digits, internal extension, else trunk
     let channel = '';
     if (cleanDest.length <= 4) {
@@ -479,23 +493,21 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       channel = `PJSIP/${cleanDest}@${carrier}`;
     }
 
-    // Trigger originate via Asterisk CLI & AMI
-    const amiCommands = [
-      `channel originate ${channel} extension s@ivr-otp`,
-    ];
-
-    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', amiCommands);
-
-    exec(`asterisk -rx "channel originate ${channel} extension s@ivr-otp"`, (err, stdout, stderr) => {
-      if (err) console.error('Originate CLI Error:', err);
-      else console.log('Originate CLI OK:', stdout);
+    // Execute single originate command via Asterisk CLI
+    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@ivr-otp"`;
+    
+    exec(originateCmd, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[ORIGINATE ERROR]:', err);
+      } else {
+        console.log(`[ORIGINATE SUCCESS] 1 sola llamada lanzada a ${channel}:`, stdout.trim());
+      }
     });
 
     res.json({
       success: true,
-      message: `Llamada originada hacia ${cleanDest}. Conectará con el IVR al contestar.`,
+      message: `Llamada única originada hacia ${cleanDest}. Conectará con el IVR al contestar.`,
       channel,
-      amiOutput,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
