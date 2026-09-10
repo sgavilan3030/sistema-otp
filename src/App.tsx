@@ -629,7 +629,7 @@ export default function App() {
       <div className={`min-h-screen font-sans transition-colors ${
         theme === 'light'
           ? 'theme-light bg-slate-100/80 text-slate-900 selection:bg-blue-500/20 selection:text-blue-900'
-          : 'bg-slate-950 text-slate-100 selection:bg-amber-500/30 selection:text-white'
+          : 'bg-black text-slate-100 selection:bg-emerald-500/30 selection:text-white'
       }`}>
         {toastMessage && (
           <div className="fixed bottom-5 right-5 z-50 flex items-center space-x-2 px-4 py-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-white shadow-2xl animate-bounce">
@@ -656,7 +656,7 @@ export default function App() {
     <div className={`min-h-screen flex flex-row font-sans transition-colors ${
       theme === 'light'
         ? 'theme-light bg-slate-50 text-slate-900 selection:bg-blue-500/20 selection:text-blue-900'
-        : 'bg-slate-950 text-slate-100 selection:bg-amber-500/30 selection:text-white'
+        : 'bg-black text-slate-100 selection:bg-emerald-500/30 selection:text-white'
     }`}>
       {/* Toast Notification */}
       {toastMessage && (

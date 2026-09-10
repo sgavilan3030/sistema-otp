@@ -499,8 +499,8 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
         <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
           <div>
             <span className="text-xs text-slate-400 font-medium">Latencia Media</span>
-            <div className="text-lg font-bold text-amber-400 flex items-center gap-1.5 mt-0.5">
-              <Clock className="w-4 h-4 text-amber-400" />
+            <div className="text-lg font-bold text-emerald-400 flex items-center gap-1.5 mt-0.5">
+              <Clock className="w-4 h-4 text-emerald-400" />
               <span>12.4 ms (Localhost)</span>
             </div>
           </div>
@@ -550,7 +550,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
           onClick={() => setActiveSubTab('troubleshooter')}
           className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center space-x-2 ${
             activeSubTab === 'troubleshooter'
-              ? 'border-amber-500 text-amber-400 bg-amber-500/10'
+              ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
               : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
@@ -586,7 +586,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                           <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                         )}
                         {test.status === 'warning' && (
-                          <AlertTriangle className="w-5 h-5 text-amber-400" />
+                          <AlertTriangle className="w-5 h-5 text-emerald-400" />
                         )}
                         {test.status === 'error' && (
                           <XCircle className="w-5 h-5 text-rose-400" />
@@ -616,7 +616,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                                 : test.status === 'error'
                                 ? 'text-rose-400'
                                 : test.status === 'warning'
-                                ? 'text-amber-400'
+                                ? 'text-emerald-400'
                                 : 'text-slate-500'
                             }`}
                           >
@@ -849,7 +849,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                     Monitor WebSocket de Eventos DTMF en Vivo (Stasis / Captura OTP)
                   </h4>
                   <p className="text-xs text-slate-400">
-                    Canal: <code className="text-amber-300">wss://{settings.ariHost}/ari/events?app={settings.ariAppName}</code>
+                    Canal: <code className="text-emerald-300 font-mono">wss://{settings.ariHost}/ari/events?app={settings.ariAppName}</code>
                   </p>
                 </div>
               </div>
@@ -857,7 +857,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
               <div className="flex items-center space-x-2">
                 <button
                   onClick={triggerSampleDtmfEvent}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 flex items-center space-x-1.5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 flex items-center space-x-1.5 transition-colors"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Simular Tono DTMF entrante</span>
@@ -879,7 +879,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                     >
                       <div className="flex items-center space-x-3">
                         <span className="text-slate-500 text-[10px]">{ev.time}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           {ev.event}
                         </span>
                         <span className="text-white text-xs font-semibold">{ev.detail}</span>
@@ -899,7 +899,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
             <h3 className="font-bold text-white text-sm flex items-center gap-2">
-              <Layers className="w-4 h-4 text-amber-400" />
+              <Layers className="w-4 h-4 text-emerald-400" />
               <span>Mapa de Puertos en el Servidor VPS</span>
             </h3>
 
@@ -969,7 +969,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
 
               <div className="space-y-1">
                 <span className="text-slate-400 text-[11px]">Ver aplicaciones Stasis registradas:</span>
-                <pre className="p-2 rounded bg-slate-950 text-amber-300 border border-slate-800">
+                <pre className="p-2 rounded bg-slate-950 text-emerald-300 border border-slate-800">
                   asterisk -rx "ari show apps"
                 </pre>
               </div>

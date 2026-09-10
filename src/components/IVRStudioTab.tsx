@@ -150,7 +150,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-amber-400" />
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
             <span>Estudio de IVR: Press-1 y Captura de OTP con Audios Profesionales</span>
           </h2>
           <p className="text-sm text-slate-400">
@@ -162,7 +162,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           id="btn-save-ivr-sync"
           onClick={handleSaveAll}
           disabled={isSyncing}
-          className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 transition-all"
+          className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 transition-all"
         >
           <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
           <span>{isSyncing ? 'Aplicando en Asterisk...' : 'Guardar y Recargar Dialplan'}</span>
@@ -177,16 +177,16 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       )}
 
       {/* Real-time IVR Testing Banner */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-amber-500/30 shadow-xl space-y-4">
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-emerald-500/30 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400">
+            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
               <PhoneCall className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <span>Prueba en Vivo del IVR con Asterisk 20</span>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
+                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
                   Listo para Probar
                 </span>
               </h3>
@@ -208,7 +208,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <p className="text-xs text-slate-300">
                 Desde tu extensión <strong>1001</strong> en X-Lite, simplemente marca el número:
               </p>
-              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-lg font-bold text-amber-400">
+              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-lg font-bold text-emerald-400">
                 <span>8888</span>
               </div>
               <p className="text-[11px] text-slate-400 mt-2">
@@ -233,7 +233,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 value={testPhone}
                 onChange={(e) => setTestPhone(e.target.value)}
                 placeholder="ej. 16104803845"
-                className="flex-1 px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-amber-500 focus:outline-none"
+                className="flex-1 px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500 focus:outline-none"
               />
               <button
                 id="btn-trigger-ivr-call"
@@ -269,7 +269,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       {/* Visual Flow Representation */}
       <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <Zap className="w-3.5 h-3.5 text-amber-400" />
+          <Zap className="w-3.5 h-3.5 text-emerald-400" />
           <span>Diagrama de Flujo en Asterisk 20 (Audios + Dialplan)</span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center text-xs">
@@ -279,9 +279,9 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             <div className="text-[11px] text-slate-400">from-trunk</div>
           </div>
 
-          <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-center">
-            <div className="text-[10px] text-amber-400 font-mono">2. IVR PRESS 1 (Ext {press1.extension})</div>
-            <div className="font-bold text-amber-200 mt-0.5">
+          <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-center">
+            <div className="text-[10px] text-emerald-400 font-mono">2. IVR PRESS 1 (Ext {press1.extension})</div>
+            <div className="font-bold text-emerald-200 mt-0.5">
               {press1.welcomeAudioId ? 'Audio Pregrabado WAV' : 'Mensaje de Bienvenida'}
             </div>
             <div className="text-[11px] text-slate-300">Espera DTMF tecla "1"</div>
@@ -309,7 +309,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 <PhoneForwarded className="w-5 h-5" />
               </div>
               <div>
@@ -325,7 +325,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 onChange={(e) => setPress1({ ...press1, enabled: e.target.checked })}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
             </label>
           </div>
 
@@ -337,7 +337,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   type="text"
                   value={press1.extension}
                   onChange={(e) => setPress1({ ...press1, extension: e.target.value })}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -346,7 +346,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   type="number"
                   value={press1.timeoutSeconds}
                   onChange={(e) => setPress1({ ...press1, timeoutSeconds: Number(e.target.value) })}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -355,14 +355,14 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <FileAudio className="w-4 h-4 text-amber-400" />
+                  <FileAudio className="w-4 h-4 text-emerald-400" />
                   <span>Audio Pregrabado de Bienvenida (Recomendado)</span>
                 </label>
                 {press1.welcomeAudioId && (
                   <button
                     type="button"
                     onClick={() => playRecordedAudio(press1.welcomeAudioId)}
-                    className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 text-[11px]"
+                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
                   >
                     {playingAudioId === press1.welcomeAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                     <span>{playingAudioId === press1.welcomeAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
@@ -373,7 +373,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <select
                 value={press1.welcomeAudioId || ''}
                 onChange={(e) => setPress1({ ...press1, welcomeAudioId: e.target.value || undefined })}
-                className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
               >
                 <option value="">-- Sin audio pregrabado (Usar texto TTS abajo) --</option>
                 {audios.map((a) => (
@@ -384,7 +384,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               </select>
 
               {press1.welcomeAudioId ? (
-                <div className="text-[11px] text-amber-300/80 font-mono">
+                <div className="text-[11px] text-emerald-300/80 font-mono">
                   Sintaxis Asterisk: Playback(custom/{audios.find((a) => a.id === press1.welcomeAudioId)?.fileName.replace(/\.[^/.]+$/, '')})
                 </div>
               ) : (
@@ -394,7 +394,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     <button
                       type="button"
                       onClick={() => speakText(press1.welcomeAudioText, 'press1')}
-                      className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 text-[11px]"
+                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
                     >
                       <Volume2 className="w-3 h-3" />
                       <span>{isPlayingTTS === 'press1' ? 'Detener' : 'Probar TTS'}</span>
@@ -404,17 +404,17 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     rows={2}
                     value={press1.welcomeAudioText}
                     onChange={(e) => setPress1({ ...press1, welcomeAudioText: e.target.value })}
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white leading-relaxed focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white leading-relaxed focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               )}
             </div>
 
             {/* Originating Agent Return Option */}
-            <div className="p-3 rounded-lg bg-slate-950 border border-amber-500/30 space-y-2">
+            <div className="p-3 rounded-lg bg-slate-950 border border-emerald-500/30 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <UserCheck className="w-4 h-4 text-amber-400" />
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
                   <span className="font-semibold text-white">Retornar al Agente que Originó el Contacto</span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -424,11 +424,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     onChange={(e) => setPress1({ ...press1, returnToOriginatingAgent: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
                 </label>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Cuando el cliente presione 1, Asterisk evaluará la variable de canal heredada <code className="text-amber-300 font-mono font-bold">__ORIGINATING_EXTEN</code>. Si la llamada fue iniciada por un agente (marcador saliente / click-to-call), regresará directamente a su extensión. De lo contrario, se usará el destino de respaldo configurado abajo.
+                Cuando el cliente presione 1, Asterisk evaluará la variable de canal heredada <code className="text-emerald-300 font-mono font-bold">__ORIGINATING_EXTEN</code>. Si la llamada fue iniciada por un agente (marcador saliente / click-to-call), regresará directamente a su extensión. De lo contrario, se usará el destino de respaldo configurado abajo.
               </p>
               {(press1.returnToOriginatingAgent ?? true) && (
                 <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
@@ -444,7 +444,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 <select
                   value={press1.digit1Action}
                   onChange={(e) => setPress1({ ...press1, digit1Action: e.target.value as any })}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                 >
                   <option value="transfer_extension">Transferir a Extensión</option>
                   <option value="queue">Enviar a Cola de Asesores</option>
@@ -454,12 +454,12 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">
-                  Destino de Respaldo <span className="text-amber-400">(≥ 1001)</span>
+                  Destino de Respaldo <span className="text-emerald-400">(≥ 1001)</span>
                 </label>
                 <select
                   value={press1.digit1Target}
                   onChange={(e) => setPress1({ ...press1, digit1Target: e.target.value })}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 >
                   {validExtensions.map((ext) => (
                     <option key={ext.id} value={ext.extension}>
@@ -478,7 +478,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <select
                 value={press1.invalidAudioId || ''}
                 onChange={(e) => setPress1({ ...press1, invalidAudioId: e.target.value || undefined })}
-                className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
               >
                 <option value="">-- Usar texto: "{press1.invalidPromptText}" --</option>
                 {audios.map((a) => (
@@ -625,7 +625,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">
-                  Si es Válido, Transferir a: <span className="text-amber-400">(≥ 1001)</span>
+                  Si es Válido, Transferir a: <span className="text-emerald-400">(≥ 1001)</span>
                 </label>
                 <select
                   value={otp.successTarget}
@@ -682,7 +682,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   <button
                     type="button"
                     onClick={() => speakText(otp.failurePromptText, 'otp-fail')}
-                    className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1"
+                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1"
                   >
                     <Volume2 className="w-3 h-3" />
                     <span>{isPlayingTTS === 'otp-fail' ? 'Detener' : 'Probar'}</span>
@@ -757,14 +757,14 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <div className="space-y-1.5 pt-1 border-t border-indigo-500/20">
                 <div className="flex justify-between items-center">
                   <label className="text-slate-200 font-medium text-xs flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-amber-400" />
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Locución de Espera que escucha el Cliente mientras el Asesor valida:</span>
                   </label>
                   {otp.validatingWaitAudioId && (
                     <button
                       type="button"
                       onClick={() => playRecordedAudio(otp.validatingWaitAudioId)}
-                      className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 text-[11px]"
+                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
                     >
                       {playingAudioId === otp.validatingWaitAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                       <span>{playingAudioId === otp.validatingWaitAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
@@ -797,7 +797,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                           'otp-wait'
                         )
                       }
-                      className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 text-[11px]"
+                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
                     >
                       <Volume2 className="w-3 h-3" />
                       <span>{isPlayingTTS === 'otp-wait' ? 'Detener' : 'Probar Locución'}</span>
@@ -850,7 +850,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     }
                     className={`inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-semibold border ${
                       otp.maskDigitsOnAgentScreen
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                         : 'bg-blue-500/10 border-blue-500/30 text-blue-300'
                     }`}
                   >

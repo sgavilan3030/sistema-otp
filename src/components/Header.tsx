@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
                 <CurrentIcon className="w-4 h-4" />
               </div>
               <div>
@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-blue-400 font-mono font-semibold">:{connectionSettings.ariPort} OK</span>
               <span className="text-slate-700">|</span>
               <span className="text-slate-400 font-medium">Carrier:</span>
-              <span className="text-amber-300 font-mono font-semibold">[televox]</span>
+              <span className="text-emerald-400 font-mono font-semibold">[televox]</span>
             </div>
 
             {/* Quick Sync Button */}
@@ -153,8 +153,8 @@ export const Header: React.FC<HeaderProps> = ({
               disabled={isSyncing}
               className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer ${
                 isSyncing
-                  ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50 cursor-wait'
-                  : 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 hover:border-amber-500/40'
+                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 cursor-wait'
+                  : 'bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 hover:border-emerald-500/40'
               }`}
               title="Disparar acción AMI pjsip reload & dialplan reload"
             >
@@ -166,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="btn-open-call-simulator"
               onClick={onOpenCallSimulator}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20 transition-all cursor-pointer font-medium"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 transition-all cursor-pointer font-medium"
             >
               <PhoneCall className="w-3.5 h-3.5" />
               <span>Softphone</span>
@@ -182,12 +182,12 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 {theme === 'light' ? (
                   <>
-                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <Sun className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="hidden md:inline font-medium">Tema Claro</span>
                   </>
                 ) : (
                   <>
-                    <Moon className="w-3.5 h-3.5 text-blue-400" />
+                    <Moon className="w-3.5 h-3.5 text-emerald-400" />
                     <span className="hidden md:inline font-medium">Tema Oscuro</span>
                   </>
                 )}

@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       subtitle: 'Instrucciones & Contexto',
       icon: Zap,
       badge: 'Core',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     },
     {
       id: 'extensions',
@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-b border-slate-800/80 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20 text-slate-950 font-black text-xl tracking-tight flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black font-black text-xl tracking-tight flex-shrink-0">
                 *20
               </div>
               <div>
@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
               <span className="text-slate-500 block">DB</span>
-              <span className="text-amber-400 font-bold">AstDB</span>
+              <span className="text-emerald-400 font-bold">AstDB</span>
             </div>
           </div>
         </div>
@@ -206,13 +206,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenCallSimulator();
               if (onCloseMobile) onCloseMobile();
             }}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all cursor-pointer font-medium"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer font-medium"
           >
             <div className="flex items-center space-x-2">
-              <PhoneCall className="w-4 h-4 text-blue-100" />
+              <PhoneCall className="w-4 h-4 text-emerald-100" />
               <span>Probar Softphone</span>
             </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-700/60 text-blue-200 font-mono">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700/60 text-emerald-100 font-mono">
               DTMF
             </span>
           </button>
@@ -223,12 +223,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             disabled={isSyncing}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               isSyncing
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-wait'
-                : 'bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-amber-400'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-wait'
+                : 'bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-emerald-400'
             }`}
           >
             <div className="flex items-center space-x-2">
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-400' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-400' : ''}`} />
               <span>{isSyncing ? 'Sincronizando...' : 'Recarga en Caliente'}</span>
             </div>
             <span className="text-[9px] text-slate-400 font-mono">AMI</span>
@@ -256,14 +256,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all text-left group ${
                   isActive
-                    ? 'bg-gradient-to-r from-amber-500/15 to-orange-500/5 text-amber-400 border border-amber-500/30 font-semibold shadow-sm'
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
                 }`}
               >
                 <div className="flex items-center space-x-2.5 min-w-0">
                   <Icon
                     className={`w-4 h-4 flex-shrink-0 transition-colors ${
-                      isActive ? 'text-amber-400' : 'text-slate-500 group-hover:text-slate-300'
+                      isActive ? 'text-emerald-400' : 'text-slate-500 group-hover:text-slate-300'
                     }`}
                   />
                   <div className="truncate">
@@ -330,9 +330,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center space-x-2">
                 {theme === 'light' ? (
-                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <Sun className="w-3.5 h-3.5 text-emerald-500" />
                 ) : (
-                  <Moon className="w-3.5 h-3.5 text-blue-400" />
+                  <Moon className="w-3.5 h-3.5 text-emerald-400" />
                 )}
                 <span>Apariencia:</span>
               </div>

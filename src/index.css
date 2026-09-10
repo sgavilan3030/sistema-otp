@@ -223,7 +223,9 @@
 
 /* Botones de acción principal en modo claro */
 .theme-light .bg-emerald-500.text-slate-950,
-.theme-light button.bg-emerald-500.text-slate-950 {
+.theme-light button.bg-emerald-500.text-slate-950,
+.theme-light .bg-emerald-500.text-black,
+.theme-light button.bg-emerald-500.text-black {
   background-color: #059669 !important;
   color: #ffffff !important;
   box-shadow: 0 2px 6px -1px rgba(5, 150, 105, 0.25) !important;
@@ -264,3 +266,90 @@
 .theme-light *::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* =========================================================================
+   TEMA OSCURO PROFESIONAL: NEGRO Y VERDE ESMERALDA (BLACK & EMERALD GREEN)
+   ========================================================================= */
+
+/* Fondo oscuro profundo negro y superficies obsidiana */
+body:not(.theme-light) {
+  background-color: #000000;
+  color: #f1f5f9;
+}
+
+body:not(.theme-light) .bg-slate-950 {
+  background-color: #000000 !important;
+}
+
+body:not(.theme-light) .bg-slate-900 {
+  background-color: #0a0a0c !important;
+}
+
+body:not(.theme-light) .border-slate-800 {
+  border-color: #1a1a1f !important;
+}
+
+/* Transformar cualquier residuo naranja/ámbar a verde esmeralda y verde puro */
+body:not(.theme-light) .text-amber-300,
+body:not(.theme-light) .text-amber-400,
+body:not(.theme-light) .text-amber-500,
+body:not(.theme-light) .text-orange-400,
+body:not(.theme-light) .text-orange-500 {
+  color: #34d399 !important;
+}
+
+body:not(.theme-light) .bg-amber-500,
+body:not(.theme-light) .bg-orange-500 {
+  background-color: #10b981 !important;
+  color: #000000 !important;
+}
+
+body:not(.theme-light) .hover\:bg-amber-400:hover,
+body:not(.theme-light) .hover\:bg-orange-400:hover {
+  background-color: #34d399 !important;
+  color: #000000 !important;
+}
+
+body:not(.theme-light) .bg-amber-500\/10,
+body:not(.theme-light) .bg-amber-500\/20,
+body:not(.theme-light) .bg-orange-500\/10,
+body:not(.theme-light) .bg-orange-500\/20 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+body:not(.theme-light) .border-amber-500,
+body:not(.theme-light) .border-amber-500\/20,
+body:not(.theme-light) .border-amber-500\/30,
+body:not(.theme-light) .border-amber-500\/40,
+body:not(.theme-light) .border-amber-500\/50,
+body:not(.theme-light) .border-amber-500\/60,
+body:not(.theme-light) .border-orange-500 {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+body:not(.theme-light) .focus\:border-amber-500:focus {
+  border-color: #10b981 !important;
+}
+
+body:not(.theme-light) .shadow-amber-500\/20,
+body:not(.theme-light) .shadow-amber-500\/10,
+body:not(.theme-light) .shadow-amber-500\/5 {
+  box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.2) !important;
+}
+
+/* Scrollbars para modo oscuro */
+body:not(.theme-light) *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+body:not(.theme-light) *::-webkit-scrollbar-track {
+  background: #050505;
+}
+body:not(.theme-light) *::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 9999px;
+}
+body:not(.theme-light) *::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}
+

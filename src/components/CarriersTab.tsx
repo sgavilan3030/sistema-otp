@@ -215,7 +215,7 @@ insecure=${carrierInsecure}`;
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Globe className="w-5 h-5 text-amber-400" />
+            <Globe className="w-5 h-5 text-emerald-400" />
             <span>Gestión de Carriers SIP &amp; Dialplan</span>
             <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {carriers.length} troncales
@@ -243,7 +243,7 @@ insecure=${carrierInsecure}`;
           <button
             id="btn-add-carrier-trunk"
             onClick={handleOpenCreateModal}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-black shadow-md shadow-emerald-500/20 transition-all cursor-pointer font-bold"
           >
             <Plus className="w-4 h-4" />
             <span>Agregar Carrier</span>
@@ -253,7 +253,7 @@ insecure=${carrierInsecure}`;
 
       {/* Featured Box: Carrier Account Entry & Dialplan Entry exactly as requested */}
       {activeCarrier && (
-        <div className="rounded-xl bg-slate-900 border border-amber-500/30 overflow-hidden shadow-xl">
+        <div className="rounded-xl bg-slate-900 border border-emerald-500/30 overflow-hidden shadow-xl">
           {/* Header with carrier tabs */}
           <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-2">
@@ -267,7 +267,7 @@ insecure=${carrierInsecure}`;
                     onClick={() => setSelectedCarrierId(c.id)}
                     className={`px-3 py-1 rounded text-xs font-mono font-medium transition-all ${
                       selectedCarrierId === c.id
-                        ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                        ? 'bg-emerald-500 text-black font-bold shadow'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                     }`}
                   >
@@ -280,7 +280,7 @@ insecure=${carrierInsecure}`;
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => handleOpenEditModal(activeCarrier)}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors"
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition-colors"
               >
                 <Sliders className="w-3.5 h-3.5" />
                 <span>Editar Parámetros</span>
@@ -295,7 +295,7 @@ insecure=${carrierInsecure}`;
                 <div>
                   <h4 className="text-sm font-bold text-white font-mono">
                     Carrier Account Entry (
-                    <span className="text-amber-400">sip.conf</span>
+                    <span className="text-emerald-400">sip.conf</span>
                     )
                   </h4>
                 </div>
@@ -305,7 +305,7 @@ insecure=${carrierInsecure}`;
                   className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
                     copiedSip
                       ? 'bg-emerald-600 text-white'
-                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-sm'
                   }`}
                 >
                   {copiedSip ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -329,7 +329,7 @@ insecure=${carrierInsecure}`;
                 <div>
                   <h4 className="text-sm font-bold text-white font-mono">
                     Dialplan Entry (
-                    <span className="text-amber-400">extensions.conf</span>
+                    <span className="text-emerald-400">extensions.conf</span>
                     )
                   </h4>
                 </div>
@@ -339,7 +339,7 @@ insecure=${carrierInsecure}`;
                   className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all ${
                     copiedDialplan
                       ? 'bg-emerald-600 text-white'
-                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-sm'
                   }`}
                 >
                   {copiedDialplan ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -348,7 +348,7 @@ insecure=${carrierInsecure}`;
               </div>
 
               <div className="relative group">
-                <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed overflow-x-auto shadow-inner select-all">
+                <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300 leading-relaxed overflow-x-auto shadow-inner select-all">
 {getDialplanSnippet(activeCarrier)}
                 </pre>
               </div>
@@ -374,7 +374,7 @@ insecure=${carrierInsecure}`;
                 onClick={() => setSelectedCarrierId(c.id)}
                 className={`p-4 rounded-xl cursor-pointer transition-all border ${
                   isSelected
-                    ? 'bg-slate-900 border-amber-500/60 shadow-lg ring-1 ring-amber-500/30'
+                    ? 'bg-slate-900 border-emerald-500/60 shadow-lg ring-1 ring-emerald-500/30'
                     : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                 }`}
               >
@@ -411,7 +411,7 @@ insecure=${carrierInsecure}`;
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Dial Pattern:</span>
-                    <span className="text-amber-400">{c.dialplanPattern || '_1XXXXXXXXXX'}</span>
+                    <span className="text-emerald-400">{c.dialplanPattern || '_1XXXXXXXXXX'}</span>
                   </div>
                 </div>
 
@@ -435,7 +435,7 @@ insecure=${carrierInsecure}`;
                         e.stopPropagation();
                         setPreviewCarrier(c);
                       }}
-                      className="p-1 rounded text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+                      className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-800"
                       title="Ver PJSIP equivalente"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -476,7 +476,7 @@ insecure=${carrierInsecure}`;
           <div className="w-full max-w-lg rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Globe className="w-5 h-5 text-amber-400" />
+                <Globe className="w-5 h-5 text-emerald-400" />
                 <span>{editingCarrier ? 'Editar Carrier SIP' : 'Nuevo Carrier SIP'}</span>
               </h3>
               <button
@@ -497,7 +497,7 @@ insecure=${carrierInsecure}`;
                     value={name}
                     onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                     placeholder="televox"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-500">Usado como identificador en [{name}]</span>
                 </div>
@@ -509,7 +509,7 @@ insecure=${carrierInsecure}`;
                     value={inboundContext}
                     onChange={(e) => setInboundContext(e.target.value)}
                     placeholder="trunkinbound"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -525,7 +525,7 @@ insecure=${carrierInsecure}`;
                     value={host}
                     onChange={(e) => setHost(e.target.value)}
                     placeholder="52.144.46.192"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -534,7 +534,7 @@ insecure=${carrierInsecure}`;
                     type="number"
                     value={port}
                     onChange={(e) => setPort(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -548,7 +548,7 @@ insecure=${carrierInsecure}`;
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="sgavilan30"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -558,7 +558,7 @@ insecure=${carrierInsecure}`;
                     value={secret}
                     onChange={(e) => setSecret(e.target.value)}
                     placeholder="Robert2026"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -568,7 +568,7 @@ insecure=${carrierInsecure}`;
                     value={fromuser}
                     onChange={(e) => setFromuser(e.target.value)}
                     placeholder="sgavilan30"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -578,7 +578,7 @@ insecure=${carrierInsecure}`;
                     value={insecure}
                     onChange={(e) => setInsecure(e.target.value)}
                     placeholder="port,invite"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -590,7 +590,7 @@ insecure=${carrierInsecure}`;
                   <select
                     value={sendrpid}
                     onChange={(e) => setSendrpid(e.target.value as 'yes' | 'no')}
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   >
                     <option value="yes">yes</option>
                     <option value="no">no</option>
@@ -601,7 +601,7 @@ insecure=${carrierInsecure}`;
                   <select
                     value={trustrpid}
                     onChange={(e) => setTrustrpid(e.target.value as 'yes' | 'no')}
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   >
                     <option value="yes">yes</option>
                     <option value="no">no</option>
@@ -618,7 +618,7 @@ insecure=${carrierInsecure}`;
                     value={dialplanPattern}
                     onChange={(e) => setDialplanPattern(e.target.value)}
                     placeholder="_1XXXXXXXXXX"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-500">Ej: _1XXXXXXXXXX o _9X.</span>
                 </div>
@@ -629,7 +629,7 @@ insecure=${carrierInsecure}`;
                     value={dialFlags}
                     onChange={(e) => setDialFlags(e.target.value)}
                     placeholder="Tor"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-500">Ej: Tor o tTkK</span>
                 </div>
@@ -647,7 +647,7 @@ insecure=${carrierInsecure}`;
                         onClick={() => toggleCodec(codec)}
                         className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-bold'
+                            ? 'bg-emerald-500 text-black font-bold'
                             : 'bg-slate-950 text-slate-400 border border-slate-800'
                         }`}
                       >
@@ -668,7 +668,7 @@ insecure=${carrierInsecure}`;
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-500/20 cursor-pointer"
+                  className="px-4 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-md shadow-emerald-500/20 cursor-pointer"
                 >
                   {editingCarrier ? 'Guardar Cambios' : 'Crear Carrier'}
                 </button>
@@ -695,7 +695,7 @@ insecure=${carrierInsecure}`;
               </button>
             </div>
 
-            <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300/90 overflow-x-auto">
+            <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300/90 overflow-x-auto">
 {`[${previewCarrier.name}_reg]
 type=registration
 transport=transport-udp

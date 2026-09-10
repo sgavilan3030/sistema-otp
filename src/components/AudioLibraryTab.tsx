@@ -57,7 +57,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
-    press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+    press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
     otp_welcome: { label: 'Captura OTP Instrucción', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
     otp_success: { label: 'OTP Validación Exitosa', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
@@ -214,7 +214,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Volume2 className="w-6 h-6 text-amber-400" />
+            <Volume2 className="w-6 h-6 text-emerald-400" />
             <span>Audioteca de Mensajes Pregrabados</span>
             <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {audios.length} audios
@@ -222,7 +222,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           </h2>
           <p className="text-sm text-slate-400">
             Sube locuciones profesionales para tus campañas de <strong>Press 1</strong> y <strong>Captura de OTP</strong>.
-            Sincronización directa con el directorio <code className="text-amber-300 font-mono text-xs">/var/lib/asterisk/sounds/custom/</code>.
+            Sincronización directa con el directorio <code className="text-emerald-400 font-mono text-xs">/var/lib/asterisk/sounds/custom/</code>.
           </p>
         </div>
 
@@ -248,7 +248,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 font-medium"
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-bold"
           >
             <UploadCloud className="w-4 h-4" />
             <span>Subir Audio Pregrabado</span>
@@ -274,16 +274,16 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         onClick={() => fileInputRef.current?.click()}
         className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
           isDragging
-            ? 'border-amber-500 bg-amber-500/10 scale-[1.01]'
+            ? 'border-emerald-500 bg-emerald-500/10 scale-[1.01]'
             : 'border-slate-800 bg-slate-900/50 hover:bg-slate-900 hover:border-slate-700'
         }`}
       >
         <div className="flex flex-col items-center justify-center space-y-2 max-w-md mx-auto">
-          <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-amber-400 border border-slate-700">
+          <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-emerald-400 border border-slate-700">
             <UploadCloud className="w-6 h-6" />
           </div>
           <div className="text-sm font-medium text-white">
-            Arrastra y suelta tu archivo de audio aquí o <span className="text-amber-400 underline">haz clic para explorar</span>
+            Arrastra y suelta tu archivo de audio aquí o <span className="text-emerald-400 underline">haz clic para explorar</span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
             Formatos compatibles: <strong>WAV (16-bit 8000Hz PCM recomendado)</strong>, MP3, OGG, GSM. Asterisk reproducirá el archivo con máxima nitidez sin transcodificación.
@@ -298,7 +298,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           <div className="space-y-1">
             <span className="font-semibold text-slate-200">Recomendación de Audio para Asterisk 20:</span>
             <p className="text-slate-400 leading-relaxed">
-              Asterisk opera de forma óptima con audio en <strong>PCM Mono a 8 kHz y 16 bits</strong> (<code className="text-amber-300 font-mono">format=wav</code> o <code className="text-amber-300 font-mono">sln16</code>). Puedes sincronizar todos los audios a tu servidor con el comando rsync.
+              Asterisk opera de forma óptima con audio en <strong>PCM Mono a 8 kHz y 16 bits</strong> (<code className="text-emerald-400 font-mono">format=wav</code> o <code className="text-emerald-400 font-mono">sln16</code>). Puedes sincronizar todos los audios a tu servidor con el comando rsync.
             </p>
           </div>
         </div>
@@ -353,7 +353,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                     onClick={() => handlePlayToggle(audio)}
                     className={`p-2 rounded-full flex items-center justify-center transition-all ${
                       isPlaying
-                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30 animate-pulse'
+                        ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/30 animate-pulse'
                         : 'bg-slate-800 text-white hover:bg-slate-700'
                     }`}
                     title={isPlaying ? 'Pausar' : 'Reproducir locución'}
@@ -368,7 +368,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                           <div
                             key={idx}
                             className={`flex-1 rounded-full transition-all ${
-                              isPlaying ? 'bg-amber-400 animate-pulse' : 'bg-slate-700'
+                              isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-slate-700'
                             }`}
                             style={{ height: `${isPlaying ? height : Math.max(20, height * 0.5)}%` }}
                           ></div>
@@ -394,7 +394,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 <span className="text-slate-400">Playback({audio.asteriskPath})</span>
                 <button
                   onClick={() => copyToClipboard(`Playback(${audio.asteriskPath})`)}
-                  className="text-slate-400 hover:text-amber-400 p-0.5"
+                  className="text-slate-400 hover:text-emerald-400 p-0.5"
                   title="Copiar sintaxis para extensions.conf"
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -405,7 +405,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
                 <button
                   onClick={() => onAssignToPress1(audio.id)}
-                  className="text-xs px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1 font-medium"
+                  className="text-xs px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-1 font-medium"
                   title="Asignar este audio a la bienvenida de Press 1"
                 >
                   <span>Asignar a Press 1</span>
@@ -429,7 +429,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Volume2 className="w-5 h-5 text-amber-400" />
+                <Volume2 className="w-5 h-5 text-emerald-400" />
                 <span>Registrar Audio en Audioteca</span>
               </h3>
               <button
@@ -451,7 +451,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   value={newAudioName}
                   onChange={(e) => setNewAudioName(e.target.value)}
                   placeholder="Ej: Bienvenida Campaña Cobranzas"
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none text-xs"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 />
               </div>
 
@@ -462,7 +462,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 <select
                   value={newAudioCategory}
                   onChange={(e) => setNewAudioCategory(e.target.value as AudioPrompt['category'])}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none text-xs"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
                   <option value="press1_welcome">Bienvenida IVR Press 1</option>
                   <option value="press1_invalid">Opción Inválida Press 1</option>
@@ -485,11 +485,11 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>Duración estimada:</span>
-                  <span className="font-mono text-amber-300">{stagedDuration} segundos</span>
+                  <span className="font-mono text-emerald-300">{stagedDuration} segundos</span>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px]">
+              <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px]">
                 💡 Asterisk buscará este audio en <code className="font-mono">/var/lib/asterisk/sounds/custom/{stagedFileName.replace(/\.[^/.]+$/, '')}</code>.
               </div>
 
@@ -503,7 +503,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold"
+                  className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold"
                 >
                   Guardar en Audioteca
                 </button>

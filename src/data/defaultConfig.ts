@@ -115,7 +115,7 @@ export const initialUsers: SystemUser[] = [
     role: 'admin',
     assignedExtensions: ['1001', '1002', '1003', '1004'],
     status: 'active',
-    avatarColor: 'from-amber-500 to-red-600',
+    avatarColor: 'from-emerald-500 to-teal-700',
     createdAt: '2026-09-01',
     lastLogin: 'En línea ahora',
     permissions: {
@@ -138,7 +138,7 @@ export const initialUsers: SystemUser[] = [
     role: 'admin',
     assignedExtensions: ['1001', '1002'],
     status: 'active',
-    avatarColor: 'from-orange-500 to-amber-600',
+    avatarColor: 'from-emerald-600 to-green-700',
     createdAt: '2026-09-02',
     lastLogin: 'Hoy 09:15',
     permissions: {

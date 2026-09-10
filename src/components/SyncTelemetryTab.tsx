@@ -74,7 +74,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
         {/* Left Column: Settings */}
         <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
           <div className="flex items-center space-x-2 pb-3 border-b border-slate-800">
-            <Settings2 className="w-4 h-4 text-amber-400" />
+            <Settings2 className="w-4 h-4 text-emerald-400" />
             <h3 className="font-bold text-white text-sm">Credenciales Asterisk 20</h3>
           </div>
 
@@ -100,7 +100,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                 type="text"
                 value={settings.amiHost}
                 onChange={(e) => onUpdateSettings({ ...settings, amiHost: e.target.value, ariHost: e.target.value })}
-                className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
               />
             </div>
 
@@ -116,7 +116,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                     type="number"
                     value={settings.amiPort}
                     onChange={(e) => onUpdateSettings({ ...settings, amiPort: Number(e.target.value) })}
-                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -125,7 +125,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                     type="text"
                     value={settings.amiUser}
                     onChange={(e) => onUpdateSettings({ ...settings, amiUser: e.target.value })}
-                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -135,7 +135,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                   type="password"
                   value={settings.amiSecret}
                   onChange={(e) => onUpdateSettings({ ...settings, amiSecret: e.target.value })}
-                  className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -173,7 +173,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                   type="checkbox"
                   checked={settings.autoSyncOnChange}
                   onChange={(e) => onUpdateSettings({ ...settings, autoSyncOnChange: e.target.checked })}
-                  className="rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-0"
+                  className="rounded bg-slate-950 border-slate-800 text-emerald-500 focus:ring-0"
                 />
                 <span className="text-slate-300 font-medium">
                   Auto-sincronizar inmediatamente al crear o editar
@@ -226,7 +226,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                   setCustomCommand(cmd);
                   onExecuteAmiCommand(cmd);
                 }}
-                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300/90 font-mono text-[10px] transition-colors"
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300/90 font-mono text-[10px] transition-colors"
               >
                 {cmd}
               </button>
@@ -256,7 +256,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
                   </span>
                   <span className="text-slate-200">{log.message}</span>
                   {log.payload && (
-                    <pre className="mt-1 pl-4 py-1 text-[11px] text-amber-300/80 border-l-2 border-slate-800 whitespace-pre-wrap">
+                    <pre className="mt-1 pl-4 py-1 text-[11px] text-emerald-300/80 border-l-2 border-slate-800 whitespace-pre-wrap">
                       {log.payload}
                     </pre>
                   )}

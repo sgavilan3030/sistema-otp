@@ -154,11 +154,11 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       });
     } else {
       const colors = [
-        'from-amber-500 to-red-600',
+        'from-emerald-500 to-teal-700',
         'from-blue-500 to-indigo-600',
-        'from-emerald-500 to-teal-600',
+        'from-emerald-600 to-green-500',
         'from-purple-500 to-pink-600',
-        'from-orange-500 to-amber-600',
+        'from-teal-500 to-emerald-600',
       ];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
@@ -227,7 +227,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Users className="w-6 h-6 text-amber-400" />
+            <Users className="w-6 h-6 text-emerald-400" />
             <span>Panel de Usuarios y Permisos del Sistema</span>
             <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {users.length} usuarios
@@ -240,7 +240,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 
         <button
           onClick={handleOpenCreateModal}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 font-medium transition-all"
+          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-black shadow-md shadow-emerald-500/20 font-bold transition-all"
         >
           <UserPlus className="w-4 h-4" />
           <span>Crear Nuevo Usuario</span>
@@ -250,14 +250,14 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       {/* Switch Current Active User (Impersonation Banner) */}
       <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
             <Shield className="w-5 h-5" />
           </div>
           <div>
             <div className="text-xs text-slate-400 font-medium">Sesión Actual Activa en la Interfaz:</div>
             <div className="text-sm font-bold text-white flex items-center gap-2">
               <span>{users.find((u) => u.id === currentUserId)?.name || 'Administrador'}</span>
-              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
                 {users.find((u) => u.id === currentUserId)?.role || 'admin'}
               </span>
             </div>
@@ -272,7 +272,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
               onClick={() => onSwitchUser(user.id)}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
                 currentUserId === user.id
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
+                  ? 'bg-emerald-500 text-black font-bold shadow-md'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
@@ -293,7 +293,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
             <div
               key={user.id}
               className={`p-5 rounded-xl bg-slate-900 border transition-all flex flex-col justify-between ${
-                isCurrentUser ? 'border-amber-500/50 shadow-lg shadow-amber-500/5' : 'border-slate-800 hover:border-slate-700'
+                isCurrentUser ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/5' : 'border-slate-800 hover:border-slate-700'
               }`}
             >
               <div>
@@ -313,7 +313,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       <h3 className="font-bold text-white text-sm leading-tight flex items-center gap-1.5">
                         <span>{user.name}</span>
                         {isCurrentUser && (
-                          <span className="w-2 h-2 rounded-full bg-amber-400" title="Tú estás conectado"></span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tú estás conectado"></span>
                         )}
                       </h3>
                       <p className="text-xs text-slate-400 truncate max-w-[170px]">{user.email}</p>
@@ -339,16 +339,16 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 <div className="py-2.5 border-t border-b border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400 font-medium">Extensiones Asignadas:</span>
-                    <span className="text-[11px] text-amber-400/80 font-mono">(≥ 1001)</span>
+                    <span className="text-[11px] text-emerald-400/80 font-mono">(≥ 1001)</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 min-h-[26px]">
                     {user.assignedExtensions.length > 0 ? (
                       user.assignedExtensions.map((extNum) => (
                         <span
                           key={extNum}
-                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-amber-300 font-mono font-bold text-xs flex items-center gap-1"
+                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1"
                         >
-                          <Phone className="w-3 h-3 text-amber-400" />
+                          <Phone className="w-3 h-3 text-emerald-400" />
                           <span>Ext {extNum}</span>
                         </span>
                       ))
@@ -368,7 +368,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   </div>
                   <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
                     <div
-                      className="bg-amber-400 h-full rounded-full transition-all"
+                      className="bg-emerald-400 h-full rounded-full transition-all"
                       style={{ width: `${(activePermCount / 8) * 100}%` }}
                     ></div>
                   </div>
@@ -423,7 +423,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
           <div className="w-full max-w-2xl rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-amber-400" />
+                <Users className="w-5 h-5 text-emerald-400" />
                 <span>{editingUser ? 'Modificar Usuario y Permisos' : 'Crear Nuevo Usuario del Sistema'}</span>
               </h3>
               <button
@@ -445,7 +445,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     placeholder="Ej. Juan Pérez"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -456,7 +456,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
                     placeholder="juan.perez@empresa.com"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -472,7 +472,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     onClick={() => applyRolePreset('admin')}
                     className={`p-2.5 rounded-lg border text-left transition-all ${
                       formRole === 'admin'
-                        ? 'bg-amber-500/20 border-amber-500 text-white'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-white'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                     }`}
                   >
@@ -510,7 +510,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-slate-200 font-semibold flex items-center gap-1.5">
-                    <Phone className="w-4 h-4 text-amber-400" />
+                    <Phone className="w-4 h-4 text-emerald-400" />
                     <span>Asignar Extensiones PJSIP (1001 en adelante)</span>
                   </label>
                   <span className="text-[11px] text-slate-400 font-mono">
@@ -531,7 +531,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         onClick={() => toggleExtensionAssignment(ext.extension)}
                         className={`p-2 rounded border text-left font-mono transition-all flex items-center justify-between ${
                           isSelected
-                            ? 'bg-amber-500/20 border-amber-500/60 text-amber-200'
+                            ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
@@ -539,7 +539,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                           <div className="font-bold text-xs">{ext.extension}</div>
                           <div className="text-[10px] truncate max-w-[80px] font-sans text-slate-400">{ext.name}</div>
                         </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                       </button>
                     );
                   })}
@@ -549,7 +549,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
               {/* Granular Permissions Checklist */}
               <div className="space-y-2">
                 <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
-                  <Sliders className="w-4 h-4 text-amber-400" />
+                  <Sliders className="w-4 h-4 text-emerald-400" />
                   <span>¿Qué puede usar del sistema? (Permisos específicos)</span>
                 </label>
 
@@ -562,7 +562,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         onClick={() => togglePermission(key)}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-start space-x-2.5 ${
                           hasPerm
-                            ? 'bg-slate-800/80 border-amber-500/40 text-slate-200'
+                            ? 'bg-slate-800/80 border-emerald-500/40 text-slate-200'
                             : 'bg-slate-950 border-slate-800 text-slate-400 opacity-60 hover:opacity-100'
                         }`}
                       >
@@ -570,7 +570,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                           type="checkbox"
                           checked={hasPerm}
                           onChange={() => {}} // handled by parent div
-                          className="mt-0.5 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0 pointer-events-none"
+                          className="mt-0.5 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0 pointer-events-none"
                         />
                         <div>
                           <div className="font-medium text-xs leading-tight">{label}</div>
@@ -593,7 +593,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
+                  className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold"
                 >
                   {editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
                 </button>

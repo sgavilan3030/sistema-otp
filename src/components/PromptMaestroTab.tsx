@@ -39,11 +39,11 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner explaining the architecture decision */}
-      <div className="p-5 rounded-xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/40 border border-amber-500/30">
+      <div className="p-5 rounded-xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 border border-emerald-500/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2">
-              <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+              <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
                 <Sparkles className="w-5 h-5" />
               </span>
               <h2 className="text-xl font-bold text-white tracking-tight">
@@ -51,7 +51,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               </h2>
             </div>
             <p className="text-sm text-slate-300 max-w-3xl">
-              Diseñado para ser utilizado como <span className="text-amber-400 font-semibold">System Prompt</span> en
+              Diseñado para ser utilizado como <span className="text-emerald-400 font-semibold">System Prompt</span> en
               modelos de IA (ChatGPT, Claude, Cursor o tu propio Agente autónomo). Implementa el protocolo
               óptimo de conexión a Asterisk 20 combinando <span className="text-emerald-400 font-semibold">AMI</span> para
               recargas en caliente (0 caídas) y <span className="text-blue-400 font-semibold">ARI (Stasis)</span> para
@@ -65,7 +65,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
             className={`flex items-center justify-center space-x-2 px-5 py-3 rounded-lg font-bold text-sm shadow-lg transition-all ${
               copied
                 ? 'bg-emerald-600 text-white shadow-emerald-500/20'
-                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
             }`}
           >
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -81,7 +81,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               <span>AMI (Puerto {amiPort}) - Sincronismo Inmediato</span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Ejecuta <code className="text-amber-300">Action: Command</code> con <code className="text-amber-300">pjsip reload</code> cada vez que creas o editas extensiones y carriers. No reinicia Asterisk y sincroniza en &lt;50ms.
+              Ejecuta <code className="text-emerald-300">Action: Command</code> con <code className="text-emerald-300">pjsip reload</code> cada vez que creas o editas extensiones y carriers. No reinicia Asterisk y sincroniza en &lt;50ms.
             </p>
           </div>
 
@@ -110,7 +110,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
       {/* Prompt Customization Controls */}
       <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div className="flex items-center space-x-2 mb-3">
-          <Sliders className="w-4 h-4 text-amber-400" />
+          <Sliders className="w-4 h-4 text-emerald-400" />
           <h3 className="text-sm font-semibold text-white">Personalizar Parámetros del Prompt</h3>
         </div>
 
@@ -121,7 +121,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               type="number"
               value={amiPort}
               onChange={(e) => setAmiPort(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
@@ -131,7 +131,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               type="number"
               value={ariPort}
               onChange={(e) => setAriPort(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
             />
           </div>
 
@@ -140,7 +140,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
             <select
               value={otpDigits}
               onChange={(e) => setOtpDigits(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
             >
               <option value={4}>4 Dígitos (Básico)</option>
               <option value={6}>6 Dígitos (Estándar Bancario)</option>
@@ -153,7 +153,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
             <select
               value={syncStrategy}
               onChange={(e) => setSyncStrategy(e.target.value)}
-              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
             >
               <option value="Híbrida (AMI Reload + ARI Stasis)">Híbrida: AMI Reload + ARI (Óptima)</option>
               <option value="Pura AMI con Dialplan Read()">Pura AMI con Dialplan nativo</option>
@@ -167,7 +167,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               type="url"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
-              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
               placeholder="https://api.tuempresa.com/v1/telephony/verify-otp"
             />
           </div>
@@ -179,8 +179,8 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
         <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center space-x-2">
             <div className="flex space-x-1.5">
-              <div className="w-3 h-3 rounded-full bg-rose-500/80"></div>
-              <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
+              <div className="w-3 h-3 rounded-full bg-slate-700"></div>
+              <div className="w-3 h-3 rounded-full bg-slate-600"></div>
               <div className="w-3 h-3 rounded-full bg-emerald-500/80"></div>
             </div>
             <span className="text-xs font-mono text-slate-400 pl-2">
@@ -190,7 +190,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
 
           <button
             onClick={handleCopy}
-            className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            className="flex items-center space-x-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Copiado' : 'Copiar'}</span>
@@ -198,7 +198,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
         </div>
 
         <div className="p-4 sm:p-6 overflow-x-auto max-h-[600px] scrollbar-thin">
-          <pre className="text-xs font-mono text-slate-200 leading-relaxed whitespace-pre-wrap selection:bg-amber-500/30">
+          <pre className="text-xs font-mono text-slate-200 leading-relaxed whitespace-pre-wrap selection:bg-emerald-500/30">
             {promptText}
           </pre>
         </div>

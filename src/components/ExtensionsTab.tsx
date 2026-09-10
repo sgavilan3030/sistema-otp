@@ -158,8 +158,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         );
       case 'ringing':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
             Timbrando
           </span>
         );
@@ -183,12 +183,12 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {extensions.length} totales
             </span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold font-mono">
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold font-mono">
               Rango: 1001 en adelante
             </span>
           </h2>
           <p className="text-sm text-slate-400">
-            Cada cambio inyecta los objetos <code className="text-amber-300 font-mono text-xs">endpoint</code>, <code className="text-amber-300 font-mono text-xs">auth</code> y <code className="text-amber-300 font-mono text-xs">aor</code> en Asterisk 20 con recarga AMI automática.
+            Cada cambio inyecta los objetos <code className="text-emerald-300 font-mono text-xs">endpoint</code>, <code className="text-emerald-300 font-mono text-xs">auth</code> y <code className="text-emerald-300 font-mono text-xs">aor</code> en Asterisk 20 con recarga AMI automática.
           </p>
         </div>
 
@@ -209,7 +209,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           <button
             id="btn-add-pjsip-extension"
             onClick={handleOpenCreateModal}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 transition-all"
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-black shadow-md shadow-emerald-500/20 transition-all font-bold"
           >
             <Plus className="w-4 h-4" />
             <span>Nueva Extensión PJSIP</span>
@@ -228,7 +228,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               {/* Card top */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-mono font-bold text-amber-400 text-lg border border-slate-700">
+                  <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-mono font-bold text-emerald-400 text-lg border border-slate-700">
                     {ext.extension}
                   </div>
                   <div>
@@ -293,7 +293,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setPreviewExt(ext)}
-                  className="p-1.5 rounded text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+                  className="p-1.5 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
                   title="Ver configuración PJSIP generada"
                 >
                   <Eye className="w-4 h-4" />
@@ -324,7 +324,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Phone className="w-5 h-5 text-amber-400" />
+                <Phone className="w-5 h-5 text-emerald-400" />
                 <span>{editingExt ? 'Editar Extensión PJSIP' : 'Nueva Extensión PJSIP'}</span>
               </h3>
               <button
@@ -346,7 +346,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">
-                    Número de Extensión * <span className="text-amber-400 font-mono">(≥ 1001)</span>
+                    Número de Extensión * <span className="text-emerald-400 font-mono">(≥ 1001)</span>
                   </label>
                   <input
                     type="number"
@@ -355,7 +355,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                     value={extNumber}
                     onChange={(e) => setExtNumber(e.target.value)}
                     placeholder="1005"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">
                     Admitido: 1001 en adelante
@@ -370,7 +370,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                     value={extName}
                     onChange={(e) => setExtName(e.target.value)}
                     placeholder="Juan Perez"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -381,7 +381,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   <button
                     type="button"
                     onClick={handleGeneratePassword}
-                    className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 text-[11px]"
+                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
                   >
                     <Key className="w-3 h-3" />
                     <span>Generar Segura</span>
@@ -392,7 +392,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   required
                   value={extSecret}
                   onChange={(e) => setExtSecret(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -403,7 +403,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                     type="text"
                     value={extContext}
                     onChange={(e) => setExtContext(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -411,7 +411,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   <select
                     value={extTransport}
                     onChange={(e) => setExtTransport(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-amber-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   >
                     <option value="transport-udp">UDP (5060)</option>
                     <option value="transport-tcp">TCP (5060)</option>
@@ -433,7 +433,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                         onClick={() => toggleCodec(codec)}
                         className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-bold'
+                            ? 'bg-emerald-500 text-black font-bold'
                             : 'bg-slate-950 text-slate-400 border border-slate-800'
                         }`}
                       >
@@ -454,7 +454,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   max={10}
                   value={extMaxContacts}
                   onChange={(e) => setExtMaxContacts(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
@@ -468,7 +468,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-500/20"
+                  className="px-4 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-md shadow-emerald-500/20"
                 >
                   {editingExt ? 'Guardar y Sincronizar' : 'Crear y Sincronizar'}
                 </button>
@@ -495,7 +495,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               </button>
             </div>
 
-            <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300/90 overflow-x-auto">
+            <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300/90 overflow-x-auto">
 {`[${previewExt.extension}]
 type=endpoint
 context=${previewExt.context}

@@ -599,7 +599,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black text-sm">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-black font-black text-sm shadow-md shadow-emerald-500/20">
               *20
             </div>
             <div>
@@ -642,7 +642,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                 }}
                 className={`px-3 py-1 rounded-md font-medium transition-all ${
                   callMode === 'outbound_campaign'
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                    ? 'bg-emerald-500 text-black font-bold shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -666,12 +666,12 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
 
           {/* Originating Agent Indicator */}
           <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1 rounded-md border border-slate-800 text-[11px]">
-            <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-400">Agente Originador:</span>
             <select
               value={originatingExten}
               onChange={(e) => setOriginatingExten(e.target.value)}
-              className="bg-transparent text-amber-300 font-mono font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-emerald-300 font-mono font-bold focus:outline-none cursor-pointer"
             >
               {extensions.map((e) => (
                 <option key={e.id} value={e.extension} className="bg-slate-900 text-white">
@@ -688,7 +688,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
           <div className="lg:col-span-5 flex flex-col space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Phone className="w-3.5 h-3.5 text-amber-400" />
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Teléfono / Interacción del Cliente</span>
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
@@ -702,7 +702,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                 <span
                   className={`uppercase px-2 py-0.5 rounded font-bold ${
                     callState === 'ivr_connected'
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                       : callState === 'agent_connected'
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                       : 'bg-slate-800 text-slate-400'
@@ -726,7 +726,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                   {dialedNumber || '---'}
                 </div>
                 {activeAudioPlaying && (
-                  <div className="mt-1 inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 animate-pulse">
+                  <div className="mt-1 inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 animate-pulse">
                     <Music className="w-3 h-3" />
                     <span className="truncate max-w-[220px]">{activeAudioPlaying}</span>
                   </div>
@@ -749,7 +749,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
               )}
 
               {systemMessage && (
-                <div className="text-[11px] text-amber-300 bg-amber-950/30 p-2 rounded-lg border border-amber-500/20 text-center leading-snug">
+                <div className="text-[11px] text-emerald-300 bg-emerald-950/30 p-2 rounded-lg border border-emerald-500/20 text-center leading-snug">
                   {systemMessage}
                 </div>
               )}
@@ -759,7 +759,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
             <div className="flex gap-1.5 justify-center text-[10px] font-mono">
               <button
                 onClick={() => setDialedNumber(press1Config.extension)}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-medium"
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-medium"
               >
                 IVR Press 1 ({press1Config.extension})
               </button>
@@ -779,7 +779,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                   onClick={() => handleDtmfPress(key)}
                   className={`py-2.5 rounded-lg font-mono font-bold text-lg active:scale-95 transition-all shadow-sm ${
                     key === '1' && callState === 'ivr_connected'
-                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-amber-400 animate-pulse font-black'
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-black ring-2 ring-emerald-400 animate-pulse font-black'
                       : 'bg-slate-800 hover:bg-slate-700 text-white'
                   }`}
                   title={key === '1' && callState === 'ivr_connected' ? 'Presione 1 para regresar al agente' : undefined}
@@ -904,7 +904,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
               <div className="pt-2 border-t border-slate-900 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                    <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Pedir al Cliente que Digite su Código:</span>
                   </span>
                   <div className="flex items-center space-x-1">
@@ -973,7 +973,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                         key={index}
                         className={`w-12 h-14 sm:w-14 sm:h-16 rounded-xl flex items-center justify-center text-2xl sm:text-3xl font-mono font-black border transition-all duration-200 ${
                           isFilled
-                            ? 'bg-blue-600/20 border-blue-500 text-amber-400 scale-105 shadow-lg shadow-blue-500/20'
+                            ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400 scale-105 shadow-lg shadow-emerald-500/20'
                             : 'bg-slate-900 border-slate-800 text-slate-600'
                         }`}
                       >
@@ -990,7 +990,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                       Esperando que el cliente digite en su teléfono...
                     </span>
                   ) : agentLiveDigits.length < agentOtpRequestedLength ? (
-                    <span className="text-amber-400 font-mono">
+                    <span className="text-emerald-400 font-mono">
                       Capturando en tiempo real... ({agentLiveDigits.length} de {agentOtpRequestedLength} dígitos)
                     </span>
                   ) : (
@@ -1004,21 +1004,21 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
 
               {/* AGENT DECISION PANEL: VÁLIDO vs INVÁLIDO */}
               {otpVerificationState === 'awaiting_agent_decision' && (
-                <div className="p-4 rounded-xl bg-amber-950/40 border-2 border-amber-500/60 space-y-3 shadow-xl">
+                <div className="p-4 rounded-xl bg-emerald-950/40 border-2 border-emerald-500/60 space-y-3 shadow-xl">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center space-x-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                      <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
                         <AlertTriangle className="w-4 h-4 animate-pulse" />
                         <span>Acción Requerida: Decisión del Asesor</span>
                       </div>
                       <p className="text-xs text-slate-300 mt-1">
-                        El cliente ya digitó su código (<span className="font-mono font-bold text-amber-300 text-sm px-1.5 py-0.5 rounded bg-slate-900 border border-amber-500/30">{agentLiveDigits.join('')}</span>) y está en espera telefónica escuchando:
+                        El cliente ya digitó su código (<span className="font-mono font-bold text-emerald-300 text-sm px-1.5 py-0.5 rounded bg-slate-900 border border-emerald-500/30">{agentLiveDigits.join('')}</span>) y está en espera telefónica escuchando:
                       </p>
                       <p className="text-[11px] text-indigo-300 italic mt-1 font-medium bg-slate-900/60 p-1.5 rounded border border-indigo-500/30">
                         "{otpConfig.validatingWaitPromptText || 'Un momento por favor, estamos validando su información...'}"
                       </p>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                       Cliente en Espera
                     </span>
                   </div>
@@ -1112,13 +1112,13 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
                     </span>
                   )}
                   {otpVerificationState === 'awaiting_agent_decision' && (
-                    <span className="text-amber-400 font-mono font-bold flex items-center gap-1 animate-pulse">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-emerald-400 font-mono font-bold flex items-center gap-1 animate-pulse">
+                      <AlertTriangle className="w-3.5 h-3.5 text-emerald-400" />
                       ESPERANDO DECISIÓN DEL ASESOR (Cliente en Hold)
                     </span>
                   )}
                   {otpVerificationState === 'verifying' && (
-                    <span className="text-amber-400 font-mono font-semibold animate-spin">
+                    <span className="text-emerald-400 font-mono font-semibold animate-spin">
                       Validando con servidor...
                     </span>
                   )}
