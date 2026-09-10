@@ -122,6 +122,32 @@ export default function App() {
     return saved || 'user-admin';
   });
 
+  // Theme state: 'light' | 'dark' (Default to 'light' for modern clear, professional appearance)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('ast20_theme');
+    return saved === 'dark' ? 'dark' : 'light';
+  });
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('ast20_theme', next);
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('theme-light');
+      document.documentElement.classList.remove('theme-dark');
+    } else {
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.classList.remove('theme-light');
+    }
+  }, [theme]);
+
   // Login authentication state: First screen displayed to access system
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
@@ -597,7 +623,11 @@ export default function App() {
   // --------------------------------------------------------------------------
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500/30 selection:text-white">
+      <div className={`min-h-screen font-sans transition-colors ${
+        theme === 'light'
+          ? 'theme-light bg-slate-100/80 text-slate-900 selection:bg-blue-500/20 selection:text-blue-900'
+          : 'bg-slate-950 text-slate-100 selection:bg-amber-500/30 selection:text-white'
+      }`}>
         {toastMessage && (
           <div className="fixed bottom-5 right-5 z-50 flex items-center space-x-2 px-4 py-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-white shadow-2xl animate-bounce">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -609,6 +639,8 @@ export default function App() {
           users={users}
           connectionSettings={connectionSettings}
           onLogin={handleLoginSuccess}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
         />
       </div>
     );
@@ -618,7 +650,11 @@ export default function App() {
   // SISTEMA PRINCIPAL: MENÚ AL LADO IZQUIERDO (SIDEBAR)
   // --------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-row font-sans selection:bg-amber-500/30 selection:text-white">
+    <div className={`min-h-screen flex flex-row font-sans transition-colors ${
+      theme === 'light'
+        ? 'theme-light bg-slate-50 text-slate-900 selection:bg-blue-500/20 selection:text-blue-900'
+        : 'bg-slate-950 text-slate-100 selection:bg-amber-500/30 selection:text-white'
+    }`}>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center space-x-2 px-4 py-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-white shadow-2xl animate-bounce">
@@ -641,6 +677,8 @@ export default function App() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         extensionCount={extensions.length}
         carrierCount={carriers.length}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL A LA DERECHA */}
@@ -655,6 +693,8 @@ export default function App() {
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onLogout={handleLogout}
           isSyncing={isSyncing}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

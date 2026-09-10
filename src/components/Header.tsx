@@ -12,6 +12,8 @@ import {
   Volume2,
   Users,
   Database,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 
@@ -25,6 +27,8 @@ interface HeaderProps {
   onOpenMobileMenu?: () => void;
   onLogout?: () => void;
   isSyncing: boolean;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,6 +41,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   onLogout,
   isSyncing,
+  theme = 'light',
+  onToggleTheme,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
     prompt: {
@@ -165,6 +171,28 @@ export const Header: React.FC<HeaderProps> = ({
               <PhoneCall className="w-3.5 h-3.5" />
               <span>Softphone</span>
             </button>
+
+            {/* Theme Toggle Button */}
+            {onToggleTheme && (
+              <button
+                id="btn-toggle-theme"
+                onClick={onToggleTheme}
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/60 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-all cursor-pointer shadow-sm"
+                title={theme === 'light' ? 'Cambiar a Tema Oscuro' : 'Cambiar a Tema Claro'}
+              >
+                {theme === 'light' ? (
+                  <>
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="hidden md:inline font-medium">Tema Claro</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-blue-400" />
+                    <span className="hidden md:inline font-medium">Tema Oscuro</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* User Pill with Quick Logout */}
             {currentUser && (

@@ -1,1 +1,282 @@
 @import "tailwindcss";
+
+/* =========================================================================
+   SISTEMA DE TEMA CLARO EMPRESARIAL (CLEAN LIGHT PRO THEME)
+   Proporciona un aspecto limpio, diáfano, profesional y moderno
+   ========================================================================= */
+
+:root {
+  color-scheme: light;
+}
+
+/* Base Light Theme Class */
+.theme-light {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* 1. LIENZO PRINCIPAL Y FONDOS DE PANTALLA */
+.theme-light.bg-slate-950,
+.theme-light .bg-slate-950,
+.theme-light.min-h-screen {
+  background-color: #f8fafc !important;
+}
+
+/* 2. TARJETAS Y CONTENEDORES SUPERFICIALES */
+.theme-light .bg-slate-900,
+.theme-light .bg-slate-900\/95,
+.theme-light .bg-slate-900\/90,
+.theme-light .bg-slate-900\/80,
+.theme-light .bg-slate-900\/70,
+.theme-light .bg-slate-900\/60,
+.theme-light .bg-slate-900\/50,
+.theme-light .bg-slate-900\/40,
+.theme-light .bg-slate-950\/90,
+.theme-light .bg-slate-950\/80 {
+  background-color: #ffffff !important;
+}
+
+/* 3. SECCIONES SECUNDARIAS, HOVERS Y BLOQUES INTERNOS */
+.theme-light .bg-slate-800,
+.theme-light .bg-slate-800\/80,
+.theme-light .bg-slate-800\/60,
+.theme-light .bg-slate-800\/50,
+.theme-light .bg-slate-800\/40 {
+  background-color: #f1f5f9 !important;
+}
+
+/* 4. BORDES Y SEPARADORES CLAROS Y SUTILES */
+.theme-light .border-slate-800,
+.theme-light .border-slate-800\/80,
+.theme-light .border-slate-800\/60,
+.theme-light .border-slate-800\/50,
+.theme-light .border-slate-800\/40,
+.theme-light .border-slate-800\/30,
+.theme-light .border-slate-700,
+.theme-light .border-slate-700\/80,
+.theme-light .border-slate-700\/60,
+.theme-light .border-slate-700\/40,
+.theme-light .border-slate-900 {
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+.theme-light .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* 5. TIPOGRAFÍA Y JERARQUÍA VISUAL */
+.theme-light h1,
+.theme-light h2,
+.theme-light h3,
+.theme-light h4,
+.theme-light h5,
+.theme-light h6 {
+  color: #0f172a !important;
+}
+
+.theme-light p.text-white,
+.theme-light span.text-white:not(.keep-white),
+.theme-light div.text-white:not(.keep-white),
+.theme-light label.text-white,
+.theme-light .text-slate-100,
+.theme-light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+.theme-light .text-slate-300 {
+  color: #334155 !important;
+}
+
+.theme-light .text-slate-400 {
+  color: #64748b !important;
+}
+
+.theme-light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Asegurar que el texto blanco de botones coloreados permanezca blanco */
+.theme-light button.bg-blue-600,
+.theme-light button.bg-blue-500,
+.theme-light button.bg-indigo-600,
+.theme-light button.bg-emerald-600,
+.theme-light button.bg-emerald-500,
+.theme-light button.bg-rose-600,
+.theme-light button.bg-rose-500,
+.theme-light button.bg-amber-500,
+.theme-light [class*="bg-gradient-to"] {
+  color: #ffffff;
+}
+
+.theme-light button.bg-blue-600 *,
+.theme-light button.bg-indigo-600 *,
+.theme-light button.bg-emerald-600 *,
+.theme-light button.bg-rose-600 *,
+.theme-light [class*="bg-gradient-to"] * {
+  color: inherit;
+}
+
+/* 6. INPUTS, SELECTS Y TEXTAREAS LUMINOSOS */
+.theme-light input:not([type="checkbox"]):not([type="radio"]),
+.theme-light select,
+.theme-light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light input::placeholder,
+.theme-light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.theme-light input:focus,
+.theme-light select:focus,
+.theme-light textarea:focus {
+  border-color: #2563eb !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+/* 7. TABLAS */
+.theme-light table thead tr {
+  background-color: #f1f5f9 !important;
+}
+
+.theme-light table thead th {
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light table tbody tr {
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light table tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* 8. BADGES Y ETIQUETAS DE ESTADO */
+.theme-light .bg-emerald-500\/20,
+.theme-light .bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+.theme-light .text-emerald-300,
+.theme-light .text-emerald-400 {
+  color: #047857 !important;
+}
+
+.theme-light .bg-amber-500\/20,
+.theme-light .bg-amber-500\/10 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+.theme-light .text-amber-300,
+.theme-light .text-amber-400 {
+  color: #b45309 !important;
+}
+
+.theme-light .bg-blue-500\/20,
+.theme-light .bg-blue-500\/10 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+.theme-light .text-blue-300,
+.theme-light .text-blue-400 {
+  color: #1d4ed8 !important;
+}
+
+.theme-light .bg-rose-500\/20,
+.theme-light .bg-rose-500\/10 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+.theme-light .text-rose-300,
+.theme-light .text-rose-400 {
+  color: #be123c !important;
+}
+
+.theme-light .bg-purple-500\/20,
+.theme-light .bg-purple-500\/10 {
+  background-color: #faf5ff !important;
+  border-color: #e9d5ff !important;
+}
+.theme-light .text-purple-300,
+.theme-light .text-purple-400 {
+  color: #7e22ce !important;
+}
+
+/* 9. HOVER DE BOTONES Y ELEMENTOS DE NAVEGACIÓN */
+.theme-light .hover\:bg-slate-800:hover,
+.theme-light .hover\:bg-slate-700:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.theme-light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* 10. COMPONENTES ESPECÍFICOS EN MODO CLARO */
+.theme-light header {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+}
+
+.theme-light aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 2px 0 6px -1px rgb(0 0 0 / 0.04);
+}
+
+.theme-light .bg-slate-900 {
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.03) !important;
+}
+
+/* Botones de acción principal en modo claro */
+.theme-light .bg-emerald-500.text-slate-950,
+.theme-light button.bg-emerald-500.text-slate-950 {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px -1px rgba(5, 150, 105, 0.25) !important;
+}
+
+.theme-light .bg-amber-500.text-slate-950,
+.theme-light button.bg-amber-500.text-slate-950 {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px -1px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* Íconos con fondo ámbar suave en cabecera */
+.theme-light .bg-amber-500\/10.border-amber-500\/30 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #2563eb !important;
+}
+
+/* Modales y fondos oscurecidos */
+.theme-light .bg-slate-950\/80,
+.theme-light .bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+/* 11. SCROLLBARS ELEGANTES */
+.theme-light *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.theme-light *::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.theme-light *::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.theme-light *::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

@@ -15,6 +15,8 @@ import {
   ExternalLink,
   Activity,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 
@@ -31,6 +33,8 @@ interface SidebarProps {
   onCloseMobile?: () => void;
   extensionCount?: number;
   carrierCount?: number;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -46,6 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   extensionCount = 4,
   carrierCount = 2,
+  theme = 'light',
+  onToggleTheme,
 }) => {
   const navItems = [
     {
@@ -313,6 +319,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Theme Mode Selector in Sidebar */}
+          {onToggleTheme && (
+            <button
+              onClick={onToggleTheme}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 text-slate-300 transition-all cursor-pointer shadow-sm"
+              title="Cambiar apariencia visual (Modo Claro / Modo Oscuro)"
+            >
+              <div className="flex items-center space-x-2">
+                {theme === 'light' ? (
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                ) : (
+                  <Moon className="w-3.5 h-3.5 text-blue-400" />
+                )}
+                <span>Apariencia:</span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded font-mono bg-slate-800 text-slate-200">
+                {theme === 'light' ? 'Modo Claro' : 'Modo Oscuro'}
+              </span>
+            </button>
           )}
 
           {/* Logout Button */}
