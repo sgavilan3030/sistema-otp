@@ -283,6 +283,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <LogIn className="w-4 h-4" />
               <span>{isSubmitting ? 'Ingresando...' : 'Entrar'}</span>
             </button>
+
+            <div className="relative my-3 pt-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase">
+                <span className={`px-2 text-xs ${theme === 'light' ? 'bg-white text-slate-500' : 'bg-slate-900 text-slate-400'}`}>
+                  O acceso directo
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const adminUser = users.find((u) => u.role === 'admin') || users[0];
+                onLogin(adminUser);
+              }}
+              className={`w-full py-2 px-3 rounded-lg border font-semibold text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                theme === 'light'
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+              }`}
+            >
+              <span>⚡ Entrar Directo como Administrador</span>
+            </button>
           </form>
         </div>
       </div>

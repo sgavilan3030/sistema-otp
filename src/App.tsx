@@ -37,7 +37,7 @@ import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
-import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw, Sun, Moon } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('production');
@@ -148,8 +148,11 @@ export default function App() {
     }
   }, [theme]);
 
-  // Login authentication state: First screen displayed to access system
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  // Login authentication state: Iniciar autenticado para ver directamente la interfaz operativa completa
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ast_session_user_token');
+    return saved !== 'logged_out';
+  });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -618,6 +621,51 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------
+  // WIDGET FLOTANTE DE SELECCIÓN DE APARIENCIA (ULTRA-VISIBLE)
+  // --------------------------------------------------------------------------
+  const ThemeToggleFloatingWidget = (
+    <aside
+      aria-label="Selector de Modo de Color"
+      className="fixed bottom-5 right-5 z-[9999] flex items-center bg-white/95 dark:bg-slate-900/95 border border-slate-300 dark:border-slate-700 rounded-full shadow-2xl p-1.5 backdrop-blur-md transition-all hover:scale-105"
+    >
+      <div className="flex items-center space-x-1">
+        <button
+          id="btn-switch-light-mode"
+          type="button"
+          onClick={() => {
+            setTheme('light');
+            try { localStorage.setItem('ast20_theme', 'light'); } catch (e) {}
+          }}
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+            theme === 'light'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <Sun className="w-3.5 h-3.5 text-amber-300" />
+          <span>☀️ Modo Claro</span>
+        </button>
+        <button
+          id="btn-switch-dark-mode"
+          type="button"
+          onClick={() => {
+            setTheme('dark');
+            try { localStorage.setItem('ast20_theme', 'dark'); } catch (e) {}
+          }}
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+            theme === 'dark'
+              ? 'bg-slate-800 text-white shadow-md border border-slate-700'
+              : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <Moon className="w-3.5 h-3.5 text-blue-400" />
+          <span>🌙 Modo Oscuro</span>
+        </button>
+      </div>
+    </aside>
+  );
+
+  // --------------------------------------------------------------------------
   // PANTALLA DE LOGIN: PRIMERA PANTALLA MOSTRADA PARA ACCEDER AL SISTEMA
   // (Panel de login ubicado al lado izquierdo según requerimiento)
   // --------------------------------------------------------------------------
@@ -634,6 +682,8 @@ export default function App() {
             <span className="text-xs font-semibold">{toastMessage.text}</span>
           </div>
         )}
+
+        {ThemeToggleFloatingWidget}
 
         <LoginScreen
           users={users}
@@ -820,32 +870,6 @@ export default function App() {
           />
         )}
       </main>
-
-      {/* Softphone & Call Simulator Modal */}
-      <CallSimulatorModal
-        isOpen={isCallSimulatorOpen}
-        onClose={() => setIsCallSimulatorOpen(false)}
-        press1Config={press1Config}
-        otpConfig={otpConfig}
-        extensions={extensions}
-        audios={audios}
-        currentUser={currentUser}
-        onLogEvent={addLog}
-        onSaveAstDbEntry={handleAddAstDbEntry}
-        onSaveCdrRecord={handleSaveCdrRecord}
-      />
-
-        {/* Global Footer */}
-        <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div>
-              Asterisk 20 Governor &bull; PJSIP Hot Reload via AMI (:5038) &bull; Voice DTMF OTP via ARI (:8088) &bull; Extensiones ≥ 1001
-            </div>
-            <div className="text-slate-400">
-              Sincronización en tiempo real sin interrupción de llamadas &bull; Audioteca &amp; Control RBAC
-            </div>
-          </div>
-        </footer>
       </div>
 
       {/* Softphone & Call Simulator Modal */}
@@ -861,6 +885,9 @@ export default function App() {
         onSaveAstDbEntry={handleAddAstDbEntry}
         onSaveCdrRecord={handleSaveCdrRecord}
       />
+
+      {/* Widget Flotante de Selección de Apariencia */}
+      {ThemeToggleFloatingWidget}
     </div>
   );
 }
