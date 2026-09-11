@@ -9,6 +9,8 @@ export interface PjsipExtension {
   transport: 'transport-udp' | 'transport-tcp' | 'transport-tls' | 'transport-wss';
   status: 'registered' | 'unregistered' | 'in-use' | 'ringing';
   callerId: string;
+  callerIdNum?: string;
+  callerIdName?: string;
   ipAddress?: string;
   lastSeen?: string;
 }
@@ -23,6 +25,7 @@ export interface CarrierTrunk {
   secret?: string;
   inboundContext: string;
   outboundCallerId: string;
+  outboundCallerName?: string;
   codecs: string[];
   qualifyFreq: number;
   status: 'reachable' | 'unreachable' | 'lagged' | 'disabled';

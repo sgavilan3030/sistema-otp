@@ -235,6 +235,8 @@ export const initialExtensions: PjsipExtension[] = [
     transport: 'transport-udp',
     status: 'registered',
     callerId: '"Operador 1" <1001>',
+    callerIdNum: '+18005550199',
+    callerIdName: 'AnonymousOTP',
     ipAddress: '192.168.1.145:5060',
     lastSeen: 'Hace 30 seg (OK 14ms)',
   },
