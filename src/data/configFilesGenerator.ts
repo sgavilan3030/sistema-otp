@@ -202,9 +202,12 @@ exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP a \${EXTEN} via ${slug} --
  same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
  same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
  same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${c.outboundCallerId || '+18005550199'}))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=${c.name || 'Seguridad Bancaria'}))
+ same => n,Set(CALLERID(pres)=allowed_passed_screen)
  same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,Set(PJSIP_HEADER(add,Privacy)=none)
  same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${c.host}>)
+ same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${c.host}>;party=calling;screen=yes;privacy=off")
  same => n,Dial(PJSIP/\${EXTEN}@${slug},,${flags})
  same => n,Hangup()`;
   })

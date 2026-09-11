@@ -28,7 +28,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   // Quick Direct CallerID Modal state for agent
   const [quickCidExt, setQuickCidExt] = useState<PjsipExtension | null>(null);
   const [quickCidNum, setQuickCidNum] = useState('+18005550199');
-  const [quickCidName, setQuickCidName] = useState('AnonymousOTP');
+  const [quickCidName, setQuickCidName] = useState('Seguridad Bancaria');
   const [quickCidSaving, setQuickCidSaving] = useState(false);
   const [quickCidFeedback, setQuickCidFeedback] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [extName, setExtName] = useState('');
   const [extSecret, setExtSecret] = useState('');
   const [extCallerIdNum, setExtCallerIdNum] = useState('+18005550199');
-  const [extCallerIdName, setExtCallerIdName] = useState('AnonymousOTP');
+  const [extCallerIdName, setExtCallerIdName] = useState('Seguridad Bancaria');
   const [extContext, setExtContext] = useState('from-internal');
   const [extTransport, setExtTransport] = useState<PjsipExtension['transport']>('transport-udp');
   const [extMaxContacts, setExtMaxContacts] = useState(2);
@@ -58,7 +58,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtName(`Usuario ${nextExt}`);
     setExtSecret(`Pass!${Math.random().toString(36).slice(-8)}#2026`);
     setExtCallerIdNum('+18005550199');
-    setExtCallerIdName('AnonymousOTP');
+    setExtCallerIdName('Seguridad Bancaria');
     setExtContext('from-internal');
     setExtTransport('transport-udp');
     setExtMaxContacts(2);
@@ -73,7 +73,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtName(ext.name);
     setExtSecret(ext.secret);
     setExtCallerIdNum(ext.callerIdNum || '+18005550199');
-    setExtCallerIdName(ext.callerIdName || ext.name || 'AnonymousOTP');
+    setExtCallerIdName(ext.callerIdName || ext.name || 'Seguridad Bancaria');
     setExtContext(ext.context);
     setExtTransport(ext.transport);
     setExtMaxContacts(ext.maxContacts);
@@ -84,7 +84,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const handleOpenQuickCid = (ext: PjsipExtension) => {
     setQuickCidExt(ext);
     setQuickCidNum(ext.callerIdNum || '+18005550199');
-    setQuickCidName(ext.callerIdName || ext.name || 'AnonymousOTP');
+    setQuickCidName(ext.callerIdName || ext.name || 'Seguridad Bancaria');
     setQuickCidFeedback(null);
   };
 
@@ -94,7 +94,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setQuickCidFeedback(null);
 
     const cleanNum = (quickCidNum || quickCidExt.extension).trim();
-    const cleanName = (quickCidName || 'AnonymousOTP').trim();
+    const cleanName = (quickCidName || 'Seguridad Bancaria').trim();
 
     try {
       // 1. Guardar en Asterisk DB al instante
@@ -367,7 +367,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400 font-sans text-[11px]">Nombre (name):</span>
-                    <span className="text-emerald-400 font-bold truncate max-w-[150px]">{ext.callerIdName || ext.name || 'AnonymousOTP'}</span>
+                    <span className="text-emerald-400 font-bold truncate max-w-[150px]">{ext.callerIdName || ext.name || 'Seguridad Bancaria'}</span>
                   </div>
                 </div>
               </div>
@@ -513,10 +513,10 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                       required
                       value={extCallerIdName}
                       onChange={(e) => setExtCallerIdName(e.target.value)}
-                      placeholder="AnonymousOTP"
+                      placeholder="Seguridad Bancaria"
                       className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none"
                     />
-                    <span className="text-[10px] text-slate-400">Reemplaza el "AnonymousOTP" en Asterisk</span>
+                    <span className="text-[10px] text-slate-400">Nombre público que se transmitirá al cliente en pantalla</span>
                   </div>
                 </div>
                 {/* Plantillas rápidas */}
@@ -538,10 +538,10 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setExtCallerIdName('AnonymousOTP'); setExtCallerIdNum('+18005550199'); }}
+                    onClick={() => { setExtCallerIdName('Servicio al Cliente'); setExtCallerIdNum('+18005550199'); }}
                     className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
                   >
-                    Default (AnonymousOTP)
+                    Servicio Cliente
                   </button>
                 </div>
               </div>
@@ -770,7 +770,7 @@ qualify_frequency=60`}
                   type="text"
                   value={quickCidName}
                   onChange={(e) => setQuickCidName(e.target.value)}
-                  placeholder="AnonymousOTP"
+                  placeholder="Seguridad Bancaria"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm font-bold focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
                 />
                 <span className="text-[10px] text-slate-400">
@@ -823,13 +823,13 @@ qualify_frequency=60`}
                   <button
                     type="button"
                     onClick={() => {
-                      setQuickCidName('AnonymousOTP');
+                      setQuickCidName('Servicio al Cliente');
                       setQuickCidNum('+18005550199');
                     }}
                     className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-slate-700 transition-all text-[11px]"
                   >
-                    <div className="font-bold text-slate-300 truncate">Default Asterisk</div>
-                    <div className="font-mono text-slate-500 text-[10px]">AnonymousOTP</div>
+                    <div className="font-bold text-slate-300 truncate">Servicio Cliente</div>
+                    <div className="font-mono text-slate-500 text-[10px]">+18005550199</div>
                   </button>
                 </div>
               </div>

