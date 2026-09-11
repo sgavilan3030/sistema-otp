@@ -252,6 +252,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         pjsipContent += `rtp_symmetric = yes\n`;
         pjsipContent += `force_rport = yes\n`;
         pjsipContent += `rewrite_contact = yes\n`;
+        pjsipContent += `send_pai = yes\n`;
+        pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
+        pjsipContent += `trust_id_outbound = yes\n`;
+        pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
         pjsipContent += `transport = transport-udp\n\n`;
 
         // 5. Identify for incoming IP/host traffic
@@ -286,6 +290,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -296,6 +302,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -306,6 +314,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -325,6 +335,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
     dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
     dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
     dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
@@ -638,6 +649,47 @@ app.post('/api/asterisk/otp/verify', (req, res) => {
 
     // If item not found by id/number, respond ok
     res.json({ success: true, message: `Estado actualizado a ${status}` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint for direct 1-click update of Agent Extension CallerID (Num & Name) into AstDB
+app.post('/api/asterisk/extension/callerid', (req, res) => {
+  try {
+    const { extension, callerIdNum, callerIdName } = req.body;
+    if (!extension || !callerIdNum) {
+      return res.status(400).json({ success: false, error: 'Faltan parámetros: extension y callerIdNum son requeridos.' });
+    }
+
+    const cleanExt = String(extension).trim();
+    const cleanNum = String(callerIdNum).trim();
+    const cleanName = String(callerIdName || 'AnonymousOTP').trim();
+
+    // Store in Asterisk DB directly via CLI and AMI
+    const putNumCmd = `database put extension_cid ${cleanExt}/number "${cleanNum}"`;
+    const putNameCmd = `database put extension_cid ${cleanExt}/name "${cleanName}"`;
+
+    exec(`asterisk -rx '${putNumCmd}' && asterisk -rx '${putNameCmd}'`, (err, stdout) => {
+      if (err) {
+        console.warn(`[AstDB Extension Notice] ${err.message}`);
+      } else {
+        console.log(`[AstDB SUCCESS] Extension ${cleanExt} CallerID actualizado en Asterisk DB: "${cleanName}" <${cleanNum}>`);
+      }
+    });
+
+    sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+      putNumCmd,
+      putNameCmd,
+    ]).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `CallerID de la extensión ${cleanExt} actualizado a "${cleanName}" <${cleanNum}> en Asterisk AstDB.`,
+      extension: cleanExt,
+      callerIdNum: cleanNum,
+      callerIdName: cleanName,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

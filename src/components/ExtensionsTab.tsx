@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, ShieldCheck, RefreshCw, CheckCircle2, Zap } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -24,6 +24,13 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExt, setEditingExt] = useState<PjsipExtension | null>(null);
   const [previewExt, setPreviewExt] = useState<PjsipExtension | null>(null);
+
+  // Quick Direct CallerID Modal state for agent
+  const [quickCidExt, setQuickCidExt] = useState<PjsipExtension | null>(null);
+  const [quickCidNum, setQuickCidNum] = useState('+18005550199');
+  const [quickCidName, setQuickCidName] = useState('AnonymousOTP');
+  const [quickCidSaving, setQuickCidSaving] = useState(false);
+  const [quickCidFeedback, setQuickCidFeedback] = useState<string | null>(null);
 
   // Form State
   const [extNumber, setExtNumber] = useState('');
@@ -72,6 +79,53 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtMaxContacts(ext.maxContacts);
     setSelectedCodecs(ext.codecs);
     setIsModalOpen(true);
+  };
+
+  const handleOpenQuickCid = (ext: PjsipExtension) => {
+    setQuickCidExt(ext);
+    setQuickCidNum(ext.callerIdNum || '+18005550199');
+    setQuickCidName(ext.callerIdName || ext.name || 'AnonymousOTP');
+    setQuickCidFeedback(null);
+  };
+
+  const handleSaveQuickCid = async () => {
+    if (!quickCidExt) return;
+    setQuickCidSaving(true);
+    setQuickCidFeedback(null);
+
+    const cleanNum = (quickCidNum || quickCidExt.extension).trim();
+    const cleanName = (quickCidName || 'AnonymousOTP').trim();
+
+    try {
+      // 1. Guardar en Asterisk DB al instante
+      await fetch('/api/asterisk/extension/callerid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extension: quickCidExt.extension,
+          callerIdNum: cleanNum,
+          callerIdName: cleanName,
+        }),
+      });
+
+      // 2. Actualizar estado en frontend
+      onUpdateExtension({
+        ...quickCidExt,
+        callerIdNum: cleanNum,
+        callerIdName: cleanName,
+        callerId: `"${cleanName}" <${cleanNum}>`,
+      });
+
+      setQuickCidFeedback('¡CallerID aplicado en Asterisk AstDB!');
+      setTimeout(() => {
+        setQuickCidExt(null);
+        setQuickCidFeedback(null);
+      }, 1200);
+    } catch (e: any) {
+      setQuickCidFeedback('Error al sincronizar con Asterisk: ' + e.message);
+    } finally {
+      setQuickCidSaving(false);
+    }
   };
 
   const handleGeneratePassword = () => {
@@ -290,22 +344,31 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </div>
               </div>
 
-              {/* CallerID Saliente configurado para esta extensión */}
-              <div className="mt-2.5 p-2.5 rounded-lg bg-slate-950 border border-sky-500/40 text-xs">
-                <div className="flex items-center justify-between text-[10px] text-sky-400 font-bold uppercase mb-1">
-                  <span className="flex items-center gap-1">
-                    <Phone className="w-3 h-3 text-sky-400" />
-                    <span>CallerID Saliente (En Vivo)</span>
+              {/* CallerID Saliente configurado para esta extensión (Directo y Visible para el Agente) */}
+              <div className="mt-2.5 p-3 rounded-xl bg-gradient-to-br from-sky-950/40 via-slate-950 to-slate-900 border-2 border-sky-500/50 shadow-md shadow-sky-500/10 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-black text-sky-300 uppercase tracking-wide">
+                    <Phone className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                    <span>CallerID Saliente Asterisk</span>
                   </span>
-                  <span className="text-slate-400 font-mono text-[9px] px-1 rounded bg-slate-800">Stack PJSIP</span>
+                  <button
+                    onClick={() => handleOpenQuickCid(ext)}
+                    className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 transition-all shadow-sm hover:shadow-sky-500/30"
+                    title="Editar CallerID num y name de inmediato sin recargar toda la extensión"
+                  >
+                    <Zap className="w-3 h-3 fill-current" />
+                    <span>Cambiar Ya</span>
+                  </button>
                 </div>
-                <div className="flex items-center justify-between font-mono text-[11px]">
-                  <span className="text-slate-400">CALLERID(num):</span>
-                  <span className="text-white font-bold">{ext.callerIdNum || '+18005550199'}</span>
-                </div>
-                <div className="flex items-center justify-between font-mono text-[11px] mt-0.5">
-                  <span className="text-slate-400">CALLERID(name):</span>
-                  <span className="text-emerald-400 font-bold truncate max-w-[140px]">{ext.callerIdName || ext.name || 'AnonymousOTP'}</span>
+                <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1 font-mono text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-sans text-[11px]">Número (num):</span>
+                    <span className="text-white font-bold tracking-wider">{ext.callerIdNum || '+18005550199'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-sans text-[11px]">Nombre (name):</span>
+                    <span className="text-emerald-400 font-bold truncate max-w-[150px]">{ext.callerIdName || ext.name || 'AnonymousOTP'}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -323,12 +386,12 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
 
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handleOpenEditModal(ext)}
-                  className="px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1 transition-all"
-                  title="Cambiar CALLERID(num) y CALLERID(name) de esta extensión"
+                  onClick={() => handleOpenQuickCid(ext)}
+                  className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/50 text-[11px] font-bold flex items-center gap-1.5 transition-all"
+                  title="Cambiar CALLERID(num) y CALLERID(name) de esta extensión en tiempo real"
                 >
-                  <Phone className="w-3 h-3 text-sky-400" />
-                  <span>Cambiar CallerID</span>
+                  <Phone className="w-3.5 h-3.5 text-sky-400" />
+                  <span>CallerID</span>
                 </button>
                 <button
                   onClick={() => setPreviewExt(ext)}
@@ -634,6 +697,177 @@ qualify_frequency=60`}
                 className="px-4 py-2 rounded-md bg-slate-800 text-white text-xs font-semibold hover:bg-slate-700"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cambio Rápido y Visible de CallerID para la Extensión del Agente */}
+      {quickCidExt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border-2 border-sky-500/60 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center">
+                  <Phone className="w-4 h-4 text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Cambiar CallerID de Extensión</span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      {quickCidExt.extension}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Se inyecta al instante en Asterisk AstDB y cabeceras P-Asserted-Identity
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setQuickCidExt(null)}
+                className="text-slate-400 hover:text-white text-xl font-mono leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            {quickCidFeedback && (
+              <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                quickCidFeedback.includes('¡')
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+              }`}>
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{quickCidFeedback}</span>
+              </div>
+            )}
+
+            <div className="space-y-3.5">
+              {/* CallerID Num */}
+              <div>
+                <label className="block text-xs font-bold text-sky-300 uppercase tracking-wide mb-1">
+                  CALLERID(num) - Número que verá el receptor *
+                </label>
+                <input
+                  type="text"
+                  value={quickCidNum}
+                  onChange={(e) => setQuickCidNum(e.target.value)}
+                  placeholder="+18005550199"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-base font-bold focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Formato E.164 (ej. +18005550199, 16104803845)
+                </span>
+              </div>
+
+              {/* CallerID Name */}
+              <div>
+                <label className="block text-xs font-bold text-sky-300 uppercase tracking-wide mb-1">
+                  CALLERID(name) - Nombre de pantalla *
+                </label>
+                <input
+                  type="text"
+                  value={quickCidName}
+                  onChange={(e) => setQuickCidName(e.target.value)}
+                  placeholder="AnonymousOTP"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm font-bold focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Nombre que emite la PBX (ej. Banco Antifraude, Soporte Técnico)
+                </span>
+              </div>
+
+              {/* Presets Rápidos */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Presets Rápidos de Identidad
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCidName('Banco Central Antifraude');
+                      setQuickCidNum('+18005550199');
+                    }}
+                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
+                  >
+                    <div className="font-bold text-sky-300 truncate">Banco Antifraude</div>
+                    <div className="font-mono text-slate-500 text-[10px]">+18005550199</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCidName('Verificación Seguridad');
+                      setQuickCidNum('+18884561234');
+                    }}
+                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
+                  >
+                    <div className="font-bold text-sky-300 truncate">Seguridad OTP</div>
+                    <div className="font-mono text-slate-500 text-[10px]">+18884561234</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCidName('Soporte WhatsApp');
+                      setQuickCidNum('+18002345678');
+                    }}
+                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
+                  >
+                    <div className="font-bold text-emerald-300 truncate">WhatsApp Alerta</div>
+                    <div className="font-mono text-slate-500 text-[10px]">+18002345678</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCidName('AnonymousOTP');
+                      setQuickCidNum('+18005550199');
+                    }}
+                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-slate-700 transition-all text-[11px]"
+                  >
+                    <div className="font-bold text-slate-300 truncate">Default Asterisk</div>
+                    <div className="font-mono text-slate-500 text-[10px]">AnonymousOTP</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vista previa en pantalla */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Vista previa pantalla cliente:</span>
+                <span className="font-mono font-bold text-emerald-400 truncate max-w-[200px]">
+                  "{quickCidName}" &lt;{quickCidNum}&gt;
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setQuickCidExt(null)}
+                className="px-4 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-semibold transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickCid}
+                disabled={quickCidSaving}
+                className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-sky-500/25 transition-all disabled:opacity-50"
+              >
+                {quickCidSaving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando en Asterisk...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Aplicar CallerID Ahora</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

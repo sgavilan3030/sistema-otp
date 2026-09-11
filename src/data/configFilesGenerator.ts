@@ -82,9 +82,13 @@ direct_media=no
 force_rport=yes
 rewrite_contact=yes
 rtp_symmetric=yes
+send_pai=yes
+send_rpid=${c.sendrpid || 'yes'}
+trust_id_outbound=yes
+trust_id_inbound=${c.trustrpid || 'yes'}
+callerid=${c.outboundCallerId || '"" <>'}
 
 [${slug}_aor]
-type=aor
 contact=sip:${c.host}:${c.port}
 qualify_frequency=${c.qualifyFreq}
 
@@ -116,7 +120,13 @@ aors=${slug}_aor
 direct_media=no
 force_rport=yes
 rewrite_contact=yes
+rtp_symmetric=yes
+send_pai=yes
+send_rpid=${c.sendrpid || 'yes'}
+trust_id_outbound=yes
+trust_id_inbound=${c.trustrpid || 'yes'}
 from_user=${c.username || 'user'}
+callerid=${c.outboundCallerId || '"" <>'}
 
 [${slug}_auth]
 type=auth
@@ -187,7 +197,14 @@ ${activeCarriers
     const pattern = c.dialplanPattern || '_1XXXXXXXXXX';
     const flags = c.dialFlags || 'Tor';
     return `; Dialplan Entry: ${c.name}
-exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP ---)
+exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP a \${EXTEN} via ${slug} ---)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
+ same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${c.outboundCallerId || '+18005550199'}))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=AnonymousOTP))
+ same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${c.host}>)
  same => n,Dial(PJSIP/\${EXTEN}@${slug},,${flags})
  same => n,Hangup()`;
   })

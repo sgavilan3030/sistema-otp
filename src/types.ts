@@ -33,6 +33,8 @@ export interface CarrierTrunk {
   fromuser?: string;
   sendrpid?: 'yes' | 'no';
   trustrpid?: 'yes' | 'no';
+  send_pai?: 'yes' | 'no';
+  trust_id_outbound?: 'yes' | 'no';
   insecure?: string; // e.g. 'port,invite'
   dialplanPattern?: string; // e.g. '_1XXXXXXXXXX'
   dialFlags?: string; // e.g. 'Tor'
