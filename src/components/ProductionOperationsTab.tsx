@@ -40,6 +40,7 @@ import {
   Sparkles,
   HelpCircle,
   UserCheck,
+  Terminal,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -228,6 +229,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [isSyncingAudios, setIsSyncingAudios] = useState(false);
   const [audioSyncFeedback, setAudioSyncFeedback] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isCopiedVpsCmd, setIsCopiedVpsCmd] = useState(false);
 
   const activeCarrier = carriers.length > 0 ? carriers[0].name : 'televox';
   const outboundCid = carriers.length > 0 ? carriers[0].outboundCallerId : '+18005550199';
@@ -1379,6 +1381,47 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <span>{isSyncingAudios ? 'Sincronizando...' : 'Sincronizar Audios con Asterisk'}</span>
                     </button>
                   </div>
+                </div>
+
+                {/* Sincronización Directa de 1 Línea para la Terminal del Servidor VPS (vmi3461829) */}
+                <div className="mt-3 p-3 rounded-lg bg-slate-950/90 border border-amber-500/30 space-y-2">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-amber-300">
+                        Comando de 1 Línea para Sincronizar tu Servidor Asterisk (VPS)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="/api/asterisk/config/extensions.conf"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-slate-400 hover:text-white underline"
+                      >
+                        Ver extensions.conf
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd = `curl -sSLk "${window.location.origin}/api/asterisk/install.sh" | bash`;
+                          navigator.clipboard.writeText(cmd);
+                          setIsCopiedVpsCmd(true);
+                          setTimeout(() => setIsCopiedVpsCmd(false), 2500);
+                        }}
+                        className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 transition-all"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{isCopiedVpsCmd ? '¡Copiado!' : 'Copiar Comando SSH'}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-black/70 border border-slate-800 font-mono text-[11px] text-amber-200/95 break-all select-all">
+                    curl -sSLk "{typeof window !== 'undefined' ? window.location.origin : ''}/api/asterisk/install.sh" | bash
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Pega este comando en la terminal SSH de tu VPS Asterisk para sincronizar en 3 segundos: el dialplan corregido sin "Anonymous", los audios en <code className="text-slate-300">/var/lib/asterisk/sounds/custom/</code> y la recarga en caliente.
+                  </p>
                 </div>
               </div>
 

