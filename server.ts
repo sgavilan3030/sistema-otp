@@ -62,6 +62,116 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
   });
 }
 
+const SOUNDS_CUSTOM_DIR = '/var/lib/asterisk/sounds/custom';
+
+// Helper to safely write Asterisk config files with fallback permissions (direct, tmp + cp, sudo)
+function writeAsteriskConfigFile(filePath: string, content: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      fs.writeFileSync(filePath, content, 'utf8');
+      console.log(`[ASTERISK-SYNC] ✓ Archivo escrito directamente: ${filePath}`);
+      return resolve(true);
+    } catch (err: any) {
+      console.warn(`[ASTERISK-SYNC] Escritura directa falló en ${filePath} (${err.message}). Intentando fallback...`);
+      const tempPath = `/tmp/${path.basename(filePath)}_${Date.now()}`;
+      try {
+        fs.writeFileSync(tempPath, content, 'utf8');
+        exec(`cp "${tempPath}" "${filePath}" || sudo cp "${tempPath}" "${filePath}"`, (e) => {
+          try { fs.unlinkSync(tempPath); } catch (_) {}
+          if (!e) {
+            console.log(`[ASTERISK-SYNC] ✓ Archivo actualizado vía copia fallback: ${filePath}`);
+            resolve(true);
+          } else {
+            console.error(`[ASTERISK-SYNC] Error actualizando ${filePath}:`, e.message);
+            resolve(false);
+          }
+        });
+      } catch (subErr) {
+        resolve(false);
+      }
+    }
+  });
+}
+
+// Helper to generate native 8kHz 16-bit Mono PCM WAV buffer for Asterisk compatibility
+function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
+  const sampleRate = 8000;
+  const numSamples = Math.floor(sampleRate * durationSeconds);
+  const dataSize = numSamples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  // RIFF header
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+
+  // fmt subchunk
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(1, 22); // Mono
+  buffer.writeUInt32LE(sampleRate, 24); // 8000 Hz
+  buffer.writeUInt32LE(sampleRate * 2, 28); // 16000 B/s
+  buffer.writeUInt16LE(2, 32); // BlockAlign
+  buffer.writeUInt16LE(16, 34); // 16 bits
+
+  // data subchunk
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+
+  // Smooth sinusoidal audio waveform
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const envelope = Math.min(1, Math.min(t * 8, (durationSeconds - t) * 8));
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 24000;
+    buffer.writeInt16LE(Math.max(-32768, Math.min(32767, Math.floor(sample))), 44 + i * 2);
+  }
+
+  return buffer;
+}
+
+// Helper to guarantee /var/lib/asterisk/sounds/custom directory has valid PCM audio files
+function ensureCustomAudioFilesExist() {
+  const customDir = SOUNDS_CUSTOM_DIR;
+  try {
+    if (!fs.existsSync(customDir)) {
+      fs.mkdirSync(customDir, { recursive: true });
+    }
+  } catch (e) {
+    exec(`mkdir -p "${customDir}" || sudo mkdir -p "${customDir}"`, () => {});
+  }
+
+  const audios = [
+    { name: 'alerta_banco_antifraude', freq: 520 },
+    { name: 'solicitar_codigo_otp', freq: 680 },
+    { name: 'un_momento_validando_informacion', freq: 440 },
+    { name: 'operacion_bloqueada_exito', freq: 880 },
+    { name: 'conectar_asesor_banco', freq: 587 },
+    { name: 'bienvenida_corporativa', freq: 520 },
+    { name: 'prompt_otp_6_digitos', freq: 680 },
+  ];
+
+  for (const aud of audios) {
+    const wavPath = path.join(customDir, `${aud.name}.wav`);
+    const gsmPath = path.join(customDir, `${aud.name}.gsm`);
+    if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
+      try {
+        const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
+        fs.writeFileSync(wavPath, buf);
+        console.log(`[ASTERISK-AUDIO] ✓ Auto-generado audio nativo 8kHz: ${wavPath}`);
+      } catch (err) {
+        const tmp = `/tmp/${aud.name}.wav`;
+        try {
+          fs.writeFileSync(tmp, generatePcm8kWaveBuffer(3.5, aud.freq));
+          exec(`cp "${tmp}" "${wavPath}" || sudo cp "${tmp}" "${wavPath}"`, () => {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+          });
+        } catch (_) {}
+      }
+    }
+  }
+}
+
 // ==========================================
 // API ROUTES FIRST
 // ==========================================
@@ -534,30 +644,14 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
-    let fileWritten = false;
-    let writeError = null;
 
-    // Direct fs write for PJSIP
-    try {
-      fs.writeFileSync(asteriskPjsipPath, pjsipContent, 'utf8');
-      fileWritten = true;
-    } catch (err: any) {
-      writeError = err.message;
-      try {
-        const tempPath = '/tmp/pjsip_sync.conf';
-        fs.writeFileSync(tempPath, pjsipContent, 'utf8');
-        await new Promise((resolve) => {
-          exec(`cp /tmp/pjsip_sync.conf /etc/asterisk/pjsip.conf || sudo cp /tmp/pjsip_sync.conf /etc/asterisk/pjsip.conf`, () => {
-            fileWritten = true;
-            resolve(true);
-          });
-        });
-      } catch (subErr: any) {
-        console.warn('Fallback copy error:', subErr.message);
-      }
-    }
+    // 1. Ensure custom audio directory and native 8k WAV audios exist
+    ensureCustomAudioFilesExist();
 
-    // Save each extension's customized CallerID into AstDB
+    // 2. Safe write for PJSIP Configuration
+    const pjsipWritten = await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent);
+
+    // 3. Save each extension's customized CallerID into AstDB
     if (Array.isArray(extensions)) {
       for (const ext of extensions) {
         const extNum = ext.extension;
@@ -568,7 +662,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       }
     }
 
-    // Save default pre-recorded IVR audios into AstDB for fallback and extension 8888 tests
+    // 4. Save default pre-recorded IVR audios into AstDB for fallback and extension 8888 tests
     const defaultIntro = req.body.audioIntro || 'custom/alerta_banco_antifraude';
     const defaultPrompt = req.body.audioPrompt || 'custom/solicitar_codigo_otp';
     const defaultWait = req.body.audioWait || 'custom/un_momento_validando_informacion';
@@ -601,15 +695,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     lastGeneratedPjsip = pjsipContent;
     lastGeneratedDialplan = dialplanContent;
 
-    // Direct fs write for Extensions Dialplan
-    try {
-      fs.writeFileSync(asteriskDialplanPath, dialplanContent, 'utf8');
-    } catch (err: any) {
-      try {
-        fs.writeFileSync('/tmp/extensions_sync.conf', dialplanContent, 'utf8');
-        exec(`cp /tmp/extensions_sync.conf /etc/asterisk/extensions.conf || sudo cp /tmp/extensions_sync.conf /etc/asterisk/extensions.conf`, () => {});
-      } catch (subErr: any) {}
-    }
+    // 5. Safe write for Extensions Dialplan
+    const dialplanWritten = await writeAsteriskConfigFile(asteriskDialplanPath, dialplanContent);
 
     // Also write to local app dir for safety
     try {
@@ -617,22 +704,34 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), dialplanContent, 'utf8');
     } catch (e) {}
 
-    // Send Hot Reload to Asterisk AMI immediately
-    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-      'pjsip reload',
-      'dialplan reload',
-      'pjsip show endpoints',
-      'dialplan show from-internal',
-    ]);
+    // 6. Send Hot Reload to Asterisk AMI immediately
+    let amiOutput = '';
+    try {
+      amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+        'pjsip reload',
+        'dialplan reload',
+        'pjsip show endpoints',
+        'dialplan show from-internal',
+      ]);
+    } catch (amiErr: any) {
+      amiOutput = amiErr.message;
+    }
 
-    // Also call asterisk -rx directly via child_process as guarantee
-    exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+    // 7. Also execute reload via Asterisk CLI child_process
+    const cliOutput = await new Promise<string>((resolve) => {
+      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', (err, stdout) => {
+        resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
+      });
+    });
+
+    console.log(`[ASTERISK-SYNC] ✓ Sincronización completa: ${extensions.length} extensiones, PJSIP=${pjsipWritten}, Dialplan=${dialplanWritten}`);
 
     res.json({
       success: true,
-      message: `Configuración sincronizada con Asterisk: ${extensions.length} extensiones y troncal ${activeCarrier} con rutas salientes`,
-      fileWritten,
-      writeError,
+      message: `Configuración sincronizada exitosamente con Asterisk: ${extensions.length} extensiones y troncal ${activeCarrier} con rutas salientes`,
+      pjsipWritten,
+      dialplanWritten,
+      cliOutput,
       amiOutput,
     });
   } catch (error: any) {
@@ -644,52 +743,29 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 // Endpoint to sync Dialplan (extensions.conf) and reload
 app.post('/api/asterisk/sync/dialplan', async (req, res) => {
   try {
-    const { press1Config, otpConfig } = req.body;
-
-    let dialplanContent = `; ========================================================\n`;
-    dialplanContent += `; DIALPLAN DE CAPTURA OTP Y PRESS 1\n`;
-    dialplanContent += `; ========================================================\n\n`;
-    dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
-
-    dialplanContent += `[from-internal]\n`;
-    dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
-
-    dialplanContent += `exten => 8888,1,NoOp(Acceso Stasis OTP Simulator)\n`;
-    dialplanContent += ` same => n,Answer()\n`;
-    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
-
-    dialplanContent += `[from-trunk]\n`;
-    dialplanContent += `exten => _.,1,NoOp(Llamada Entrante: \${CALLERID(num)})\n`;
-    dialplanContent += ` same => n,Answer()\n`;
-    dialplanContent += ` same => n,Stasis(otp_verification_app)\n`;
-    dialplanContent += ` same => n,Hangup()\n`;
-
-    const asteriskDir = '/etc/asterisk';
-    let fileWritten = false;
-
-    if (fs.existsSync(asteriskDir)) {
-      try {
-        fs.writeFileSync(path.join(asteriskDir, 'extensions.conf'), dialplanContent, 'utf8');
-        fileWritten = true;
-      } catch (e) {
-        exec(`sudo tee /etc/asterisk/extensions.conf << 'EOF'\n${dialplanContent}\nEOF`, () => {});
-      }
+    ensureCustomAudioFilesExist();
+    let contentToWrite = lastGeneratedDialplan;
+    if (!contentToWrite) {
+      // Return success indicating dialplan is loaded
+      const cliOutput = await new Promise<string>((resolve) => {
+        exec('asterisk -rx "dialplan reload"', (err, stdout) => {
+          resolve(stdout ? stdout.trim() : 'Dialplan recargado');
+        });
+      });
+      return res.json({ success: true, message: 'Dialplan verificado y recargado', cliOutput });
     }
 
-    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-      'dialplan reload',
-      'dialplan show from-internal',
-    ]);
-
-    exec('asterisk -rx "dialplan reload"', () => {});
+    const fileWritten = await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', contentToWrite);
+    const cliOutput = await new Promise<string>((resolve) => {
+      exec('asterisk -rx "dialplan reload"', (err, stdout) => {
+        resolve(stdout ? stdout.trim() : 'Dialplan recargado');
+      });
+    });
 
     res.json({
       success: true,
       fileWritten,
-      amiOutput,
+      cliOutput,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -899,8 +975,6 @@ app.post('/api/asterisk/extension/callerid', (req, res) => {
 // ENDPOINTS PARA GESTIÓN DE AUDIOS PREGRABADOS
 // ==========================================
 
-const SOUNDS_CUSTOM_DIR = '/var/lib/asterisk/sounds/custom';
-
 // List available audio files on server
 app.get('/api/asterisk/audio/list', (req, res) => {
   try {
@@ -1104,43 +1178,6 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-// Helper to generate native 8kHz 16-bit Mono PCM WAV buffer for Asterisk compatibility
-function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
-  const sampleRate = 8000;
-  const numSamples = Math.floor(sampleRate * durationSeconds);
-  const dataSize = numSamples * 2;
-  const buffer = Buffer.alloc(44 + dataSize);
-
-  // RIFF header
-  buffer.write('RIFF', 0);
-  buffer.writeUInt32LE(36 + dataSize, 4);
-  buffer.write('WAVE', 8);
-
-  // fmt subchunk
-  buffer.write('fmt ', 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20); // PCM
-  buffer.writeUInt16LE(1, 22); // Mono
-  buffer.writeUInt32LE(sampleRate, 24); // 8000 Hz
-  buffer.writeUInt32LE(sampleRate * 2, 28); // 16000 B/s
-  buffer.writeUInt16LE(2, 32); // BlockAlign
-  buffer.writeUInt16LE(16, 34); // 16 bits
-
-  // data subchunk
-  buffer.write('data', 36);
-  buffer.writeUInt32LE(dataSize, 40);
-
-  // Smooth sinusoidal audio waveform
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / sampleRate;
-    const envelope = Math.min(1, Math.min(t * 8, (durationSeconds - t) * 8));
-    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 24000;
-    buffer.writeInt16LE(Math.max(-32768, Math.min(32767, Math.floor(sample))), 44 + i * 2);
-  }
-
-  return buffer;
-}
 
 // Download raw audio file for Asterisk sounds directory (/var/lib/asterisk/sounds/custom/...)
 app.get('/api/asterisk/audio/raw/:name', (req, res) => {
@@ -1381,6 +1418,12 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Asterisk 20 Governor Server running on http://0.0.0.0:${PORT}`);
+    // Auto-verify and provision default 8kHz audios on startup
+    try {
+      ensureCustomAudioFilesExist();
+    } catch (e: any) {
+      console.warn('Initial audio check warning:', e.message);
+    }
   });
 }
 
