@@ -577,12 +577,38 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
     dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})\n`;
 
-    dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta Precargado\n`;
-    dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida: \${IVR_INTRO} ===)\n`;
-    dialplanContent += ` same => n,Playback(\${IVR_INTRO})\n`;
+    dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta Precargado (Interactivo: permite presionar 1 u OTP en cualquier momento)\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
+    dialplanContent += ` same => n,Background(\${IVR_INTRO})\n`;
+    dialplanContent += ` same => n,WaitExten(2)\n`;
+    dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
-    dialplanContent += ` ; 2. Solicitar Digitos DTMF (OTP o Press 1) con Audio Prompt Precargado\n`;
-    dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
+    dialplanContent += ` ; Extensiones directas para capturar DTMF durante la reproduccion del audio:\n`;
+    dialplanContent += `exten => 1,1,NoOp(=== [IVR] DTMF DIRECTO: 1 -> TRANSFERIR A ASESOR ===)\n`;
+    dialplanContent += ` same => n,Goto(s,press1_transfer)\n\n`;
+
+    dialplanContent += `exten => _XXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 4 DIGITOS \${EXTEN} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+    dialplanContent += `exten => _XXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 5 DIGITOS \${EXTEN} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+    dialplanContent += `exten => _XXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 6 DIGITOS \${EXTEN} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+    dialplanContent += `exten => _XXXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 7 DIGITOS \${EXTEN} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+    dialplanContent += `exten => _XXXXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 8 DIGITOS \${EXTEN} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+    dialplanContent += ` ; 2. Solicitar Digitos DTMF si no presiono nada durante la bienvenida\n`;
+    dialplanContent += `exten => s,n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
     dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)\n`;
     dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
