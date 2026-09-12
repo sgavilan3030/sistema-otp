@@ -203,17 +203,27 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-400 mb-1">
                 <Radio className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                <span>OPCIÓN 1: Probar desde X-Lite (Sin Costo)</span>
+                <span>OPCIÓN 1: Probar desde Softphone X-Lite</span>
               </div>
               <p className="text-xs text-slate-300">
-                Desde tu extensión <strong>1001</strong> en X-Lite, simplemente marca el número:
+                Desde tu extensión <strong>1001</strong> en X-Lite tienes dos opciones de prueba:
               </p>
-              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-lg font-bold text-emerald-400">
-                <span>8888</span>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm font-bold text-emerald-400">
+                  <span>8888</span>
+                </div>
+                <span className="text-[11px] text-slate-300">
+                  Llama directamente al cliente de prueba <strong>16104803845</strong> sin errores.
+                </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">
-                Asterisk responderá de inmediato, emitirá un beep y podrás digitar tu código OTP o presionar <strong>1</strong> para transferirte.
-              </p>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm font-bold text-sky-400">
+                  <span>8880</span> o <span>*8888</span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Simulador de IVR en tu auricular (sin llamada externa ni consumo de saldo).
+                </span>
+              </div>
             </div>
           </div>
 
