@@ -443,7 +443,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
     dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
-    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)\n`;
+    dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
     dialplanContent += ` same => n,Return()\n\n`;
 
     dialplanContent += `[from-internal]\n`;
@@ -583,32 +583,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,WaitExten(2)\n`;
     dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
-    dialplanContent += ` ; Extensiones directas para capturar DTMF durante la reproduccion del audio:\n`;
-    dialplanContent += `exten => 1,1,NoOp(=== [IVR] DTMF DIRECTO: 1 -> TRANSFERIR A ASESOR ===)\n`;
-    dialplanContent += ` same => n,Goto(s,press1_transfer)\n\n`;
-
-    dialplanContent += `exten => _XXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 4 DIGITOS \${EXTEN} ===)\n`;
-    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
-    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
-    dialplanContent += `exten => _XXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 5 DIGITOS \${EXTEN} ===)\n`;
-    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
-    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
-    dialplanContent += `exten => _XXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 6 DIGITOS \${EXTEN} ===)\n`;
-    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
-    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
-    dialplanContent += `exten => _XXXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 7 DIGITOS \${EXTEN} ===)\n`;
-    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
-    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
-    dialplanContent += `exten => _XXXXXXXX,1,NoOp(=== [IVR] DTMF DIRECTO: OTP 8 DIGITOS \${EXTEN} ===)\n`;
-    dialplanContent += ` same => n,Set(USER_DIGITS=\${EXTEN})\n`;
-    dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
     dialplanContent += ` ; 2. Solicitar Digitos DTMF si no presiono nada durante la bienvenida\n`;
-    dialplanContent += `exten => s,n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
+    dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
     dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)\n`;
     dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
@@ -667,7 +643,27 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `; Caso: Sin entrada o timeout\n`;
     dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
-    dialplanContent += ` same => n,Hangup()\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `; Extensiones directas para capturar DTMF durante Background(intro)\n`;
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DIRECTO -> ASESOR 1001 ===)\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += `exten => _XXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+    dialplanContent += `exten => _XXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+    dialplanContent += `exten => _XXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+    dialplanContent += `exten => _XXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+    dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
