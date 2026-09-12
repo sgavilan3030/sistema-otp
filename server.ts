@@ -631,10 +631,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; Caso: Presiono 1 -> Conectar con Asesor\n`;
-    dialplanContent += ` same => n(press1_transfer),NoOp(=== PRESS 1 DETECTADO -> TRANSFERIR A ASESOR ===)\n`;
-    dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
+    dialplanContent += ` same => n(press1_transfer),NoOp(=== [IVR] PRESS 1 DETECTADO: TRANSFIRIENDO LLAMADA AL ASESOR ===)\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},45,Tt)\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] MARCANDO EXTENSION DE AGENTE: \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; Caso: Sin entrada o timeout\n`;
@@ -675,16 +676,19 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       `database put ivr_vars default_wait "${defaultWait}"`,
       `database put ivr_vars default_success "${defaultSuccess}"`,
       `database put ivr_vars default_agent "${defaultAgent}"`,
+      `database put ivr_vars default_agent_exten "1001"`,
       `database put ivr_vars 8888_intro "${defaultIntro}"`,
       `database put ivr_vars 8888_prompt "${defaultPrompt}"`,
       `database put ivr_vars 8888_wait "${defaultWait}"`,
       `database put ivr_vars 8888_success "${defaultSuccess}"`,
       `database put ivr_vars 8888_agent "${defaultAgent}"`,
+      `database put ivr_vars 8888_agent_exten "1001"`,
       `database put ivr_vars global_intro "${defaultIntro}"`,
       `database put ivr_vars global_prompt "${defaultPrompt}"`,
       `database put ivr_vars global_wait "${defaultWait}"`,
       `database put ivr_vars global_success "${defaultSuccess}"`,
       `database put ivr_vars global_agent "${defaultAgent}"`,
+      `database put ivr_vars global_agent_exten "1001"`,
     ];
 
     for (const dCmd of defaultAudiosCommands) {
