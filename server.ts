@@ -632,15 +632,6 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
 
-    dialplanContent += ` ; Si es prueba local del asesor (Extension 8888 o canal del asesor PJSIP/1001):\n`;
-    dialplanContent += ` ; NUNCA realizar Dial(PJSIP/1001) para evitar llamada fantasma entrante de vuelta al asesor\n`;
-    dialplanContent += ` same => n,Set(CURRENT_CHAN=\${CHANNEL})\n`;
-    dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${EXTEN}" = "8888"]?self_test_success)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${CALLERID(num)}" = "1001"]?self_test_success)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${CURRENT_CHAN:0:10}" = "PJSIP/1001"]?self_test_success)\n`;
-
-    dialplanContent += ` ; Si es cliente externo en llamada saliente:\n`;
     dialplanContent += ` ; Bucle inteligente: esperar decisión del asesor (Válido o Inválido)\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
     dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
@@ -657,6 +648,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n(otp_approved),NoOp(=== [IVR] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR ===)\n`;
     dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` ; Si es prueba 8888 desde el mismo softphone, reproducir beep de éxito y terminar para no hacer llamada fantasma a sí mismo\n`;
+    dialplanContent += ` same => n,GotoIf($["\${TARGET_DEST}" = "8888"]?self_test_success)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
@@ -668,7 +662,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($[$$[STAT(e,/var/lib/asterisk/sounds/custom/token_invalido_reintente.wav)] = 1]?Playback(custom/token_invalido_reintente):Playback(\${IVR_PROMPT}))\n`;
     dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
-    dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL EXITOSA: CÓDIGO \${USER_DIGITS} NOTIFICADO AL PANEL ===)\n`;
+    dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL 8888 EXITOSA: CÓDIGO \${USER_DIGITS} VALIDADO ===)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
