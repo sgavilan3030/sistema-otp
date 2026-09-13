@@ -83,7 +83,7 @@ export interface OtpCaptureConfig {
 export interface AudioPrompt {
   id: string;
   name: string;
-  category: 'press1_welcome' | 'press1_invalid' | 'otp_welcome' | 'otp_success' | 'otp_failure' | 'hold_music' | 'custom';
+  category: 'press1_welcome' | 'press1_invalid' | 'agent_transfer' | 'otp_welcome' | 'otp_success' | 'otp_failure' | 'hold_music' | 'custom';
   fileName: string;
   fileSize: string;
   durationSec: number;

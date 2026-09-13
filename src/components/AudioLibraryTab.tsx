@@ -25,6 +25,7 @@ interface AudioLibraryTabProps {
   onDeleteAudio: (id: string) => void;
   onAssignToPress1: (audioId: string) => void;
   onAssignToOtp: (audioId: string) => void;
+  onAssignToAgentTransfer?: (audioId: string) => void;
 }
 
 export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
@@ -33,6 +34,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onDeleteAudio,
   onAssignToPress1,
   onAssignToOtp,
+  onAssignToAgentTransfer,
 }) => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -59,6 +61,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
     press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
+    agent_transfer: { label: 'Transferencia Asesor (Press 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
     otp_welcome: { label: 'Captura OTP Instrucción', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
     otp_success: { label: 'OTP Validación Exitosa', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     otp_failure: { label: 'OTP Error o Expirado', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
@@ -402,20 +405,27 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               </div>
 
               {/* Action Assignment buttons */}
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-1.5 flex-wrap">
                 <button
                   onClick={() => onAssignToPress1(audio.id)}
-                  className="text-xs px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-1 font-medium"
+                  className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-1 font-medium"
                   title="Asignar este audio a la bienvenida de Press 1"
                 >
-                  <span>Asignar a Press 1</span>
+                  <span>Intro Press 1</span>
+                </button>
+                <button
+                  onClick={() => onAssignToAgentTransfer?.(audio.id)}
+                  className="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1 font-medium"
+                  title="Asignar este audio a la transferencia de asesor (cuando presiona 1)"
+                >
+                  <span>Asesor (1)</span>
                 </button>
                 <button
                   onClick={() => onAssignToOtp(audio.id)}
-                  className="text-xs px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20 transition-colors flex items-center gap-1 font-medium"
+                  className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20 transition-colors flex items-center gap-1 font-medium"
                   title="Asignar este audio a la instrucción de OTP"
                 >
-                  <span>Asignar a OTP</span>
+                  <span>Captura OTP</span>
                 </button>
               </div>
             </div>
@@ -465,6 +475,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
                   <option value="press1_welcome">Bienvenida IVR Press 1</option>
+                  <option value="agent_transfer">Transferencia a Asesor (Opción 1 - "Un momento por favor...")</option>
                   <option value="press1_invalid">Opción Inválida Press 1</option>
                   <option value="otp_welcome">Solicitud Dígitos OTP</option>
                   <option value="otp_success">Validación Correcta OTP</option>

@@ -509,6 +509,29 @@ export default function App() {
       `IVR Press 1 actualizado con audio: ${audio?.fileName}`,
       `Dialplan: Background(${audio?.asteriskPath})`
     );
+    if (audio?.asteriskPath) {
+      fetch('/api/asterisk/audio/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'press1_welcome', asteriskPath: audio.asteriskPath }),
+      }).catch(() => {});
+    }
+  };
+
+  const handleAssignToAgentTransfer = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Transferencia a Asesor (Opción 1).`);
+    addLog(
+      'AMI',
+      `Audio de Transferencia a Asesor actualizado: ${audio.fileName}`,
+      `AstDB: database put ivr_vars default_agent "${audio.asteriskPath}" (Playback al presionar 1)`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'agent_transfer', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
   };
 
   const handleAssignToOtp = (audioId: string) => {
@@ -792,6 +815,7 @@ export default function App() {
             onDeleteAudio={handleDeleteAudio}
             onAssignToPress1={handleAssignToPress1}
             onAssignToOtp={handleAssignToOtp}
+            onAssignToAgentTransfer={handleAssignToAgentTransfer}
           />
         )}
 

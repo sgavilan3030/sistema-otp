@@ -1097,10 +1097,23 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
     const ffmpegCmd = `ffmpeg -y -i "${tempRawPath}" -ar 8000 -ac 1 -c:a pcm_s16le "${targetPath}"`;
     const soxCmd = `sox "${tempRawPath}" -r 8000 -c 1 -b 16 "${targetPath}"`;
 
+    const onAudioSavedSuccess = (method: string) => {
+      // If user uploaded audio for agent_transfer role, immediately update AstDB ivr_vars
+      if (category === 'agent_transfer' || cleanBaseName === 'conectar_asesor_banco') {
+        const targets = ['default', '8888', 'global', '16104803845'];
+        for (const t of targets) {
+          exec(`asterisk -rx 'database put ivr_vars ${t}_agent "custom/${cleanBaseName}"'`, () => {});
+        }
+        exec(`asterisk -rx 'dialplan reload'`, () => {});
+        console.log(`[AUDIO ASSIGNED] custom/${cleanBaseName} asignado como audio de transferencia a asesor.`);
+      }
+    };
+
     exec(ffmpegCmd, (ffmpegErr) => {
       if (!ffmpegErr) {
         try { fs.unlinkSync(tempRawPath); } catch (e) {}
         console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath}`);
+        onAudioSavedSuccess('ffmpeg');
         return res.json({
           success: true,
           asteriskPath: `custom/${cleanBaseName}`,
@@ -1115,6 +1128,7 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
         if (!soxErr) {
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
           console.log(`[AUDIO OK - sox] Convertido a ${targetPath}`);
+          onAudioSavedSuccess('sox');
           return res.json({
             success: true,
             asteriskPath: `custom/${cleanBaseName}`,
@@ -1128,6 +1142,7 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
         try {
           fs.writeFileSync(targetPath, buffer);
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
+          onAudioSavedSuccess('direct');
           return res.json({
             success: true,
             asteriskPath: `custom/${cleanBaseName}`,
@@ -1142,6 +1157,7 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
             if (sudoErr) {
               return res.status(500).json({ success: false, error: sudoErr.message });
             }
+            onAudioSavedSuccess('sudo');
             res.json({
               success: true,
               asteriskPath: `custom/${cleanBaseName}`,
@@ -1154,6 +1170,53 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Explicit endpoint to assign an existing audio to an IVR role in Asterisk AstDB
+app.post('/api/asterisk/audio/assign', (req, res) => {
+  try {
+    const { asteriskPath, role = 'agent_transfer' } = req.body;
+    if (!asteriskPath) {
+      return res.status(400).json({ success: false, error: 'asteriskPath es requerido' });
+    }
+
+    const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
+    const targets = ['default', '8888', 'global', '16104803845'];
+
+    const commands: string[] = [];
+    if (role === 'agent_transfer' || role === 'agent') {
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_agent "${cleanPath}"`);
+      }
+    } else if (role === 'intro' || role === 'welcome' || role === 'press1_welcome') {
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_intro "${cleanPath}"`);
+      }
+    } else if (role === 'prompt' || role === 'otp_welcome') {
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_prompt "${cleanPath}"`);
+      }
+    } else if (role === 'wait') {
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
+      }
+    }
+
+    for (const cmd of commands) {
+      exec(`asterisk -rx '${cmd}'`, () => {});
+    }
+    exec(`asterisk -rx 'dialplan reload'`, () => {});
+
+    console.log(`[AUDIO ASSIGN] ${cleanPath} asignado al rol ${role}`);
+    res.json({
+      success: true,
+      message: `Audio ${cleanPath} asignado a ${role} en Asterisk exitosamente.`,
+      role,
+      asteriskPath: cleanPath,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
