@@ -529,8 +529,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (activeCall && activeCall.isActive) {
           const matched = data.records.find(
             (r: CapturedOtpRecord) =>
-              r.number.includes(activeCall.number) || activeCall.number.includes(r.number)
-          );
+              r.number.includes(activeCall.number) ||
+              activeCall.number.includes(r.number) ||
+              (activeCall.number.includes('8888') && (r.number.includes('8888') || r.number.includes('1002') || r.number.includes('1001') || r.number.includes('Destino'))) ||
+              (activeCall.number.includes('1002') && (r.number.includes('1002') || r.number.includes('8888')))
+          ) || (activeCall.number.includes('8888') || activeCall.number.includes('1002') ? data.records[0] : null);
+
           if (matched) {
             setActiveCall((prev) =>
               prev
@@ -642,6 +646,58 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     const interval = setInterval(fetchCapturedOtps, 3000);
     return () => clearInterval(interval);
   }, [activeCall]);
+
+  // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 8888 desde extensión 1002/1001)
+  useEffect(() => {
+    const pollLiveChannels = async () => {
+      try {
+        const res = await fetch('/api/asterisk/live/channels');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.channels)) {
+          // Buscar si hay algún canal interactuando con 8888 o con el IVR
+          const ivrChannel = data.channels.find((ch: any) => {
+            const exten = String(ch.extension || ch.exten || '');
+            const context = String(ch.context || '');
+            const channel = String(ch.channel || '');
+            const callerId = String(ch.callerId || ch.callerid || '');
+            return (
+              exten.includes('8888') ||
+              context.includes('ivr') ||
+              channel.includes('8888') ||
+              (callerId && (callerId === '1002' || callerId === '1001') && (context.includes('ivr') || exten === '8888' || exten === 's'))
+            );
+          });
+
+          if (ivrChannel) {
+            const detectedNumber = ivrChannel.callerId || ivrChannel.callerid || '8888';
+            setActiveCall((prev) => {
+              if (prev && prev.isActive) {
+                // Si ya está activo, mantener estado y actualizar canal si faltaba
+                return {
+                  ...prev,
+                  channel: prev.channel || ivrChannel.channel,
+                };
+              }
+              // Si no estaba activo, activar automáticamente el HUD
+              return {
+                isActive: true,
+                number: detectedNumber === '8888' ? 'Prueba Local Ext. 8888' : detectedNumber,
+                name: `Prueba Softphone Ext. ${detectedNumber}`,
+                service: selectedService || 'bank',
+                status: 'in_ivr',
+                duration: 0,
+                channel: ivrChannel.channel,
+              };
+            });
+          }
+        }
+      } catch (e) {}
+    };
+
+    pollLiveChannels();
+    const chanInterval = setInterval(pollLiveChannels, 2000);
+    return () => clearInterval(chanInterval);
+  }, [selectedService]);
 
   // Duration timer for active call
   useEffect(() => {
@@ -996,6 +1052,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           <Flame className="w-4 h-4" />
           <span>Campañas Masivas por Lotes (Bulk Dialer)</span>
         </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          {!activeCall?.isActive && (
+            <button
+              id="btn-open-test-8888-hud"
+              onClick={() => {
+                setActiveCall({
+                  isActive: true,
+                  number: '8888',
+                  name: 'Prueba Softphone Ext. 1002',
+                  service: selectedService || 'bank',
+                  status: 'in_ivr',
+                  duration: 0,
+                  channel: 'PJSIP/1002',
+                });
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Abre la pantalla de captura manual de OTP para pruebas directas desde el softphone marcando 8888"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>Modo Prueba: Abrir Panel OTP para Ext. 8888</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ACTIVE CALL REAL-TIME HUD (Appears when a call is running) */}
@@ -1040,6 +1120,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               >
                 <PhoneOff className="w-3.5 h-3.5" />
                 <span>Colgar Llamada</span>
+              </button>
+
+              <button
+                id="btn-hud-close-test"
+                onClick={() => setActiveCall(null)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+                title="Cerrar este panel visual de llamada"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cerrar Panel</span>
               </button>
             </div>
           </div>

@@ -648,10 +648,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n(otp_approved),NoOp(=== [IVR] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR ===)\n`;
     dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` ; Si es prueba 8888 desde el mismo softphone, reproducir beep de éxito y terminar para no hacer llamada fantasma a sí mismo\n`;
-    dialplanContent += ` same => n,GotoIf($["\${TARGET_DEST}" = "8888"]?self_test_success)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)\n`;
+    dialplanContent += ` same => n,Set(CALLER_EXT=\${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+    dialplanContent += ` ; Si la prueba fue marcada desde el softphone 1002 hacia 8888, transferir al agente en 1001 para verificar el regreso\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
