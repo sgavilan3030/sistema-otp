@@ -21,12 +21,12 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
   const isChannelsCheck = commands.length === 1 && commands[0].includes('core show channels');
   const now = Date.now();
 
-  // If it's a routine channel poll and we have a fresh response from < 3.5s ago, reuse cache
-  if (isChannelsCheck && amiCachedResult && (now - amiCachedResult.timestamp) < 3500) {
+  // If it's a routine channel poll and we have a fresh response from < 8s ago, reuse cache to avoid spamming CLI
+  if (isChannelsCheck && amiCachedResult && (now - amiCachedResult.timestamp) < 8000) {
     return Promise.resolve(amiCachedResult.data);
   }
 
-  // If another query is already in flight, wait or return cached
+  // If another query is already in flight, return cached if available or wait
   if (isAmiExecuting && amiCachedResult) {
     return Promise.resolve(amiCachedResult.data);
   }

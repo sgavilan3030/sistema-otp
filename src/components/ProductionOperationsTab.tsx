@@ -728,7 +728,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 4500);
+    const chanInterval = setInterval(pollLiveChannels, 9000);
     return () => clearInterval(chanInterval);
   }, [selectedService]);
 

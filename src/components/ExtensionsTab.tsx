@@ -444,6 +444,54 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           </div>
         )}
 
+        {/* Guía de Solución: Registration Error 401 */}
+        <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/40 text-xs space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-300 font-bold">
+              <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>¿Tu Softphone muestra "Registration Error 401 Unauthorized"?</span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-mono">
+              SIP / Digest Auth
+            </span>
+          </div>
+
+          <p className="text-slate-300 text-[11px] leading-relaxed">
+            El error <b>401</b> en SIP significa que el softphone envió una contraseña distinta a la registrada en <code className="text-emerald-300 font-mono">/etc/asterisk/pjsip.conf</code>, o que Asterisk 20 aún tiene cargada en memoria una versión anterior sin recargar.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-[11px]">
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+              <div className="font-bold text-emerald-400">1. Verifica Usuario y Auth ID</div>
+              <p className="text-slate-400 text-[10px]">
+                En Zoiper / MicroSIP coloca <b className="text-white">1001</b> tanto en <i>User / Extension</i> como en <i>Authorization Name</i> (Auth ID).
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+              <div className="font-bold text-sky-400">2. Copia la Contraseña Exacta</div>
+              <p className="text-slate-400 text-[10px]">
+                Ext 1001: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">Secr3tP@ssw0rd!1001</code><br />
+                Ext 1002: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1002</code>
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+              <div className="font-bold text-purple-400">3. Ejecuta en tu CLI Linux</div>
+              <div className="flex items-center justify-between gap-1 bg-black/60 p-1.5 rounded font-mono text-[10px] text-slate-200">
+                <span className="truncate">asterisk -rx "pjsip reload"</span>
+                <button
+                  onClick={() => handleCopy('asterisk -rx "pjsip reload"', 'cli-pjsip-reload')}
+                  className="text-slate-400 hover:text-emerald-400"
+                  title="Copiar comando"
+                >
+                  {copiedKey === 'cli-pjsip-reload' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {diagnosticInfo?.hasSyntaxError && (
           <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between">
             <div className="flex items-center gap-2">
