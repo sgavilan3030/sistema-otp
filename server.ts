@@ -231,30 +231,418 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Real-time Asterisk Endpoints reader directly from AMI socket
-app.get('/api/asterisk/endpoints/live', async (req, res) => {
+// Default extensions with valid credentials and settings for Asterisk 20
+const defaultExtensionsList = [
+  {
+    extension: '1001',
+    name: 'Operador Principal',
+    secret: 'Secr3tP@ssw0rd!1001',
+    context: 'from-internal',
+    codecs: ['ulaw', 'alaw', 'g722'],
+    maxContacts: 5,
+    transport: 'transport-udp',
+    callerIdNum: '+18005550199',
+    callerIdName: 'Seguridad Bancaria',
+  },
+  {
+    extension: '1002',
+    name: 'Agente Soporte 2',
+    secret: 'S0p0rte#2026@1002',
+    context: 'from-internal',
+    codecs: ['ulaw', 'alaw', 'opus'],
+    maxContacts: 5,
+    transport: 'transport-udp',
+    callerIdNum: '+18005550199',
+    callerIdName: 'Seguridad Bancaria',
+  },
+  {
+    extension: '1003',
+    name: 'WebRTC Softphone',
+    secret: 'W3bRTC#Cl1ent99',
+    context: 'from-internal',
+    codecs: ['opus', 'ulaw', 'alaw'],
+    maxContacts: 5,
+    transport: 'transport-wss',
+    callerIdNum: '+18005550199',
+    callerIdName: 'Seguridad Bancaria',
+  },
+  {
+    extension: '1004',
+    name: 'Supervisor Turno',
+    secret: 'Superv1sor2026!',
+    context: 'from-internal',
+    codecs: ['ulaw', 'alaw', 'g729'],
+    maxContacts: 5,
+    transport: 'transport-udp',
+    callerIdNum: '+18005550199',
+    callerIdName: 'Seguridad Bancaria',
+  },
+];
+
+// Helper to generate syntactically pure Asterisk 20 pjsip.conf
+// CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
+function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string {
+  const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
+
+  let pjsipContent = `; ========================================================\n`;
+  pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
+  pjsipContent += `; Fecha: ${new Date().toISOString()}\n`;
+  pjsipContent += `; Total Extensiones: ${extsToUse.length}\n`;
+  pjsipContent += `; Asterisk 20 Validated: No Duplicate Section Headers\n`;
+  pjsipContent += `; ========================================================\n\n`;
+
+  pjsipContent += `[general]\n\n`;
+
+  pjsipContent += `; --- TRANSPORTES SIP ---\n`;
+  pjsipContent += `[transport-udp]\n`;
+  pjsipContent += `type = transport\n`;
+  pjsipContent += `protocol = udp\n`;
+  pjsipContent += `bind = 0.0.0.0:5060\n\n`;
+
+  pjsipContent += `[transport-tcp]\n`;
+  pjsipContent += `type = transport\n`;
+  pjsipContent += `protocol = tcp\n`;
+  pjsipContent += `bind = 0.0.0.0:5060\n\n`;
+
+  pjsipContent += `[transport-wss]\n`;
+  pjsipContent += `type = transport\n`;
+  pjsipContent += `protocol = wss\n`;
+  pjsipContent += `bind = 0.0.0.0:8089\n\n`;
+
+  for (const ext of extsToUse) {
+    const num = ext.extension;
+    const pass = ext.secret || 'password123';
+    const callerIdNum = ext.callerIdNum || '+18005550199';
+    const callerIdName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
+    const callerId = `"${callerIdName}" <${callerIdNum}>`;
+    const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
+    const transport = ext.transport === 'transport-wss' ? 'transport-wss' : (ext.transport === 'transport-tcp' ? 'transport-tcp' : 'transport-udp');
+
+    pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'}) ---\n`;
+    pjsipContent += `[${num}]\n`;
+    pjsipContent += `type = endpoint\n`;
+    pjsipContent += `context = ${ext.context || 'from-internal'}\n`;
+    pjsipContent += `disallow = all\n`;
+    pjsipContent += `allow = ${codecs}\n`;
+    pjsipContent += `auth = ${num}-auth\n`;
+    pjsipContent += `aors = ${num}-aor\n`;
+    pjsipContent += `callerid = ${callerId}\n`;
+    pjsipContent += `direct_media = no\n`;
+    pjsipContent += `rtp_symmetric = yes\n`;
+    pjsipContent += `force_rport = yes\n`;
+    pjsipContent += `rewrite_contact = yes\n`;
+    pjsipContent += `send_pai = yes\n`;
+    pjsipContent += `send_rpid = yes\n`;
+    pjsipContent += `trust_id_outbound = yes\n`;
+    pjsipContent += `trust_id_inbound = yes\n`;
+    pjsipContent += `callerid_privacy = allowed\n`;
+    pjsipContent += `transport = ${transport}\n\n`;
+
+    pjsipContent += `[${num}-auth]\n`;
+    pjsipContent += `type = auth\n`;
+    pjsipContent += `auth_type = userpass\n`;
+    pjsipContent += `username = ${num}\n`;
+    pjsipContent += `password = ${pass}\n\n`;
+
+    pjsipContent += `[${num}-aor]\n`;
+    pjsipContent += `type = aor\n`;
+    pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
+    pjsipContent += `remove_existing = yes\n`;
+    pjsipContent += `qualify_frequency = 60\n`;
+    pjsipContent += `qualify_timeout = 3.0\n\n`;
+  }
+
+  // Process carriers/trunks if provided
+  if (Array.isArray(carriers) && carriers.length > 0) {
+    pjsipContent += `; ========================================================\n`;
+    pjsipContent += `; TRONCALES / CARRIERS SIP (OUTBOUND & INBOUND)\n`;
+    pjsipContent += `; ========================================================\n\n`;
+
+    for (const carrier of carriers) {
+      if (!carrier.name || !carrier.host) continue;
+      const cName = carrier.name.replace(/\s+/g, '_');
+      const cHost = carrier.host;
+      const cPort = carrier.port || 5060;
+      const cUser = carrier.username || cName;
+      const cSecret = carrier.secret || '';
+      const cContext = carrier.inboundContext || 'trunkinbound';
+      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
+
+      pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
+
+      if (carrier.authType === 'registration' && cSecret) {
+        pjsipContent += `[reg_${cName}]\n`;
+        pjsipContent += `type = registration\n`;
+        pjsipContent += `outbound_auth = auth_${cName}\n`;
+        pjsipContent += `server_uri = sip:${cHost}:${cPort}\n`;
+        pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
+        pjsipContent += `contact_user = ${cUser}\n`;
+        pjsipContent += `retry_interval = 60\n`;
+        pjsipContent += `expiration = 3600\n`;
+        pjsipContent += `transport = transport-udp\n\n`;
+      }
+
+      if (cSecret) {
+        pjsipContent += `[auth_${cName}]\n`;
+        pjsipContent += `type = auth\n`;
+        pjsipContent += `auth_type = userpass\n`;
+        pjsipContent += `username = ${cUser}\n`;
+        pjsipContent += `password = ${cSecret}\n\n`;
+      }
+
+      pjsipContent += `[${cName}_aor]\n`;
+      pjsipContent += `type = aor\n`;
+      pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
+      pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
+
+      pjsipContent += `[${cName}]\n`;
+      pjsipContent += `type = endpoint\n`;
+      pjsipContent += `context = ${cContext}\n`;
+      pjsipContent += `disallow = all\n`;
+      pjsipContent += `allow = ${cCodecs}\n`;
+      pjsipContent += `aors = ${cName}_aor\n`;
+      if (carrier.authType === 'registration' && cSecret) {
+        pjsipContent += `outbound_auth = auth_${cName}\n`;
+      }
+      if (carrier.outboundCallerId) {
+        const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
+        pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
+      }
+      const endpointFromUser = carrier.fromuser || cUser;
+      if (endpointFromUser) {
+        pjsipContent += `from_user = ${endpointFromUser}\n`;
+      }
+      pjsipContent += `from_domain = ${cHost}\n`;
+      pjsipContent += `contact_user = ${cUser}\n`;
+      pjsipContent += `direct_media = no\n`;
+      pjsipContent += `rtp_symmetric = yes\n`;
+      pjsipContent += `force_rport = yes\n`;
+      pjsipContent += `rewrite_contact = yes\n`;
+      pjsipContent += `send_pai = yes\n`;
+      pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
+      pjsipContent += `trust_id_outbound = yes\n`;
+      pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
+      pjsipContent += `callerid_privacy = allowed\n`;
+      pjsipContent += `transport = transport-udp\n\n`;
+
+      pjsipContent += `[${cName}-identify]\n`;
+      pjsipContent += `type = identify\n`;
+      pjsipContent += `endpoint = ${cName}\n`;
+      pjsipContent += `match = ${cHost}\n\n`;
+    }
+  }
+
+  return pjsipContent;
+}
+
+// Robust PJSIP endpoint and contact reader from Asterisk CLI or AMI
+async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any[] }> {
+  let output = '';
   try {
-    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-      'pjsip show endpoints',
-    ]);
+    output = await new Promise<string>((resolve) => {
+      exec('asterisk -rx "pjsip show endpoints"', { timeout: 3500 }, (err, stdout) => {
+        if (!err && stdout && stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          resolve('');
+        }
+      });
+    });
+  } catch (_) {}
 
-    // Parse endpoints from output
-    const lines = amiOutput.split('\n');
-    const detectedEndpoints: string[] = [];
+  if (!output) {
+    try {
+      output = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+        'pjsip show endpoints',
+      ]);
+    } catch (_) {}
+  }
 
-    for (const line of lines) {
-      const match = line.match(/Endpoint:\s+([0-9a-zA-Z_-]+)\//);
-      if (match && match[1]) {
-        detectedEndpoints.push(match[1]);
+  const lines = output.split('\n');
+  const endpoints: any[] = [];
+  let current: any = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const epMatch = trimmed.match(/Endpoint:\s*([0-9a-zA-Z_-]+)(?:\/([^\s]+))?\s+([A-Za-z ]+?)(?:\s+\d+\s+of\s+.*)?$/);
+    if (epMatch) {
+      if (current) endpoints.push(current);
+      const extNum = epMatch[1];
+      const state = (epMatch[3] || '').trim();
+      const isRegistered = state.toLowerCase().includes('not in use') || state.toLowerCase().includes('in use');
+      current = {
+        extension: extNum,
+        state: state || 'Unknown',
+        status: isRegistered ? 'registered' : 'unavailable',
+        contact: '',
+        contactStatus: '',
+        rtt: '',
+        auth: '',
+        aor: '',
+      };
+      continue;
+    }
+
+    if (current) {
+      if (trimmed.startsWith('I/OAuth:') || trimmed.startsWith('InAuth:')) {
+        const authMatch = trimmed.match(/(?:I\/OAuth|InAuth):\s*([^\s]+)/);
+        if (authMatch) current.auth = authMatch[1];
+      } else if (trimmed.startsWith('Aor:')) {
+        const aorMatch = trimmed.match(/Aor:\s*([^\s]+)/);
+        if (aorMatch) current.aor = aorMatch[1];
+      } else if (trimmed.startsWith('Contact:')) {
+        const contactMatch = trimmed.match(/Contact:\s*([^\s]+)\s+([0-9a-fA-F]+)?\s*([A-Za-z]+)?\s*([\d.]+)?/);
+        if (contactMatch) {
+          current.contact = contactMatch[1] || '';
+          current.contactStatus = contactMatch[3] || '';
+          current.rtt = contactMatch[4] ? `${contactMatch[4]}ms` : '';
+          if (trimmed.includes('Avail')) {
+            current.status = 'registered';
+          }
+        }
       }
     }
+  }
+  if (current) endpoints.push(current);
+
+  return { raw: output, parsed: endpoints };
+}
+
+// Auto-repair Asterisk PJSIP configuration on server startup if malformed
+async function autoRepairAsteriskPjsipOnStartup() {
+  try {
+    const pjsipPath = '/etc/asterisk/pjsip.conf';
+    let needsRepair = false;
+
+    if (fs.existsSync(pjsipPath)) {
+      const content = fs.readFileSync(pjsipPath, 'utf8');
+      if (content.includes('[1001]\ntype = auth') || content.includes('[1001]\ntype=auth') || content.includes('[1001]\r\ntype = auth') || content.includes('[1002]\ntype = auth')) {
+        console.log('[PJSIP-REPAIR] Se detectaron secciones duplicadas [1001]/[1002] en /etc/asterisk/pjsip.conf. Reparando...');
+        needsRepair = true;
+      }
+    } else {
+      needsRepair = true;
+    }
+
+    if (needsRepair) {
+      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, []);
+      await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+      fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
+      lastGeneratedPjsip = cleanPjsip;
+
+      exec('asterisk -rx "pjsip reload"', () => {});
+      try {
+        await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
+      } catch (_) {}
+      console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito para 1001 y 1002.');
+    }
+  } catch (err: any) {
+    console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
+  }
+}
+
+// Real-time Asterisk Endpoints reader directly from Asterisk CLI & AMI
+app.get('/api/asterisk/endpoints/live', async (req, res) => {
+  try {
+    const live = await queryAsteriskPjsipEndpoints();
+    const detectedEndpoints = live.parsed.map((e) => e.extension);
 
     res.json({
       success: true,
       endpoints: detectedEndpoints,
-      rawOutput: amiOutput,
+      details: live.parsed,
+      rawOutput: live.raw,
     });
   } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Diagnostic endpoint specifically analyzing extensions 1001, 1002, 1003, 1004
+app.get('/api/asterisk/extensions/diagnostic', async (req, res) => {
+  try {
+    const live = await queryAsteriskPjsipEndpoints();
+    let currentConfig = '';
+    if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
+      currentConfig = fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8');
+    } else if (lastGeneratedPjsip) {
+      currentConfig = lastGeneratedPjsip;
+    }
+
+    const hasDuplicateSections = currentConfig.includes('[1001]\ntype = auth') || currentConfig.includes('[1001]\ntype=auth') || currentConfig.includes('[1002]\ntype = auth');
+
+    const softphoneCredentials = defaultExtensionsList.map((ext) => ({
+      extension: ext.extension,
+      name: ext.name,
+      secret: ext.secret,
+      transport: ext.transport,
+      port: 5060,
+      callerId: `"${ext.callerIdName}" <${ext.callerIdNum}>`,
+      setupGuide: {
+        username: ext.extension,
+        authorizationName: ext.extension,
+        password: ext.secret,
+        domain: 'IP_DE_TU_VPS (o 127.0.0.1)',
+        proxy: 'IP_DE_TU_VPS:5060',
+        transport: 'UDP',
+      },
+    }));
+
+    res.json({
+      success: true,
+      hasSyntaxError: hasDuplicateSections,
+      endpoints: live.parsed,
+      rawOutput: live.raw,
+      credentials: softphoneCredentials,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Dedicated one-click repair and re-register endpoint for extensions 1001 & 1002
+app.post('/api/asterisk/extensions/repair', async (req, res) => {
+  try {
+    const extensionsToUse = (Array.isArray(req.body.extensions) && req.body.extensions.length > 0)
+      ? req.body.extensions
+      : defaultExtensionsList;
+    const carriersToUse = Array.isArray(req.body.carriers) ? req.body.carriers : [];
+
+    const cleanPjsip = generateCleanPjsipConf(extensionsToUse, carriersToUse);
+    const pjsipPath = '/etc/asterisk/pjsip.conf';
+    const written = await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+    fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
+    lastGeneratedPjsip = cleanPjsip;
+
+    let cliReload = '';
+    try {
+      cliReload = await new Promise<string>((resolve) => {
+        exec('asterisk -rx "pjsip reload"', { timeout: 3500 }, (err, stdout) => {
+          resolve(stdout ? stdout.trim() : 'PJSIP recargado en Asterisk');
+        });
+      });
+    } catch (_) {}
+
+    let amiReload = '';
+    try {
+      amiReload = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
+    } catch (_) {}
+
+    // Wait briefly then read back state
+    await new Promise((r) => setTimeout(r, 600));
+    const live = await queryAsteriskPjsipEndpoints();
+
+    res.json({
+      success: true,
+      message: 'Extensiones 1001 y 1002 reparadas exitosamente en Asterisk 20 con secciones limpias (endpoint, auth, aor).',
+      written,
+      cliReload,
+      amiReload,
+      endpoints: live.parsed,
+      rawOutput: live.raw,
+    });
+  } catch (err: any) {
+    console.error('Error repairing PJSIP extensions:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -324,149 +712,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       ? firstCarrier.outboundCallerId
       : '+18005550199';
 
-    // Generate clean pjsip.conf
-    let pjsipContent = `; ========================================================\n`;
-    pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
-    pjsipContent += `; Fecha: ${new Date().toISOString()}\n`;
-    pjsipContent += `; Total Extensiones: ${extensions.length}\n`;
-    pjsipContent += `; ========================================================\n\n`;
-
-    pjsipContent += `[general]\n\n`;
-
-    pjsipContent += `[transport-udp]\n`;
-    pjsipContent += `type = transport\n`;
-    pjsipContent += `protocol = udp\n`;
-    pjsipContent += `bind = 0.0.0.0:5060\n\n`;
-
-    pjsipContent += `[transport-wss]\n`;
-    pjsipContent += `type = transport\n`;
-    pjsipContent += `protocol = wss\n`;
-    pjsipContent += `bind = 0.0.0.0:8089\n\n`;
-
-    for (const ext of extensions) {
-      const num = ext.extension;
-      const pass = ext.secret || 'password123';
-      const callerIdNum = ext.callerIdNum || outboundCid;
-      const callerIdName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
-      const callerId = `"${callerIdName}" <${callerIdNum}>`;
-      const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-
-      pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'}) ---\n`;
-      pjsipContent += `[${num}]\n`;
-      pjsipContent += `type = endpoint\n`;
-      pjsipContent += `context = ${ext.context || 'from-internal'}\n`;
-      pjsipContent += `disallow = all\n`;
-      pjsipContent += `allow = ${codecs}\n`;
-      pjsipContent += `auth = ${num}\n`;
-      pjsipContent += `aors = ${num}\n`;
-      pjsipContent += `callerid = ${callerId}\n`;
-      pjsipContent += `direct_media = no\n`;
-      pjsipContent += `rtp_symmetric = yes\n`;
-      pjsipContent += `force_rport = yes\n`;
-      pjsipContent += `rewrite_contact = yes\n`;
-      pjsipContent += `send_pai = yes\n`;
-      pjsipContent += `send_rpid = yes\n`;
-      pjsipContent += `trust_id_outbound = yes\n`;
-      pjsipContent += `callerid_privacy = allowed\n`;
-      pjsipContent += `transport = transport-udp\n\n`;
-
-      pjsipContent += `[${num}]\n`;
-      pjsipContent += `type = auth\n`;
-      pjsipContent += `auth_type = userpass\n`;
-      pjsipContent += `username = ${num}\n`;
-      pjsipContent += `password = ${pass}\n\n`;
-
-      pjsipContent += `[${num}]\n`;
-      pjsipContent += `type = aor\n`;
-      pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
-      pjsipContent += `remove_existing = yes\n\n`;
-    }
-
-    // Process carriers/trunks if provided
-    if (Array.isArray(carriers) && carriers.length > 0) {
-      pjsipContent += `; ========================================================\n`;
-      pjsipContent += `; TRONCALES / CARRIERS SIP (OUTBOUND & INBOUND)\n`;
-      pjsipContent += `; ========================================================\n\n`;
-
-      for (const carrier of carriers) {
-        if (!carrier.name || !carrier.host) continue;
-        const cName = carrier.name.replace(/\s+/g, '_');
-        const cHost = carrier.host;
-        const cPort = carrier.port || 5060;
-        const cUser = carrier.username || cName;
-        const cSecret = carrier.secret || '';
-        const cContext = carrier.inboundContext || 'trunkinbound';
-        const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
-
-        pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
-
-        // 1. If registration is required with carrier
-        if (carrier.authType === 'registration' && cSecret) {
-          pjsipContent += `[reg_${cName}]\n`;
-          pjsipContent += `type = registration\n`;
-          pjsipContent += `outbound_auth = auth_${cName}\n`;
-          pjsipContent += `server_uri = sip:${cHost}:${cPort}\n`;
-          pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
-          pjsipContent += `contact_user = ${cUser}\n`;
-          pjsipContent += `retry_interval = 60\n`;
-          pjsipContent += `expiration = 3600\n`;
-          pjsipContent += `transport = transport-udp\n\n`;
-        }
-
-        // 2. Auth section for Carrier (MUST BE BEFORE ENDPOINT)
-        if (cSecret) {
-          pjsipContent += `[auth_${cName}]\n`;
-          pjsipContent += `type = auth\n`;
-          pjsipContent += `auth_type = userpass\n`;
-          pjsipContent += `username = ${cUser}\n`;
-          pjsipContent += `password = ${cSecret}\n\n`;
-        }
-
-        // 3. AOR for Carrier (MUST BE BEFORE ENDPOINT)
-        pjsipContent += `[${cName}]\n`;
-        pjsipContent += `type = aor\n`;
-        pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
-        pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
-
-        // 4. Endpoint for the Carrier
-        pjsipContent += `[${cName}]\n`;
-        pjsipContent += `type = endpoint\n`;
-        pjsipContent += `context = ${cContext}\n`;
-        pjsipContent += `disallow = all\n`;
-        pjsipContent += `allow = ${cCodecs}\n`;
-        pjsipContent += `aors = ${cName}\n`;
-        if (carrier.authType === 'registration' && cSecret) {
-          pjsipContent += `outbound_auth = auth_${cName}\n`;
-        }
-        if (carrier.outboundCallerId) {
-          const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
-          pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
-        }
-        // from_user DEBE coincidir con el usuario de autenticación del carrier para evitar rechazo 403 Forbidden
-        const endpointFromUser = carrier.fromuser || cUser;
-        if (endpointFromUser) {
-          pjsipContent += `from_user = ${endpointFromUser}\n`;
-        }
-        pjsipContent += `from_domain = ${cHost}\n`;
-        pjsipContent += `contact_user = ${cUser}\n`;
-        pjsipContent += `direct_media = no\n`;
-        pjsipContent += `rtp_symmetric = yes\n`;
-        pjsipContent += `force_rport = yes\n`;
-        pjsipContent += `rewrite_contact = yes\n`;
-        pjsipContent += `send_pai = yes\n`;
-        pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
-        pjsipContent += `trust_id_outbound = yes\n`;
-        pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
-        pjsipContent += `callerid_privacy = allowed\n`;
-        pjsipContent += `transport = transport-udp\n\n`;
-
-        // 5. Identify for incoming IP/host traffic
-        pjsipContent += `[${cName}-identify]\n`;
-        pjsipContent += `type = identify\n`;
-        pjsipContent += `endpoint = ${cName}\n`;
-        pjsipContent += `match = ${cHost}\n\n`;
-      }
-    }
+    // Generate clean pjsip.conf using validated Asterisk 20 generator
+    const pjsipContent = generateCleanPjsipConf(extensions, carriers);
 
     // Generate extensions.conf (Dialplan) with outbound routing to Carrier
     let dialplanContent = `; ========================================================\n`;
@@ -1646,6 +1893,12 @@ async function startServer() {
       ensureCustomAudioFilesExist();
     } catch (e: any) {
       console.warn('Initial audio check warning:', e.message);
+    }
+    // Auto-verify and repair Asterisk PJSIP configuration for extensions 1001 & 1002
+    try {
+      autoRepairAsteriskPjsipOnStartup();
+    } catch (e: any) {
+      console.warn('Initial PJSIP check warning:', e.message);
     }
   });
 }

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, ShieldCheck, RefreshCw, CheckCircle2, Zap } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -31,6 +31,73 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [quickCidName, setQuickCidName] = useState('Seguridad Bancaria');
   const [quickCidSaving, setQuickCidSaving] = useState(false);
   const [quickCidFeedback, setQuickCidFeedback] = useState<string | null>(null);
+
+  // Diagnostic and Repair states
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<{
+    success?: boolean;
+    hasSyntaxError?: boolean;
+    endpoints?: any[];
+    rawOutput?: string;
+    credentials?: any[];
+  } | null>(null);
+  const [repairFeedback, setRepairFeedback] = useState<string | null>(null);
+  const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [softphoneModalExt, setSoftphoneModalExt] = useState<PjsipExtension | null>(null);
+
+  const toggleSecret = (id: string) => {
+    setVisibleSecrets(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleRunDiagnostic = async () => {
+    setDiagnosticLoading(true);
+    setRepairFeedback(null);
+    try {
+      const res = await fetch('/api/asterisk/extensions/diagnostic');
+      const data = await res.json();
+      setDiagnosticInfo(data);
+    } catch (e: any) {
+      console.error('Error running diagnostic:', e);
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  };
+
+  const handleRepairAndReconnect = async () => {
+    setRepairLoading(true);
+    setRepairFeedback(null);
+    try {
+      const res = await fetch('/api/asterisk/extensions/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extensions }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRepairFeedback('✓ ¡Reparación completada! Se limpiaron los encabezados duplicados y Asterisk PJSIP fue recargado en caliente.');
+        await handleRunDiagnostic();
+        if (onSyncAsterisk) onSyncAsterisk();
+      } else {
+        setRepairFeedback(`Error en reparación: ${data.error || 'Desconocido'}`);
+      }
+    } catch (e: any) {
+      setRepairFeedback(`Fallo en conexión: ${e.message}`);
+    } finally {
+      setRepairLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    handleRunDiagnostic();
+  }, []);
 
   // Form State
   const [extNumber, setExtNumber] = useState('');
@@ -283,6 +350,117 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         </div>
       </div>
 
+      {/* Asterisk 20 PJSIP Live Diagnostic & Repair Banner */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <Server className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-white text-base">Estado de Enlace Asterisk 20 (Extensiones 1001 y 1002)</h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  PJSIP Engine
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Verificación en tiempo real de registro de softphones y objetos PJSIP (<code className="text-slate-300">endpoint/auth/aor</code>).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRunDiagnostic}
+              disabled={diagnosticLoading}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50"
+              title="Consultar estado de endpoints PJSIP en Asterisk 20"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${diagnosticLoading ? 'animate-spin' : ''}`} />
+              <span>{diagnosticLoading ? 'Verificando...' : 'Comprobar Estado'}</span>
+            </button>
+
+            <button
+              onClick={handleRepairAndReconnect}
+              disabled={repairLoading}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
+              title="Limpia duplicados en pjsip.conf, reasigna endpoints limpios y recarga Asterisk"
+            >
+              <Wrench className={`w-3.5 h-3.5 ${repairLoading ? 'animate-spin' : ''}`} />
+              <span>{repairLoading ? 'Reparando...' : 'Reparar y Reconectar PJSIP'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Live status chips for 1001, 1002, 1003 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+          {['1001', '1002', '1003', '1004'].map((num) => {
+            const epData = diagnosticInfo?.endpoints?.find((e: any) => e.extension === num);
+            const isReg = epData?.status === 'registered';
+            const stateText = epData?.state || (isReg ? 'Registrado' : 'No Conectado');
+            const contactIp = epData?.contact || 'Esperando softphone...';
+
+            return (
+              <div key={num} className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-white text-sm">Ext {num}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">PJSIP</span>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                    isReg
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isReg ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                    {isReg ? 'Online' : 'Disponible'}
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] font-mono space-y-0.5 text-slate-400">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Estado:</span>
+                    <span className="text-slate-300 font-sans text-[10px]">{stateText}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Contacto:</span>
+                    <span className="text-slate-400 truncate max-w-[110px] text-[10px]" title={contactIp}>{contactIp}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Feedback message banner if any */}
+        {repairFeedback && (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span>{repairFeedback}</span>
+            </div>
+            <button onClick={() => setRepairFeedback(null)} className="text-slate-400 hover:text-white font-bold ml-2">×</button>
+          </div>
+        )}
+
+        {diagnosticInfo?.hasSyntaxError && (
+          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>Aviso: Asterisk detectó secciones idénticas de transporte/endpoint. Haz clic en "Reparar y Reconectar PJSIP" para generar la sintaxis limpia de Asterisk 20.</span>
+            </div>
+            <button
+              onClick={handleRepairAndReconnect}
+              disabled={repairLoading}
+              className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-[10px] transition-all"
+            >
+              Reparar Ahora
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Extensions Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {extensions.map((ext) => (
@@ -341,6 +519,68 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   <span className="text-xs text-emerald-400/90 truncate max-w-[170px]">
                     {ext.lastSeen || 'Listo'}
                   </span>
+                </div>
+              </div>
+
+              {/* Credenciales Softphone PJSIP (X-Lite / Zoiper / MicroSIP) */}
+              <div className="mt-2.5 p-3 rounded-xl bg-slate-950/80 border border-emerald-500/30 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                    <Key className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Credenciales Softphone SIP</span>
+                  </span>
+                  <button
+                    onClick={() => setSoftphoneModalExt(ext)}
+                    className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold flex items-center gap-1 transition-all"
+                    title="Ver guía paso a paso para Zoiper / MicroSIP / X-Lite"
+                  >
+                    <HelpCircle className="w-3 h-3" />
+                    <span>Guía Softphone</span>
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 font-mono text-[11px]">
+                  <div className="flex items-center justify-between bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
+                    <span className="text-slate-400 font-sans text-[10px]">Usuario / Ext:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-white font-bold">{ext.extension}</span>
+                      <button
+                        onClick={() => handleCopy(ext.extension, `user-${ext.id}`)}
+                        className="text-slate-400 hover:text-emerald-400 transition-colors p-0.5"
+                        title="Copiar Usuario"
+                      >
+                        {copiedKey === `user-${ext.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
+                    <span className="text-slate-400 font-sans text-[10px]">Contraseña SIP:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-300 font-bold">
+                        {visibleSecrets[ext.id] ? ext.secret : '••••••••••••'}
+                      </span>
+                      <button
+                        onClick={() => toggleSecret(ext.id)}
+                        className="text-slate-400 hover:text-slate-200 p-0.5"
+                        title={visibleSecrets[ext.id] ? "Ocultar" : "Mostrar"}
+                      >
+                        {visibleSecrets[ext.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                      <button
+                        onClick={() => handleCopy(ext.secret, `pass-${ext.id}`)}
+                        className="text-slate-400 hover:text-emerald-400 transition-colors p-0.5"
+                        title="Copiar Contraseña"
+                      >
+                        {copiedKey === `pass-${ext.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
+                    <span className="text-slate-400 font-sans text-[10px]">Puerto / Red:</span>
+                    <span className="text-slate-300 text-[10px]">5060 (UDP - PJSIP)</span>
+                  </div>
                 </div>
               </div>
 
@@ -868,6 +1108,159 @@ qualify_frequency=60`}
                     <span>Aplicar CallerID Ahora</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Guía y Credenciales Softphone (Zoiper / MicroSIP / X-Lite) */}
+      {softphoneModalExt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-xl p-6 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Phone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    Configuración Softphone Extensión {softphoneModalExt.extension}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Copia estos parámetros exactos en tu aplicación de telefonía SIP (Zoiper, MicroSIP, X-Lite, Grandstream Wave).
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSoftphoneModalExt(null)}
+                className="text-slate-400 hover:text-white font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick copy fields */}
+            <div className="space-y-2.5 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono">
+              <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                <span className="text-slate-400 font-sans">Nombre de Cuenta / Display:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-bold">{softphoneModalExt.name || `Agente ${softphoneModalExt.extension}`}</span>
+                  <button
+                    onClick={() => handleCopy(softphoneModalExt.name || softphoneModalExt.extension, 'm-name')}
+                    className="text-slate-400 hover:text-emerald-400"
+                    title="Copiar"
+                  >
+                    {copiedKey === 'm-name' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                <span className="text-slate-400 font-sans">Extensión / Usuario SIP:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400 font-bold text-sm">{softphoneModalExt.extension}</span>
+                  <button
+                    onClick={() => handleCopy(softphoneModalExt.extension, 'm-user')}
+                    className="text-slate-400 hover:text-emerald-400"
+                    title="Copiar"
+                  >
+                    {copiedKey === 'm-user' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                <span className="text-slate-400 font-sans">ID de Autorización / Auth User:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-bold">{softphoneModalExt.extension}</span>
+                  <button
+                    onClick={() => handleCopy(softphoneModalExt.extension, 'm-auth')}
+                    className="text-slate-400 hover:text-emerald-400"
+                    title="Copiar"
+                  >
+                    {copiedKey === 'm-auth' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                <span className="text-slate-400 font-sans">Contraseña / Password:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-300 font-bold">{softphoneModalExt.secret}</span>
+                  <button
+                    onClick={() => handleCopy(softphoneModalExt.secret, 'm-pass')}
+                    className="text-slate-400 hover:text-emerald-400"
+                    title="Copiar"
+                  >
+                    {copiedKey === 'm-pass' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                <span className="text-slate-400 font-sans">Dominio / Servidor SIP:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sky-300 font-bold">IP_DE_TU_VPS (o 127.0.0.1)</span>
+                  <span className="text-[10px] text-slate-500 font-sans">(Tu servidor Asterisk)</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-400 font-sans">Puerto y Protocolo:</span>
+                <span className="text-slate-300">5060 (UDP)</span>
+              </div>
+            </div>
+
+            {/* Quick Softphone setup tips */}
+            <div className="space-y-2 text-xs text-slate-300">
+              <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Pasos para registrar en tu Softphone:</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-1">
+                  <div className="font-bold text-emerald-400 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>Zoiper / MicroSIP</span>
+                  </div>
+                  <ul className="text-slate-400 list-disc list-inside space-y-0.5">
+                    <li>Username: <b className="text-white">{softphoneModalExt.extension}</b></li>
+                    <li>Password: <b className="text-white">{softphoneModalExt.secret}</b></li>
+                    <li>Domain/Host: <b className="text-white">IP del VPS</b></li>
+                    <li>Transport: <b className="text-white">UDP</b></li>
+                  </ul>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-1">
+                  <div className="font-bold text-sky-400 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>X-Lite / Bria / GS Wave</span>
+                  </div>
+                  <ul className="text-slate-400 list-disc list-inside space-y-0.5">
+                    <li>User ID: <b className="text-white">{softphoneModalExt.extension}</b></li>
+                    <li>Auth Name: <b className="text-white">{softphoneModalExt.extension}</b></li>
+                    <li>Proxy: <b className="text-white">IP del VPS:5060</b></li>
+                    <li>STUN: <b className="text-white">Desactivado</b></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  onSimulateQualify(softphoneModalExt.extension);
+                  handleRunDiagnostic();
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 transition-all"
+              >
+                <Wifi className="w-3.5 h-3.5" />
+                <span>Comprobar Ping SIP (AMI)</span>
+              </button>
+
+              <button
+                onClick={() => setSoftphoneModalExt(null)}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all"
+              >
+                Entendido, Cerrar
               </button>
             </div>
           </div>
