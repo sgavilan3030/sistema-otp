@@ -13,15 +13,34 @@ const PORT = 3000;
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
-// Helper to execute AMI Action via raw TCP socket :5038
+// Helper to execute AMI Action via raw TCP socket :5038 with connection pooling / debounce to prevent login/logout churn
+let amiCachedResult: { data: string; timestamp: number } | null = null;
+let isAmiExecuting = false;
+
 function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
+  const isChannelsCheck = commands.length === 1 && commands[0].includes('core show channels');
+  const now = Date.now();
+
+  // If it's a routine channel poll and we have a fresh response from < 3.5s ago, reuse cache
+  if (isChannelsCheck && amiCachedResult && (now - amiCachedResult.timestamp) < 3500) {
+    return Promise.resolve(amiCachedResult.data);
+  }
+
+  // If another query is already in flight, wait or return cached
+  if (isAmiExecuting && amiCachedResult) {
+    return Promise.resolve(amiCachedResult.data);
+  }
+
+  isAmiExecuting = true;
+
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let buffer = '';
     let loggedIn = false;
     const timeout = setTimeout(() => {
-      socket.destroy();
-      resolve(buffer || 'Timeout AMI (4s)');
+      isAmiExecuting = false;
+      try { socket.destroy(); } catch (e) {}
+      resolve(buffer || amiCachedResult?.data || 'Timeout AMI (4s)');
     }, 4500);
 
     socket.connect(port, host, () => {
@@ -40,23 +59,33 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
         }
         setTimeout(() => {
           socket.write(`Action: Logoff\r\n\r\n`);
-        }, 300);
+        }, 150);
       }
 
       if (buffer.includes('Response: Goodbye')) {
         clearTimeout(timeout);
-        socket.end();
+        isAmiExecuting = false;
+        try { socket.end(); } catch (e) {}
+        if (isChannelsCheck) {
+          amiCachedResult = { data: buffer, timestamp: Date.now() };
+        }
         resolve(buffer);
       }
     });
 
     socket.on('error', (err) => {
       clearTimeout(timeout);
-      resolve(`AMI Error: ${err.message}`);
+      isAmiExecuting = false;
+      try { socket.destroy(); } catch (e) {}
+      resolve(amiCachedResult?.data || `AMI Error: ${err.message}`);
     });
 
     socket.on('close', () => {
       clearTimeout(timeout);
+      isAmiExecuting = false;
+      if (isChannelsCheck && buffer) {
+        amiCachedResult = { data: buffer, timestamp: Date.now() };
+      }
       resolve(buffer);
     });
   });
@@ -915,12 +944,21 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       channel = `Local/${formattedDest}@from-internal`;
     }
 
-    // Execute originate command via Asterisk CLI with custom CallerID
+    // Execute originate command via Asterisk CLI with custom CallerID, plus AMI fallback
     const originateCmd = `asterisk -rx "channel originate ${channel} extension s@ivr-otp callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
     
     exec(originateCmd, (err, stdout, stderr) => {
       if (err) {
-        console.warn('[ORIGINATE SIMULATION NOTICE] Asterisk CLI no disponible en contenedor:', err.message);
+        console.warn('[ORIGINATE NOTICE] Asterisk CLI direct exec failed, attempting AMI Originate fallback:', err.message);
+        // Fallback directly through AMI port 5038
+        const amiOriginateCmd = `channel originate ${channel} extension s@ivr-otp callerid "${effectiveCidName}" <${effectiveCidNum}>`;
+        sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [amiOriginateCmd])
+          .then((amiRes) => {
+            console.log(`[ORIGINATE AMI FALLBACK] Respuesta AMI para ${channel}:`, amiRes.substring(0, 150));
+          })
+          .catch((amiErr) => {
+            console.warn(`[ORIGINATE AMI FALLBACK ERROR]:`, amiErr.message);
+          });
       } else {
         console.log(`[ORIGINATE SUCCESS] Llamada lanzada a ${channel} con CallerID "${effectiveCidName}" <${effectiveCidNum}>:`, {
           audioIntro,
@@ -1331,6 +1369,37 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Endpoint to retrieve active audio configuration from Asterisk AstDB
+app.get('/api/asterisk/audio/config', (req, res) => {
+  exec(`asterisk -rx 'database show ivr_vars'`, (err, stdout) => {
+    const audios: Record<string, string> = {};
+    if (!err && stdout) {
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        // Line format: /ivr_vars/key : value
+        const match = line.match(/^\/ivr_vars\/([^\s:]+)\s*:\s*(.+)$/);
+        if (match) {
+          const key = match[1].trim();
+          const val = match[2].trim().replace(/^"|"$/g, '');
+          audios[key] = val;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      audios: {
+        intro: audios['default_intro'] || audios['8888_intro'] || audios['global_intro'] || 'custom/banrearreglado',
+        prompt: audios['default_prompt'] || audios['8888_prompt'] || audios['global_prompt'] || 'custom/solicitar_codigo_otp',
+        wait: audios['default_wait'] || audios['8888_wait'] || audios['global_wait'] || 'custom/un_momento_validando_informacion',
+        success: audios['default_success'] || audios['8888_success'] || audios['global_success'] || 'custom/operacion_bloqueada_exito',
+        agent: audios['default_agent'] || audios['8888_agent'] || audios['global_agent'] || 'custom/conectar_asesor_banco',
+      },
+      allKeys: audios,
+    });
+  });
 });
 
 // Download raw audio file for Asterisk sounds directory (/var/lib/asterisk/sounds/custom/...)

@@ -641,6 +641,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (e) {}
   };
 
+  // Cargar configuración de audios persistida desde Asterisk AstDB al inicializar la pestaña
+  useEffect(() => {
+    const fetchAsteriskAudioConfig = async () => {
+      try {
+        const res = await fetch('/api/asterisk/audio/config');
+        const data = await res.json();
+        if (data.success && data.audios) {
+          setCampaignEntities((prev) => {
+            const updated = prev.map((ent) => {
+              // Si es la entidad activa o la default, actualizar con los audios reales de Asterisk AstDB
+              if (ent.id === selectedService || ent.id === 'custom') {
+                return {
+                  ...ent,
+                  introAudioPath: data.audios.intro || ent.introAudioPath,
+                  promptAudioPath: data.audios.prompt || ent.promptAudioPath,
+                  agentAudioPath: data.audios.agent || ent.agentAudioPath,
+                  successAudioPath: data.audios.success || ent.successAudioPath,
+                };
+              }
+              return ent;
+            });
+            try {
+              localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          });
+        }
+      } catch (err) {}
+    };
+
+    fetchAsteriskAudioConfig();
+  }, []);
+
   useEffect(() => {
     fetchCapturedOtps();
     const interval = setInterval(fetchCapturedOtps, 3000);
@@ -695,7 +728,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 2000);
+    const chanInterval = setInterval(pollLiveChannels, 4500);
     return () => clearInterval(chanInterval);
   }, [selectedService]);
 
@@ -1725,6 +1758,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="text"
+                      value={campaignAudios[selectedService].introAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                      placeholder="o escribe ruta (ej: custom/mi_audio)"
+                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-emerald-500 focus:outline-none"
+                    />
                     <div className="text-[10px] text-slate-500 font-mono truncate">
                       Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].introAudioPath || 'beep'}.wav
                     </div>
@@ -1767,6 +1807,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="text"
+                      value={campaignAudios[selectedService].promptAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                      placeholder="o escribe ruta (ej: custom/solicitar_otp)"
+                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-emerald-500 focus:outline-none"
+                    />
                     <div className="text-[10px] text-slate-500 font-mono truncate">
                       Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].promptAudioPath || 'beep'}.wav
                     </div>
@@ -1807,6 +1854,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="text"
+                      value={campaignAudios[selectedService].agentAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                      placeholder="o escribe ruta (ej: custom/conectar_asesor)"
+                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-sky-500 focus:outline-none"
+                    />
                     <div className="text-[10px] text-slate-500 font-mono truncate">
                       Conecta con: Extensión {agentExtension} (Softphone X-Lite)
                     </div>
@@ -1847,6 +1901,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="text"
+                      value={campaignAudios[selectedService].successAudioPath}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                      placeholder="o escribe ruta (ej: custom/operacion_bloqueada_exito)"
+                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-purple-500 focus:outline-none"
+                    />
                     <div className="text-[10px] text-slate-500 font-mono truncate">
                       Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].successAudioPath || 'SayDigits'}.wav
                     </div>
