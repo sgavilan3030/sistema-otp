@@ -534,6 +534,22 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const handleAssignTo7777 = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 7777.`);
+    addLog(
+      'AMI',
+      `Bienvenida Extensión 7777 actualizada: ${audio.fileName}`,
+      `AstDB: database put ivr_vars 7777_intro "${audio.asteriskPath}"`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'welcome_7777', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
+  };
+
   const handleAssignToOtp = (audioId: string) => {
     setOtpConfig((prev) => ({ ...prev, welcomeAudioId: audioId }));
     const audio = audios.find((a) => a.id === audioId);
@@ -816,6 +832,7 @@ export default function App() {
             onAssignToPress1={handleAssignToPress1}
             onAssignToOtp={handleAssignToOtp}
             onAssignToAgentTransfer={handleAssignToAgentTransfer}
+            onAssignTo7777={handleAssignTo7777}
           />
         )}
 

