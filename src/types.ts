@@ -80,10 +80,31 @@ export interface OtpCaptureConfig {
   validatingWaitAudioId?: string;
 }
 
+export type AudioRole =
+  | 'press1_welcome'
+  | 'agent_transfer'
+  | 'press1_invalid'
+  | 'welcome_7777'
+  | 'otp_welcome'
+  | 'otp_wait'
+  | 'otp_success'
+  | 'otp_failure';
+
+export interface ActiveAudioAssignments {
+  press1_welcome: string;
+  agent_transfer: string;
+  press1_invalid: string;
+  welcome_7777: string;
+  otp_welcome: string;
+  otp_wait: string;
+  otp_success: string;
+  otp_failure: string;
+}
+
 export interface AudioPrompt {
   id: string;
   name: string;
-  category: 'press1_welcome' | 'press1_invalid' | 'agent_transfer' | 'otp_welcome' | 'otp_success' | 'otp_failure' | 'hold_music' | 'welcome_7777' | 'custom';
+  category: 'press1_welcome' | 'press1_invalid' | 'agent_transfer' | 'welcome_7777' | 'otp_welcome' | 'otp_wait' | 'otp_success' | 'otp_failure' | 'hold_music' | 'custom';
   fileName: string;
   fileSize: string;
   durationSec: number;

