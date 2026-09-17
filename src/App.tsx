@@ -39,7 +39,7 @@ import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
-import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('production');
@@ -166,6 +166,37 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Global OTP Alert monitor across all tabs
+  const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string } | null>(null);
+  const [dismissedOtpKey, setDismissedOtpKey] = useState<string>('');
+  const [copiedOtp, setCopiedOtp] = useState<boolean>(false);
+
+  useEffect(() => {
+    const pollGlobalOtp = async () => {
+      try {
+        const res = await fetch('/api/asterisk/otp/records');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.records) && data.records.length > 0) {
+          const newest = data.records[0];
+          const alertKey = `${newest.id}_${newest.otp}`;
+          if (newest && newest.otp && alertKey !== dismissedOtpKey) {
+            setGlobalOtpAlert(newest);
+          }
+        }
+      } catch (err) {}
+    };
+
+    pollGlobalOtp();
+    const interval = setInterval(pollGlobalOtp, 2500);
+    return () => clearInterval(interval);
+  }, [dismissedOtpKey]);
+
+  const handleCopyOtp = (otp: string) => {
+    navigator.clipboard.writeText(otp);
+    setCopiedOtp(true);
+    setTimeout(() => setCopiedOtp(false), 2000);
+  };
 
   // Active Asterisk Audio Assignments
   const [activeAudioAssignments, setActiveAudioAssignments] = useState<ActiveAudioAssignments>({
@@ -925,6 +956,71 @@ export default function App() {
         )}
       </main>
       </div>
+
+      {/* Floating OTP Notification Banner (Visible when user is browsing other tabs) */}
+      {globalOtpAlert && activeTab !== 'production' && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-950 border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl shadow-emerald-500/30 text-white">
+          <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-emerald-500/20">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                OTP Capturado en Vivo
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setDismissedOtpKey(`${globalOtpAlert.id}_${globalOtpAlert.otp}`);
+                setGlobalOtpAlert(null);
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800"
+              title="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-[11px] text-slate-400">Número destino:</div>
+              <div className="text-xs font-mono font-bold text-slate-200">{globalOtpAlert.number}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-slate-400">{globalOtpAlert.timestamp}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-1.5 py-2 mb-3 bg-slate-900/90 rounded-xl border border-emerald-500/30">
+            {globalOtpAlert.otp.split('').map((d, i) => (
+              <span
+                key={i}
+                className="w-8 h-10 flex items-center justify-center text-xl font-mono font-black text-emerald-400 bg-slate-950 rounded-lg border border-emerald-500/40"
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleCopyOtp(globalOtpAlert.otp)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-all cursor-pointer"
+            >
+              {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedOtp ? 'Copiado' : 'Copiar'}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('production')}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Ver en Vivo</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Softphone & Call Simulator Modal */}
       <CallSimulatorModal

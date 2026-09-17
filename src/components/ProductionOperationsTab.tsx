@@ -527,9 +527,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [activeCall]);
 
   // Polling captured OTPs from Asterisk backend with fast real-time response
-  const fetchCapturedOtps = async () => {
+  const fetchCapturedOtps = async (forceFresh = false) => {
     try {
-      const res = await fetch('/api/asterisk/otp/records');
+      const res = await fetch(forceFresh ? '/api/asterisk/otp/records?fresh=1' : '/api/asterisk/otp/records');
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
         setOtpRecords(data.records);
@@ -3038,8 +3038,8 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
           <div className="flex items-center gap-2">
             <button
               id="btn-refresh-otp-records"
-              onClick={fetchCapturedOtps}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-all"
+              onClick={() => fetchCapturedOtps(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-all cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Actualizar</span>

