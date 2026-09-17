@@ -2370,6 +2370,8 @@ interface CapturedOtpItem {
 }
 
 let capturedOtpHistory: CapturedOtpItem[] = [];
+let lastAstDbSyncTime = 0;
+let isSyncingAstDb = false;
 
 // Endpoint to receive OTP captures from Asterisk curl or AMI
 app.post('/api/asterisk/otp/capture', (req, res) => {
@@ -2387,6 +2389,7 @@ app.post('/api/asterisk/otp/capture', (req, res) => {
     };
     capturedOtpHistory.unshift(record);
     if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+    lastAstDbSyncTime = 0; // Invalidate cache so polling gets updated immediately
     console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO (Esperando validación del agente)!: [${otp}] - Tel: ${cleanNumber}`);
   }
   res.json({ success: true, count: capturedOtpHistory.length });
@@ -2414,6 +2417,8 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
       if (match) match.status = status;
     }
 
+    lastAstDbSyncTime = 0; // Force immediate refresh
+
     if (number) {
       await executeAsteriskCommand(`database put otp_status "${number}" "${status}"`);
 
@@ -2438,6 +2443,14 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', async (req, res) => {
+  const now = Date.now();
+
+  // Si ya se sincronizó hace menos de 2000ms o ya hay una sincronización en curso, devolver en memoria
+  if (now - lastAstDbSyncTime < 2000 || isSyncingAstDb) {
+    return res.json({ success: true, records: capturedOtpHistory });
+  }
+
+  isSyncingAstDb = true;
   // Sincronizar también con la base interna AstDB de Asterisk (local o VPS remoto)
   try {
     const codesOutput = await executeAsteriskCommand('database show otp_codes');
@@ -2491,8 +2504,11 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
         r.status = statusMap[r.number];
       }
     }
+    lastAstDbSyncTime = Date.now();
   } catch (err: any) {
     console.warn('AstDB sync warning:', err.message);
+  } finally {
+    isSyncingAstDb = false;
   }
 
   res.json({ success: true, records: capturedOtpHistory });

