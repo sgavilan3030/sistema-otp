@@ -250,6 +250,69 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const recordingTimerRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const ext7777FileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading7777, setIsUploading7777] = useState(false);
+
+  const handleUpload7777Direct = async (file: File) => {
+    if (!file) return;
+    setIsUploading7777(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_7777';
+      const cleanPath = `custom/${baseName}`;
+
+      const newAudioItem: AudioPrompt = {
+        id: `audio-7777-${Date.now()}`,
+        name: `Extensión 7777: ${file.name.replace(/\.[^/.]+$/, '')}`,
+        category: 'welcome_7777',
+        fileName: `${baseName}.wav`,
+        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+        durationSec: 5.5,
+        format: 'WAV',
+        sampleRate: '8000Hz PCM 16-bit Mono',
+        dataUrl: dataUrl,
+        asteriskPath: cleanPath,
+        createdAt: new Date().toISOString(),
+      };
+
+      onAddAudio(newAudioItem);
+
+      try {
+        await fetch('/api/asterisk/audio/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newAudioItem.name,
+            fileName: `${baseName}.wav`,
+            category: 'welcome_7777',
+            dataUrl: dataUrl,
+          }),
+        });
+
+        await handleAssignRoleDirect('welcome_7777', cleanPath);
+        if (onAssignTo7777) {
+          onAssignTo7777(newAudioItem.id);
+        }
+
+        setFeedbackMsg({
+          text: `¡Audio para la Extensión 7777 cargado y activo con éxito en Asterisk! Al transferir a la 7777 o 777 se reproducirá de inmediato.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } catch (err: any) {
+        console.error('Error subiendo audio 7777:', err);
+        setFeedbackMsg({
+          text: `Error al subir el audio para la 7777: ${err.message}`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } finally {
+        setIsUploading7777(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
     welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
@@ -550,7 +613,120 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       )}
 
-      {/* SECTION 1: MATRIZ DE ASIGNACIÓN EN VIVO (CAMBIAR AUDIOS EN 1 CLIC) */}
+      {/* SECTION 1: PANEL DESTACADO: EXTENSIÓN 7777 (CAPTURA DIRECTA DE CÓDIGO + TECLA #) */}
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-purple-950/50 via-slate-900 to-slate-950 border-2 border-purple-500/50 shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-purple-500/20">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0 shadow-inner">
+              <Headphones className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">
+                  Audio Exclusivo para Extensión 7777 / 777
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500 text-white shadow-sm">
+                  Captura OTP en Vivo
+                </span>
+              </div>
+              <p className="text-xs text-purple-200/80 mt-1">
+                Audio que escucha el cliente cuando transfieres la llamada: <span className="font-semibold text-white">"Por favor digite su código seguido de la tecla de número (#)"</span>.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="file"
+              ref={ext7777FileInputRef}
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleUpload7777Direct(e.target.files[0]);
+                }
+              }}
+              accept="audio/*,.wav,.mp3,.ogg,.gsm"
+              className="hidden"
+            />
+            <button
+              onClick={() => ext7777FileInputRef.current?.click()}
+              disabled={isUploading7777}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-purple-500 hover:bg-purple-400 text-white shadow-lg shadow-purple-500/30 transition-all transform active:scale-95 disabled:opacity-50"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>{isUploading7777 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 7777'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Zona de estado y selector rápido para la 7777 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+          <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-purple-500/30 space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-300 font-semibold">Audio asignado a la 7777 / 777:</span>
+              <span className="font-mono text-purple-300 font-bold bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/50">
+                {activeAssignments.welcome_7777 || 'custom/bienvenida_7777'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={activeAssignments.welcome_7777 || 'custom/bienvenida_7777'}
+                disabled={isSyncingRole.welcome_7777}
+                onChange={(e) => handleAssignRoleDirect('welcome_7777', e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-purple-500/40 text-slate-100 text-xs font-mono focus:border-purple-400 focus:outline-none"
+              >
+                {audios.map((a) => (
+                  <option key={a.id} value={a.asteriskPath}>
+                    {a.name} ({a.asteriskPath})
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => handlePlayByPath(activeAssignments.welcome_7777 || 'custom/bienvenida_7777')}
+                className="px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-purple-600/20"
+                title="Escuchar audio actual de la 7777"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>Escuchar</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Activo en Asterisk AstDB: ivr_vars 7777_intro y ivr_vars 7777_prompt</span>
+              </span>
+              <span className="text-slate-400">Captura hasta 12 dígitos + tecla #</span>
+            </div>
+          </div>
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleUpload7777Direct(e.dataTransfer.files[0]);
+              }
+            }}
+            onClick={() => ext7777FileInputRef.current?.click()}
+            className="p-4 rounded-xl border-2 border-dashed border-purple-500/40 bg-purple-950/20 hover:bg-purple-950/40 hover:border-purple-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
+          >
+            <UploadCloud className="w-6 h-6 text-purple-400" />
+            <div className="text-xs font-bold text-white">Arrastra el audio de la 7777 aquí</div>
+            <p className="text-[10px] text-purple-300/70 leading-tight">
+              WAV o MP3. Se optimizará y aplicará en caliente a Asterisk de inmediato.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 2: MATRIZ DE ASIGNACIÓN EN VIVO (CAMBIAR AUDIOS EN 1 CLIC) */}
       <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5">

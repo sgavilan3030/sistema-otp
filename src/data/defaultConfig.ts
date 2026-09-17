@@ -13,6 +13,19 @@ import { createSyntheticTelephonyTone } from '../utils/audioHelper';
 
 export const initialAudios: AudioPrompt[] = [
   {
+    id: 'audio-ext-7777-welcome',
+    name: 'Extensión 7777: Digite su Código + Tecla #',
+    category: 'welcome_7777',
+    fileName: 'bienvenida_7777.wav',
+    fileSize: '310 KB',
+    durationSec: 5.5,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(680.0, 2.5, [523.25, 659.25, 783.99]),
+    asteriskPath: 'custom/bienvenida_7777',
+    createdAt: '2026-09-16 12:00',
+  },
+  {
     id: 'audio-p1-welcome',
     name: 'Bienvenida Corporativa Press 1',
     category: 'press1_welcome',

