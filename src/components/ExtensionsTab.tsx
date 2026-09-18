@@ -472,7 +472,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               <div className="font-bold text-sky-400">2. Copia la Contraseña Exacta</div>
               <p className="text-slate-400 text-[10px]">
                 Ext 1001: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">Secr3tP@ssw0rd!1001</code><br />
-                Ext 1002: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1002</code>
+                Ext 1002: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1002</code><br />
+                Ext 1003: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1003</code>
               </p>
             </div>
 
