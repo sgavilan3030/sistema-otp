@@ -227,6 +227,19 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    // Fetch live Asterisk extensions on startup to ensure 100% synchronization
+    fetch('/api/asterisk/extensions')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.extensions) && data.extensions.length > 0) {
+          setExtensions(data.extensions);
+          try {
+            localStorage.setItem('ast20_extensions', JSON.stringify(data.extensions));
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleAssignRole = async (role: AudioRole, asteriskPath: string) => {
@@ -419,41 +432,37 @@ export default function App() {
   const handleAddExtension = (newExt: PjsipExtension) => {
     const updated = [...extensions, newExt];
     setExtensions(updated);
+    try {
+      localStorage.setItem('ast20_extensions', JSON.stringify(updated));
+    } catch (e) {}
     addLog(
       'PJSIP',
       `Nueva extensión PJSIP creada: ${newExt.extension} (${newExt.name})`,
       `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}-aor]`
     );
-
-    if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync(updated);
-    } else {
-      showToast(`Extensión ${newExt.extension} agregada.`);
-    }
+    handleQuickSync(updated);
   };
 
   const handleUpdateExtension = (updatedExt: PjsipExtension) => {
     const updated = extensions.map((e) => (e.id === updatedExt.id ? updatedExt : e));
     setExtensions(updated);
+    try {
+      localStorage.setItem('ast20_extensions', JSON.stringify(updated));
+    } catch (e) {}
     addLog('PJSIP', `Extensión PJSIP modificada: ${updatedExt.extension}`);
-    if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync(updated);
-    } else {
-      showToast(`Extensión ${updatedExt.extension} actualizada.`);
-    }
+    handleQuickSync(updated);
   };
 
   const handleDeleteExtension = (id: string) => {
     const ext = extensions.find((e) => e.id === id);
     const updated = extensions.filter((e) => e.id !== id);
     setExtensions(updated);
+    try {
+      localStorage.setItem('ast20_extensions', JSON.stringify(updated));
+    } catch (e) {}
     if (ext) {
       addLog('PJSIP', `Extensión PJSIP eliminada del sistema: ${ext.extension}`);
-      if (connectionSettings.autoSyncOnChange) {
-        handleQuickSync(updated);
-      } else {
-        showToast(`Extensión ${ext.extension} eliminada.`);
-      }
+      handleQuickSync(updated);
     }
   };
 

@@ -974,6 +974,95 @@ app.get('/api/asterisk/endpoints/live', async (req, res) => {
   }
 });
 
+// Helper to parse extensions, auth passwords, callerids, and aor settings from pjsip.conf
+function parseExtensionsFromPjsip(content: string): any[] {
+  if (!content) return [];
+  const sections: { name: string; props: Record<string, string> }[] = [];
+  let currentSection: { name: string; props: Record<string, string> } | null = null;
+
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith(';') || !trimmed) continue;
+    const secMatch = trimmed.match(/^\[([^\]]+)\]/);
+    if (secMatch) {
+      currentSection = { name: secMatch[1], props: {} };
+      sections.push(currentSection);
+      continue;
+    }
+    if (currentSection && trimmed.includes('=')) {
+      const parts = trimmed.split('=');
+      const k = parts[0].trim().toLowerCase();
+      const v = parts.slice(1).join('=').trim();
+      currentSection.props[k] = v;
+    }
+  }
+
+  const endpoints = sections.filter((s) => /^\d{3,5}$/.test(s.name) && s.props.type === 'endpoint');
+  const auths = sections.filter((s) => s.props.type === 'auth');
+  const aors = sections.filter((s) => s.props.type === 'aor');
+
+  const exts: any[] = [];
+  for (const ep of endpoints) {
+    const secName = ep.name;
+    const props = ep.props;
+    const authSec = auths.find((a) => a.name === `${secName}-auth` || a.name === props.auth)?.props || {};
+    const aorSec = aors.find((a) => a.name === `${secName}-aor` || a.name === secName)?.props || {};
+    let callerIdNum = '';
+    let callerIdName = '';
+    if (props.callerid) {
+      const m = props.callerid.match(/"?([^"<]*)"?\s*<([^>]*)>/);
+      if (m) {
+        callerIdName = m[1].trim();
+        callerIdNum = m[2].trim();
+      }
+    }
+    exts.push({
+      id: `ext-${secName}`,
+      extension: secName,
+      name: callerIdName || `Ext ${secName}`,
+      secret: authSec.password || `SecretPass#${secName}`,
+      context: props.context || 'from-internal',
+      codecs: props.allow ? props.allow.split(',').map((c: string) => c.trim()) : ['ulaw', 'alaw'],
+      maxContacts: parseInt(aorSec.max_contacts || props.max_contacts || '5', 10),
+      transport: props.transport || 'transport-udp',
+      callerId: props.callerid || '',
+      callerIdNum: callerIdNum || '+18005550199',
+      callerIdName: callerIdName || 'Seguridad Bancaria',
+      status: 'registered',
+    });
+  }
+  return exts;
+}
+
+// Endpoint to get live extensions and passwords currently governing Asterisk
+app.get('/api/asterisk/extensions', async (req, res) => {
+  try {
+    let pjsipContent = '';
+    if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
+      pjsipContent = fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8');
+    } else if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
+      try {
+        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`);
+        if (resp.ok) {
+          pjsipContent = await resp.text();
+        }
+      } catch (_) {}
+    }
+
+    if (!pjsipContent && lastGeneratedPjsip) {
+      pjsipContent = lastGeneratedPjsip;
+    }
+
+    const parsedExtensions = parseExtensionsFromPjsip(pjsipContent);
+    res.json({
+      success: true,
+      extensions: parsedExtensions.length > 0 ? parsedExtensions : defaultExtensionsList,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Diagnostic endpoint specifically analyzing extensions 1001, 1002, 1003, 1004
 app.get('/api/asterisk/extensions/diagnostic', async (req, res) => {
   try {
@@ -981,13 +1070,23 @@ app.get('/api/asterisk/extensions/diagnostic', async (req, res) => {
     let currentConfig = '';
     if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
       currentConfig = fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8');
+    } else if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
+      try {
+        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`);
+        if (resp.ok) {
+          currentConfig = await resp.text();
+        }
+      } catch (_) {}
     } else if (lastGeneratedPjsip) {
       currentConfig = lastGeneratedPjsip;
     }
 
     const hasDuplicateSections = currentConfig.includes('[1001]\ntype = auth') || currentConfig.includes('[1001]\ntype=auth') || currentConfig.includes('[1002]\ntype = auth');
 
-    const softphoneCredentials = defaultExtensionsList.map((ext) => ({
+    const parsedExts = parseExtensionsFromPjsip(currentConfig);
+    const activeList = parsedExts.length > 0 ? parsedExts : defaultExtensionsList;
+
+    const softphoneCredentials = activeList.map((ext: any) => ({
       extension: ext.extension,
       name: ext.name,
       secret: ext.secret,
@@ -998,8 +1097,8 @@ app.get('/api/asterisk/extensions/diagnostic', async (req, res) => {
         username: ext.extension,
         authorizationName: ext.extension,
         password: ext.secret,
-        domain: 'IP_DE_TU_VPS (o 127.0.0.1)',
-        proxy: 'IP_DE_TU_VPS:5060',
+        domain: '169.58.66.206',
+        proxy: '',
         transport: 'UDP',
       },
     }));
@@ -1536,6 +1635,22 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
       });
     });
+
+    // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge
+    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
+      try {
+        const remoteSyncResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/sync/extensions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body),
+        });
+        if (remoteSyncResp.ok) {
+          console.log(`[ASTERISK-SYNC] ✓ Replicado exitosamente en VPS Asterisk remoto: ${REMOTE_ASTERISK_HTTP}`);
+        }
+      } catch (fwdErr: any) {
+        console.warn(`[ASTERISK-SYNC] Remote sync forward notice:`, fwdErr.message);
+      }
+    }
 
     console.log(`[ASTERISK-SYNC] ✓ Sincronización completa: ${extensions.length} extensiones, PJSIP=${pjsipWritten}, Dialplan=${dialplanWritten}`);
 
