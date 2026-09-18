@@ -1653,9 +1653,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     ];
 
     for (const cmd of astDbCommands) {
-      exec(`asterisk -rx '${cmd}'`, (err) => {
-        if (err) console.warn(`AstDB notice on ${cmd}:`, err.message);
-      });
+      executeAsteriskCommand(cmd).catch(() => {});
     }
 
     // Determine channel: if <= 4 digits, direct internal extension
@@ -2227,9 +2225,7 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
     }
 
     for (const cmd of commands) {
-      exec(`asterisk -rx '${cmd}'`, (err) => {
-        if (err) console.warn('AstDB sync-defaults notice:', err.message);
-      });
+      executeAsteriskCommand(cmd).catch(() => {});
     }
 
     console.log('[AstDB SUCCESS] Audios sincronizados en base de datos de Asterisk:', { intro, prompt, wait, success, agent });
