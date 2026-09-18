@@ -396,7 +396,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `disallow = all\n`;
     pjsipContent += `allow = ${codecs}\n`;
     pjsipContent += `auth = ${num}-auth\n`;
-    pjsipContent += `aors = ${num}-aor\n`;
+    pjsipContent += `aors = ${num},${num}-aor\n`;
     pjsipContent += `callerid = ${callerId}\n`;
     pjsipContent += `direct_media = no\n`;
     pjsipContent += `rtp_symmetric = yes\n`;
@@ -414,6 +414,13 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `auth_type = userpass\n`;
     pjsipContent += `username = ${num}\n`;
     pjsipContent += `password = ${pass}\n\n`;
+
+    pjsipContent += `[${num}]\n`;
+    pjsipContent += `type = aor\n`;
+    pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
+    pjsipContent += `remove_existing = yes\n`;
+    pjsipContent += `qualify_frequency = 60\n`;
+    pjsipContent += `qualify_timeout = 3.0\n\n`;
 
     pjsipContent += `[${num}-aor]\n`;
     pjsipContent += `type = aor\n`;
