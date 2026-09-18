@@ -9,6 +9,7 @@ interface ExtensionsTabProps {
   onDeleteExtension: (id: string) => void;
   onSimulateQualify: (extNumber: string) => void;
   onSyncAsterisk?: () => void;
+  onResetDefaultExtensions?: () => void;
   isSyncing?: boolean;
 }
 
@@ -19,6 +20,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onDeleteExtension,
   onSimulateQualify,
   onSyncAsterisk,
+  onResetDefaultExtensions,
   isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -325,7 +327,19 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {onResetDefaultExtensions && (
+            <button
+              id="btn-restore-default-extensions"
+              onClick={onResetDefaultExtensions}
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-md transition-all"
+              title="Restaura en la web y en Asterisk las extensiones oficiales 1001, 1002, 1003 y 1004"
+            >
+              <Zap className="w-4 h-4 text-amber-400" />
+              <span>Cargar 1001, 1002, 1003</span>
+            </button>
+          )}
+
           {onSyncAsterisk && (
             <button
               id="btn-sync-asterisk-now"

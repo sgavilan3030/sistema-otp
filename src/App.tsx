@@ -47,7 +47,15 @@ export default function App() {
   // Core Data States with localStorage persistence
   const [extensions, setExtensions] = useState<PjsipExtension[]>(() => {
     const saved = localStorage.getItem('ast20_extensions');
-    return saved ? JSON.parse(saved) : initialExtensions;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 3) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return initialExtensions;
   });
 
   const [carriers, setCarriers] = useState<CarrierTrunk[]>(() => {
@@ -447,6 +455,16 @@ export default function App() {
         showToast(`Extensión ${ext.extension} eliminada.`);
       }
     }
+  };
+
+  const handleResetDefaultExtensions = () => {
+    setExtensions(initialExtensions);
+    try {
+      localStorage.setItem('ast20_extensions', JSON.stringify(initialExtensions));
+    } catch (e) {}
+    showToast('Extensiones oficiales (1001, 1002, 1003, 1004) restauradas con éxito.', 'success');
+    addLog('PJSIP', 'Cargadas extensiones 1001, 1002, 1003 y 1004 en memoria y sincronizadas.');
+    handleQuickSync(initialExtensions);
   };
 
   const handleSimulateQualify = (extNumber: string) => {
@@ -857,6 +875,7 @@ export default function App() {
             onDeleteExtension={handleDeleteExtension}
             onSimulateQualify={handleSimulateQualify}
             onSyncAsterisk={() => handleQuickSync(extensions)}
+            onResetDefaultExtensions={handleResetDefaultExtensions}
             isSyncing={isSyncing}
           />
         )}
