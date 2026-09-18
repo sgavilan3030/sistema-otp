@@ -381,10 +381,11 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
   pjsipContent += `bind = 0.0.0.0:8089\n\n`;
 
   for (const ext of extsToUse) {
-    const num = ext.extension;
-    const pass = ext.secret || 'password123';
-    const callerIdNum = ext.callerIdNum || '+18005550199';
-    const callerIdName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
+    const rawNum = (ext.extension || ext.id || ext.number || ext.num || '').toString();
+    const num = rawNum.replace(/\D/g, '') || '1001';
+    const pass = ext.secret || ext.password || 'Secr3tP@ssw0rd!1001';
+    const callerIdNum = ext.callerIdNum || ext.outboundCallerId || num;
+    const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
     const callerId = `"${callerIdName}" <${callerIdNum}>`;
     const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
     const transport = ext.transport === 'transport-wss' ? 'transport-wss' : (ext.transport === 'transport-tcp' ? 'transport-tcp' : 'transport-udp');
@@ -396,7 +397,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `disallow = all\n`;
     pjsipContent += `allow = ${codecs}\n`;
     pjsipContent += `auth = ${num}-auth\n`;
-    pjsipContent += `aors = ${num},${num}-aor\n`;
+    pjsipContent += `aors = ${num}-aor\n`;
     pjsipContent += `callerid = ${callerId}\n`;
     pjsipContent += `direct_media = no\n`;
     pjsipContent += `rtp_symmetric = yes\n`;
@@ -406,6 +407,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `send_rpid = yes\n`;
     pjsipContent += `trust_id_outbound = yes\n`;
     pjsipContent += `trust_id_inbound = yes\n`;
+    pjsipContent += `device_state_busy_at = 1\n`;
     pjsipContent += `callerid_privacy = allowed\n`;
     pjsipContent += `transport = ${transport}\n\n`;
 
@@ -415,19 +417,13 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `username = ${num}\n`;
     pjsipContent += `password = ${pass}\n\n`;
 
-    pjsipContent += `[${num}]\n`;
-    pjsipContent += `type = aor\n`;
-    pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
-    pjsipContent += `remove_existing = yes\n`;
-    pjsipContent += `qualify_frequency = 60\n`;
-    pjsipContent += `qualify_timeout = 3.0\n\n`;
-
     pjsipContent += `[${num}-aor]\n`;
     pjsipContent += `type = aor\n`;
-    pjsipContent += `max_contacts = ${ext.maxContacts || 5}\n`;
+    pjsipContent += `max_contacts = ${ext.maxContacts || 10}\n`;
     pjsipContent += `remove_existing = yes\n`;
-    pjsipContent += `qualify_frequency = 60\n`;
-    pjsipContent += `qualify_timeout = 3.0\n\n`;
+    pjsipContent += `qualify_frequency = 30\n`;
+    pjsipContent += `qualify_timeout = 5.0\n`;
+    pjsipContent += `authenticate_qualify = no\n\n`;
   }
 
   // Process carriers/trunks if provided or default to ghost trunk
