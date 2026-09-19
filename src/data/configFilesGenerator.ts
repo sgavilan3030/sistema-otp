@@ -188,6 +188,12 @@ ${extensions
 exten => ${press1.extension},1,Goto(ivr-press1,s,1)
 exten => ${otp.extension},1,Goto(ivr-otp-capture,s,1)
 
+; Extensiones de Captura OTP en Vivo (Transferencia de Asesor)
+exten => 7777,1,Goto(ivr-otp-live-7777,s,1)
+exten => 777,1,Goto(ivr-otp-live-7777,s,1)
+exten => 6666,1,Goto(ivr-otp-live-6666,s,1)
+exten => 666,1,Goto(ivr-otp-live-6666,s,1)
+
 ; ------------------------------------------------------------------------------
 ; DIALPLAN ENTRY (extensions.conf) - RUTAS SALIENTES POR TRONCAL CARRIER
 ; ------------------------------------------------------------------------------
