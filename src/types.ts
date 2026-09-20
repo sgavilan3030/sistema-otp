@@ -49,6 +49,7 @@ export interface Press1Config {
   welcomeAudioId?: string;
   timeoutSeconds: number;
   maxRetries: number;
+  answerDelaySeconds?: number; // Pausa natural al contestar (ej. 1 seg) antes de que empiece a hablar el IVR
   transferDelaySeconds?: number; // Pausa natural de cortesía (ej. 2 seg) tras presionar 1 antes de locución
   digit1Action: 'transfer_extension' | 'queue' | 'webhook';
   digit1Target: string; // e.g., "1001" or "support_queue"
@@ -66,6 +67,7 @@ export interface OtpCaptureConfig {
   welcomeAudioId?: string;
   repeatPromptOnTimeout: boolean;
   timeoutSeconds: number;
+  answerDelaySeconds?: number; // Pausa natural al contestar (ej. 1 seg) antes de reproducir el audio OTP
   maxAttempts: number;
   webhookUrl: string;
   webhookAuthHeader: string;

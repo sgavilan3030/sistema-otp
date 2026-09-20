@@ -340,7 +340,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-slate-300 font-medium mb-1">Extensión IVR</label>
                 <input
@@ -348,6 +348,19 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   value={press1.extension}
                   onChange={(e) => setPress1({ ...press1, extension: e.target.value })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-medium mb-1" title="Tiempo de cortesía tras descolgar para que el cliente se lleve el teléfono al oído y el canal de audio se abra">
+                  Pausa al Contestar <span className="text-emerald-400 font-mono font-bold">(seg)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={press1.answerDelaySeconds ?? 1}
+                  onChange={(e) => setPress1({ ...press1, answerDelaySeconds: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -552,7 +565,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-slate-300 font-medium mb-1">Extensión OTP</label>
                 <input
@@ -560,6 +573,20 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   value={otp.extension}
                   onChange={(e) => setOtp({ ...otp, extension: e.target.value })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1" title="Pausa de cortesía tras descolgar antes de solicitar el código">
+                  Pausa al Contestar <span className="text-blue-400 font-mono font-bold">(seg)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={otp.answerDelaySeconds ?? 1}
+                  onChange={(e) => setOtp({ ...otp, answerDelaySeconds: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-blue-500/40 text-blue-300 font-mono font-bold focus:border-blue-500 focus:outline-none"
                 />
               </div>
 

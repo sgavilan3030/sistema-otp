@@ -275,7 +275,7 @@ exten => _X.,1,NoOp(Llamada entrante trunkinbound: \${CALLERID(all)})
 [ivr-press1]
 exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  same => n,Answer()
- same => n,Wait(1)
+ same => n,Wait(${press1.answerDelaySeconds ?? 1})
  same => n,Set(LOOP_COUNT=0)
 
  same => n(menu),Set(LOOP_COUNT=$[\${LOOP_COUNT} + 1])
@@ -333,7 +333,7 @@ exten => s,n(timeout_hangup),NoOp(Intentos maximos superados)
 [ivr-otp-capture]
 exten => s,1,NoOp(=== INICIO CAPTURA DE OTP ===)
  same => n,Answer()
- same => n,Wait(1)
+ same => n,Wait(${otp.answerDelaySeconds ?? 1})
  ; Si ARI esta activo, entrega el canal a la aplicacion Stasis
  same => n,Stasis(${otp.stasisAppName})
  ; Si Stasis no responde, ejecutar el fallback nativo:
@@ -381,7 +381,7 @@ exten => s,1,Goto(ivr-otp-live-7777,s,1)
 [ivr-otp-live-7777]
 exten => s,1,NoOp(=== CAPTURA EN VIVO EXT 7777: Esperando ingreso de codigo ===)
  same => n,Answer()
- same => n,Wait(0.3)
+ same => n,Wait(1)
  same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})
  same => n,Set(RETRY_COUNT=0)
  same => n(pedir_codigo_7777),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])
@@ -413,7 +413,7 @@ exten => s,1,Goto(ivr-otp-live-6666,s,1)
 [ivr-otp-live-6666]
 exten => s,1,NoOp(=== CAPTURA EN VIVO EXT 6666: Esperando ingreso de codigo ===)
  same => n,Answer()
- same => n,Wait(0.3)
+ same => n,Wait(1)
  same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})
  same => n,Set(RETRY_COUNT=0)
  same => n(pedir_codigo_6666),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])

