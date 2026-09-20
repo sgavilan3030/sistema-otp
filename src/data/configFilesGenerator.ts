@@ -1,18 +1,38 @@
 import { PjsipExtension, CarrierTrunk, Press1Config, OtpCaptureConfig, AsteriskConnectionSettings } from '../types';
 
 export function generatePjsipConf(extensions: PjsipExtension[], carriers: CarrierTrunk[]): string {
+  const usedPorts = new Set<number>();
+  usedPorts.add(5060);
+  extensions.forEach((ext) => {
+    const p = ext.port || 5060;
+    if (p > 0 && p <= 65535) usedPorts.add(p);
+  });
+
   let conf = `; ==============================================================================
 ; ASTERISK 20 - PJSIP CONFIGURATION (Generado por Asterisk 20 Governor)
 ; Sincronización automática vía AMI: "pjsip reload"
+; Puertos SIP Activos: ${Array.from(usedPorts).join(', ')}
 ; ==============================================================================
 
-; --- TRANSPORTE UDP ---
-[transport-udp]
+; --- TRANSPORTES SIP ---
+`;
+
+  usedPorts.forEach((p) => {
+    const suffix = p === 5060 ? '' : `-${p}`;
+    conf += `[transport-udp${suffix}]
 type=transport
 protocol=udp
-bind=0.0.0.0:5060
+bind=0.0.0.0:${p}
 
-; --- TRANSPORTE WSS (WebRTC Softphone) ---
+[transport-tcp${suffix}]
+type=transport
+protocol=tcp
+bind=0.0.0.0:${p}
+
+`;
+  });
+
+  conf += `; --- TRANSPORTE WSS (WebRTC Softphone) ---
 [transport-wss]
 type=transport
 protocol=wss
@@ -37,14 +57,27 @@ rtp_symmetric=yes
 `;
 
   extensions.forEach((ext) => {
+    const p = ext.port || 5060;
+    const portSuffix = p === 5060 ? '' : `-${p}`;
+    let transport = `transport-udp${portSuffix}`;
+    if (ext.transport === 'transport-wss') {
+      transport = 'transport-wss';
+    } else if (ext.transport === 'transport-tcp') {
+      transport = `transport-tcp${portSuffix}`;
+    } else if (ext.transport === 'transport-tls') {
+      transport = `transport-tls${portSuffix}`;
+    } else {
+      transport = `transport-udp${portSuffix}`;
+    }
+
     conf += `
-; --- Extensión ${ext.extension} (${ext.name}) ---
+; --- Extensión ${ext.extension} (${ext.name} - Puerto ${p}) ---
 [${ext.extension}](endpoint-basic)
 auth=${ext.extension}-auth
 aors=${ext.extension}-aor
 callerid=${ext.callerId}
 allow=${ext.codecs.join(',')}
-transport=${ext.transport}
+transport=${transport}
 
 [${ext.extension}-auth]
 type=auth

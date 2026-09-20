@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -109,6 +109,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [extCallerIdName, setExtCallerIdName] = useState('Seguridad Bancaria');
   const [extContext, setExtContext] = useState('from-internal');
   const [extTransport, setExtTransport] = useState<PjsipExtension['transport']>('transport-udp');
+  const [extPort, setExtPort] = useState<number>(47923);
   const [extMaxContacts, setExtMaxContacts] = useState(2);
   const [selectedCodecs, setSelectedCodecs] = useState<string[]>(['ulaw', 'alaw', 'g722']);
 
@@ -130,6 +131,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtCallerIdName('Seguridad Bancaria');
     setExtContext('from-internal');
     setExtTransport('transport-udp');
+    setExtPort(47923);
     setExtMaxContacts(2);
     setSelectedCodecs(['ulaw', 'alaw', 'g722']);
     setIsModalOpen(true);
@@ -145,6 +147,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtCallerIdName(ext.callerIdName || ext.name || 'Seguridad Bancaria');
     setExtContext(ext.context);
     setExtTransport(ext.transport);
+    setExtPort(ext.port || 47923);
     setExtMaxContacts(ext.maxContacts);
     setSelectedCodecs(ext.codecs);
     setIsModalOpen(true);
@@ -239,6 +242,11 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     const effectiveCidNum = (extCallerIdNum || extNumber).trim();
     const effectiveCidName = (extCallerIdName || extName || `Ext ${extNumber}`).trim();
     const callerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
+    const portNum = parseInt(String(extPort), 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      setValidationError('El puerto de transporte PJSIP debe ser un número válido entre 1 y 65535 (ejemplo: 47923 o 5060).');
+      return;
+    }
 
     if (editingExt) {
       onUpdateExtension({
@@ -248,11 +256,15 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         secret: extSecret,
         context: extContext,
         transport: extTransport,
+        port: portNum,
         maxContacts: extMaxContacts,
         codecs: selectedCodecs,
         callerId,
         callerIdNum: effectiveCidNum,
         callerIdName: effectiveCidName,
+        ipAddress: editingExt.ipAddress?.includes(':')
+          ? `${editingExt.ipAddress.split(':')[0]}:${portNum}`
+          : `192.168.1.145:${portNum}`,
       });
     } else {
       onAddExtension({
@@ -262,13 +274,14 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         secret: extSecret,
         context: extContext,
         transport: extTransport,
+        port: portNum,
         maxContacts: extMaxContacts,
         codecs: selectedCodecs,
         callerId,
         callerIdNum: effectiveCidNum,
         callerIdName: effectiveCidName,
         status: 'registered',
-        ipAddress: `192.168.1.${Math.floor(Math.random() * 150) + 50}:5060`,
+        ipAddress: `192.168.1.${Math.floor(Math.random() * 150) + 50}:${portNum}`,
         lastSeen: 'Recién creada (Sincronizada vía AMI)',
       });
     }
@@ -642,7 +655,10 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
 
                   <div className="flex items-center justify-between bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
                     <span className="text-slate-400 font-sans text-[10px]">Puerto / Red:</span>
-                    <span className="text-slate-300 text-[10px]">5060 (UDP - PJSIP)</span>
+                    <span className="text-slate-300 text-[10px] font-mono flex items-center gap-1">
+                      <span className="text-sky-400 font-bold">{ext.port || 5060}</span>
+                      <span>({ext.transport === 'transport-tcp' ? 'TCP' : ext.transport === 'transport-tls' ? 'TLS' : ext.transport === 'transport-wss' ? 'WSS' : 'UDP'} - PJSIP)</span>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -887,12 +903,64 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                     onChange={(e) => setExtTransport(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   >
-                    <option value="transport-udp">UDP (5060)</option>
-                    <option value="transport-tcp">TCP (5060)</option>
-                    <option value="transport-tls">TLS Seguro (5061)</option>
+                    <option value="transport-udp">UDP (VoIP Estándar)</option>
+                    <option value="transport-tcp">TCP</option>
+                    <option value="transport-tls">TLS Seguro</option>
                     <option value="transport-wss">WSS WebRTC (8089)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Puerto de Transporte SIP / PJSIP Personalizable a Voluntad */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-sky-500/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sky-300 font-bold text-xs flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Puerto de Transporte PJSIP / SIP *</span>
+                  </label>
+                  <span className="text-[10px] font-mono text-slate-400">Rango: 1 - 65535</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    required
+                    value={extPort}
+                    onChange={(e) => setExtPort(parseInt(e.target.value, 10) || 5060)}
+                    placeholder="47923"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-700 text-white font-mono font-bold text-sm focus:border-sky-500 focus:outline-none"
+                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setExtPort(47923)}
+                      className={`px-2.5 py-1.5 rounded text-[11px] font-mono font-bold transition-all ${
+                        extPort === 47923
+                          ? 'bg-sky-500 text-slate-950 border border-sky-400 shadow-sm'
+                          : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30'
+                      }`}
+                      title="Asignar puerto seguro 47923"
+                    >
+                      47923 (Seguro)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExtPort(5060)}
+                      className={`px-2.5 py-1.5 rounded text-[11px] font-mono transition-all ${
+                        extPort === 5060
+                          ? 'bg-slate-700 text-white border border-slate-600 font-bold'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                      }`}
+                      title="Puerto SIP estándar 5060"
+                    >
+                      5060
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Asterisk vinculará el transporte de esta extensión a este puerto (<code className="text-sky-300 font-mono">0.0.0.0:{extPort}</code>). Usar un puerto alternativo como <b className="text-sky-300 font-mono">47923</b> previene ataques de escaneo automatizado contra el puerto estándar 5060.
+                </p>
               </div>
 
               <div>
@@ -970,15 +1038,20 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             </div>
 
             <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300/90 overflow-x-auto">
-{`[${previewExt.extension}]
+{`[transport-udp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}]
+type=transport
+protocol=udp
+bind=0.0.0.0:${previewExt.port || 5060}
+
+[${previewExt.extension}]
 type=endpoint
 context=${previewExt.context}
 disallow=all
 allow=${previewExt.codecs.join(',')}
 auth=${previewExt.extension}-auth
-aors=${previewExt.extension}-aor
+aors=${previewExt.extension}
 callerid=${previewExt.callerId}
-transport=${previewExt.transport}
+transport=${previewExt.transport === 'transport-wss' ? 'transport-wss' : (previewExt.transport === 'transport-tcp' ? `transport-tcp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}` : `transport-udp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}`)}
 direct_media=no
 
 [${previewExt.extension}-auth]
@@ -987,7 +1060,7 @@ auth_type=userpass
 username=${previewExt.extension}
 password=${previewExt.secret}
 
-[${previewExt.extension}-aor]
+[${previewExt.extension}]
 type=aor
 max_contacts=${previewExt.maxContacts}
 remove_existing=yes
@@ -1264,14 +1337,32 @@ qualify_frequency=60`}
               <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
                 <span className="text-slate-400 font-sans">Dominio / Servidor SIP:</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sky-300 font-bold">IP_DE_TU_VPS (o 127.0.0.1)</span>
+                  <span className="text-sky-300 font-bold font-mono">IP_DE_TU_VPS:{softphoneModalExt.port || 5060}</span>
                   <span className="text-[10px] text-slate-500 font-sans">(Tu servidor Asterisk)</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between py-1">
                 <span className="text-slate-400 font-sans">Puerto y Protocolo:</span>
-                <span className="text-slate-300">5060 (UDP)</span>
+                <span className="text-sky-300 font-mono font-bold">
+                  {softphoneModalExt.port || 5060} ({softphoneModalExt.transport.replace('transport-', '').toUpperCase()})
+                </span>
+              </div>
+            </div>
+
+            {/* Banner de Puerto Personalizado */}
+            <div className="p-3 rounded-xl bg-sky-950/40 border border-sky-500/30 text-xs text-sky-200 flex items-start gap-2.5">
+              <Shield className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold text-white flex items-center gap-2">
+                  <span>Puerto PJSIP de esta extensión:</span>
+                  <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono font-bold border border-sky-500/40">
+                    {softphoneModalExt.port || 5060}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-normal">
+                  Al registrar tu Softphone (MicroSIP / Zoiper / GS Wave), debes especificar el puerto <b className="text-sky-300 font-mono">:{softphoneModalExt.port || 5060}</b> en el campo de Dominio o Proxy saliente para conectar con éxito y evadir escaneos en el puerto 5060.
+                </p>
               </div>
             </div>
 
@@ -1284,11 +1375,11 @@ qualify_frequency=60`}
                     <Check className="w-3 h-3" />
                     <span>Zoiper / MicroSIP</span>
                   </div>
-                  <ul className="text-slate-400 list-disc list-inside space-y-0.5">
+                  <ul className="text-slate-400 list-disc list-inside space-y-0.5 font-mono">
                     <li>Username: <b className="text-white">{softphoneModalExt.extension}</b></li>
                     <li>Password: <b className="text-white">{softphoneModalExt.secret}</b></li>
-                    <li>Domain/Host: <b className="text-white">IP del VPS</b></li>
-                    <li>Transport: <b className="text-white">UDP</b></li>
+                    <li>Domain/Host: <b className="text-sky-300">IP_VPS:{softphoneModalExt.port || 5060}</b></li>
+                    <li>Transport: <b className="text-white">{softphoneModalExt.transport.replace('transport-', '').toUpperCase()}</b></li>
                   </ul>
                 </div>
 
@@ -1297,10 +1388,10 @@ qualify_frequency=60`}
                     <Check className="w-3 h-3" />
                     <span>X-Lite / Bria / GS Wave</span>
                   </div>
-                  <ul className="text-slate-400 list-disc list-inside space-y-0.5">
+                  <ul className="text-slate-400 list-disc list-inside space-y-0.5 font-mono">
                     <li>User ID: <b className="text-white">{softphoneModalExt.extension}</b></li>
                     <li>Auth Name: <b className="text-white">{softphoneModalExt.extension}</b></li>
-                    <li>Proxy: <b className="text-white">IP del VPS:5060</b></li>
+                    <li>Proxy: <b className="text-sky-300">IP_VPS:{softphoneModalExt.port || 5060}</b></li>
                     <li>STUN: <b className="text-white">Desactivado</b></li>
                   </ul>
                 </div>

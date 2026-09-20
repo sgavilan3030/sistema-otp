@@ -3,6 +3,7 @@
   "agent_transfer": "custom/conectar_asesor_banco",
   "press1_invalid": "custom/opcion_invalida",
   "welcome_7777": "custom/bienvenida_7777",
+  "welcome_6666": "custom/solicitar_codigo_otp",
   "otp_welcome": "custom/solicitar_codigo_otp",
   "otp_wait": "custom/un_momento_validando_informacion",
   "otp_success": "custom/operacion_bloqueada_exito",

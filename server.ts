@@ -357,25 +357,39 @@ const defaultExtensionsList = [
 function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string {
   const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
 
+  // Collect all unique ports used by extensions, default to 5060
+  const usedPorts = new Set<number>();
+  usedPorts.add(5060);
+  for (const ext of extsToUse) {
+    const p = parseInt(ext.port, 10);
+    if (!isNaN(p) && p > 0 && p <= 65535) {
+      usedPorts.add(p);
+    }
+  }
+
   let pjsipContent = `; ========================================================\n`;
   pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
   pjsipContent += `; Fecha: ${new Date().toISOString()}\n`;
   pjsipContent += `; Total Extensiones: ${extsToUse.length}\n`;
+  pjsipContent += `; Puertos SIP Activos: ${Array.from(usedPorts).join(', ')}\n`;
   pjsipContent += `; Asterisk 20 Validated: No Duplicate Section Headers\n`;
   pjsipContent += `; ========================================================\n\n`;
 
   pjsipContent += `[general]\n\n`;
 
   pjsipContent += `; --- TRANSPORTES SIP ---\n`;
-  pjsipContent += `[transport-udp]\n`;
-  pjsipContent += `type = transport\n`;
-  pjsipContent += `protocol = udp\n`;
-  pjsipContent += `bind = 0.0.0.0:5060\n\n`;
+  for (const p of usedPorts) {
+    const suffix = p === 5060 ? '' : `-${p}`;
+    pjsipContent += `[transport-udp${suffix}]\n`;
+    pjsipContent += `type = transport\n`;
+    pjsipContent += `protocol = udp\n`;
+    pjsipContent += `bind = 0.0.0.0:${p}\n\n`;
 
-  pjsipContent += `[transport-tcp]\n`;
-  pjsipContent += `type = transport\n`;
-  pjsipContent += `protocol = tcp\n`;
-  pjsipContent += `bind = 0.0.0.0:5060\n\n`;
+    pjsipContent += `[transport-tcp${suffix}]\n`;
+    pjsipContent += `type = transport\n`;
+    pjsipContent += `protocol = tcp\n`;
+    pjsipContent += `bind = 0.0.0.0:${p}\n\n`;
+  }
 
   pjsipContent += `[transport-wss]\n`;
   pjsipContent += `type = transport\n`;
@@ -390,9 +404,20 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
     const callerId = `"${callerIdName}" <${callerIdNum}>`;
     const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-    const transport = ext.transport === 'transport-wss' ? 'transport-wss' : (ext.transport === 'transport-tcp' ? 'transport-tcp' : 'transport-udp');
+    const extPort = parseInt(ext.port, 10) || 5060;
+    const portSuffix = extPort === 5060 ? '' : `-${extPort}`;
+    let transport = `transport-udp${portSuffix}`;
+    if (ext.transport === 'transport-wss') {
+      transport = 'transport-wss';
+    } else if (ext.transport === 'transport-tcp') {
+      transport = `transport-tcp${portSuffix}`;
+    } else if (ext.transport === 'transport-tls') {
+      transport = `transport-tls${portSuffix}`;
+    } else {
+      transport = `transport-udp${portSuffix}`;
+    }
 
-    pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'}) ---\n`;
+    pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'} - Puerto ${extPort}) ---\n`;
     pjsipContent += `[${num}]\n`;
     pjsipContent += `type = endpoint\n`;
     pjsipContent += `context = ${ext.context || 'from-internal'}\n`;

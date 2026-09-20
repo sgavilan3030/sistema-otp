@@ -7,6 +7,7 @@ export interface PjsipExtension {
   codecs: string[];
   maxContacts: number;
   transport: 'transport-udp' | 'transport-tcp' | 'transport-tls' | 'transport-wss';
+  port?: number;
   status: 'registered' | 'unregistered' | 'in-use' | 'ringing';
   callerId: string;
   callerIdNum?: string;
