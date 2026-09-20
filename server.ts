@@ -475,9 +475,17 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
 
     for (const carrier of carriersToProcess) {
       if (!carrier.name || !carrier.host) continue;
+      const isEnabled = carrier.enabled !== false && carrier.status !== 'disabled';
       const cName = carrier.name.replace(/\s+/g, '_');
       const cHost = carrier.host;
       const cPort = carrier.port || 5060;
+
+      if (!isEnabled) {
+        pjsipContent += `; --- CARRIER DESHABILITADO: ${cName} (${cHost}:${cPort}) ---\n`;
+        pjsipContent += `; [ESTADO: SUSPENDIDO] Registro y endpoints omitidos para evitar intentos de conexión\n\n`;
+        continue;
+      }
+
       const cUser = carrier.username || cName;
       const cSecret = carrier.secret || '';
       const cContext = carrier.inboundContext || 'trunkinbound';

@@ -569,6 +569,35 @@ export default function App() {
     }, 400);
   };
 
+  const handleToggleCarrier = (id: string) => {
+    const c = carriers.find((item) => item.id === id);
+    if (!c) return;
+    const isCurrentlyEnabled = c.enabled !== false && c.status !== 'disabled';
+    const newStatus = isCurrentlyEnabled ? 'disabled' : 'reachable';
+    const newEnabled = !isCurrentlyEnabled;
+
+    const updated = carriers.map((item) => {
+      if (item.id === id) {
+        return {
+          ...item,
+          enabled: newEnabled,
+          status: newStatus as any,
+        };
+      }
+      return item;
+    });
+
+    setCarriers(updated);
+    addLog(
+      'PJSIP',
+      newEnabled ? `Carrier SIP Habilitado: ${c.name}` : `Carrier SIP Deshabilitado: ${c.name}`,
+      `Host: ${c.host}:${c.port} | Estado: ${newEnabled ? 'ACTIVO (Se conecta)' : 'SUSPENDIDO (No conecta)'}`
+    );
+    // Sincronizar inmediatamente con Asterisk en 1 clic
+    handleQuickSync(extensions, updated);
+    showToast(newEnabled ? `Troncal [${c.name}] HABILITADA y conectando` : `Troncal [${c.name}] DESHABILITADA (Conexión suspendida)`, 'info');
+  };
+
   // Audio Handlers
   const handleAddAudio = async (newAudio: AudioPrompt) => {
     setAudios((prev) => [newAudio, ...prev]);
@@ -935,6 +964,7 @@ export default function App() {
             onUpdateCarrier={handleUpdateCarrier}
             onDeleteCarrier={handleDeleteCarrier}
             onPingCarrier={handlePingCarrier}
+            onToggleCarrier={handleToggleCarrier}
             onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
             isSyncing={isSyncing}
           />

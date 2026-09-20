@@ -20,6 +20,7 @@ export interface CarrierTrunk {
   id: string;
   name: string;
   authType: 'registration' | 'ip_auth';
+  enabled?: boolean;
   host: string;
   port: number;
   username?: string;

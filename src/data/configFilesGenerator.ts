@@ -96,7 +96,16 @@ qualify_timeout=3.0
 `;
 
   carriers.forEach((c) => {
+    const isEnabled = c.enabled !== false && c.status !== 'disabled';
     const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (!isEnabled) {
+      conf += `
+; --- Carrier DESHABILITADO: ${c.name} (${c.host}) ---
+; [ESTADO: SUSPENDIDO] Asterisk no intentará registrarse ni enviar tráfico a esta troncal.
+`;
+      return;
+    }
+
     if (c.authType === 'ip_auth') {
       conf += `
 ; --- Carrier IP Direct: ${c.name} ---

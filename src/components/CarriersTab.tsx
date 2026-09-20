@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CarrierTrunk } from '../types';
-import { Plus, Trash2, Edit2, Globe, Eye, Activity, Copy, Check, FileCode, CheckCircle2, Sliders, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Globe, Eye, Activity, Copy, Check, FileCode, CheckCircle2, Sliders, RefreshCw, Power, PowerOff } from 'lucide-react';
 
 interface CarriersTabProps {
   carriers: CarrierTrunk[];
@@ -8,6 +8,7 @@ interface CarriersTabProps {
   onUpdateCarrier: (carrier: CarrierTrunk) => void;
   onDeleteCarrier: (id: string) => void;
   onPingCarrier: (id: string) => void;
+  onToggleCarrier?: (id: string) => void;
   onSyncAsterisk?: () => void;
   isSyncing?: boolean;
 }
@@ -18,6 +19,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   onUpdateCarrier,
   onDeleteCarrier,
   onPingCarrier,
+  onToggleCarrier,
   onSyncAsterisk,
   isSyncing,
 }) => {
@@ -35,6 +37,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   // Form state
   const [name, setName] = useState('');
   const [authType, setAuthType] = useState<CarrierTrunk['authType']>('registration');
+  const [isEnabled, setIsEnabled] = useState(true);
   const [host, setHost] = useState('');
   const [port, setPort] = useState(5060);
   const [username, setUsername] = useState('');
@@ -55,10 +58,26 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   const activeCarrier =
     carriers.find((c) => c.id === selectedCarrierId) || carriers[0];
 
+  const handleToggle = (id: string) => {
+    if (onToggleCarrier) {
+      onToggleCarrier(id);
+    } else {
+      const c = carriers.find((item) => item.id === id);
+      if (!c) return;
+      const currentActive = c.enabled !== false && c.status !== 'disabled';
+      onUpdateCarrier({
+        ...c,
+        enabled: !currentActive,
+        status: currentActive ? 'disabled' : 'reachable',
+      });
+    }
+  };
+
   const handleOpenCreateModal = () => {
     setEditingCarrier(null);
     setName('nuevo_carrier');
     setAuthType('registration');
+    setIsEnabled(true);
     setHost('52.144.46.192');
     setPort(5060);
     setUsername('sgavilan30');
@@ -80,6 +99,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setEditingCarrier(c);
     setName(c.name);
     setAuthType(c.authType);
+    setIsEnabled(c.enabled !== false && c.status !== 'disabled');
     setHost(c.host);
     setPort(c.port);
     setUsername(c.username || '');
@@ -116,6 +136,8 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         ...editingCarrier,
         name,
         authType,
+        enabled: isEnabled,
+        status: isEnabled ? (editingCarrier.status === 'disabled' ? 'reachable' : editingCarrier.status) : 'disabled',
         host,
         port,
         username,
@@ -136,6 +158,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         id: `trunk-${Date.now()}`,
         name,
         authType,
+        enabled: isEnabled,
         host,
         port,
         username,
@@ -144,7 +167,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         outboundCallerId,
         codecs: selectedCodecs,
         qualifyFreq,
-        status: 'reachable',
+        status: isEnabled ? 'reachable' : 'disabled',
         latencyMs: Math.floor(Math.random() * 25) + 10,
         fromuser,
         sendrpid,
@@ -279,14 +302,60 @@ insecure=${carrierInsecure}`;
 
             <div className="flex items-center space-x-2">
               <button
+                id={`btn-toggle-carrier-featured-${activeCarrier.id}`}
+                type="button"
+                onClick={() => handleToggle(activeCarrier.id)}
+                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                  activeCarrier.enabled !== false && activeCarrier.status !== 'disabled'
+                    ? 'bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-emerald-500/20'
+                }`}
+                title={
+                  activeCarrier.enabled !== false && activeCarrier.status !== 'disabled'
+                    ? 'Deshabilitar Troncal: Asterisk dejará de intentar registrarse y no enviará llamadas por aquí'
+                    : 'Habilitar Troncal: Activa el registro saliente y llamadas en Asterisk'
+                }
+              >
+                {activeCarrier.enabled !== false && activeCarrier.status !== 'disabled' ? (
+                  <>
+                    <PowerOff className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Deshabilitar Troncal</span>
+                  </>
+                ) : (
+                  <>
+                    <Power className="w-3.5 h-3.5" />
+                    <span>Habilitar Troncal</span>
+                  </>
+                )}
+              </button>
+
+              <button
                 onClick={() => handleOpenEditModal(activeCarrier)}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition-colors"
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition-colors cursor-pointer"
               >
                 <Sliders className="w-3.5 h-3.5" />
                 <span>Editar Parámetros</span>
               </button>
             </div>
           </div>
+
+          {/* Banner de Troncal Deshabilitada */}
+          {(activeCarrier.enabled === false || activeCarrier.status === 'disabled') && (
+            <div className="mx-5 mt-4 p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-rose-200">
+              <div className="flex items-center gap-2">
+                <PowerOff className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>
+                  <b>Troncal Deshabilitada:</b> Asterisk no enviará paquetes <code>REGISTER</code> ni intentará conectarse a <code className="font-mono text-white bg-slate-950 px-1.5 py-0.5 rounded">{activeCarrier.host}:{activeCarrier.port}</code>. Los reintentos de conexión están pausados.
+                </span>
+              </div>
+              <button
+                onClick={() => handleToggle(activeCarrier.id)}
+                className="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] shrink-0 transition-colors cursor-pointer"
+              >
+                Habilitar con 1 Clic
+              </button>
+            </div>
+          )}
 
           <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Box 1: Carrier Account Entry (sip.conf) */}
@@ -368,6 +437,7 @@ insecure=${carrierInsecure}`;
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {carriers.map((c) => {
             const isSelected = c.id === selectedCarrierId;
+            const isEnabled = c.enabled !== false && c.status !== 'disabled';
             return (
               <div
                 key={c.id}
@@ -376,25 +446,76 @@ insecure=${carrierInsecure}`;
                   isSelected
                     ? 'bg-slate-900 border-emerald-500/60 shadow-lg ring-1 ring-emerald-500/30'
                     : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                }`}
+                } ${!isEnabled ? 'opacity-85 bg-slate-950/40 border-dashed border-rose-900/40' : ''}`}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-2.5">
-                    <div className="w-8 h-8 rounded bg-blue-950/60 border border-blue-800/60 flex items-center justify-center text-blue-400 font-mono font-bold text-xs">
+                    <div className={`w-8 h-8 rounded border flex items-center justify-center font-mono font-bold text-xs ${
+                      isEnabled ? 'bg-blue-950/60 border-blue-800/60 text-blue-400' : 'bg-slate-900 border-slate-700 text-slate-500'
+                    }`}>
                       SIP
                     </div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">[{c.name}]</h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-bold text-white text-sm">[{c.name}]</h4>
+                        {!isEnabled && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono font-bold border border-rose-500/30">
+                            PAUSADO
+                          </span>
+                        )}
+                      </div>
                       <p className="font-mono text-[11px] text-slate-400">
                         {c.host}:{c.port}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>{c.latencyMs ? `${c.latencyMs}ms` : 'Activo'}</span>
-                  </div>
+
+                  {/* 1-Click Toggle Button */}
+                  <button
+                    type="button"
+                    id={`btn-toggle-${c.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggle(c.id);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold transition-all cursor-pointer border ${
+                      isEnabled
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                    }`}
+                    title={isEnabled ? "Clic para Deshabilitar Carrier (apaga registros en Asterisk)" : "Clic para Habilitar Carrier (conecta en Asterisk)"}
+                  >
+                    {isEnabled ? (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>HABILITADO</span>
+                      </>
+                    ) : (
+                      <>
+                        <PowerOff className="w-3 h-3 text-rose-400" />
+                        <span>DESHABILITADO</span>
+                      </>
+                    )}
+                  </button>
                 </div>
+
+                {!isEnabled && (
+                  <div className="my-1.5 px-2 py-1 rounded bg-rose-950/30 border border-rose-800/30 text-[10px] text-rose-300/90 flex items-center justify-between font-sans">
+                    <span className="flex items-center gap-1">
+                      <PowerOff className="w-3 h-3 text-rose-400 shrink-0" />
+                      <span>Conexión pausada en Asterisk</span>
+                    </span>
+                    <span
+                      className="text-[10px] underline font-bold hover:text-white cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggle(c.id);
+                      }}
+                    >
+                      Activar con 1 Clic
+                    </span>
+                  </div>
+                )}
 
                 <div className="my-2.5 p-2 rounded bg-slate-950 text-[11px] font-mono text-slate-300 space-y-0.5 border border-slate-800/60">
                   <div className="flex justify-between">
@@ -488,6 +609,28 @@ insecure=${carrierInsecure}`;
             </div>
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
+              {/* Estado Activo / Deshabilitado */}
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="block font-semibold text-white">Estado de la Troncal</span>
+                  <span className="text-[11px] text-slate-400">
+                    {isEnabled ? 'Habilitado: Asterisk se registrará y enviará llamadas' : 'Deshabilitado: Asterisk no enviará tráfico ni paquetes SIP'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEnabled(!isEnabled)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                    isEnabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                  }`}
+                >
+                  {isEnabled ? <Power className="w-3.5 h-3.5 text-emerald-400" /> : <PowerOff className="w-3.5 h-3.5 text-rose-400" />}
+                  <span>{isEnabled ? 'HABILITADO' : 'DESHABILITADO'}</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Nombre Carrier [slug] *</label>
