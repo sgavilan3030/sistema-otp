@@ -410,6 +410,7 @@ export const initialPress1Config: Press1Config = {
   welcomeAudioId: 'audio-p1-welcome',
   timeoutSeconds: 8,
   maxRetries: 2,
+  transferDelaySeconds: 2, // 2 segundos de pausa natural tras presionar 1
   digit1Action: 'transfer_extension',
   digit1Target: '1001',
   returnToOriginatingAgent: true, // Regresa al agente que originó el contacto

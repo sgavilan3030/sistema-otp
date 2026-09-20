@@ -49,6 +49,7 @@ export interface Press1Config {
   welcomeAudioId?: string;
   timeoutSeconds: number;
   maxRetries: number;
+  transferDelaySeconds?: number; // Pausa natural de cortesía (ej. 2 seg) tras presionar 1 antes de locución
   digit1Action: 'transfer_extension' | 'queue' | 'webhook';
   digit1Target: string; // e.g., "1001" or "support_queue"
   returnToOriginatingAgent: boolean; // Si es true, retorna la llamada a la extensión del agente que originó la marcación

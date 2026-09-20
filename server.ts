@@ -1122,8 +1122,9 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Goto(menu)\n\n`;
 
-  dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: MENSAJE DE TRANSFERENCIA AL ASESOR INMEDIATO\n`;
-  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> ENTRANDO DE INMEDIATO A TRANSFERENCIA ASESOR ===)\n`;
+  dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: ESPERA 2 SEGUNDOS DE PAUSA NATURAL Y LUEGO MENSAJE DE TRANSFERENCIA AL ASESOR\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> ESPERANDO 2 SEGUNDOS DE PAUSA NATURAL ===)\n`;
+  dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
@@ -1265,7 +1266,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DETECTADO -> ENTRANDO DE INMEDIATO A TRANSFERENCIA ASESOR ===)\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DETECTADO -> ESPERANDO 2 SEGUNDOS DE PAUSA NATURAL ===)\n`;
+  dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;

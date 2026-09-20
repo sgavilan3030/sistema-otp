@@ -340,9 +340,9 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Extensión Interna IVR</label>
+                <label className="block text-slate-300 font-medium mb-1">Extensión IVR</label>
                 <input
                   type="text"
                   value={press1.extension}
@@ -351,12 +351,25 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Tiempo de Espera (seg)</label>
+                <label className="block text-slate-300 font-medium mb-1">Espera DTMF (seg)</label>
                 <input
                   type="number"
                   value={press1.timeoutSeconds}
                   onChange={(e) => setPress1({ ...press1, timeoutSeconds: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-medium mb-1" title="Tiempo de pausa natural tras pulsar 1 antes de reproducir el mensaje de transferencia">
+                  Pausa tras "1" <span className="text-emerald-400 font-mono font-bold">(seg)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={press1.transferDelaySeconds ?? 2}
+                  onChange={(e) => setPress1({ ...press1, transferDelaySeconds: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>

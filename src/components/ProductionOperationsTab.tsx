@@ -2772,7 +2772,8 @@ exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)
  same => n,Hangup()
 
  ; Transferencia a Extensión Asesor (Softphone X-Lite ${agentExtension})
- same => n(transfer_agent),Playback(\${IVR_AGENT})
+ same => n(transfer_agent),Wait(2)
+ same => n,Playback(\${IVR_AGENT})
  same => n,Dial(PJSIP/${agentExtension},30,Tt)
  same => n,Hangup()
 

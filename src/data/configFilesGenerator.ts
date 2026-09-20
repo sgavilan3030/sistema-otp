@@ -285,7 +285,8 @@ exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  same => n,WaitExten(${press1.timeoutSeconds})
 
 ; Opción 1 presionada
-exten => 1,1,NoOp(Usuario presiono 1 -> Verificando Agente Originador)
+exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion de transferencia)
+ same => n,Wait(${press1.transferDelaySeconds ?? 2})
  same => n,Playback(custom/transfiriendo_asesor)
  ; Evaluación prioritaria:
  ; 1. Variable heredada de canal (__ORIGINATING_EXTEN)
