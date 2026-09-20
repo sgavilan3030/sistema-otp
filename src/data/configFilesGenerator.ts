@@ -1,38 +1,35 @@
 import { PjsipExtension, CarrierTrunk, Press1Config, OtpCaptureConfig, AsteriskConnectionSettings } from '../types';
 
 export function generatePjsipConf(extensions: PjsipExtension[], carriers: CarrierTrunk[]): string {
-  const usedPorts = new Set<number>();
-  usedPorts.add(5060);
-  extensions.forEach((ext) => {
-    const p = ext.port || 5060;
-    if (p > 0 && p <= 65535) usedPorts.add(p);
-  });
+  // Determine primary active SIP port (e.g. 47923 or 5060)
+  let activePort = 5060;
+  for (const ext of extensions) {
+    const p = ext.port;
+    if (p && p > 0 && p <= 65535 && p !== 5060) {
+      activePort = p;
+      break;
+    }
+  }
 
   let conf = `; ==============================================================================
 ; ASTERISK 20 - PJSIP CONFIGURATION (Generado por Asterisk 20 Governor)
 ; Sincronización automática vía AMI: "pjsip reload"
-; Puertos SIP Activos: ${Array.from(usedPorts).join(', ')}
+; Puerto SIP de Transporte Activo: ${activePort}
 ; ==============================================================================
 
-; --- TRANSPORTES SIP ---
-`;
-
-  usedPorts.forEach((p) => {
-    const suffix = p === 5060 ? '' : `-${p}`;
-    conf += `[transport-udp${suffix}]
+; --- TRANSPORTE UDP ---
+[transport-udp]
 type=transport
 protocol=udp
-bind=0.0.0.0:${p}
+bind=0.0.0.0:${activePort}
 
-[transport-tcp${suffix}]
+; --- TRANSPORTE TCP ---
+[transport-tcp]
 type=transport
 protocol=tcp
-bind=0.0.0.0:${p}
+bind=0.0.0.0:${activePort}
 
-`;
-  });
-
-  conf += `; --- TRANSPORTE WSS (WebRTC Softphone) ---
+; --- TRANSPORTE WSS (WebRTC Softphone) ---
 [transport-wss]
 type=transport
 protocol=wss
@@ -57,21 +54,19 @@ rtp_symmetric=yes
 `;
 
   extensions.forEach((ext) => {
-    const p = ext.port || 5060;
-    const portSuffix = p === 5060 ? '' : `-${p}`;
-    let transport = `transport-udp${portSuffix}`;
+    let transport = 'transport-udp';
     if (ext.transport === 'transport-wss') {
       transport = 'transport-wss';
     } else if (ext.transport === 'transport-tcp') {
-      transport = `transport-tcp${portSuffix}`;
+      transport = 'transport-tcp';
     } else if (ext.transport === 'transport-tls') {
-      transport = `transport-tls${portSuffix}`;
+      transport = 'transport-tls';
     } else {
-      transport = `transport-udp${portSuffix}`;
+      transport = 'transport-udp';
     }
 
     conf += `
-; --- Extensión ${ext.extension} (${ext.name} - Puerto ${p}) ---
+; --- Extensión ${ext.extension} (${ext.name} - Puerto SIP ${ext.port || activePort}) ---
 [${ext.extension}](endpoint-basic)
 auth=${ext.extension}-auth
 aors=${ext.extension}-aor

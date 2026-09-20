@@ -26,6 +26,23 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExt, setEditingExt] = useState<PjsipExtension | null>(null);
   const [previewExt, setPreviewExt] = useState<PjsipExtension | null>(null);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState<string | null>(null);
+
+  const handleRestartAsterisk = async () => {
+    setIsRestarting(true);
+    setRestartMessage(null);
+    try {
+      const res = await fetch('/api/asterisk/restart', { method: 'POST' });
+      const data = await res.json();
+      setRestartMessage(data.message || 'Orden de reinicio "core restart now" enviada.');
+      setTimeout(() => setRestartMessage(null), 6000);
+    } catch (e: any) {
+      setRestartMessage('Error enviando reinicio: ' + e.message);
+    } finally {
+      setIsRestarting(false);
+    }
+  };
 
   // Quick Direct CallerID Modal state for agent
   const [quickCidExt, setQuickCidExt] = useState<PjsipExtension | null>(null);
@@ -470,6 +487,42 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             <button onClick={() => setRepairFeedback(null)} className="text-slate-400 hover:text-white font-bold ml-2">×</button>
           </div>
         )}
+
+        {/* Alerta y Comando: Reiniciar Asterisk para aplicar socket de puerto nuevo (ej. 47923) */}
+        <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-500/40 text-xs space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sky-300 font-bold">
+              <Shield className="w-4 h-4 text-sky-400 flex-shrink-0" />
+              <span>Activación de Puerto Seguro (47923): Requiere reinicio de Asterisk</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRestartAsterisk}
+                disabled={isRestarting}
+                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold font-mono text-[11px] flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRestarting ? 'animate-spin' : ''}`} />
+                <span>{isRestarting ? 'Reiniciando...' : 'Reiniciar Asterisk Ahora'}</span>
+              </button>
+              <button
+                onClick={() => handleCopy('asterisk -rx "core restart now"', 'cli-core-restart')}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-mono text-[11px] flex items-center gap-1"
+                title="Copiar comando de reinicio"
+              >
+                {copiedKey === 'cli-core-restart' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                <span>Copiar CLI</span>
+              </button>
+            </div>
+          </div>
+          <p className="text-slate-300 text-[11px] leading-relaxed">
+            <b>¿Por qué?</b> En Asterisk PJSIP, la recarga en caliente (<code className="text-emerald-300 font-mono">pjsip reload</code>) no puede modificar sockets UDP activos a nivel del kernel de Linux ni crear nuevos nombres de transporte en memoria. Para enlazar el puerto <b className="text-sky-300 font-mono">47923</b> y cerrar el <b className="text-red-400 font-mono">5060</b> contra atacantes, se debe reiniciar Asterisk con <code className="text-sky-300 font-mono select-all">asterisk -rx "core restart now"</code> o <code className="text-sky-300 font-mono select-all">systemctl restart asterisk</code>. El reinicio toma menos de 1 segundo.
+          </p>
+          {restartMessage && (
+            <div className="p-2 rounded bg-sky-900/60 border border-sky-400/40 text-white font-mono text-[11px]">
+              {restartMessage}
+            </div>
+          )}
+        </div>
 
         {/* Guía de Solución: Registration Error 401 */}
         <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/40 text-xs space-y-2.5">
@@ -1038,7 +1091,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             </div>
 
             <pre className="p-4 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300/90 overflow-x-auto">
-{`[transport-udp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}]
+{`[transport-udp]
 type=transport
 protocol=udp
 bind=0.0.0.0:${previewExt.port || 5060}
@@ -1051,7 +1104,7 @@ allow=${previewExt.codecs.join(',')}
 auth=${previewExt.extension}-auth
 aors=${previewExt.extension}
 callerid=${previewExt.callerId}
-transport=${previewExt.transport === 'transport-wss' ? 'transport-wss' : (previewExt.transport === 'transport-tcp' ? `transport-tcp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}` : `transport-udp${(previewExt.port || 5060) === 5060 ? '' : `-${previewExt.port}`}`)}
+transport=${previewExt.transport === 'transport-wss' ? 'transport-wss' : (previewExt.transport === 'transport-tcp' ? 'transport-tcp' : 'transport-udp')}
 direct_media=no
 
 [${previewExt.extension}-auth]

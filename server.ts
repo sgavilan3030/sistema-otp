@@ -354,16 +354,17 @@ const defaultExtensionsList = [
 
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
 // CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
+// Transports must use standard Asterisk names [transport-udp], [transport-tcp], [transport-wss] with custom bind port.
 function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string {
   const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
 
-  // Collect all unique ports used by extensions, default to 5060
-  const usedPorts = new Set<number>();
-  usedPorts.add(5060);
+  // Determine active SIP transport port (e.g. 47923 to protect server or 5060 standard)
+  let activePort = 5060;
   for (const ext of extsToUse) {
     const p = parseInt(ext.port, 10);
-    if (!isNaN(p) && p > 0 && p <= 65535) {
-      usedPorts.add(p);
+    if (!isNaN(p) && p > 0 && p <= 65535 && p !== 5060) {
+      activePort = p;
+      break;
     }
   }
 
@@ -371,25 +372,22 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
   pjsipContent += `; GENERADO AUTOMATICAMENTE POR ANONYMOUS OTP SYSTEM\n`;
   pjsipContent += `; Fecha: ${new Date().toISOString()}\n`;
   pjsipContent += `; Total Extensiones: ${extsToUse.length}\n`;
-  pjsipContent += `; Puertos SIP Activos: ${Array.from(usedPorts).join(', ')}\n`;
-  pjsipContent += `; Asterisk 20 Validated: No Duplicate Section Headers\n`;
+  pjsipContent += `; Puerto SIP de Transporte Activo: ${activePort}\n`;
+  pjsipContent += `; Asterisk 20 Validated: Standard Native Transports (No Unknown Transport Errors)\n`;
   pjsipContent += `; ========================================================\n\n`;
 
   pjsipContent += `[general]\n\n`;
 
   pjsipContent += `; --- TRANSPORTES SIP ---\n`;
-  for (const p of usedPorts) {
-    const suffix = p === 5060 ? '' : `-${p}`;
-    pjsipContent += `[transport-udp${suffix}]\n`;
-    pjsipContent += `type = transport\n`;
-    pjsipContent += `protocol = udp\n`;
-    pjsipContent += `bind = 0.0.0.0:${p}\n\n`;
+  pjsipContent += `[transport-udp]\n`;
+  pjsipContent += `type = transport\n`;
+  pjsipContent += `protocol = udp\n`;
+  pjsipContent += `bind = 0.0.0.0:${activePort}\n\n`;
 
-    pjsipContent += `[transport-tcp${suffix}]\n`;
-    pjsipContent += `type = transport\n`;
-    pjsipContent += `protocol = tcp\n`;
-    pjsipContent += `bind = 0.0.0.0:${p}\n\n`;
-  }
+  pjsipContent += `[transport-tcp]\n`;
+  pjsipContent += `type = transport\n`;
+  pjsipContent += `protocol = tcp\n`;
+  pjsipContent += `bind = 0.0.0.0:${activePort}\n\n`;
 
   pjsipContent += `[transport-wss]\n`;
   pjsipContent += `type = transport\n`;
@@ -404,20 +402,20 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
     const callerId = `"${callerIdName}" <${callerIdNum}>`;
     const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-    const extPort = parseInt(ext.port, 10) || 5060;
-    const portSuffix = extPort === 5060 ? '' : `-${extPort}`;
-    let transport = `transport-udp${portSuffix}`;
+    const extPort = parseInt(ext.port, 10) || activePort;
+
+    let transport = 'transport-udp';
     if (ext.transport === 'transport-wss') {
       transport = 'transport-wss';
     } else if (ext.transport === 'transport-tcp') {
-      transport = `transport-tcp${portSuffix}`;
+      transport = 'transport-tcp';
     } else if (ext.transport === 'transport-tls') {
-      transport = `transport-tls${portSuffix}`;
+      transport = 'transport-tls';
     } else {
-      transport = `transport-udp${portSuffix}`;
+      transport = 'transport-udp';
     }
 
-    pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'} - Puerto ${extPort}) ---\n`;
+    pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'} - Puerto SIP ${extPort}) ---\n`;
     pjsipContent += `[${num}]\n`;
     pjsipContent += `type = endpoint\n`;
     pjsipContent += `context = ${ext.context || 'from-internal'}\n`;
@@ -426,6 +424,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `auth = ${num}-auth\n`;
     pjsipContent += `aors = ${num}\n`;
     pjsipContent += `callerid = ${callerId}\n`;
+    pjsipContent += `transport = ${transport}\n`;
     pjsipContent += `direct_media = no\n`;
     pjsipContent += `rtp_symmetric = yes\n`;
     pjsipContent += `force_rport = yes\n`;
@@ -1735,6 +1734,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     console.log(`[ASTERISK-SYNC] ✓ Sincronización completa: ${extensions.length} extensiones, PJSIP=${pjsipWritten}, Dialplan=${dialplanWritten}`);
 
+    // If restart requested or if socket re-bind is required for new transport port
+    if (req.body.restartAsterisk) {
+      exec('asterisk -rx "core restart now"', (err) => {
+        if (err) exec('systemctl restart asterisk', () => {});
+      });
+    }
+
     res.json({
       success: true,
       message: `Configuración sincronizada exitosamente con Asterisk: ${extensions.length} extensiones y troncal ${activeCarrier} con rutas salientes`,
@@ -1746,6 +1752,23 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
   } catch (error: any) {
     console.error('Error syncing extensions:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to cleanly restart Asterisk to bind new ports (e.g. 47923)
+app.post('/api/asterisk/restart', async (req, res) => {
+  try {
+    exec('asterisk -rx "core restart now"', (err, stdout, stderr) => {
+      if (err) {
+        exec('systemctl restart asterisk', () => {});
+      }
+    });
+    res.json({
+      success: true,
+      message: 'Comando "core restart now" enviado a Asterisk. El servicio se reiniciará en menos de 1 segundo aplicando el nuevo puerto de transporte.'
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
