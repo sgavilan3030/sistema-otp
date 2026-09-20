@@ -227,6 +227,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [inlineRenamingId, setInlineRenamingId] = useState<string | null>(null);
   const [inlineNameVal, setInlineNameVal] = useState('');
   const [inlineSubtitleVal, setInlineSubtitleVal] = useState('');
+  // State to track entity delete confirmation
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleStartInlineRename = (ent: CampaignEntity, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -409,11 +411,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       return next;
     });
     if (selectedService === entityId) {
-      const remaining = campaignEntities.find((e) => e.id !== entityId);
-      if (remaining) handleSelectEntity(remaining);
+      const remaining = campaignEntities.filter((e) => e.id !== entityId);
+      if (remaining.length > 0) {
+        handleSelectEntity(remaining[0]);
+      }
     }
     setIsEntityModalOpen(false);
     setEditingEntity(null);
+    setConfirmDeleteId(null);
   };
 
   // Reset to factory defaults
@@ -1725,6 +1730,37 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <Pencil className="w-3 h-3 text-amber-400" />
                       <span>Editar Seleccionado</span>
                     </button>
+                    {campaignEntities.length > 1 && (
+                      confirmDeleteId === selectedService ? (
+                        <div className="inline-flex items-center gap-1 bg-rose-950/90 px-2 py-1 rounded-lg border border-rose-500/60">
+                          <span className="text-[10px] font-bold text-rose-300">¿Eliminar guión seleccionado?</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEntity(selectedService)}
+                            className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold shadow"
+                          >
+                            Sí
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(selectedService)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all"
+                          title="Eliminar el guión actualmente seleccionado"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Eliminar Seleccionado</span>
+                        </button>
+                      )
+                    )}
                     <button
                       type="button"
                       onClick={handleResetEntities}
@@ -1833,28 +1869,71 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                             )}
                           </div>
                           {inlineRenamingId !== ent.id && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => handleStartInlineRename(ent, e)}
-                                title="Cambiar nombre de esta entidad"
-                                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 border border-slate-700/80 transition-all"
+                            confirmDeleteId === ent.id ? (
+                              <div
+                                className="flex items-center gap-1 bg-rose-950/90 p-1 rounded-lg border border-rose-500/60 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <Edit3 className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingEntity({ ...ent });
-                                  setIsEntityModalOpen(true);
-                                }}
-                                title="Configurar todos los audios y detalles de este guión"
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"
-                              >
-                                <Sliders className="w-3 h-3 text-amber-400" />
-                              </button>
-                            </div>
+                                <span className="text-[10px] text-rose-300 font-bold px-0.5">¿Borrar?</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteEntity(ent.id);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold shadow transition-colors"
+                                  title="Confirmar eliminación"
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
+                                  title="Cancelar"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleStartInlineRename(ent, e)}
+                                  title="Cambiar nombre de este guión"
+                                  className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 border border-slate-700/80 transition-all"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingEntity({ ...ent });
+                                    setIsEntityModalOpen(true);
+                                  }}
+                                  title="Configurar todos los audios y detalles de este guión"
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"
+                                >
+                                  <Sliders className="w-3 h-3 text-amber-400" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={campaignEntities.length <= 1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteId(ent.id);
+                                  }}
+                                  title={campaignEntities.length <= 1 ? "Debe haber al menos un guión disponible" : "Eliminar este guión"}
+                                  className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-500/40 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )
                           )}
                         </div>
 
@@ -2006,96 +2085,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* ======================================================== */}
-              {/* CONFIGURACIÓN VISIBLE DE CALLERID (PRESENTACIÓN SALIENTE) */}
-              {/* ======================================================== */}
-              <div className="p-4 rounded-xl bg-slate-900 border-2 border-sky-500/50 shadow-lg shadow-sky-950/40 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-sky-400" />
-                    <div>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                        Identificador de Llamada Saliente (CallerID Spoofing)
-                      </h4>
-                      <p className="text-[11px] text-slate-400">
-                        Lo que verá la víctima en la pantalla de su teléfono cuando reciba la llamada.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 self-start sm:self-auto">
-                    CALLERID(num) & (name)
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-sky-300 mb-1">
-                      CALLERID(num) - Número a Mostrar *
-                    </label>
-                    <input
-                      id="input-prod-callerid-num"
-                      type="text"
-                      required
-                      value={callerIdNum}
-                      onChange={(e) => setCallerIdNum(e.target.value)}
-                      placeholder="+18005550199"
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none font-bold"
-                    />
-                    <span className="text-[10px] text-slate-400">Reemplaza el "+18005550199" en Asterisk</span>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-sky-300 mb-1">
-                      CALLERID(name) - Nombre a Mostrar *
-                    </label>
-                    <input
-                      id="input-prod-callerid-name"
-                      type="text"
-                      required
-                      value={callerIdName}
-                      onChange={(e) => setCallerIdName(e.target.value)}
-                      placeholder="Seguridad Bancaria"
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none font-bold"
-                    />
-                    <span className="text-[10px] text-slate-400">Nombre público que se presentará en la pantalla del cliente</span>
-                  </div>
-                </div>
-
-                {/* Presets rápidos */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[10px] text-slate-400 font-semibold">Presets rápidos:</span>
-                  <button
-                    type="button"
-                    onClick={() => { setCallerIdName('Banco Central Antifraude'); setCallerIdNum('+18005550199'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
-                  >
-                    Banco Antifraude
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setCallerIdName('Seguridad Bancaria'); setCallerIdNum('+18005550199'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
-                  >
-                    Seguridad Bancaria
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setCallerIdName('Servicio al Cliente'); setCallerIdNum('+18884561234'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                  >
-                    Servicio al Cliente
-                  </button>
-                </div>
-
-                {/* Vista previa en vivo del CallerID */}
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Vista previa en pantalla móvil:</span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    "{callerIdName}" &lt;{callerIdNum}&gt;
-                  </span>
-                </div>
-              </div>
-
               {/* Big Launch Button */}
               <div className="pt-2">
                 <button
@@ -2145,13 +2134,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">Ruta saliente automática configurada</div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-sky-500/30">
-                  <div className="text-[10px] text-sky-400 font-mono font-bold flex items-center gap-1">
-                    <Phone className="w-3 h-3" />
-                    <span>CallerID Saliente en Asterisk</span>
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-mono font-bold flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-sky-400" />
+                    <span>CallerID de Extensión {agentExtension}</span>
                   </div>
                   <div className="font-bold text-white mt-0.5 font-mono">{callerIdNum}</div>
-                  <div className="text-[11px] text-sky-300 font-medium">Nombre: "{callerIdName}"</div>
+                  <div className="text-[11px] text-slate-400 font-medium truncate">"{callerIdName}" (gestionado en Extensiones)</div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -3772,14 +3761,35 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
             {/* Footer */}
             <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
               <div>
-                {editingEntity.id.startsWith('custom_') && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteEntity(editingEntity.id)}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all"
-                  >
-                    Eliminar este guión
-                  </button>
+                {campaignEntities.length > 1 && (
+                  confirmDeleteId === editingEntity.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-rose-400 font-bold">¿Seguro que deseas eliminar este guión?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntity(editingEntity.id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow transition-all"
+                      >
+                        Sí, eliminar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-2 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(editingEntity.id)}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all flex items-center gap-1.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Eliminar este guión</span>
+                    </button>
+                  )
                 )}
               </div>
 
