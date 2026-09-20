@@ -1,11 +1,11 @@
 import { PjsipExtension, CarrierTrunk, Press1Config, OtpCaptureConfig, AsteriskConnectionSettings } from '../types';
 
 export function generatePjsipConf(extensions: PjsipExtension[], carriers: CarrierTrunk[]): string {
-  // Determine primary active SIP port (e.g. 47923 or 5060)
-  let activePort = 5060;
+  // Determine primary active SIP port (default 47923 exclusively)
+  let activePort = 47923;
   for (const ext of extensions) {
     const p = ext.port;
-    if (p && p > 0 && p <= 65535 && p !== 5060) {
+    if (p && p > 0 && p <= 65535) {
       activePort = p;
       break;
     }

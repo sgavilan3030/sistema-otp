@@ -314,6 +314,7 @@ const defaultExtensionsList = [
     codecs: ['ulaw', 'alaw', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
+    port: 47923,
     callerIdNum: '+18005550199',
     callerIdName: 'Seguridad Bancaria',
   },
@@ -325,6 +326,7 @@ const defaultExtensionsList = [
     codecs: ['ulaw', 'alaw', 'opus'],
     maxContacts: 5,
     transport: 'transport-udp',
+    port: 47923,
     callerIdNum: '+18005550199',
     callerIdName: 'Seguridad Bancaria',
   },
@@ -336,6 +338,7 @@ const defaultExtensionsList = [
     codecs: ['ulaw', 'alaw', 'opus', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
+    port: 47923,
     callerIdNum: '+18005550199',
     callerIdName: 'Seguridad Bancaria',
   },
@@ -347,6 +350,7 @@ const defaultExtensionsList = [
     codecs: ['ulaw', 'alaw', 'g729'],
     maxContacts: 5,
     transport: 'transport-udp',
+    port: 47923,
     callerIdNum: '+18005550199',
     callerIdName: 'Seguridad Bancaria',
   },
@@ -358,11 +362,11 @@ const defaultExtensionsList = [
 function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string {
   const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
 
-  // Determine active SIP transport port (e.g. 47923 to protect server or 5060 standard)
-  let activePort = 5060;
+  // Determine active SIP transport port (default 47923 exclusively)
+  let activePort = 47923;
   for (const ext of extsToUse) {
     const p = parseInt(ext.port, 10);
-    if (!isNaN(p) && p > 0 && p <= 65535 && p !== 5060) {
+    if (!isNaN(p) && p > 0 && p <= 65535) {
       activePort = p;
       break;
     }
