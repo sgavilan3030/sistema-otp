@@ -69,7 +69,7 @@ rtp_symmetric=yes
 ; --- Extensión ${ext.extension} (${ext.name} - Puerto SIP ${ext.port || activePort}) ---
 [${ext.extension}](endpoint-basic)
 auth=${ext.extension}-auth
-aors=${ext.extension}-aor
+aors=${ext.extension}
 callerid=${ext.callerId}
 allow=${ext.codecs.join(',')}
 transport=${transport}
@@ -80,12 +80,11 @@ auth_type=userpass
 username=${ext.extension}
 password=${ext.secret}
 
-[${ext.extension}-aor]
+[${ext.extension}]
 type=aor
 max_contacts=${ext.maxContacts}
 remove_existing=yes
 qualify_frequency=60
-qualify_timeout=3.0
 `;
   });
 
@@ -977,10 +976,10 @@ INSERT OR REPLACE INTO ps_auths (id, auth_type, username, password)
 VALUES ('${ext.extension}-auth', 'userpass', '${ext.extension}', '${ext.secret}');
 
 INSERT OR REPLACE INTO ps_aors (id, max_contacts, remove_existing, qualify_frequency)
-VALUES ('${ext.extension}-aor', ${ext.maxContacts}, 'yes', 60);
+VALUES ('${ext.extension}', ${ext.maxContacts}, 'yes', 60);
 
 INSERT OR REPLACE INTO ps_endpoints (id, transport, aors, auth, context, disallow, allow)
-VALUES ('${ext.extension}', '${ext.transport}', '${ext.extension}-aor', '${ext.extension}-auth', 'from-internal', 'all', '${ext.codecs.join(',')}');
+VALUES ('${ext.extension}', '${ext.transport}', '${ext.extension}', '${ext.extension}-auth', 'from-internal', 'all', '${ext.codecs.join(',')}');
 `
   )
   .join('\n')}

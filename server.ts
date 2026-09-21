@@ -603,7 +603,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
     pjsipContent += `disallow = all\n`;
     pjsipContent += `allow = ${codecs}\n`;
     pjsipContent += `auth = ${num}-auth\n`;
-    pjsipContent += `aors = ${num}-aor\n`;
+    pjsipContent += `aors = ${num}\n`;
     pjsipContent += `callerid = ${callerId}\n`;
     pjsipContent += `transport = ${transport}\n`;
     pjsipContent += `direct_media = no\n`;
@@ -623,12 +623,11 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
     pjsipContent += `username = ${num}\n`;
     pjsipContent += `password = ${pass}\n\n`;
 
-    pjsipContent += `[${num}-aor]\n`;
+    pjsipContent += `[${num}]\n`;
     pjsipContent += `type = aor\n`;
     pjsipContent += `max_contacts = ${ext.maxContacts || 10}\n`;
     pjsipContent += `remove_existing = yes\n`;
     pjsipContent += `qualify_frequency = 30\n`;
-    pjsipContent += `qualify_timeout = 5.0\n`;
     pjsipContent += `authenticate_qualify = no\n\n`;
   }
 
@@ -1533,15 +1532,14 @@ async function autoRepairAsteriskPjsipOnStartup() {
       const content = fs.readFileSync(pjsipPath, 'utf8');
       if (
         !content.includes('[televox]') ||
-        !content.includes('[1001-aor]') ||
+        !content.includes('aors = 1001') ||
+        content.includes('1001-aor') ||
         content.includes('[1001]\ntype = auth') ||
         content.includes('[1001]\ntype=auth') ||
         content.includes('[1001]\r\ntype = auth') ||
-        content.includes('[1002]\ntype = auth') ||
-        content.includes('[1001]\ntype = aor') ||
-        content.includes('[1001]\ntype=aor')
+        content.includes('[1002]\ntype = auth')
       ) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones duplicadas o carrier televox faltante en /etc/asterisk/pjsip.conf. Reparando...');
+        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o carrier televox faltante en /etc/asterisk/pjsip.conf. Reparando para registro MicroSIP...');
         needsRepair = true;
       }
     } else {
@@ -2120,12 +2118,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const batchAstDbCmd = astDbCommands.map((c) => `asterisk -rx '${c}'`).join('; ');
     exec(batchAstDbCmd, () => {});
 
-    // Ensure Asterisk PJSIP configuration has televox endpoint ready before dialing
+    // Ensure Asterisk PJSIP configuration has televox endpoint and standard AORs ready before dialing
     try {
       const pjsipPath = '/etc/asterisk/pjsip.conf';
       if (fs.existsSync(pjsipPath)) {
         const curContent = fs.readFileSync(pjsipPath, 'utf8');
-        if (!curContent.includes('[televox]') || !curContent.includes('[1001-aor]')) {
+        if (!curContent.includes('[televox]') || !curContent.includes('aors = 1001') || curContent.includes('1001-aor')) {
           const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, defaultCarriersList);
           fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
           fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');

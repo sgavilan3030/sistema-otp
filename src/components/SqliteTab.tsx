@@ -183,13 +183,13 @@ CREATE TABLE IF NOT EXISTS ps_aors (
 ${extensions
   .map(
     (e) => `INSERT OR REPLACE INTO ps_endpoints (id, transport, aors, auth, context, disallow, allow, direct_media, callerid)
-VALUES ('${e.extension}', '${e.transport}', '${e.extension}-aor', '${e.extension}-auth', '${e.context}', 'all', '${e.codecs.join(',')}', 'no', '${e.callerId}');
+VALUES ('${e.extension}', '${e.transport}', '${e.extension}', '${e.extension}-auth', '${e.context}', 'all', '${e.codecs.join(',')}', 'no', '${e.callerId}');
 
 INSERT OR REPLACE INTO ps_auths (id, auth_type, password, username)
 VALUES ('${e.extension}-auth', 'userpass', '${e.secret}', '${e.extension}');
 
 INSERT OR REPLACE INTO ps_aors (id, max_contacts, remove_existing, qualify_frequency)
-VALUES ('${e.extension}-aor', ${e.maxContacts}, 'yes', 60);`
+VALUES ('${e.extension}', ${e.maxContacts}, 'yes', 60);`
   )
   .join('\n\n')}
 `;

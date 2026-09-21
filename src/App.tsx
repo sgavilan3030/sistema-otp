@@ -461,7 +461,7 @@ export default function App() {
     addLog(
       'PJSIP',
       `Nueva extensión PJSIP creada: ${newExt.extension} (${newExt.name})`,
-      `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}-aor]`
+      `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}]`
     );
     handleQuickSync(updated);
   };

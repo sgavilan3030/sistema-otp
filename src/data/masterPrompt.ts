@@ -60,7 +60,7 @@ Cuando el usuario pida crear una extensión (ej. \`EXTEN=1001\`, \`PASSWORD=Secr
    disallow=all
    allow=ulaw,alaw,g722,opus
    auth=\${EXTEN}-auth
-   aors=\${EXTEN}-aor
+   aors=\${EXTEN}
    callerid=\${NAME} <\${EXTEN}>
    direct_media=no
 
@@ -70,7 +70,7 @@ Cuando el usuario pida crear una extensión (ej. \`EXTEN=1001\`, \`PASSWORD=Secr
    username=\${EXTEN}
    password=\${PASSWORD}
 
-   [\${EXTEN}-aor]
+   [\${EXTEN}]
    type=aor
    max_contacts=2
    remove_existing=yes
