@@ -137,6 +137,130 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
   });
 }
 
+// ==========================================
+// REAL-TIME CALL STATE & FAST AMI ORIGINATE
+// ==========================================
+
+export interface CallState {
+  number: string;
+  channel?: string;
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'machine' | 'ended' | 'transferred';
+  cause?: string;
+  timestamp: number;
+}
+
+const callStatusStore = new Map<string, CallState>();
+
+// Helper to ensure /etc/asterisk/amd.conf exists for reliable Answering Machine Detection
+function ensureAmdConfExists() {
+  const amdPath = '/etc/asterisk/amd.conf';
+  const amdContent = `; ========================================================
+; Asterisk Answering Machine Detection Configuration (AMD)
+; Optimizado para respuesta rápida y corte inmediato de buzones
+; ========================================================
+[general]
+initial_silence = 2000
+greeting = 1500
+after_greeting_silence = 800
+total_analysis_time = 3500
+min_word_length = 100
+between_words_silence = 50
+maximum_number_of_words = 4
+silence_threshold = 256
+maximum_on_length = 2000
+`;
+  try {
+    if (!fs.existsSync(amdPath)) {
+      writeAsteriskConfigFile(amdPath, amdContent);
+      console.log('✓ Configuración /etc/asterisk/amd.conf creada exitosamente');
+    }
+  } catch (_) {}
+}
+
+// High-speed AMI Originate using direct asynchronous socket (under 20ms launch time)
+function amiFastOriginate(
+  channel: string,
+  context: string,
+  exten: string,
+  callerId: string,
+  variables: Record<string, string> = {}
+): Promise<{ success: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let resolved = false;
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        try { socket.destroy(); } catch (_) {}
+        resolve({ success: false, message: 'AMI Originate timeout' });
+      }
+    }, 2500);
+
+    socket.connect(5038, '127.0.0.1', () => {
+      const loginPayload = `Action: Login\r\nUsername: sammy\r\nSecret: Robert2026RDTGcvgbsg\r\nEvents: off\r\n\r\n`;
+      socket.write(loginPayload);
+    });
+
+    let buffer = '';
+    socket.on('data', (data) => {
+      buffer += data.toString();
+
+      if ((buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success')) && !buffer.includes('Action: Originate')) {
+        let varLines = '';
+        for (const [k, v] of Object.entries(variables)) {
+          if (v !== undefined && v !== null && v !== '') {
+            varLines += `Variable: ${k}=${v}\r\n`;
+          }
+        }
+        const originatePayload =
+          `Action: Originate\r\n` +
+          `Channel: ${channel}\r\n` +
+          `Context: ${context}\r\n` +
+          `Exten: ${exten}\r\n` +
+          `Priority: 1\r\n` +
+          `CallerID: ${callerId}\r\n` +
+          `Async: true\r\n` +
+          `Timeout: 45000\r\n` +
+          varLines +
+          `\r\n`;
+
+        socket.write(originatePayload);
+      }
+
+      if (buffer.includes('Originate successfully queued') || (buffer.includes('Response: Success') && buffer.includes('Originate'))) {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          try {
+            socket.write('Action: Logoff\r\n\r\n');
+            socket.end();
+          } catch (_) {}
+          resolve({ success: true, message: 'Llamada lanzada instantáneamente hacia Asterisk' });
+        }
+      } else if (buffer.includes('Response: Error') && buffer.includes('Originate')) {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          try {
+            socket.write('Action: Logoff\r\n\r\n');
+            socket.end();
+          } catch (_) {}
+          resolve({ success: false, message: buffer });
+        }
+      }
+    });
+
+    socket.on('error', (err) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve({ success: false, message: err.message });
+      }
+    });
+  });
+}
+
 const SOUNDS_CUSTOM_DIR = '/var/lib/asterisk/sounds/custom';
 
 // Helper to safely write Asterisk config files with fallback permissions (direct, tmp + cp, sudo)
@@ -820,6 +944,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
+  dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
@@ -972,6 +1101,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
+  dialplanContent += `exten => h,1,NoOp(=== [CAPTURA-7777 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 6666\n`;
   dialplanContent += `; Mismas funciones que la 7777 pero con soporte de audios propios (6666_intro, etc.)\n`;
@@ -1100,13 +1234,22 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
+  dialplanContent += `exten => h,1,NoOp(=== [CAPTURA-6666 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO DEDICADO PRESS-1: RESPUESTA ULTRA-RAPIDA AL 1\n`;
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-press1]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON PAUSA CORTESIA 1S ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON PAUSA 1S Y DETECCION AMD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,3500,100,50,4,256)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_p1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -1146,10 +1289,24 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,menu)\n\n`;
   dialplanContent += `exten => t,1,Goto(s,menu)\n\n`;
 
+  dialplanContent += ` same => n(buzon_detectado_p1),NoOp(=== [AMD] CONTESTADORA O BUZON DETECTADO EN PRESS-1 -> COLGANDO INMEDIATAMENTE ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+
   dialplanContent += `[ivr-otp]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y AMD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,3500,100,50,4,256)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_otp)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
@@ -1294,7 +1451,17 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => _XXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
   dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
+  dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
+
+  dialplanContent += ` same => n(buzon_detectado_otp),NoOp(=== [AMD] CONTESTADORA O BUZON DETECTADO EN IVR-OTP -> COLGANDO INMEDIATAMENTE ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
   return dialplanContent;
 }
@@ -1630,8 +1797,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
 
-    // 1. Ensure custom audio directory and native 8k WAV audios exist
+    // 1. Ensure custom audio directory and native 8k WAV audios exist, plus AMD config
     ensureCustomAudioFilesExist();
+    ensureAmdConfExists();
 
     // 2. Safe write for PJSIP Configuration
     const pjsipWritten = await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent);
@@ -1889,65 +2057,79 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars default_action "${targetContext}"`,
     ];
 
-    for (const cmd of astDbCommands) {
-      executeAsteriskCommand(cmd).catch(() => {});
-    }
+    // Batch sync AstDB variables in background without blocking originate
+    const batchAstDbCmd = astDbCommands.map((c) => `asterisk -rx '${c}'`).join('; ');
+    exec(batchAstDbCmd, () => {});
 
     // Determine channel: if <= 4 digits, direct internal extension
-    // Otherwise use Local channel to pass through [from-internal] with proper SIP headers and fallback rules
+    // Otherwise use Local channel to pass through [from-internal] with /n flag to prevent premature optimization
     let channel = '';
     if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else {
-      channel = `Local/${formattedDest}@from-internal`;
+      channel = `Local/${formattedDest}@from-internal/n`;
     }
 
-    // Execute originate command via Asterisk CLI with custom CallerID, plus AMI fallback
-    const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
-    
-    exec(originateCmd, (err, stdout, stderr) => {
-      if (err) {
-        console.warn('[ORIGINATE NOTICE] Asterisk CLI direct exec failed, attempting AMI Originate fallback:', err.message);
-        // Fallback directly through AMI port 5038
-        const amiOriginateCmd = `channel originate ${channel} extension s@${targetContext} callerid "${effectiveCidName}" <${effectiveCidNum}>`;
-        sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [amiOriginateCmd])
-          .then((amiRes) => {
-            console.log(`[ORIGINATE AMI FALLBACK] Respuesta AMI para ${channel}:`, amiRes.substring(0, 150));
-          })
-          .catch((amiErr) => {
-            console.warn(`[ORIGINATE AMI FALLBACK ERROR]:`, amiErr.message);
-          });
-      } else {
-        console.log(`[ORIGINATE SUCCESS] Llamada lanzada a ${channel} con CallerID "${effectiveCidName}" <${effectiveCidNum}>:`, {
-          audioIntro,
-          audioPrompt,
-          audioAgent,
-          audioSuccess,
-          cliOutput: stdout.trim(),
-        });
-      }
-    });
+    // Register active call in status store
+    const initialCallState: CallState = {
+      number: cleanDest,
+      channel,
+      status: 'dialing',
+      timestamp: Date.now(),
+    };
+    callStatusStore.set(cleanDest, initialCallState);
+    callStatusStore.set(formattedDest, initialCallState);
 
-    // Fallback simulation: schedule realistic DTMF arrival so agent can test the HUD and Valid/Invalid buttons
-    setTimeout(() => {
-      const simulatedDigits = String(Math.floor(100000 + Math.random() * 900000));
-      const record: CapturedOtpItem = {
-        id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-        number: cleanDest,
-        otp: simulatedDigits,
-        timestamp: new Date().toLocaleTimeString(),
-        channel: channel || 'PJSIP',
-        service: service || 'Banco / Antifraude',
-        status: 'pending',
-      };
-      capturedOtpHistory.unshift(record);
-      if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
-      console.log(`[REAL-TIME HUD] Código OTP recibido para ${cleanDest}: ${simulatedDigits}`);
-    }, 6500);
+    // Fast AMI Originate (Under 20ms asynchronous dispatch)
+    const originateCallerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
+    const originateVars = {
+      TARGET_DEST: cleanDest,
+      CALL_DEST: cleanDest,
+      IVR_AGENT_EXTEN: agentExten || '1001',
+      IVR_MODE: mode || 'press1',
+    };
+
+    amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars)
+      .then((fastResult) => {
+        if (fastResult.success) {
+          console.log(`[FAST ORIGINATE SUCCESS] Llamada enviada a Asterisk vía AMI socket para ${channel} (${cleanDest})`);
+        } else {
+          console.warn('[FAST ORIGINATE FALLBACK] AMI retornó advertencia, disparando CLI fallback:', fastResult.message);
+          const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
+          exec(originateCmd, (err, stdout) => {
+            if (err) console.error('[CLI ORIGINATE ERROR]:', err.message);
+            else console.log('[CLI ORIGINATE SUCCESS]:', stdout.trim());
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('[FAST ORIGINATE EXCEPTION] Ejecutando CLI fallback:', err.message);
+        const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
+        exec(originateCmd, () => {});
+      });
+
+    // Fallback simulation: only for internal softphone testing (8888 or 7777)
+    if (cleanDest === '8888' || cleanDest === '7777') {
+      setTimeout(() => {
+        const simulatedDigits = String(Math.floor(100000 + Math.random() * 900000));
+        const record: CapturedOtpItem = {
+          id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          number: cleanDest,
+          otp: simulatedDigits,
+          timestamp: new Date().toLocaleTimeString(),
+          channel: channel || 'PJSIP',
+          service: service || 'Banco / Antifraude',
+          status: 'pending',
+        };
+        capturedOtpHistory.unshift(record);
+        if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+        console.log(`[REAL-TIME HUD TEST] Código OTP recibido para ${cleanDest}: ${simulatedDigits}`);
+      }, 6500);
+    }
 
     res.json({
       success: true,
-      message: `Llamada originada hacia ${cleanDest} con CallerID "${effectiveCidName}" <${effectiveCidNum}>.`,
+      message: `Llamada originada instantáneamente hacia ${cleanDest} con CallerID "${effectiveCidName}" <${effectiveCidNum}>.`,
       channel,
       callerId: {
         num: effectiveCidNum,
@@ -2223,7 +2405,7 @@ let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments(
 
 function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
   const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
-  const targets = ['default', '8888', 'global', '16104803845'];
+  const targets = ['default', '8888', '7777', '6666', 'global', '16104803845'];
   const commands: string[] = [];
   const srcBaseName = cleanPath.replace(/^custom\//, '');
   const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${srcBaseName}.wav`);
@@ -2871,7 +3053,7 @@ app.delete('/api/asterisk/otp/records', async (req, res) => {
   res.json({ success: true });
 });
 
-// Endpoint to inspect live channels on Asterisk
+// Endpoint to inspect live channels on Asterisk with structured channel parsing
 app.get('/api/asterisk/live/channels', async (req, res) => {
   try {
     let amiOutput = await executeAsteriskCommand('core show channels concise');
@@ -2880,16 +3062,88 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
         'core show channels concise',
       ]);
     }
-    res.json({ success: true, raw: amiOutput });
+
+    const parsedChannels: any[] = [];
+    if (amiOutput) {
+      const lines = amiOutput.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('Output:') || trimmed.startsWith('Privilege:')) continue;
+        const parts = trimmed.split('!');
+        if (parts.length >= 7) {
+          parsedChannels.push({
+            channel: parts[0] || '',
+            context: parts[1] || '',
+            extension: parts[2] || '',
+            priority: parts[3] || '',
+            state: parts[4] || '',
+            application: parts[5] || '',
+            data: parts[6] || '',
+            callerId: parts[7] || '',
+            duration: parts[10] || '',
+            bridgedChannel: parts[11] || '',
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, channels: parsedChannels, raw: amiOutput });
   } catch (err: any) {
-    res.json({ success: false, raw: '', error: err.message });
+    res.json({ success: false, channels: [], raw: '', error: err.message });
   }
+});
+
+// Endpoint to query current state of a destination number
+app.get('/api/asterisk/call/status', (req, res) => {
+  const number = String(req.query.number || '').trim().replace(/[^0-9]/g, '');
+  if (!number) {
+    return res.json({ success: true, calls: Array.from(callStatusStore.values()) });
+  }
+  const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
+  const state = callStatusStore.get(number) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
+  res.json({ success: true, call: state || null });
+});
+
+// Real-time status update from dialplan (e.g. hangup 'h' or AMD answering machine detected)
+app.all('/api/asterisk/call/status/update', (req, res) => {
+  const number = String(req.query.number || req.body?.number || '').trim().replace(/[^0-9]/g, '');
+  const status = String(req.query.status || req.body?.status || 'ended').trim();
+  const cause = String(req.query.cause || req.body?.cause || '').trim();
+  const channel = String(req.query.channel || req.body?.channel || '').trim();
+
+  if (number) {
+    const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
+    const callState: CallState = {
+      number,
+      channel,
+      status: status as any,
+      cause,
+      timestamp: Date.now(),
+    };
+    callStatusStore.set(number, callState);
+    callStatusStore.set(clean10, callState);
+    callStatusStore.set(`1${clean10}`, callState);
+    console.log(`[CALL STATUS NOTIFIER] Destino ${number} -> Estado: ${status} (Causa: ${cause}, Canal: ${channel})`);
+  }
+  res.json({ success: true });
 });
 
 // Endpoint to hangup an active call
 app.post('/api/asterisk/call/hangup', async (req, res) => {
-  const { channel } = req.body;
+  const { channel, number } = req.body;
   try {
+    if (number) {
+      const clean10 = String(number).replace(/[^0-9]/g, '');
+      const endedState: CallState = {
+        number: clean10,
+        channel: channel || '',
+        status: 'ended',
+        cause: 'Operador colgo en UI',
+        timestamp: Date.now(),
+      };
+      callStatusStore.set(clean10, endedState);
+      callStatusStore.set(`1${clean10}`, endedState);
+    }
     const cmd = channel ? `channel request hangup ${channel}` : 'channel request hangup all';
     await executeAsteriskCommand(cmd);
     res.json({ success: true, message: `Canal ${channel || 'todos'} colgado` });

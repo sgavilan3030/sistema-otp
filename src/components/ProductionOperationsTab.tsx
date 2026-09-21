@@ -861,15 +861,73 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 channel: ivrChannel.channel,
               };
             });
+          } else if (activeCall?.isActive && activeCall.duration >= 5 && Array.isArray(data.channels)) {
+            // Si la llamada estaba activa pero ya no figura en ningún canal de Asterisk
+            const queryClean = activeCall.number.replace(/[^0-9]/g, '');
+            const channelStillAlive = data.channels.some((c: any) => {
+              const chStr = (c.channel || '') + (c.extension || '') + (c.callerId || '') + (c.data || '');
+              return (activeCall.channel && c.channel?.includes(activeCall.channel)) || (queryClean && chStr.includes(queryClean));
+            });
+            if (!channelStillAlive && activeCall.status !== 'ended') {
+              setActiveCall((prev) => (prev ? { ...prev, isActive: false, status: 'ended' } : null));
+            }
           }
         }
       } catch (e) {}
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 9000);
+    const chanInterval = setInterval(pollLiveChannels, 2500);
     return () => clearInterval(chanInterval);
-  }, [selectedService]);
+  }, [selectedService, activeCall?.isActive, activeCall?.channel, activeCall?.number, activeCall?.duration, activeCall?.status]);
+
+  // Monitoreo en tiempo real del estado de la llamada activa (Corte de cliente y Contestadora automática / Buzón)
+  useEffect(() => {
+    if (!activeCall?.isActive || activeCall.status === 'ended') return;
+
+    const watcherInterval = setInterval(async () => {
+      try {
+        const queryNum = activeCall.number.replace(/[^0-9]/g, '');
+        if (!queryNum) return;
+        const res = await fetch(`/api/asterisk/call/status?number=${encodeURIComponent(queryNum)}`);
+        const data = await res.json();
+        if (data.success && data.call) {
+          const callState = data.call;
+          if (callState.status === 'machine') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    isActive: false,
+                    status: 'ended',
+                  }
+                : null
+            );
+            setLaunchFeedback({
+              text: `📞 Contestadora automática o buzón de voz detectado en ${activeCall.number}. Asterisk colgó la llamada y el sistema se cerró automáticamente.`,
+              type: 'error',
+            });
+          } else if (callState.status === 'ended') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    isActive: false,
+                    status: 'ended',
+                  }
+                : null
+            );
+            setLaunchFeedback({
+              text: `📞 El cliente ha colgado la llamada (${activeCall.number}). Llamada finalizada en el sistema.`,
+              type: 'error',
+            });
+          }
+        }
+      } catch (_) {}
+    }, 1000);
+
+    return () => clearInterval(watcherInterval);
+  }, [activeCall?.isActive, activeCall?.number, activeCall?.status]);
 
   // Duration timer for active call
   useEffect(() => {
@@ -1033,9 +1091,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
       const effectiveCallerIdName = callerIdName.trim() || 'Seguridad Bancaria';
 
-      // Pre-sync audios to AstDB first to guarantee zero beep
-      await handleSyncAudiosToAsterisk(true);
-
+      // Audios are passed directly in body and synced on Asterisk instantly in parallel with originate
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1058,7 +1114,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       if (data.success) {
         setLaunchFeedback({
-          text: `¡Llamada de producción lanzada exitosamente a ${targetNumber}! Conectando con la troncal ${activeCarrier} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
+          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando con la troncal ${activeCarrier} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
           type: 'success',
         });
 
@@ -1100,9 +1156,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Hangup active call
   const handleHangupActiveCall = async () => {
     try {
-      await fetch('/api/asterisk/call/hangup', { method: 'POST' });
+      await fetch('/api/asterisk/call/hangup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: activeCall?.channel,
+          number: activeCall?.number,
+        }),
+      });
     } catch (e) {}
     setActiveCall((prev) => (prev ? { ...prev, status: 'ended', isActive: false } : null));
+    setLaunchFeedback({
+      text: 'Llamada colgada por el operador.',
+      type: 'success',
+    });
   };
 
   // Transfer call to agent in X-Lite
