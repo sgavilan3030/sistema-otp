@@ -1319,7 +1319,8 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1] ESPERANDO 1 SEGUNDO DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -1368,7 +1369,8 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP] ESPERANDO 1 SEGUNDO DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
