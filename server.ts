@@ -2108,19 +2108,11 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     // Save campaign-selected audio and CallerID configuration to AstDB for this destination number
-    const astDbCommands = [
-      `database put ivr_vars ${cleanDest}_intro "${audioIntro || ''}"`,
-      `database put ivr_vars ${cleanDest}_prompt "${audioPrompt || ''}"`,
-      `database put ivr_vars ${cleanDest}_agent "${audioAgent || ''}"`,
-      `database put ivr_vars ${cleanDest}_success "${audioSuccess || ''}"`,
+    const astDbCommands: string[] = [
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
-      `database put ivr_vars ${formattedDest}_intro "${audioIntro || ''}"`,
-      `database put ivr_vars ${formattedDest}_prompt "${audioPrompt || ''}"`,
-      `database put ivr_vars ${formattedDest}_agent "${audioAgent || ''}"`,
-      `database put ivr_vars ${formattedDest}_success "${audioSuccess || ''}"`,
       `database put ivr_vars ${formattedDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || '1001'}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
@@ -2131,9 +2123,27 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars default_action "${targetContext}"`,
     ];
 
+    if (audioIntro && audioIntro.trim()) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_intro "${audioIntro.trim()}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_intro "${audioIntro.trim()}"`);
+    }
+    if (audioPrompt && audioPrompt.trim()) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_prompt "${audioPrompt.trim()}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_prompt "${audioPrompt.trim()}"`);
+    }
+    if (audioAgent && audioAgent.trim()) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_agent "${audioAgent.trim()}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_agent "${audioAgent.trim()}"`);
+    }
+    if (audioSuccess && audioSuccess.trim()) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_success "${audioSuccess.trim()}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_success "${audioSuccess.trim()}"`);
+    }
+
     // Batch sync AstDB variables in background without blocking originate
-    const batchAstDbCmd = astDbCommands.map((c) => `asterisk -rx '${c}'`).join('; ');
-    exec(batchAstDbCmd, () => {});
+    for (const c of astDbCommands) {
+      executeAsteriskCommand(c).catch(() => {});
+    }
 
     // Ensure Asterisk PJSIP configuration has televox endpoint and standard AORs ready before dialing
     try {
@@ -2756,33 +2766,44 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       destination,
     } = req.body;
 
-    const targets = ['default', '8888', 'global'];
+    const targets = new Set<string>(['default', '8888', '*8888', '8880', 'global', '7777', '16104803845', '6104803845']);
     if (destination) {
       const clean = String(destination).trim().replace(/[^0-9]/g, '');
-      if (clean) targets.push(clean);
+      if (clean) {
+        targets.add(clean);
+        if (clean.length === 10) targets.add(`1${clean}`);
+        if (clean.length === 11 && clean.startsWith('1')) targets.add(clean.substring(1));
+      }
     }
-    // Also include test client number
-    targets.push('16104803845');
 
     const commands: string[] = [];
     for (const tgt of targets) {
-      commands.push(`database put ivr_vars ${tgt}_intro "${intro}"`);
-      commands.push(`database put ivr_vars ${tgt}_prompt "${prompt}"`);
-      commands.push(`database put ivr_vars ${tgt}_wait "${wait}"`);
-      commands.push(`database put ivr_vars ${tgt}_success "${success}"`);
-      commands.push(`database put ivr_vars ${tgt}_agent "${agent}"`);
+      if (intro) commands.push(`database put ivr_vars ${tgt}_intro "${intro}"`);
+      if (prompt) commands.push(`database put ivr_vars ${tgt}_prompt "${prompt}"`);
+      if (wait) commands.push(`database put ivr_vars ${tgt}_wait "${wait}"`);
+      if (success) commands.push(`database put ivr_vars ${tgt}_success "${success}"`);
+      if (agent) commands.push(`database put ivr_vars ${tgt}_agent "${agent}"`);
     }
 
+    // Execute in background
     for (const cmd of commands) {
       executeAsteriskCommand(cmd).catch(() => {});
     }
 
-    console.log('[AstDB SUCCESS] Audios sincronizados en base de datos de Asterisk:', { intro, prompt, wait, success, agent });
+    console.log('[AstDB SUCCESS] Audios sincronizados en base de datos de Asterisk para todos los destinos:', {
+      targets: Array.from(targets),
+      intro,
+      prompt,
+      wait,
+      success,
+      agent,
+    });
 
     res.json({
       success: true,
       message: 'Audios del IVR sincronizados permanentemente en Asterisk AstDB.',
       assigned: { intro, prompt, wait, success, agent },
+      targets: Array.from(targets),
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -2817,6 +2838,56 @@ app.get('/api/asterisk/audio/config', (req, res) => {
       },
       allKeys: audios,
     });
+  });
+});
+
+// Verify if an audio file exists physically in Asterisk sounds directory
+app.all('/api/asterisk/audio/verify', (req, res) => {
+  const audioPath = (req.query.path as string) || (req.body && req.body.path) || '';
+  if (!audioPath) {
+    return res.status(400).json({ success: false, exists: false, error: 'Ruta no especificada' });
+  }
+
+  // Asterisk sounds typically reside in SOUNDS_CUSTOM_DIR or /var/lib/asterisk/sounds/
+  const cleanName = audioPath.replace(/^custom\//, '').replace(/\.[^/.]+$/, '').trim();
+  const candidates = [
+    path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.wav`),
+    path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.gsm`),
+    path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.sln`),
+    path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.mp3`),
+    path.join('/var/lib/asterisk/sounds/en', `${cleanName}.wav`),
+    path.join('/var/lib/asterisk/sounds/es', `${cleanName}.wav`),
+    path.join('/var/lib/asterisk/sounds', `${cleanName}.wav`),
+  ];
+
+  let found = false;
+  let matchedPath = '';
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      found = true;
+      matchedPath = c;
+      break;
+    }
+  }
+
+  // If HEAD request, set headers and return immediately
+  if (req.method === 'HEAD') {
+    if (found) {
+      res.setHeader('X-Audio-Exists', 'true');
+      res.setHeader('X-Audio-Path', matchedPath);
+      return res.status(200).end();
+    } else {
+      res.setHeader('X-Audio-Exists', 'false');
+      return res.status(404).end();
+    }
+  }
+
+  return res.json({
+    success: true,
+    exists: found,
+    path: audioPath,
+    cleanName,
+    matchedPath: found ? matchedPath : null,
   });
 });
 

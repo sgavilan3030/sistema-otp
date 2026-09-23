@@ -278,16 +278,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return acc;
   }, {} as Record<string, CampaignAudioConfig>);
 
+  // Helper to verify if an audio path exists physically in Asterisk
+  const verifyAudioOnAsterisk = async (audioPath: string): Promise<boolean> => {
+    if (!audioPath) return false;
+    try {
+      const res = await fetch(`/api/asterisk/audio/verify?path=${encodeURIComponent(audioPath)}`, {
+        method: 'HEAD',
+      });
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  };
+
   // Update specific audio slot for an entity
-  const handleUpdateCampaignAudio = (
+  const handleUpdateCampaignAudio = async (
     service: string,
     slot: keyof CampaignAudioConfig,
     audioPath: string
   ) => {
+    const cleanPath = audioPath.trim();
     setCampaignEntities((prev) => {
       const updated = prev.map((ent) => {
         if (ent.id === service) {
-          return { ...ent, [slot]: audioPath };
+          return { ...ent, [slot]: cleanPath };
         }
         return ent;
       });
@@ -297,29 +311,34 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       return updated;
     });
 
-    // If currently selected, notify and auto-sync in background to Asterisk
+    // If currently selected, notify and auto-sync in background to Asterisk AstDB
     if (selectedService === service) {
       const current = campaignEntities.find((e) => e.id === service);
-      if (current) {
-        const payload = {
-          intro: slot === 'introAudioPath' ? audioPath : current.introAudioPath,
-          prompt: slot === 'promptAudioPath' ? audioPath : current.promptAudioPath,
-          wait: 'custom/un_momento_validando_informacion',
-          success: slot === 'successAudioPath' ? audioPath : current.successAudioPath,
-          agent: slot === 'agentAudioPath' ? audioPath : current.agentAudioPath,
-          destination: targetNumber.trim() || '16104803845',
-        };
-        fetch('/api/asterisk/audio/sync-defaults', {
+      const payload = {
+        intro: slot === 'introAudioPath' ? cleanPath : (current?.introAudioPath || ''),
+        prompt: slot === 'promptAudioPath' ? cleanPath : (current?.promptAudioPath || ''),
+        wait: 'custom/un_momento_validando_informacion',
+        success: slot === 'successAudioPath' ? cleanPath : (current?.successAudioPath || ''),
+        agent: slot === 'agentAudioPath' ? cleanPath : (current?.agentAudioPath || ''),
+        destination: targetNumber.trim() || '16104803845',
+      };
+      
+      try {
+        await fetch('/api/asterisk/audio/sync-defaults', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-        }).catch(() => {});
+        });
+        setAudioSyncFeedback(`✓ Audio asignado y sincronizado con Asterisk: ${cleanPath || 'Estándar'}`);
+        setTimeout(() => setAudioSyncFeedback(null), 3500);
+      } catch {
+        setAudioSyncFeedback(`Aviso: Audio guardado localmente.`);
       }
     }
   };
 
   // Save complete entity from modal
-  const handleSaveEntity = (updatedEntity: CampaignEntity) => {
+  const handleSaveEntity = async (updatedEntity: CampaignEntity) => {
     setCampaignEntities((prev) => {
       const exists = prev.some((e) => e.id === updatedEntity.id);
       let next: CampaignEntity[];
@@ -342,42 +361,50 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       if (updatedEntity.defaultCallerNum) setCallerIdNum(updatedEntity.defaultCallerNum);
 
       // Auto-sync audios to AstDB
-      fetch('/api/asterisk/audio/sync-defaults', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          intro: updatedEntity.introAudioPath,
-          prompt: updatedEntity.promptAudioPath,
-          wait: 'custom/un_momento_validando_informacion',
-          success: updatedEntity.successAudioPath,
-          agent: updatedEntity.agentAudioPath,
-          destination: targetNumber.trim() || '16104803845',
-        }),
-      }).catch(() => {});
-      setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado y sincronizado con Asterisk.`);
+      try {
+        await fetch('/api/asterisk/audio/sync-defaults', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            intro: updatedEntity.introAudioPath,
+            prompt: updatedEntity.promptAudioPath,
+            wait: 'custom/un_momento_validando_informacion',
+            success: updatedEntity.successAudioPath,
+            agent: updatedEntity.agentAudioPath,
+            destination: targetNumber.trim() || '16104803845',
+          }),
+        });
+        setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado y aplicado en Asterisk AstDB.`);
+      } catch {
+        setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado.`);
+      }
       setTimeout(() => setAudioSyncFeedback(null), 4000);
     }
   };
 
   // Select an entity and sync its attributes
-  const handleSelectEntity = (entity: CampaignEntity) => {
+  const handleSelectEntity = async (entity: CampaignEntity) => {
     setSelectedService(entity.id);
     if (entity.defaultCallerName) setCallerIdName(entity.defaultCallerName);
     if (entity.defaultCallerNum) setCallerIdNum(entity.defaultCallerNum);
 
     // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios
-    fetch('/api/asterisk/audio/sync-defaults', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        intro: entity.introAudioPath,
-        prompt: entity.promptAudioPath,
-        wait: 'custom/un_momento_validando_informacion',
-        success: entity.successAudioPath,
-        agent: entity.agentAudioPath,
-        destination: targetNumber.trim() || '16104803845',
-      }),
-    }).catch(() => {});
+    try {
+      await fetch('/api/asterisk/audio/sync-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intro: entity.introAudioPath,
+          prompt: entity.promptAudioPath,
+          wait: 'custom/un_momento_validando_informacion',
+          success: entity.successAudioPath,
+          agent: entity.agentAudioPath,
+          destination: targetNumber.trim() || '16104803845',
+        }),
+      });
+      setAudioSyncFeedback(`✓ Guión activo: "${entity.name}" sincronizado con Asterisk.`);
+      setTimeout(() => setAudioSyncFeedback(null), 3000);
+    } catch {}
   };
 
   // Add new entity
