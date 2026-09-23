@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Press1Config, OtpCaptureConfig, PjsipExtension, AudioPrompt } from '../types';
 import {
   Volume2,
@@ -20,6 +20,8 @@ import {
   Send,
   Radio,
   Sparkles,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 
 interface IVRStudioTabProps {
@@ -31,6 +33,11 @@ interface IVRStudioTabProps {
   onSaveOtp: (config: OtpCaptureConfig) => void;
   onTriggerSync: () => void;
   isSyncing: boolean;
+}
+
+interface AudioVerificationItem {
+  status: 'idle' | 'checking' | 'found' | 'missing';
+  path?: string;
 }
 
 export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
@@ -48,6 +55,113 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   const [isPlayingTTS, setIsPlayingTTS] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+
+  // Audio verification states: slot name -> { status: 'idle' | 'checking' | 'found' | 'missing', path?: string }
+  const [audioVerification, setAudioVerification] = useState<Record<string, AudioVerificationItem>>({});
+
+  const checkAudioExists = async (slotKey: string, audioPath?: string) => {
+    if (!audioPath) {
+      setAudioVerification((prev) => ({ ...prev, [slotKey]: { status: 'idle' } }));
+      return;
+    }
+    setAudioVerification((prev) => ({
+      ...prev,
+      [slotKey]: { status: 'checking', path: audioPath },
+    }));
+
+    try {
+      const res = await fetch(`/api/asterisk/audio/verify?path=${encodeURIComponent(audioPath)}`, {
+        method: 'HEAD',
+      });
+      if (res.status === 200) {
+        setAudioVerification((prev) => ({
+          ...prev,
+          [slotKey]: { status: 'found', path: audioPath },
+        }));
+      } else {
+        setAudioVerification((prev) => ({
+          ...prev,
+          [slotKey]: { status: 'missing', path: audioPath },
+        }));
+      }
+    } catch {
+      setAudioVerification((prev) => ({
+        ...prev,
+        [slotKey]: { status: 'missing', path: audioPath },
+      }));
+    }
+  };
+
+  // Determine if any selected audio file is missing on the Asterisk server
+  const verificationList = Object.values(audioVerification) as AudioVerificationItem[];
+  const hasMissingAudio = verificationList.some((v) => v.status === 'missing');
+  const isCheckingAudio = verificationList.some((v) => v.status === 'checking');
+
+  // Helper to render the verification status tag next to an audio selector
+  const renderAudioStatusTag = (slotKey: string) => {
+    const item = audioVerification[slotKey];
+    if (!item || item.status === 'idle') return null;
+
+    if (item.status === 'checking') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] text-sky-400">
+          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+          <span>Comprobando en Asterisk...</span>
+        </span>
+      );
+    }
+
+    if (item.status === 'found') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+          <CheckCircle2 className="w-3 h-3 shrink-0" />
+          <span>Archivo verificado en servidor</span>
+        </span>
+      );
+    }
+
+    if (item.status === 'missing') {
+      return (
+        <span
+          id={`missing-audio-alert-${slotKey}`}
+          className="inline-flex items-center gap-1 text-[11px] text-rose-400 font-semibold bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30 animate-pulse"
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+          <span>Archivo no encontrado en Asterisk</span>
+        </span>
+      );
+    }
+
+    return null;
+  };
+
+  // Run verification on initial mount for any configured audios
+  useEffect(() => {
+    if (press1.welcomeAudioId) {
+      const a = audios.find((x) => x.id === press1.welcomeAudioId);
+      if (a?.asteriskPath) checkAudioExists('press1_welcome', a.asteriskPath);
+    }
+    if (press1.invalidAudioId) {
+      const a = audios.find((x) => x.id === press1.invalidAudioId);
+      if (a?.asteriskPath) checkAudioExists('press1_invalid', a.asteriskPath);
+    }
+    if (otp.welcomeAudioId) {
+      const a = audios.find((x) => x.id === otp.welcomeAudioId);
+      if (a?.asteriskPath) checkAudioExists('otp_welcome', a.asteriskPath);
+    }
+    if (otp.successAudioId) {
+      const a = audios.find((x) => x.id === otp.successAudioId);
+      if (a?.asteriskPath) checkAudioExists('otp_success', a.asteriskPath);
+    }
+    if (otp.failureAudioId) {
+      const a = audios.find((x) => x.id === otp.failureAudioId);
+      if (a?.asteriskPath) checkAudioExists('otp_failure', a.asteriskPath);
+    }
+    if (otp.validatingWaitAudioId) {
+      const a = audios.find((x) => x.id === otp.validatingWaitAudioId);
+      if (a?.asteriskPath) checkAudioExists('otp_validating_wait', a.asteriskPath);
+    }
+  }, []);
 
   const [testPhone, setTestPhone] = useState('16104803845');
   const [isTriggeringCall, setIsTriggeringCall] = useState(false);
@@ -158,15 +272,45 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-save-ivr-sync"
-          onClick={handleSaveAll}
-          disabled={isSyncing}
-          className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 transition-all"
-        >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span>{isSyncing ? 'Aplicando en Asterisk...' : 'Guardar y Recargar Dialplan'}</span>
-        </button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {hasMissingAudio && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs animate-pulse">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Audios no encontrados en el servidor. Corrige la selección para guardar.</span>
+            </div>
+          )}
+
+          <button
+            id="btn-save-ivr-sync"
+            onClick={handleSaveAll}
+            disabled={isSyncing || hasMissingAudio || isCheckingAudio}
+            className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all ${
+              hasMissingAudio || isCheckingAudio
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+            }`}
+            title={
+              hasMissingAudio
+                ? 'No se puede guardar: Uno o más audios seleccionados no existen en el servidor de Asterisk'
+                : undefined
+            }
+          >
+            {isCheckingAudio ? (
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+            ) : (
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            )}
+            <span>
+              {isSyncing
+                ? 'Aplicando en Asterisk...'
+                : isCheckingAudio
+                ? 'Verificando audios...'
+                : hasMissingAudio
+                ? 'Guardado Bloqueado (Archivo no encontrado)'
+                : 'Guardar y Recargar Dialplan'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {savedFeedback && (
@@ -394,16 +538,19 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   <FileAudio className="w-4 h-4 text-emerald-400" />
                   <span>Audio Pregrabado de Bienvenida (Recomendado)</span>
                 </label>
-                {press1.welcomeAudioId && (
-                  <button
-                    type="button"
-                    onClick={() => playRecordedAudio(press1.welcomeAudioId)}
-                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
-                  >
-                    {playingAudioId === press1.welcomeAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                    <span>{playingAudioId === press1.welcomeAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {renderAudioStatusTag('press1_welcome')}
+                  {press1.welcomeAudioId && (
+                    <button
+                      type="button"
+                      onClick={() => playRecordedAudio(press1.welcomeAudioId)}
+                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
+                    >
+                      {playingAudioId === press1.welcomeAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      <span>{playingAudioId === press1.welcomeAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <select
@@ -413,14 +560,21 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   setPress1({ ...press1, welcomeAudioId: val });
                   const selectedAudio = audios.find((a) => a.id === val);
                   if (selectedAudio?.asteriskPath) {
+                    checkAudioExists('press1_welcome', selectedAudio.asteriskPath);
                     fetch('/api/asterisk/audio/assign', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ role: 'press1_welcome', asteriskPath: selectedAudio.asteriskPath }),
                     }).catch(() => {});
+                  } else {
+                    checkAudioExists('press1_welcome', undefined);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
+                className={`w-full px-3 py-2 rounded-md bg-slate-900 border text-white focus:outline-none ${
+                  audioVerification['press1_welcome']?.status === 'missing'
+                    ? 'border-rose-500/80 bg-rose-950/20'
+                    : 'border-slate-800 focus:border-emerald-500'
+                }`}
               >
                 <option value="">-- Sin audio pregrabado (Usar texto TTS abajo) --</option>
                 {audios.map((a) => (
@@ -519,13 +673,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
             {/* Invalid audio selection */}
             <div>
-              <label className="block text-slate-300 font-medium mb-1">
-                Audio ante Opción Inválida (Reintento)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-300 font-medium">
+                  Audio ante Opción Inválida (Reintento)
+                </label>
+                {renderAudioStatusTag('press1_invalid')}
+              </div>
               <select
                 value={press1.invalidAudioId || ''}
-                onChange={(e) => setPress1({ ...press1, invalidAudioId: e.target.value || undefined })}
-                className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
+                onChange={(e) => {
+                  const val = e.target.value || undefined;
+                  setPress1({ ...press1, invalidAudioId: val });
+                  const selectedAudio = audios.find((a) => a.id === val);
+                  if (selectedAudio?.asteriskPath) {
+                    checkAudioExists('press1_invalid', selectedAudio.asteriskPath);
+                  } else {
+                    checkAudioExists('press1_invalid', undefined);
+                  }
+                }}
+                className={`w-full px-3 py-2 rounded-md bg-slate-950 border text-white focus:outline-none ${
+                  audioVerification['press1_invalid']?.status === 'missing'
+                    ? 'border-rose-500/80 bg-rose-950/20'
+                    : 'border-slate-800 focus:border-emerald-500'
+                }`}
               >
                 <option value="">-- Usar texto: "{press1.invalidPromptText}" --</option>
                 {audios.map((a) => (
@@ -611,16 +781,19 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   <FileAudio className="w-4 h-4 text-blue-400" />
                   <span>Audio Instrucción de OTP (Recomendado)</span>
                 </label>
-                {otp.welcomeAudioId && (
-                  <button
-                    type="button"
-                    onClick={() => playRecordedAudio(otp.welcomeAudioId)}
-                    className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 text-[11px]"
-                  >
-                    {playingAudioId === otp.welcomeAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                    <span>{playingAudioId === otp.welcomeAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {renderAudioStatusTag('otp_welcome')}
+                  {otp.welcomeAudioId && (
+                    <button
+                      type="button"
+                      onClick={() => playRecordedAudio(otp.welcomeAudioId)}
+                      className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 text-[11px]"
+                    >
+                      {playingAudioId === otp.welcomeAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      <span>{playingAudioId === otp.welcomeAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <select
@@ -630,14 +803,21 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   setOtp({ ...otp, welcomeAudioId: val });
                   const selectedAudio = audios.find((a) => a.id === val);
                   if (selectedAudio?.asteriskPath) {
+                    checkAudioExists('otp_welcome', selectedAudio.asteriskPath);
                     fetch('/api/asterisk/audio/assign', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ role: 'otp_welcome', asteriskPath: selectedAudio.asteriskPath }),
                     }).catch(() => {});
+                  } else {
+                    checkAudioExists('otp_welcome', undefined);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white focus:border-blue-500 focus:outline-none"
+                className={`w-full px-3 py-2 rounded-md bg-slate-900 border text-white focus:outline-none ${
+                  audioVerification['otp_welcome']?.status === 'missing'
+                    ? 'border-rose-500/80 bg-rose-950/20'
+                    : 'border-slate-800 focus:border-blue-500'
+                }`}
               >
                 <option value="">-- Sin audio pregrabado (Usar texto TTS abajo) --</option>
                 {audios.map((a) => (
@@ -716,13 +896,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             {/* Success and failure audio dropdowns */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Audio de Éxito OTP
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-300 font-medium">
+                    Audio de Éxito OTP
+                  </label>
+                  {renderAudioStatusTag('otp_success')}
+                </div>
                 <select
                   value={otp.successAudioId || ''}
-                  onChange={(e) => setOtp({ ...otp, successAudioId: e.target.value || undefined })}
-                  className="w-full px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-blue-500 focus:outline-none text-[11px]"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setOtp({ ...otp, successAudioId: val });
+                    const selectedAudio = audios.find((a) => a.id === val);
+                    if (selectedAudio?.asteriskPath) {
+                      checkAudioExists('otp_success', selectedAudio.asteriskPath);
+                    } else {
+                      checkAudioExists('otp_success', undefined);
+                    }
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-md bg-slate-950 border text-white focus:outline-none text-[11px] ${
+                    audioVerification['otp_success']?.status === 'missing'
+                      ? 'border-rose-500/80 bg-rose-950/20'
+                      : 'border-slate-800 focus:border-blue-500'
+                  }`}
                 >
                   <option value="">-- Usar texto: "{otp.successPromptText}" --</option>
                   {audios.map((a) => (
@@ -734,13 +930,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Audio de Código Inválido / Reintento
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-300 font-medium">
+                    Audio de Código Inválido / Reintento
+                  </label>
+                  {renderAudioStatusTag('otp_failure')}
+                </div>
                 <select
                   value={otp.failureAudioId || ''}
-                  onChange={(e) => setOtp({ ...otp, failureAudioId: e.target.value || undefined })}
-                  className="w-full px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-blue-500 focus:outline-none text-[11px]"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setOtp({ ...otp, failureAudioId: val });
+                    const selectedAudio = audios.find((a) => a.id === val);
+                    if (selectedAudio?.asteriskPath) {
+                      checkAudioExists('otp_failure', selectedAudio.asteriskPath);
+                    } else {
+                      checkAudioExists('otp_failure', undefined);
+                    }
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-md bg-slate-950 border text-white focus:outline-none text-[11px] ${
+                    audioVerification['otp_failure']?.status === 'missing'
+                      ? 'border-rose-500/80 bg-rose-950/20'
+                      : 'border-slate-800 focus:border-blue-500'
+                  }`}
                 >
                   <option value="">-- Usar texto: "{otp.failurePromptText}" --</option>
                   {audios.map((a) => (
@@ -832,22 +1044,38 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Locución de Espera que escucha el Cliente mientras el Asesor valida:</span>
                   </label>
-                  {otp.validatingWaitAudioId && (
-                    <button
-                      type="button"
-                      onClick={() => playRecordedAudio(otp.validatingWaitAudioId)}
-                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
-                    >
-                      {playingAudioId === otp.validatingWaitAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                      <span>{playingAudioId === otp.validatingWaitAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {renderAudioStatusTag('otp_validating_wait')}
+                    {otp.validatingWaitAudioId && (
+                      <button
+                        type="button"
+                        onClick={() => playRecordedAudio(otp.validatingWaitAudioId)}
+                        className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 text-[11px]"
+                      >
+                        {playingAudioId === otp.validatingWaitAudioId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        <span>{playingAudioId === otp.validatingWaitAudioId ? 'Pausar' : 'Escuchar Audio'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <select
                   value={otp.validatingWaitAudioId || ''}
-                  onChange={(e) => setOtp({ ...otp, validatingWaitAudioId: e.target.value || undefined })}
-                  className="w-full px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-indigo-500 focus:outline-none text-[11px]"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setOtp({ ...otp, validatingWaitAudioId: val });
+                    const selectedAudio = audios.find((a) => a.id === val);
+                    if (selectedAudio?.asteriskPath) {
+                      checkAudioExists('otp_validating_wait', selectedAudio.asteriskPath);
+                    } else {
+                      checkAudioExists('otp_validating_wait', undefined);
+                    }
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-md bg-slate-950 border text-white focus:outline-none text-[11px] ${
+                    audioVerification['otp_validating_wait']?.status === 'missing'
+                      ? 'border-rose-500/80 bg-rose-950/20'
+                      : 'border-slate-800 focus:border-indigo-500'
+                  }`}
                 >
                   <option value="">-- Sin audio pregrabado (usar texto TTS) --</option>
                   {audios.map((a) => (
