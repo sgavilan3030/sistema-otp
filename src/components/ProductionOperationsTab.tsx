@@ -1344,7 +1344,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         </div>
       </div>
 
-      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777 / 6666) */}
+      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777 / 6666 / 5555 / 4444 / 3333) */}
       {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/30 relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/30 pb-4">
@@ -1357,7 +1357,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
                   <span>¡CÓDIGO DE 6 DÍGITOS CAPTURADO EN VIVO!</span>
                   <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/40">
-                    {liveCapturedAlert.channel || 'Ext. 7777'}
+                    {liveCapturedAlert.channel || 'Ext. OTP'}
                   </span>
                 </div>
                 <div className="text-slate-300 text-xs mt-0.5">

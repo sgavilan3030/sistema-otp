@@ -254,6 +254,9 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
     setTimeout(() => {
       setCallState('ivr_connected');
 
+      const liveExts = ['7777', '777', '6666', '666', '5555', '555', '4444', '444', '3333', '333'];
+      const isLiveCaptureExt = liveExts.includes(dialedNumber);
+
       if (dialedNumber === press1Config.extension) {
         setActiveIvrType('press1');
         onLogEvent(
@@ -261,23 +264,36 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
           `Canal capturado por Stasis(press1_ivr_app) en extensión ${press1Config.extension}`,
           `Channel: PJSIP/carrier-0000001a\nInherited Var: ORIGINATING_EXTEN=${originatingExten}`
         );
-        playPromptOrTTS(
-          press1Config.welcomeAudioId,
-          press1Config.welcomeAudioText,
-          'custom/bienvenida_corporativa'
-        );
-      } else if (dialedNumber === otpConfig.extension) {
+        setTimeout(() => {
+          playPromptOrTTS(
+            press1Config.welcomeAudioId,
+            press1Config.welcomeAudioText,
+            'custom/bienvenida_corporativa'
+          );
+        }, 1500);
+      } else if (dialedNumber === otpConfig.extension || isLiveCaptureExt) {
+        const canonicalExt = dialedNumber.length === 3 ? `${dialedNumber[0]}${dialedNumber[0]}${dialedNumber[0]}${dialedNumber[0]}` : dialedNumber;
         setActiveIvrType('otp');
+        setIsAgentOtpModalActive(true);
+        setAgentOtpRequestedLength(6);
+        setOtpVerificationState('capturing');
+        setAgentLiveDigits([]);
+        setSystemMessage(
+          `📞 Canal transferido a extensión de captura en vivo ${dialedNumber}. Esperando 6 dígitos del cliente...`
+        );
         onLogEvent(
           'ARI',
-          `Canal capturado por Stasis(${otpConfig.stasisAppName}) en extensión ${otpConfig.extension}`,
-          `Event: StasisStart\nPlayback: prompt_otp_digits (${otpConfig.digitLength} dígitos)`
+          `[CAPTURA EN VIVO] Canal transferido a ivr-otp-live-${canonicalExt}`,
+          `Extensión: ${dialedNumber}\nContexto: ivr-otp-live-${canonicalExt}\nAgente Destino: ${originatingExten}\nAstDB: DB(ivr_vars/${canonicalExt}_intro)\nEspera antes de audio: 1.5s`
         );
-        playPromptOrTTS(
-          otpConfig.welcomeAudioId,
-          otpConfig.welcomePromptText,
-          'custom/solicitud_otp'
-        );
+        setTimeout(() => {
+          const customAudio = audios.find((a) => a.category === `welcome_${canonicalExt}` || a.fileName === `bienvenida_${canonicalExt}.wav`);
+          playPromptOrTTS(
+            customAudio?.id || otpConfig.welcomeAudioId,
+            customAudio?.name || `Estimado cliente, por su seguridad ingrese en el teclado de su teléfono el código de 6 dígitos que le enviamos por SMS o aplicación móvil.`,
+            customAudio?.asteriskPath || `custom/bienvenida_${canonicalExt}`
+          );
+        }, 1500);
       } else {
         const foundExt = extensions.find((e) => e.extension === dialedNumber);
         if (foundExt) {
@@ -756,7 +772,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
             </div>
 
             {/* Quick Dial Presets */}
-            <div className="flex gap-1.5 justify-center text-[10px] font-mono">
+            <div className="flex flex-wrap gap-1.5 justify-center text-[10px] font-mono">
               <button
                 onClick={() => setDialedNumber(press1Config.extension)}
                 className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 font-medium"
@@ -769,6 +785,16 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
               >
                 Stasis OTP ({otpConfig.extension})
               </button>
+              {['7777', '6666', '5555', '4444', '3333'].map((ext) => (
+                <button
+                  key={ext}
+                  onClick={() => setDialedNumber(ext)}
+                  className="px-2 py-1 rounded bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 font-medium"
+                  title={`Extensión OTP ${ext}`}
+                >
+                  Ext {ext}
+                </button>
+              ))}
             </div>
 
             {/* Keypad Grid */}

