@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   PjsipExtension,
   CarrierTrunk,
@@ -243,6 +243,126 @@ export default function App() {
     otp_success: 'custom/operacion_bloqueada_exito',
     otp_failure: 'custom/token_invalido_reintente',
   });
+
+  // Centralized Cross-Browser and Cross-Device Synchronization
+  const isApplyingRemoteUpdateRef = useRef(false);
+  const lastServerTimestampRef = useRef(0);
+
+  const fetchServerState = useCallback(async () => {
+    try {
+      const res = await fetch('/api/app/state');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.state) {
+        const s = data.state;
+        if (s.lastUpdated && s.lastUpdated <= lastServerTimestampRef.current) {
+          return;
+        }
+        lastServerTimestampRef.current = s.lastUpdated || Date.now();
+        isApplyingRemoteUpdateRef.current = true;
+
+        if (Array.isArray(s.extensions) && s.extensions.length > 0) {
+          setExtensions(s.extensions);
+          try { localStorage.setItem('ast20_extensions', JSON.stringify(s.extensions)); } catch (e) {}
+        }
+        if (Array.isArray(s.carriers) && s.carriers.length > 0) {
+          setCarriers(s.carriers);
+          try { localStorage.setItem('ast20_carriers', JSON.stringify(s.carriers)); } catch (e) {}
+        }
+        if (s.press1Config) {
+          setPress1Config(s.press1Config);
+          try { localStorage.setItem('ast20_press1', JSON.stringify(s.press1Config)); } catch (e) {}
+        }
+        if (s.otpConfig) {
+          setOtpConfig(s.otpConfig);
+          try { localStorage.setItem('ast20_otp', JSON.stringify(s.otpConfig)); } catch (e) {}
+        }
+        if (Array.isArray(s.audios) && s.audios.length > 0) {
+          setAudios(s.audios);
+          try { localStorage.setItem('ast20_audios', JSON.stringify(s.audios)); } catch (e) {}
+        }
+        if (Array.isArray(s.users) && s.users.length > 0) {
+          setUsers(s.users);
+          try { localStorage.setItem('ast20_users', JSON.stringify(s.users)); } catch (e) {}
+        }
+        if (s.connectionSettings) {
+          setConnectionSettings(s.connectionSettings);
+          try { localStorage.setItem('ast20_conn_settings', JSON.stringify(s.connectionSettings)); } catch (e) {}
+        }
+        if (Array.isArray(s.astDbEntries)) {
+          setAstDbEntries(s.astDbEntries);
+          try { localStorage.setItem('ast20_astdb', JSON.stringify(s.astDbEntries)); } catch (e) {}
+        }
+
+        setTimeout(() => {
+          isApplyingRemoteUpdateRef.current = false;
+        }, 500);
+      }
+    } catch (err) {}
+  }, []);
+
+  // Poll server state every 3.5s and on window focus
+  useEffect(() => {
+    fetchServerState();
+    const interval = setInterval(fetchServerState, 3500);
+    const handleFocus = () => fetchServerState();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchServerState]);
+
+  // Synchronize changes made in other tabs of the same browser via storage event
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || isApplyingRemoteUpdateRef.current) return;
+      try {
+        if (e.key === 'ast20_extensions' && e.newValue) setExtensions(JSON.parse(e.newValue));
+        if (e.key === 'ast20_carriers' && e.newValue) setCarriers(JSON.parse(e.newValue));
+        if (e.key === 'ast20_press1' && e.newValue) setPress1Config(JSON.parse(e.newValue));
+        if (e.key === 'ast20_otp' && e.newValue) setOtpConfig(JSON.parse(e.newValue));
+        if (e.key === 'ast20_audios' && e.newValue) setAudios(JSON.parse(e.newValue));
+        if (e.key === 'ast20_users' && e.newValue) setUsers(JSON.parse(e.newValue));
+        if (e.key === 'ast20_conn_settings' && e.newValue) setConnectionSettings(JSON.parse(e.newValue));
+        if (e.key === 'ast20_astdb' && e.newValue) setAstDbEntries(JSON.parse(e.newValue));
+      } catch (err) {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Debounced push to server when user modifies local state
+  useEffect(() => {
+    if (isApplyingRemoteUpdateRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        const payload = {
+          extensions,
+          carriers,
+          press1Config,
+          otpConfig,
+          audios,
+          users,
+          connectionSettings,
+          astDbEntries,
+        };
+        const res = await fetch('/api/app/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: payload }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          if (d.lastUpdated) {
+            lastServerTimestampRef.current = d.lastUpdated;
+          }
+        }
+      } catch (err) {}
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, astDbEntries]);
 
   useEffect(() => {
     fetch('/api/asterisk/audio/active-assignments')

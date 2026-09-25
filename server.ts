@@ -3323,6 +3323,43 @@ app.get('/api/asterisk/action/get-default', (req, res) => {
   res.json({ success: true, mode: 'press1', context: 'ivr-press1' });
 });
 
+// Centralized Application State Persistence (Sync across browsers and devices)
+const APP_STATE_FILE = path.join(process.cwd(), 'data', 'app_state.json');
+
+app.get('/api/app/state', (req, res) => {
+  try {
+    if (fs.existsSync(APP_STATE_FILE)) {
+      const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
+      return res.json({ success: true, state: JSON.parse(data) });
+    }
+  } catch (err: any) {
+    console.error('[STATE] Error leyendo app_state.json:', err);
+  }
+  return res.json({ success: true, state: null });
+});
+
+app.post('/api/app/state', (req, res) => {
+  try {
+    const { state } = req.body;
+    if (!state || typeof state !== 'object') {
+      return res.status(400).json({ success: false, error: 'Objeto de estado requerido' });
+    }
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const stateWithTimestamp = {
+      ...state,
+      lastUpdated: Date.now(),
+    };
+    fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+    return res.json({ success: true, lastUpdated: stateWithTimestamp.lastUpdated });
+  } catch (err: any) {
+    console.error('[STATE] Error guardando app_state.json:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Delete an audio file
 app.post('/api/asterisk/audio/delete', (req, res) => {
   try {
