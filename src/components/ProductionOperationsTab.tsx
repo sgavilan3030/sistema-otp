@@ -25,6 +25,7 @@ import {
   CreditCard,
   MessageSquare,
   Lock,
+  Unlock,
   ShoppingBag,
   Sliders,
   Play,
@@ -70,6 +71,7 @@ export interface CampaignEntity {
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
+  isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
 }
 
 export type ServiceCampaignKey = string;
@@ -228,11 +230,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!current) return;
     setIsEntitySaving(true);
     try {
-      // 1. Persist current list & active selection in localStorage
-      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(campaignEntities));
+      // 1. Mark entity as locked (isLocked: true) and update state
+      const updatedEntities = campaignEntities.map((ent) =>
+        ent.id === current.id ? { ...ent, isLocked: true } : ent
+      );
+      setCampaignEntities(updatedEntities);
+
+      // 2. Persist in localStorage
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updatedEntities));
       localStorage.setItem('prod_selected_service_v3', current.id);
-      
-      // 2. Sync to AstDB for Asterisk
+
+      // 3. Register manual lock in server API
+      fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'ivr_entity', isLocked: true }),
+      }).catch(() => {});
+
+      // 4. Sync audios to AstDB for Asterisk with isManualSave = true
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -243,21 +258,43 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           success: current.successAudioPath,
           agent: current.agentAudioPath,
           destination: targetNumber.trim() || '16104803845',
+          isManualSave: true,
         }),
       });
 
       setIsEntitySaved(true);
-      setAudioSyncFeedback(`✓ Guión "${current.name}" guardado y bloqueado permanentemente en Asterisk AstDB.`);
+      setAudioSyncFeedback(`✓ Guión "${current.name}" guardado y bloqueado manualmente (isLocked: true). Protegido contra sobreescritura.`);
       setTimeout(() => {
         setIsEntitySaved(false);
         setAudioSyncFeedback(null);
-      }, 4000);
+      }, 5000);
     } catch (err: any) {
       setAudioSyncFeedback(`Guión guardado localmente.`);
       setTimeout(() => setAudioSyncFeedback(null), 3000);
     } finally {
       setIsEntitySaving(false);
     }
+  };
+
+  const handleUnlockCurrentEntity = async () => {
+    const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+    if (!current) return;
+    try {
+      const updatedEntities = campaignEntities.map((ent) =>
+        ent.id === current.id ? { ...ent, isLocked: false } : ent
+      );
+      setCampaignEntities(updatedEntities);
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updatedEntities));
+
+      fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'ivr_entity', isLocked: false }),
+      }).catch(() => {});
+
+      setAudioSyncFeedback(`🔓 Guión "${current.name}" desbloqueado. Ahora permite sincronización automática.`);
+      setTimeout(() => setAudioSyncFeedback(null), 4000);
+    } catch (e) {}
   };
 
   // Modal for editing an entity and its assigned audios
@@ -858,6 +895,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (data.success && data.audios) {
           setCampaignEntities((prev) => {
             const updated = prev.map((ent) => {
+              // Si el guión tiene bloqueo manual (isLocked: true), protegerlo contra sobrescritura
+              if (ent.isLocked) {
+                return ent;
+              }
               // Si es la entidad activa o la default, actualizar con los audios reales de Asterisk AstDB
               if (ent.id === selectedService || ent.id === 'custom') {
                 return {
@@ -1853,10 +1894,23 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-2.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4 text-emerald-400" />
-                      <span>Guión / Entidad a Simular en el IVR</span>
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-emerald-400" />
+                        <span>Guión / Entidad a Simular en el IVR</span>
+                      </label>
+                      {campaignEntities.find((e) => e.id === selectedService)?.isLocked ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          <Lock className="w-3 h-3 text-amber-400" />
+                          <span>Bloqueo manual (isLocked: true)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                          <Unlock className="w-3 h-3" />
+                          <span>Desbloqueado</span>
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-400">
                       Selecciona una entidad para la llamada o haz clic en <strong className="text-emerald-400">Editar</strong> para cambiar su nombre, textos y los 4 audios pregrabados.
                     </p>
@@ -1866,16 +1920,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       type="button"
                       onClick={handleSaveAndLockCurrentEntity}
                       disabled={isEntitySaving}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ${
-                        isEntitySaved
-                          ? 'bg-emerald-500 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
-                      }`}
-                      title="Guardar y bloquear este guión en Asterisk AstDB para que no cambie al actualizar el sistema"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
+                      title="Guardar y bloquear este guión contra sobreescritura automática"
                     >
-                      {isEntitySaved ? <Check className="w-3.5 h-3.5 text-black" /> : <Lock className="w-3.5 h-3.5" />}
-                      <span>{isEntitySaving ? 'Guardando...' : isEntitySaved ? '¡Guión Bloqueado!' : 'Guardar y Bloquear Guión'}</span>
+                      {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{isEntitySaving ? 'Guardando...' : 'Guardar Configuración'}</span>
                     </button>
+
+                    {campaignEntities.find((e) => e.id === selectedService)?.isLocked && (
+                      <button
+                        type="button"
+                        onClick={handleUnlockCurrentEntity}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
+                        title="Desbloquear guión para permitir sincronización automática"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Desbloquear</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -2029,8 +2091,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                                 onClick={(e) => handleStartInlineRename(ent, e)}
                                 title="Haz clic para renombrar directamente"
                               >
-                                <div className="text-xs font-bold text-white leading-tight truncate flex items-center gap-1 hover:text-emerald-400 transition-colors">
+                                <div className="text-xs font-bold text-white leading-tight truncate flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
                                   <span>{ent.name}</span>
+                                  {ent.isLocked && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      <Lock className="w-2.5 h-2.5 text-amber-400" />
+                                      <span>Bloqueado</span>
+                                    </span>
+                                  )}
                                   <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/title:opacity-100 text-slate-400 transition-opacity" />
                                 </div>
                                 <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>
@@ -3617,6 +3685,37 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                     />
                   </div>
                 </div>
+
+                {/* Bloque de Bloqueo Manual isLocked */}
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-amber-500/30">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>Bloqueo Manual del Guión (isLocked: true)</span>
+                        {editingEntity.isLocked && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            Activo
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Previene que la sincronización automática sobrescriba los audios y textos asignados a esta entidad.
+                      </div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={!!editingEntity.isLocked}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, isLocked: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
               </div>
 
               {/* Bloque 2: Asignación de los 4 Audios */}
@@ -3895,12 +3994,22 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleSaveEntity({ ...editingEntity, isLocked: true })}
+                  disabled={!editingEntity.name.trim()}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+                  title="Guardar y activar bloqueo manual (isLocked: true)"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Guardar y Bloquear (isLocked)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleSaveEntity(editingEntity)}
                   disabled={!editingEntity.name.trim()}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Guardar y Asignar a Asterisk</span>
+                  <span>Guardar Configuración</span>
                 </button>
               </div>
             </div>

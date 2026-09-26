@@ -244,6 +244,36 @@ export default function App() {
     otp_failure: 'custom/token_invalido_reintente',
   });
 
+  // Manual Locks State for Audios 6666, 7777 and IVR Script/Entity
+  const [manualLocks, setManualLocks] = useState<{
+    welcome_6666: boolean;
+    welcome_7777: boolean;
+    ivr_entity: boolean;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_audio_locks_ui');
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return {
+      welcome_6666: false,
+      welcome_7777: false,
+      ivr_entity: false,
+    };
+  });
+
+  const handleToggleManualLock = (role: string, isLocked: boolean) => {
+    setManualLocks((prev) => {
+      const next = { ...prev, [role]: isLocked };
+      try { localStorage.setItem('ast20_audio_locks_ui', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    fetch('/api/asterisk/audio/toggle-lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, isLocked }),
+    }).catch(() => {});
+  };
+
   // Centralized Cross-Browser and Cross-Device Synchronization
   const isApplyingRemoteUpdateRef = useRef(false);
   const lastServerTimestampRef = useRef(0);
@@ -269,13 +299,21 @@ export default function App() {
           setCarriers(s.carriers);
           try { localStorage.setItem('ast20_carriers', JSON.stringify(s.carriers)); } catch (e) {}
         }
+        // Protect Press-1 IVR script if manually locked
         if (s.press1Config) {
-          setPress1Config(s.press1Config);
-          try { localStorage.setItem('ast20_press1', JSON.stringify(s.press1Config)); } catch (e) {}
+          setPress1Config((prev) => {
+            if (prev.isLocked) return prev;
+            try { localStorage.setItem('ast20_press1', JSON.stringify(s.press1Config)); } catch (e) {}
+            return s.press1Config;
+          });
         }
+        // Protect OTP IVR script if manually locked
         if (s.otpConfig) {
-          setOtpConfig(s.otpConfig);
-          try { localStorage.setItem('ast20_otp', JSON.stringify(s.otpConfig)); } catch (e) {}
+          setOtpConfig((prev) => {
+            if (prev.isLocked) return prev;
+            try { localStorage.setItem('ast20_otp', JSON.stringify(s.otpConfig)); } catch (e) {}
+            return s.otpConfig;
+          });
         }
         if (Array.isArray(s.audios) && s.audios.length > 0) {
           setAudios(s.audios);
@@ -320,12 +358,19 @@ export default function App() {
       try {
         if (e.key === 'ast20_extensions' && e.newValue) setExtensions(JSON.parse(e.newValue));
         if (e.key === 'ast20_carriers' && e.newValue) setCarriers(JSON.parse(e.newValue));
-        if (e.key === 'ast20_press1' && e.newValue) setPress1Config(JSON.parse(e.newValue));
-        if (e.key === 'ast20_otp' && e.newValue) setOtpConfig(JSON.parse(e.newValue));
+        if (e.key === 'ast20_press1' && e.newValue) {
+          const parsed = JSON.parse(e.newValue);
+          setPress1Config((prev) => (prev.isLocked && !parsed.isLocked ? prev : parsed));
+        }
+        if (e.key === 'ast20_otp' && e.newValue) {
+          const parsed = JSON.parse(e.newValue);
+          setOtpConfig((prev) => (prev.isLocked && !parsed.isLocked ? prev : parsed));
+        }
         if (e.key === 'ast20_audios' && e.newValue) setAudios(JSON.parse(e.newValue));
         if (e.key === 'ast20_users' && e.newValue) setUsers(JSON.parse(e.newValue));
         if (e.key === 'ast20_conn_settings' && e.newValue) setConnectionSettings(JSON.parse(e.newValue));
         if (e.key === 'ast20_astdb' && e.newValue) setAstDbEntries(JSON.parse(e.newValue));
+        if (e.key === 'ast20_audio_locks_ui' && e.newValue) setManualLocks(JSON.parse(e.newValue));
       } catch (err) {}
     };
     window.addEventListener('storage', handleStorageChange);
@@ -369,7 +414,21 @@ export default function App() {
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.assignments) {
-          setActiveAudioAssignments(data.assignments);
+          setActiveAudioAssignments((prev) => {
+            const next = { ...data.assignments };
+            // Protect locked 6666 and 7777 audio configurations
+            if (manualLocks.welcome_6666 && prev.welcome_6666) next.welcome_6666 = prev.welcome_6666;
+            if (manualLocks.welcome_7777 && prev.welcome_7777) next.welcome_7777 = prev.welcome_7777;
+            return next;
+          });
+          if (data.manualLocks) {
+            setManualLocks((prev) => ({
+              ...prev,
+              welcome_6666: prev.welcome_6666 || !!data.manualLocks.welcome_6666,
+              welcome_7777: prev.welcome_7777 || !!data.manualLocks.welcome_7777,
+              ivr_entity: prev.ivr_entity || !!data.manualLocks.ivr_entity,
+            }));
+          }
         }
       })
       .catch(() => {});
@@ -1182,6 +1241,8 @@ export default function App() {
             onAssignTo3333={handleAssignTo3333}
             activeAssignments={activeAudioAssignments}
             onAssignRole={handleAssignRole}
+            lockedConfigs={manualLocks}
+            onToggleLock={handleToggleManualLock}
           />
         )}
 

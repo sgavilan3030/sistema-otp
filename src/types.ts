@@ -57,6 +57,7 @@ export interface Press1Config {
   invalidPromptText: string;
   invalidAudioId?: string;
   fallbackAction: 'hangup' | 'voicemail';
+  isLocked?: boolean; // Bloqueo manual: previene que la sincronización automática sobrescriba este guión
 }
 
 export interface OtpCaptureConfig {
@@ -83,6 +84,22 @@ export interface OtpCaptureConfig {
   validationMode: 'agent_manual' | 'automatic_webhook'; // 'agent_manual': El agente valida y decide en pantalla si es válido o inválido mientras el cliente espera
   validatingWaitPromptText: string; // "Un momento por favor, estamos validando su información..." reproducido en bucle al cliente
   validatingWaitAudioId?: string;
+  isLocked?: boolean; // Bloqueo manual: previene que la sincronización automática sobrescriba este guión
+}
+
+export interface ManualLockConfig {
+  welcome_6666?: boolean;
+  welcome_7777?: boolean;
+  welcome_5555?: boolean;
+  welcome_4444?: boolean;
+  welcome_3333?: boolean;
+  lock_7777?: boolean;
+  lock_6666?: boolean;
+  lock_5555?: boolean;
+  lock_4444?: boolean;
+  lock_3333?: boolean;
+  ivr_entity?: boolean;
+  [key: string]: boolean | undefined;
 }
 
 export type AudioRole =
@@ -90,34 +107,109 @@ export type AudioRole =
   | 'agent_transfer'
   | 'press1_invalid'
   | 'welcome_7777'
+  | 'wait_7777'
+  | 'success_7777'
+  | 'failure_7777'
   | 'welcome_6666'
+  | 'wait_6666'
+  | 'success_6666'
+  | 'failure_6666'
   | 'welcome_5555'
+  | 'wait_5555'
+  | 'success_5555'
+  | 'failure_5555'
   | 'welcome_4444'
+  | 'wait_4444'
+  | 'success_4444'
+  | 'failure_4444'
   | 'welcome_3333'
+  | 'wait_3333'
+  | 'success_3333'
+  | 'failure_3333'
   | 'otp_welcome'
   | 'otp_wait'
   | 'otp_success'
-  | 'otp_failure';
+  | 'otp_failure'
+  | string;
 
 export interface ActiveAudioAssignments {
   press1_welcome: string;
   agent_transfer: string;
   press1_invalid: string;
   welcome_7777: string;
+  wait_7777?: string;
+  success_7777?: string;
+  failure_7777?: string;
   welcome_6666: string;
+  wait_6666?: string;
+  success_6666?: string;
+  failure_6666?: string;
   welcome_5555: string;
+  wait_5555?: string;
+  success_5555?: string;
+  failure_5555?: string;
   welcome_4444: string;
+  wait_4444?: string;
+  success_4444?: string;
+  failure_4444?: string;
   welcome_3333: string;
+  wait_3333?: string;
+  success_3333?: string;
+  failure_3333?: string;
   otp_welcome: string;
   otp_wait: string;
   otp_success: string;
   otp_failure: string;
+  [key: string]: string | undefined;
+}
+
+export interface OtpExtensionAudioConfig {
+  extension: string;
+  shortExtension?: string;
+  name: string;
+  description: string;
+  badge: string;
+  colorTheme: 'purple' | 'cyan' | 'amber' | 'emerald' | 'pink' | 'blue';
+  promptAudio: string;
+  waitAudio: string;
+  successAudio: string;
+  failureAudio: string;
+  isLocked?: boolean;
 }
 
 export interface AudioPrompt {
   id: string;
   name: string;
-  category: 'press1_welcome' | 'press1_invalid' | 'agent_transfer' | 'welcome_7777' | 'welcome_6666' | 'welcome_5555' | 'welcome_4444' | 'welcome_3333' | 'otp_welcome' | 'otp_wait' | 'otp_success' | 'otp_failure' | 'hold_music' | 'custom';
+  category:
+    | 'press1_welcome'
+    | 'press1_invalid'
+    | 'agent_transfer'
+    | 'welcome_7777'
+    | 'wait_7777'
+    | 'success_7777'
+    | 'failure_7777'
+    | 'welcome_6666'
+    | 'wait_6666'
+    | 'success_6666'
+    | 'failure_6666'
+    | 'welcome_5555'
+    | 'wait_5555'
+    | 'success_5555'
+    | 'failure_5555'
+    | 'welcome_4444'
+    | 'wait_4444'
+    | 'success_4444'
+    | 'failure_4444'
+    | 'welcome_3333'
+    | 'wait_3333'
+    | 'success_3333'
+    | 'failure_3333'
+    | 'otp_welcome'
+    | 'otp_wait'
+    | 'otp_success'
+    | 'otp_failure'
+    | 'hold_music'
+    | 'custom';
   fileName: string;
   fileSize: string;
   durationSec: number;

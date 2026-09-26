@@ -22,6 +22,9 @@ import {
   Sparkles,
   AlertTriangle,
   Loader2,
+  Lock,
+  Unlock,
+  Save,
 } from 'lucide-react';
 
 interface IVRStudioTabProps {
@@ -250,6 +253,61 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     }
   };
 
+  const isIvrLocked = !!(press1.isLocked || otp.isLocked);
+  const [isSavingLock, setIsSavingLock] = useState(false);
+
+  const handleSaveAndLockIVR = async () => {
+    setIsSavingLock(true);
+    try {
+      const nextPress1: Press1Config = { ...press1, isLocked: true };
+      const nextOtp: OtpCaptureConfig = { ...otp, isLocked: true };
+      setPress1(nextPress1);
+      setOtp(nextOtp);
+      onSavePress1(nextPress1);
+      onSaveOtp(nextOtp);
+
+      try {
+        localStorage.setItem('ast20_press1', JSON.stringify(nextPress1));
+        localStorage.setItem('ast20_otp', JSON.stringify(nextOtp));
+      } catch (_) {}
+
+      fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'ivr_entity', isLocked: true }),
+      }).catch(() => {});
+
+      onTriggerSync();
+      setSavedFeedback('✓ Configuración del Guión de IVR guardada y bloqueada manualmente (isLocked: true). Protegida contra sobreescritura.');
+      setTimeout(() => setSavedFeedback(null), 5000);
+    } finally {
+      setIsSavingLock(false);
+    }
+  };
+
+  const handleUnlockIVR = () => {
+    const nextPress1: Press1Config = { ...press1, isLocked: false };
+    const nextOtp: OtpCaptureConfig = { ...otp, isLocked: false };
+    setPress1(nextPress1);
+    setOtp(nextOtp);
+    onSavePress1(nextPress1);
+    onSaveOtp(nextOtp);
+
+    try {
+      localStorage.setItem('ast20_press1', JSON.stringify(nextPress1));
+      localStorage.setItem('ast20_otp', JSON.stringify(nextOtp));
+    } catch (_) {}
+
+    fetch('/api/asterisk/audio/toggle-lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'ivr_entity', isLocked: false }),
+    }).catch(() => {});
+
+    setSavedFeedback('🔓 Configuración del Guión de IVR desbloqueada. Ahora permite sincronización automática.');
+    setTimeout(() => setSavedFeedback(null), 4000);
+  };
+
   const handleSaveAll = () => {
     onSavePress1(press1);
     onSaveOtp(otp);
@@ -263,16 +321,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
-            <span>Estudio de IVR: Press-1 y Captura de OTP con Audios Profesionales</span>
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <span>Estudio de IVR: Press-1 y Captura de OTP con Audios Profesionales</span>
+            </h2>
+            {isIvrLocked ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                <Lock className="w-3 h-3 text-amber-400" />
+                <span>Bloqueo manual (isLocked: true)</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                <Unlock className="w-3 h-3" />
+                <span>Desbloqueado</span>
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-400">
             Asocia <strong>locuciones pregrabadas de la Audioteca</strong> o texto sintetizado. Destinos de transferencia restringidos a extensiones <strong>1001 en adelante</strong>.
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap">
           {hasMissingAudio && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs animate-pulse">
               <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -281,13 +352,36 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           )}
 
           <button
+            type="button"
+            onClick={handleSaveAndLockIVR}
+            disabled={isSavingLock || isSyncing || hasMissingAudio || isCheckingAudio}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+            title="Guardar y bloquear la configuración del guión contra sobreescritura automática"
+          >
+            {isSavingLock ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            <span>{isSavingLock ? 'Guardando...' : 'Guardar Configuración'}</span>
+          </button>
+
+          {isIvrLocked && (
+            <button
+              type="button"
+              onClick={handleUnlockIVR}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
+              title="Desbloquear guión de IVR para permitir sincronización automática"
+            >
+              <Unlock className="w-3.5 h-3.5" />
+              <span>Desbloquear</span>
+            </button>
+          )}
+
+          <button
             id="btn-save-ivr-sync"
             onClick={handleSaveAll}
             disabled={isSyncing || hasMissingAudio || isCheckingAudio}
-            className={`inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all ${
+            className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold shadow-lg transition-all ${
               hasMissingAudio || isCheckingAudio
                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
             }`}
             title={
               hasMissingAudio
@@ -302,12 +396,12 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             )}
             <span>
               {isSyncing
-                ? 'Aplicando en Asterisk...'
+                ? 'Aplicando...'
                 : isCheckingAudio
-                ? 'Verificando audios...'
+                ? 'Verificando...'
                 : hasMissingAudio
-                ? 'Guardado Bloqueado (Archivo no encontrado)'
-                : 'Guardar y Recargar Dialplan'}
+                ? 'Bloqueado'
+                : 'Recargar Asterisk'}
             </span>
           </button>
         </div>

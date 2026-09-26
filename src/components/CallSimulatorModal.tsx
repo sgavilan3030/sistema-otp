@@ -61,6 +61,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
   const [callDuration, setCallDuration] = useState(0);
   const [systemMessage, setSystemMessage] = useState('');
   const [activeIvrType, setActiveIvrType] = useState<'press1' | 'otp' | null>('press1');
+  const [activeCaptureExt, setActiveCaptureExt] = useState<string>('7777');
   const [activeAudioPlaying, setActiveAudioPlaying] = useState<string | null>(null);
 
   // Agent Real-time OTP HUD state
@@ -157,16 +158,20 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
 
   const playValidatingWaitPrompt = () => {
     stopActiveAudio();
+    const customWaitAudio = audios.find(
+      (a) => a.category === `wait_${activeCaptureExt}` || a.fileName === `wait_${activeCaptureExt}.wav`
+    );
     const waitText =
       otpConfig.validatingWaitPromptText || 'Un momento por favor, estamos validando su información...';
-    const waitAudioId = otpConfig.validatingWaitAudioId;
+    const waitAudioId = customWaitAudio?.id || otpConfig.validatingWaitAudioId;
+    const waitPath = customWaitAudio?.asteriskPath || 'custom/un_momento_validando_informacion';
 
     // Play immediately
-    playPromptOrTTS(waitAudioId, waitText, 'custom/un_momento_validando_informacion');
+    playPromptOrTTS(waitAudioId, waitText, waitPath);
 
     // Keep repeating softly to simulate authentic customer hold audio while agent reviews code
     waitAudioIntervalRef.current = setInterval(() => {
-      playPromptOrTTS(waitAudioId, waitText, 'custom/un_momento_validando_informacion');
+      playPromptOrTTS(waitAudioId, waitText, waitPath);
     }, 8500);
   };
 
@@ -273,6 +278,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
         }, 1500);
       } else if (dialedNumber === otpConfig.extension || isLiveCaptureExt) {
         const canonicalExt = dialedNumber.length === 3 ? `${dialedNumber[0]}${dialedNumber[0]}${dialedNumber[0]}${dialedNumber[0]}` : dialedNumber;
+        setActiveCaptureExt(canonicalExt);
         setActiveIvrType('otp');
         setIsAgentOtpModalActive(true);
         setAgentOtpRequestedLength(6);
@@ -464,15 +470,19 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
       setSystemMessage(
         '✅ Código marcado como VÁLIDO por el asesor. Transmitiendo confirmación al cliente y continuando llamada.'
       );
+      const customSuccessAudio = audios.find(
+        (a) => a.category === `success_${activeCaptureExt}` || a.fileName === `success_${activeCaptureExt}.wav`
+      );
       playPromptOrTTS(
-        otpConfig.successAudioId,
-        otpConfig.successPromptText || 'Su código ha sido validado correctamente. Continuamos con su atención.'
+        customSuccessAudio?.id || otpConfig.successAudioId,
+        otpConfig.successPromptText || 'Su código ha sido validado correctamente. Continuamos con su atención.',
+        customSuccessAudio?.asteriskPath || 'custom/operacion_bloqueada_exito'
       );
 
       onLogEvent(
         'ARI',
-        `[DECISIÓN ASESOR: VÁLIDO] Asesor Ext ${originatingExten} marcó código '${fullCode}' como VÁLIDO`,
-        `Agente: ${currentUser?.name || 'Operador'} (Ext ${originatingExten})\nCódigo verificado: ${fullCode}\nCanal reactivado -> Conversación directa restaurada.`
+        `[DECISIÓN ASESOR: VÁLIDO] Asesor Ext ${originatingExten} marcó código '${fullCode}' como VÁLIDO (Extensión ${activeCaptureExt})`,
+        `Agente: ${currentUser?.name || 'Operador'} (Ext ${originatingExten})\nCódigo verificado: ${fullCode}\nAudio éxito: ${customSuccessAudio ? customSuccessAudio.name : 'Predeterminado'}\nCanal reactivado -> Conversación directa restaurada.`
       );
 
       // Persist in SQLite3 AstDB and CDR
@@ -518,23 +528,30 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
       );
     } else {
       setOtpVerificationState('invalid');
-      const invalidAudioPrompt = audios.find((a) => a.id === otpConfig.failureAudioId);
+      const customFailureAudio = audios.find(
+        (a) => a.category === `failure_${activeCaptureExt}` || a.fileName === `failure_${activeCaptureExt}.wav` || a.id === otpConfig.failureAudioId
+      );
+      const invalidAudioPrompt = customFailureAudio || audios.find((a) => a.id === otpConfig.failureAudioId);
       const invalidMessage =
         otpConfig.failurePromptText ||
         'El código ingresado es inválido. Por favor, vuelva a ingresarlo a continuación.';
 
       setSystemMessage(
         `❌ Código marcado como INVÁLIDO. Reproduciendo al cliente: "${invalidMessage}" ${
-          invalidAudioPrompt ? `(Audio pregrabado: ${invalidAudioPrompt.fileName})` : ''
+          invalidAudioPrompt ? `(Audio exclusivo Ext ${activeCaptureExt}: ${invalidAudioPrompt.fileName})` : ''
         }`
       );
 
       // Reproduce el audio pregrabado cargado o el sintetizador si aún no ha subido archivo
-      playPromptOrTTS(otpConfig.failureAudioId, invalidMessage);
+      playPromptOrTTS(
+        invalidAudioPrompt?.id || otpConfig.failureAudioId,
+        invalidMessage,
+        invalidAudioPrompt?.asteriskPath || 'custom/token_invalido_reintente'
+      );
 
       onLogEvent(
         'ARI',
-        `[DECISIÓN ASESOR: INVÁLIDO] Asesor Ext ${originatingExten} marcó código '${fullCode}' como INVÁLIDO`,
+        `[DECISIÓN ASESOR: INVÁLIDO] Asesor Ext ${originatingExten} marcó código '${fullCode}' como INVÁLIDO (Extensión ${activeCaptureExt})`,
         `Agente: ${currentUser?.name || 'Operador'} (Ext ${originatingExten})\nCódigo rechazado: ${fullCode}\nAudio reproducido al cliente: ${
           invalidAudioPrompt ? `${invalidAudioPrompt.name} (${invalidAudioPrompt.asteriskPath}.wav)` : invalidMessage
         }\nAcción: Cliente notificado de que debe volver a ingresar el código.`
