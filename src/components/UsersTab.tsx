@@ -14,6 +14,10 @@ import {
   Radio,
   Sliders,
   Sparkles,
+  Eye,
+  EyeOff,
+  Lock,
+  Copy,
 } from 'lucide-react';
 
 interface UsersTabProps {
@@ -41,9 +45,14 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   // Form State
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
+  const [formUsername, setFormUsername] = useState('');
+  const [formPassword, setFormPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<SystemUser['role']>('agent');
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<UserPermissions>({
     canManageExtensions: false,
     canManageCarriers: false,
@@ -99,10 +108,39 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     }
   };
 
+  const generateSecurePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+    let pass = '';
+    for (let i = 0; i < 10; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setFormPassword(pass);
+    setShowPassword(true);
+  };
+
+  const toggleRevealPassword = (userId: string) => {
+    setRevealedPasswords((prev) => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
+  const handleCopyCredentials = (user: SystemUser) => {
+    const text = `Usuario: ${user.username || user.email.split('@')[0]}\nContraseña: ${user.password || 'password123'}\nCorreo: ${user.email}\nExtensiones: ${user.assignedExtensions.join(', ') || '1001'}`;
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+    setCopiedUserId(user.id);
+    setTimeout(() => setCopiedUserId(null), 2500);
+  };
+
   const handleOpenCreateModal = () => {
     setEditingUser(null);
     setFormName('');
     setFormEmail('');
+    setFormUsername('');
+    setFormPassword('');
+    setShowPassword(false);
     setFormRole('agent');
     setFormStatus('active');
     // Default assign first available extension >= 1001
@@ -115,6 +153,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setEditingUser(user);
     setFormName(user.name);
     setFormEmail(user.email);
+    setFormUsername(user.username || user.email.split('@')[0]);
+    setFormPassword(user.password || '');
+    setShowPassword(false);
     setFormRole(user.role);
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
@@ -142,11 +183,16 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     e.preventDefault();
     if (!formName || !formEmail) return;
 
+    const usernameFinal = formUsername.trim() || formEmail.split('@')[0] || formName.toLowerCase().replace(/\s+/g, '.');
+    const passwordFinal = formPassword.trim() || editingUser?.password || 'password123';
+
     if (editingUser) {
       onUpdateUser({
         ...editingUser,
         name: formName,
         email: formEmail,
+        username: usernameFinal,
+        password: passwordFinal,
         role: formRole,
         status: formStatus,
         assignedExtensions: selectedExts,
@@ -165,7 +211,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       onAddUser({
         id: `user-${Date.now()}`,
         name: formName,
+        username: usernameFinal,
         email: formEmail,
+        password: passwordFinal,
         role: formRole,
         assignedExtensions: selectedExts,
         permissions,
@@ -335,6 +383,43 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   </span>
                 </div>
 
+                {/* User Credentials (Username & Password with show/copy) */}
+                <div className="mb-3 py-2 px-2.5 rounded-lg bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs font-mono">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <KeyRound className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-slate-400">Usuario:</span>
+                      <span className="text-white font-bold">{user.username || user.email.split('@')[0]}</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-400">Clave:</span>
+                      <span className="text-emerald-300 font-bold">
+                        {revealedPasswords[user.id]
+                          ? user.password || 'password123'
+                          : '••••••••'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealPassword(user.id)}
+                      className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
+                      title={revealedPasswords[user.id] ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    >
+                      {revealedPasswords[user.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCredentials(user)}
+                      className="p-1 rounded text-slate-400 hover:text-emerald-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Copiar credenciales completas (Usuario y Contraseña)"
+                    >
+                      {copiedUserId === user.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Assigned Extensions (>= 1001) */}
                 <div className="py-2.5 border-t border-b border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between items-center">
@@ -443,7 +528,12 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     type="text"
                     required
                     value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
+                    onChange={(e) => {
+                      setFormName(e.target.value);
+                      if (!formUsername && !editingUser) {
+                        setFormUsername(e.target.value.toLowerCase().trim().replace(/\s+/g, '.'));
+                      }
+                    }}
                     placeholder="Ej. Juan Pérez"
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   />
@@ -454,10 +544,86 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     type="email"
                     required
                     value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
+                    onChange={(e) => {
+                      setFormEmail(e.target.value);
+                      if (!formUsername && !editingUser) {
+                        setFormUsername(e.target.value.split('@')[0]);
+                      }
+                    }}
                     placeholder="juan.perez@empresa.com"
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Login Credentials Section: Usuario y Contraseña */}
+              <div className="p-3.5 rounded-lg bg-slate-950/80 border border-emerald-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs">
+                    <KeyRound className="w-4 h-4" />
+                    <span>Credenciales de Acceso al Sistema y Softphone</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Autenticación de Agente</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      Nombre de Usuario / Login *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formUsername}
+                      onChange={(e) => setFormUsername(e.target.value)}
+                      placeholder="Ej. juan.perez o agente1001"
+                      className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Identificador para iniciar sesión en la pantalla de bienvenida.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-slate-300 font-medium">
+                        Contraseña de Acceso *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={generateSecurePassword}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer"
+                        title="Generar contraseña segura automática"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Generar Clave</span>
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required={!editingUser}
+                        value={formPassword}
+                        onChange={(e) => setFormPassword(e.target.value)}
+                        placeholder={editingUser ? 'Dejar vacía para mantener la actual' : 'Introduce la contraseña...'}
+                        className="w-full pl-3 pr-10 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-0.5 cursor-pointer"
+                        title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {editingUser
+                        ? 'Si deseas cambiarla, escribe la nueva contraseña.'
+                        : 'El agente usará esta clave para ingresar al sistema.'}
+                    </p>
+                  </div>
                 </div>
               </div>
 
