@@ -246,7 +246,7 @@ export interface ProductionTarget {
   phoneNumber: string;
   victimName?: string;
   serviceType: 'bank' | 'card' | 'whatsapp' | 'google' | 'amazon' | 'custom';
-  status: 'idle' | 'dialing' | 'ringing' | 'in_ivr' | 'otp_captured' | 'transferred' | 'failed' | 'completed';
+  status: 'idle' | 'dialing' | 'ringing' | 'in_ivr' | 'otp_captured' | 'pressed_1' | 'transferred' | 'failed' | 'completed';
   capturedOtp?: string;
   durationSeconds?: number;
   callTimestamp?: string;

