@@ -2543,6 +2543,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="font-bold text-emerald-400 mt-0.5 font-mono">Extensión {agentExtension} (PJSIP)</div>
                   <div className="text-[11px] text-slate-400">Recibe transferencias cuando la víctima presiona 1</div>
                 </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/90 border border-sky-500/30">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] text-sky-400 font-mono font-bold flex items-center gap-1">
+                      <Volume2 className="w-3 h-3 text-sky-400" />
+                      <span>Calidad de Audio Bidireccional</span>
+                    </div>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Óptima Ambas Vías
+                    </span>
+                  </div>
+                  <div className="font-bold text-white mt-1 text-xs">Opus / G.722 HD + Denoise rx/tx</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    JitterBuffer adaptativo (350ms/60ms), supresión de eco y ecualización activa en canal cliente y asesor.
+                  </div>
+                </div>
               </div>
             </div>
           </div>

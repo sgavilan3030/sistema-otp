@@ -274,22 +274,31 @@ export default function App() {
     }).catch(() => {});
   };
 
-  // Centralized Cross-Browser and Cross-Device Synchronization
+  // Centralized Cross-Browser and Cross-Device Synchronization per User
   const isApplyingRemoteUpdateRef = useRef(false);
+  const isStateLoadedRef = useRef(false);
   const lastServerTimestampRef = useRef(0);
 
-  const fetchServerState = useCallback(async () => {
+  const currentUser = users.find((u) => u.id === currentUserId) || users[0];
+
+  const fetchUserState = useCallback(async (targetUserId?: string, targetUsername?: string) => {
     try {
-      const res = await fetch('/api/app/state');
-      if (!res.ok) return;
+      const uId = targetUserId || currentUserId || 'user-admin';
+      const uName = targetUsername || currentUser?.username || 'admin';
+      const res = await fetch(`/api/app/user-state?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}`);
+      if (!res.ok) {
+        isStateLoadedRef.current = true;
+        return;
+      }
       const data = await res.json();
       if (data.success && data.state) {
         const s = data.state;
-        if (s.lastUpdated && s.lastUpdated <= lastServerTimestampRef.current) {
+        if (s.lastUpdated && s.lastUpdated <= lastServerTimestampRef.current && isStateLoadedRef.current) {
           return;
         }
         lastServerTimestampRef.current = s.lastUpdated || Date.now();
         isApplyingRemoteUpdateRef.current = true;
+        isStateLoadedRef.current = true;
 
         if (Array.isArray(s.extensions) && s.extensions.length > 0) {
           setExtensions(s.extensions);
@@ -299,18 +308,16 @@ export default function App() {
           setCarriers(s.carriers);
           try { localStorage.setItem('ast20_carriers', JSON.stringify(s.carriers)); } catch (e) {}
         }
-        // Protect Press-1 IVR script if manually locked
         if (s.press1Config) {
           setPress1Config((prev) => {
-            if (prev.isLocked) return prev;
+            if (prev.isLocked && !s.press1Config.isLocked) return prev;
             try { localStorage.setItem('ast20_press1', JSON.stringify(s.press1Config)); } catch (e) {}
             return s.press1Config;
           });
         }
-        // Protect OTP IVR script if manually locked
         if (s.otpConfig) {
           setOtpConfig((prev) => {
-            if (prev.isLocked) return prev;
+            if (prev.isLocked && !s.otpConfig.isLocked) return prev;
             try { localStorage.setItem('ast20_otp', JSON.stringify(s.otpConfig)); } catch (e) {}
             return s.otpConfig;
           });
@@ -331,25 +338,33 @@ export default function App() {
           setAstDbEntries(s.astDbEntries);
           try { localStorage.setItem('ast20_astdb', JSON.stringify(s.astDbEntries)); } catch (e) {}
         }
+        if (s.theme) {
+          setTheme(s.theme);
+          try { localStorage.setItem('ast20_theme', s.theme); } catch (e) {}
+        }
 
         setTimeout(() => {
           isApplyingRemoteUpdateRef.current = false;
-        }, 500);
+        }, 400);
+      } else {
+        isStateLoadedRef.current = true;
       }
-    } catch (err) {}
-  }, []);
+    } catch (err) {
+      isStateLoadedRef.current = true;
+    }
+  }, [currentUserId, currentUser?.username]);
 
   // Poll server state every 3.5s and on window focus
   useEffect(() => {
-    fetchServerState();
-    const interval = setInterval(fetchServerState, 3500);
-    const handleFocus = () => fetchServerState();
+    fetchUserState();
+    const interval = setInterval(() => fetchUserState(), 3500);
+    const handleFocus = () => fetchUserState();
     window.addEventListener('focus', handleFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchServerState]);
+  }, [fetchUserState]);
 
   // Synchronize changes made in other tabs of the same browser via storage event
   useEffect(() => {
@@ -377,9 +392,9 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Debounced push to server when user modifies local state
+  // Debounced push to server when user modifies local state - ONLY after initial state loaded to avoid clobbering with defaults
   useEffect(() => {
-    if (isApplyingRemoteUpdateRef.current) return;
+    if (isApplyingRemoteUpdateRef.current || !isStateLoadedRef.current) return;
     const timer = setTimeout(async () => {
       try {
         const payload = {
@@ -391,11 +406,16 @@ export default function App() {
           users,
           connectionSettings,
           astDbEntries,
+          theme,
         };
-        const res = await fetch('/api/app/state', {
+        const res = await fetch('/api/app/user-state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: payload }),
+          body: JSON.stringify({
+            userId: currentUser.id,
+            username: currentUser.username,
+            state: payload,
+          }),
         });
         if (res.ok) {
           const d = await res.json();
@@ -407,7 +427,7 @@ export default function App() {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, astDbEntries]);
+  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, astDbEntries, theme, currentUser.id, currentUser.username]);
 
   useEffect(() => {
     fetch('/api/asterisk/audio/active-assignments')
@@ -987,12 +1007,16 @@ export default function App() {
     }
   };
 
-  const handleSwitchUser = (userId: string) => {
+  const handleSwitchUser = async (userId: string) => {
     setCurrentUserId(userId);
     const user = users.find((u) => u.id === userId);
     if (user) {
       showToast(`Sesión cambiada a: ${user.name} (${user.role})`);
       addLog('SYSTEM', `[SESIÓN] Operador activo cambiado a: ${user.name}`);
+      try {
+        localStorage.setItem('ast20_current_user_id', user.id);
+      } catch (e) {}
+      await fetchUserState(user.id, user.username);
     }
   };
 
@@ -1050,8 +1074,6 @@ export default function App() {
     }, 350);
   };
 
-  const currentUser = users.find((u) => u.id === currentUserId) || users[0];
-
   const handleLogout = () => {
     setIsAuthenticated(false);
     try {
@@ -1062,15 +1084,17 @@ export default function App() {
     addLog('SYSTEM', `[LOGOUT] Sesión finalizada por el operador.`);
   };
 
-  const handleLoginSuccess = (user: SystemUser) => {
+  const handleLoginSuccess = async (user: SystemUser) => {
     setCurrentUserId(user.id);
     setIsAuthenticated(true);
     try {
       sessionStorage.setItem('ast_session_active', 'true');
       localStorage.setItem('ast20_current_user_id', user.id);
     } catch (e) {}
-    showToast(`¡Bienvenido, ${user.name}! Sesión iniciada.`);
-    addLog('SYSTEM', `[LOGIN] Operador autenticado en Asterisk: ${user.name} (${user.role})`);
+    // Load this user's exclusive server configuration immediately across any browser
+    await fetchUserState(user.id, user.username);
+    showToast(`¡Bienvenido, ${user.name}! Configuración exclusiva cargada.`);
+    addLog('SYSTEM', `[LOGIN] Configuración cargada para usuario: ${user.name} (${user.username || user.id})`);
   };
 
   // --------------------------------------------------------------------------

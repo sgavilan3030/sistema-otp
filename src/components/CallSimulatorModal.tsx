@@ -935,12 +935,25 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
 
               {/* Call Return Explanation Banner */}
               {callState === 'agent_connected' && (
-                <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                  <ArrowLeftRight className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>
-                    ¡Retorno exitoso! La llamada regresó a tu extensión ({originatingExten}) tras presionar 1 el cliente.
-                  </span>
-                </div>
+                <>
+                  <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <ArrowLeftRight className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      ¡Retorno exitoso! La llamada regresó a tu extensión ({originatingExten}) tras presionar 1 el cliente.
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-sky-950/40 border border-sky-500/40 text-sky-200 text-xs flex items-center justify-between gap-2 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="w-4 h-4 text-sky-400 shrink-0 animate-pulse" />
+                      <span>
+                        <strong className="text-white">Audio Bidireccional Óptimo (Ambas Vías):</strong> Codecs HD Opus/G.722 &bull; JitterBuffer Adaptativo (350ms/60ms) &bull; Cancelación de Ruido DENOISE(rx/tx) en Cliente y Asesor.
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 shrink-0">
+                      Ambas Vías HD
+                    </span>
+                  </div>
+                </>
               )}
 
               {/* Action Buttons to Request OTP */}
