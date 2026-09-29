@@ -618,10 +618,13 @@ export const defaultCarriersList = [
   },
 ];
 
+// Cached store of last synchronized carriers
+let lastSyncedCarriers: any[] = defaultCarriersList;
+
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
 // CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
 // Transports must use standard Asterisk names [transport-udp], [transport-tcp], [transport-wss] with custom bind port.
-function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarriersList): string {
+function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedCarriers): string {
   const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
 
   // Determine active SIP transport port (default 47923 exclusively)
@@ -721,13 +724,9 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
     pjsipContent += `authenticate_qualify = no\n\n`;
   }
 
-  // Process carriers/trunks - Guarantee televox carrier is ALWAYS configured
+  // Process carriers/trunks
   const rawCarriers = (Array.isArray(carriers) && carriers.length > 0) ? carriers : defaultCarriersList;
   const carriersToProcess = [...rawCarriers];
-
-  if (!carriersToProcess.some((c) => c && c.name && c.name.toLowerCase() === 'televox')) {
-    carriersToProcess.unshift(defaultCarriersList[0]);
-  }
 
   if (Array.isArray(carriersToProcess) && carriersToProcess.length > 0) {
     pjsipContent += `; ========================================================\n`;
@@ -761,8 +760,10 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = defaultCarr
         pjsipContent += `server_uri = sip:${cHost}:${cPort}\n`;
         pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
         pjsipContent += `contact_user = ${cUser}\n`;
-        pjsipContent += `retry_interval = 60\n`;
+        pjsipContent += `retry_interval = 30\n`;
         pjsipContent += `expiration = 3600\n`;
+        pjsipContent += `line = yes\n`;
+        pjsipContent += `endpoint = ${cName}\n`;
         pjsipContent += `transport = transport-udp\n\n`;
       }
 
@@ -897,15 +898,26 @@ async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any
   return { raw: output, parsed: endpoints };
 }
 
-// Generate clean Asterisk extensions.conf (Dialplan) with complete routing and IVR capture
+// Generate clean Asterisk extensions.conf (Dialplan) with complete routing, multi-carrier failover and IVR capture
 function generateCleanDialplanConf(
-  activeCarrier = 'televox',
-  carrierHost = 'televox.carrier.net',
+  carriersInput: any = defaultCarriersList,
+  carrierHostFallback = '52.144.46.192',
   audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {}
 ): string {
+  const carriersList: any[] = Array.isArray(carriersInput)
+    ? carriersInput
+    : (typeof carriersInput === 'string'
+        ? [{ name: carriersInput, host: carrierHostFallback, enabled: true }]
+        : lastSyncedCarriers);
+
+  const enabledCarriers = carriersList.filter((c) => c && c.name && c.enabled !== false && c.status !== 'disabled');
+  const primaryCarrier = enabledCarriers[0] || carriersList[0] || { name: 'carrier_default', host: carrierHostFallback };
+  const carrierHost = primaryCarrier.host || carrierHostFallback;
+
   let dialplanContent = `; ========================================================\n`;
   dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
-  dialplanContent += `; Auto-generado por Anonymous OTP Asterisk Platform\n`;
+  dialplanContent += `; Auto-generado por Black Hat Dialer Asterisk Platform\n`;
+  dialplanContent += `; Troncales Habilitadas: ${enabledCarriers.length} (${enabledCarriers.map((c) => c.name).join(', ') || 'Ninguna'})\n`;
   dialplanContent += `; ========================================================\n\n`;
   dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
@@ -1161,8 +1173,41 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
-  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845) con Audio HD Bidireccional\n`;
-  dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via ${activeCarrier})\n`;
+  const generateOutboundDialSteps = (destVar: string, tag: string) => {
+    if (enabledCarriers.length === 0) {
+      return ` same => n,NoOp(=== [ALERTA] No hay troncales SIP habilitadas en el sistema para destino ${destVar} ===)\n` +
+             ` same => n,Congestion(34)\n` +
+             ` same => n,Hangup()\n\n`;
+    }
+    let block = '';
+    enabledCarriers.forEach((c, idx) => {
+      const cSlug = c.name.replace(/\s+/g, '_');
+      const isFirst = idx === 0;
+      const isLast = idx === enabledCarriers.length - 1;
+      const labelNext = `try_carrier_${tag}_${idx + 1}`;
+      const labelEnd = `end_carrier_${tag}`;
+
+      if (!isFirst) {
+        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} ===)\n`;
+      } else {
+        block += ` same => n,NoOp(=== [OUTBOUND] Intentando llamada por Troncal Primaria: ${cSlug} a ${destVar} ===)\n`;
+      }
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Ttb(sub-pjsip-headers^s^1))\n`;
+      block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      if (!isLast) {
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      }
+    });
+    if (enabledCarriers.length > 1) {
+      block += ` same => n(end_carrier_${tag}),Hangup()\n\n`;
+    } else {
+      block += ` same => n,Hangup()\n\n`;
+    }
+    return block;
+  };
+
+  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845) con Multi-Carrier Failover\n`;
+  dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
@@ -1178,11 +1223,10 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
-  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1) con Audio HD Bidireccional\n`;
-  dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN} via ${activeCarrier})\n`;
+  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1) con Multi-Carrier Failover\n`;
+  dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
@@ -1199,11 +1243,10 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/1\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += generateOutboundDialSteps(`1\${EXTEN}`, '10d');
 
-  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Audio HD Bidireccional\n`;
-  dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente a \${EXTEN} via ${activeCarrier})\n`;
+  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Multi-Carrier Failover\n`;
+  dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
@@ -1219,8 +1262,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN}@${activeCarrier},60,Ttb(sub-pjsip-headers^s^1))\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -2189,7 +2231,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
     if (fs.existsSync(pjsipPath)) {
       const content = fs.readFileSync(pjsipPath, 'utf8');
       if (
-        !content.includes('[televox]') ||
+        (!content.includes('type = transport') && !content.includes('type=transport')) ||
         !content.includes('aors = 1001') ||
         content.includes('1001-aor') ||
         content.includes('[1001]\ntype = auth') ||
@@ -2197,7 +2239,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('[1001]\r\ntype = auth') ||
         content.includes('[1002]\ntype = auth')
       ) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o carrier televox faltante en /etc/asterisk/pjsip.conf. Reparando para registro MicroSIP...');
+        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas en /etc/asterisk/pjsip.conf. Reparando para registro MicroSIP...');
         needsRepair = true;
       }
     } else {
@@ -2205,7 +2247,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
     }
 
     if (needsRepair) {
-      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, defaultCarriersList);
+      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
       await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
       lastGeneratedPjsip = cleanPjsip;
@@ -2251,6 +2293,76 @@ app.get('/api/asterisk/endpoints/live', async (req, res) => {
       endpoints: detectedEndpoints,
       details: live.parsed,
       rawOutput: live.raw,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Real-time Asterisk Carriers & Registrations reader directly from Asterisk CLI & AMI
+app.get('/api/asterisk/carriers/live', async (req, res) => {
+  try {
+    const regOutput = await executeAsteriskCommand('pjsip show registrations');
+    const epOutput = await executeAsteriskCommand('pjsip show endpoints');
+    const aorOutput = await executeAsteriskCommand('pjsip show aors');
+
+    const carrierStatus: Record<string, {
+      name: string;
+      registered: boolean;
+      registrationState: string;
+      endpointState: string;
+      contact: string;
+      rtt: string;
+    }> = {};
+
+    // Parse registrations: reg_name/sip:... auth_name Status
+    const regLines = (regOutput || '').split('\n');
+    for (const line of regLines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^reg_([^\s\/]+)(?:\/([^\s]+))?\s+([^\s]+)?\s+([A-Za-z]+)/);
+      if (match) {
+        const cName = match[1];
+        const state = match[4] || match[3] || 'Unknown';
+        carrierStatus[cName] = {
+          name: cName,
+          registered: state.toLowerCase() === 'registered',
+          registrationState: state,
+          endpointState: 'Unknown',
+          contact: '',
+          rtt: '',
+        };
+      }
+    }
+
+    // Parse endpoints and AoRs for reachability & latency
+    const epDetails = await queryAsteriskPjsipEndpoints();
+    for (const ep of epDetails.parsed) {
+      const ext = ep.extension;
+      // If it's a carrier name rather than numeric extension
+      if (isNaN(parseInt(ext, 10)) || carrierStatus[ext]) {
+        if (!carrierStatus[ext]) {
+          carrierStatus[ext] = {
+            name: ext,
+            registered: false,
+            registrationState: 'IP_Auth',
+            endpointState: ep.state || 'Unknown',
+            contact: ep.contact || '',
+            rtt: ep.rtt || '',
+          };
+        } else {
+          carrierStatus[ext].endpointState = ep.state || 'Unknown';
+          carrierStatus[ext].contact = ep.contact || '';
+          carrierStatus[ext].rtt = ep.rtt || '';
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      carriers: carrierStatus,
+      rawRegistrations: regOutput,
+      rawEndpoints: epOutput,
+      rawAors: aorOutput,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -2497,22 +2609,19 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       return res.status(400).json({ success: false, error: 'extensions must be an array' });
     }
 
-    const firstCarrier = (Array.isArray(carriers) && carriers.length > 0) ? carriers[0] : null;
-    const activeCarrier = (firstCarrier && firstCarrier.name)
-      ? firstCarrier.name.replace(/\s+/g, '_')
-      : 'televox';
-    const carrierHost = (firstCarrier && firstCarrier.host)
-      ? firstCarrier.host
-      : '52.144.46.192';
-    const outboundCid = (firstCarrier && firstCarrier.outboundCallerId)
-      ? firstCarrier.outboundCallerId
-      : '+18005550199';
+    const validCarriers = Array.isArray(carriers) ? carriers : defaultCarriersList;
+    lastSyncedCarriers = validCarriers;
+    const enabledCarriers = validCarriers.filter((c: any) => c && c.name && c.enabled !== false && c.status !== 'disabled');
+    const primaryCarrier = enabledCarriers[0] || validCarriers[0] || { name: 'carrier_default', host: '127.0.0.1' };
+    const activeCarrier = primaryCarrier.name ? primaryCarrier.name.replace(/\s+/g, '_') : 'carrier_default';
+    const carrierHost = primaryCarrier.host || '127.0.0.1';
+    const outboundCid = primaryCarrier.outboundCallerId || '+18005550199';
 
     // Generate clean pjsip.conf using validated Asterisk 20 generator
-    const pjsipContent = generateCleanPjsipConf(extensions, carriers);
+    const pjsipContent = generateCleanPjsipConf(extensions, validCarriers);
 
-    // Generate extensions.conf (Dialplan) with outbound routing to Carrier and dedicated IVRs (including 7777 and 6666)
-    const dialplanContent = generateCleanDialplanConf(activeCarrier, carrierHost, req.body);
+    // Generate extensions.conf (Dialplan) with outbound multi-carrier failover routing and dedicated IVRs
+    const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body);
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
@@ -2645,7 +2754,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Configuración sincronizada exitosamente con Asterisk: ${extensions.length} extensiones y troncal ${activeCarrier} con rutas salientes`,
+      message: `Configuración sincronizada exitosamente con Asterisk: ${extensions.length} extensiones y ${enabledCarriers.length} troncal(es) activa(s) (${enabledCarriers.map((c: any) => c.name).join(', ') || 'ninguna'}) con failover saliente`,
       pjsipWritten,
       dialplanWritten,
       cliOutput,
@@ -2798,13 +2907,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       executeAsteriskCommand(c).catch(() => {});
     }
 
-    // Ensure Asterisk PJSIP configuration has televox endpoint and standard AORs ready before dialing
+    // Ensure Asterisk PJSIP configuration has standard transports and valid AORs ready before dialing
     try {
       const pjsipPath = '/etc/asterisk/pjsip.conf';
       if (fs.existsSync(pjsipPath)) {
         const curContent = fs.readFileSync(pjsipPath, 'utf8');
-        if (!curContent.includes('[televox]') || !curContent.includes('aors = 1001') || curContent.includes('1001-aor')) {
-          const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, defaultCarriersList);
+        if ((!curContent.includes('type = transport') && !curContent.includes('type=transport')) || curContent.includes('1001-aor')) {
+          const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
           fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
           fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');
           exec('asterisk -rx "pjsip reload"', () => {});

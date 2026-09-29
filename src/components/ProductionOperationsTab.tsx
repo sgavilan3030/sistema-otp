@@ -649,8 +649,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isCopiedVpsCmd, setIsCopiedVpsCmd] = useState(false);
 
-  const activeCarrier = carriers.length > 0 ? carriers[0].name : 'televox';
-  const outboundCid = carriers.length > 0 ? carriers[0].outboundCallerId : '+18005550199';
+  const enabledCarriers = carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled');
+  const activeCarrierObj = enabledCarriers[0] || carriers[0];
+  const activeCarrier = activeCarrierObj ? activeCarrierObj.name : 'carrier_default';
+  const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
 
   // Dynamic CallerID fields directly configurable by agent
   const [callerIdNum, setCallerIdNum] = useState('+18005550199');

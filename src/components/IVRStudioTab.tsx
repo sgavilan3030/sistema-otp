@@ -66,6 +66,18 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   // Audio verification states: slot name -> { status: 'idle' | 'checking' | 'found' | 'missing', path?: string }
   const [audioVerification, setAudioVerification] = useState<Record<string, AudioVerificationItem>>({});
 
+  const [activeCarrierName, setActiveCarrierName] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_carriers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const enabled = parsed.filter((c: any) => c.enabled !== false && c.status !== 'disabled');
+        if (enabled.length > 0) return enabled[0].name;
+      }
+    } catch (_) {}
+    return 'televox';
+  });
+
   const checkAudioExists = async (slotKey: string, audioPath?: string) => {
     if (!audioPath) {
       setAudioVerification((prev) => ({ ...prev, [slotKey]: { status: 'idle' } }));
@@ -285,7 +297,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destination: testPhone.trim(),
-          carrier: 'televox',
+          carrier: activeCarrierName,
           callerId: '+18005550199',
           agentExten: '1001',
         }),
@@ -587,7 +599,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <span>OPCIÓN 2: Disparar Llamada Real Saliente a tu Celular</span>
             </div>
             <p className="text-xs text-slate-300">
-              Asterisk llamará a tu número a través de la troncal <strong>televox</strong> y al contestar entrarás al IVR:
+              Asterisk llamará a tu número a través de la troncal activa <strong>[{activeCarrierName}]</strong> y al contestar entrarás al IVR:
             </p>
             <div className="flex items-center gap-2">
               <input

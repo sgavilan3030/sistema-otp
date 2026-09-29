@@ -125,6 +125,7 @@ trust_id_inbound=${c.trustrpid || 'yes'}
 callerid=${c.outboundCallerId || '"" <>'}
 
 [${slug}_aor]
+type=aor
 contact=sip:${c.host}:${c.port}
 qualify_frequency=${c.qualifyFreq}
 
@@ -145,6 +146,8 @@ client_uri=sip:${c.username || 'user'}@${c.host}:${c.port}
 contact_user=${c.username || 'user'}
 retry_interval=30
 expiration=3600
+line=yes
+endpoint=${slug}
 
 [${slug}]
 type=endpoint
@@ -192,7 +195,7 @@ export function generateExtensionsConf(
   extensions: PjsipExtension[],
   carriers?: CarrierTrunk[]
 ): string {
-  const activeCarriers = carriers && carriers.length > 0 ? carriers : [];
+  const activeCarriers = (carriers || []).filter((c) => c && c.enabled !== false && c.status !== 'disabled');
   return `; ==============================================================================
 ; ASTERISK 20 - DIALPLAN EXTENSIONS.CONF
 ; Generado dinámicamente con soporte para IVR Press-1, OTP y Troncales Salientes
