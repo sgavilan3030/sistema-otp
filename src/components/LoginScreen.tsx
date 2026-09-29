@@ -158,25 +158,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div className="cyber-login-wrapper relative min-h-screen w-full overflow-hidden bg-[#010604] text-slate-100 flex flex-col justify-between select-none">
-      {/* 1. BACKGROUND LAYER: CANVAS ANIMADO + GRADIENTES RADIALES SUTILES */}
+    <div className="cyber-login-wrapper cyber-login-gradient min-h-screen w-full relative overflow-hidden text-slate-100 flex flex-col justify-between select-none">
+      {/* 1. BACKGROUND LAYER: CANVAS ANIMADO CON EFECTO REALISTA */}
       <div className="fixed inset-0 z-0 pointer-events-auto overflow-hidden">
-        {/* Subtle Radial Gradient Ambient Lighting */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-90"
-          style={{
-            background: `
-              radial-gradient(circle 900px at 50% 12%, rgba(16, 185, 129, 0.16) 0%, rgba(5, 36, 24, 0.08) 55%, transparent 75%),
-              radial-gradient(circle 750px at 85% 80%, rgba(6, 182, 212, 0.12) 0%, rgba(4, 25, 30, 0.04) 50%, transparent 70%),
-              radial-gradient(circle 800px at 15% 85%, rgba(16, 185, 129, 0.10) 0%, transparent 65%),
-              radial-gradient(ellipse 95% 85% at 50% 50%, rgba(3, 18, 12, 0.6) 0%, rgba(1, 6, 4, 0.98) 100%)
-            `,
-          }}
-        />
-
         <CyberDialerCanvas />
 
-        {/* Subtle holographic scanline layer */}
+        {/* Holographic scanline overlay */}
         <div
           className="absolute inset-0 pointer-events-none opacity-20"
           style={{
@@ -186,32 +173,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         />
       </div>
 
-      {/* 2. TOP BAR FLOTANTE TRANSLÚCIDA CON ESTADO DEL SISTEMA */}
-      <header className="relative z-20 w-full px-4 sm:px-8 py-4 flex items-center justify-between pointer-events-auto">
-        {/* Emblema Black Hat Dialer */}
-        <div className="flex items-center space-x-3 bg-black/75 backdrop-blur-md px-4 py-2 rounded-2xl border border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-slate-950 via-emerald-950 to-emerald-800 border border-emerald-400/70 flex items-center justify-center text-xl shadow-md shadow-emerald-500/40 shrink-0">
+      {/* 2. TOP BAR CON NOMBRE DESTACADO EN TIPOGRAFÍA MODERNA */}
+      <header className="relative z-20 w-full px-4 sm:px-8 py-5 flex items-center justify-between pointer-events-auto">
+        {/* Marca Principal Destacada: Black Hat Dialer System */}
+        <div className="flex items-center space-x-3.5 bg-black/85 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.25)]">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-950 via-emerald-950 to-emerald-700 border border-emerald-400 flex items-center justify-center text-2xl shadow-md shadow-emerald-500/40 shrink-0">
             🎩
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-black text-white font-mono tracking-wider">
-                BLACK HAT DIALER SYSTEM
-              </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            </div>
-            <div className="text-[10px] text-emerald-400 font-mono tracking-widest uppercase font-bold">
-              SYSTEM CORE v20.4 • PJSIP REALTIME
-            </div>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-base sm:text-xl font-black text-white tracking-wide font-sans bg-clip-text text-transparent bg-gradient-to-r from-white via-emerald-100 to-emerald-300">
+              Black Hat Dialer System
+            </h1>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]"></span>
           </div>
         </div>
 
-        {/* Badges de Conectividad en Vivo y Botón de Background */}
-        <div className="flex items-center space-x-2 sm:space-x-3">
+        {/* Botón de Background */}
+        <div className="flex items-center space-x-3">
           <button
             type="button"
             onClick={() => setShowFullBackground(!showFullBackground)}
-            className="flex items-center space-x-1.5 text-xs font-mono text-emerald-300 bg-black/85 hover:bg-emerald-950/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.25)] transition-all cursor-pointer"
+            className="flex items-center space-x-2 text-xs font-mono text-emerald-300 bg-black/85 hover:bg-emerald-950/80 backdrop-blur-xl px-4 py-2 rounded-full border border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.25)] transition-all cursor-pointer"
             title={showFullBackground ? 'Volver al formulario de login' : 'Ver background animado a pantalla completa'}
           >
             {showFullBackground ? (
@@ -226,23 +208,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </>
             )}
           </button>
-          <div className="flex items-center space-x-2 text-xs font-mono text-emerald-300 bg-black/75 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-emerald-500/50 shadow-md">
-            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="hidden sm:inline">TRUNK TELEVOX:</span>
-            <span className="font-bold text-emerald-400">UP (14ms)</span>
-          </div>
-          <div className="hidden md:flex items-center space-x-1.5 text-xs font-mono text-cyan-300 bg-black/75 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-cyan-500/50 shadow-md">
-            <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-            <span>OPUS 48kHz HD AUDIO</span>
-          </div>
         </div>
       </header>
 
-      {/* 3. ÁREA CENTRAL: TERMINAL DE ACCESO GLASSMORPHIC VIBRANTE */}
-      <div className="cyber-login-main relative z-20 flex-1 flex items-center justify-center p-4 sm:p-6 pointer-events-auto">
-        {/* Halo radial de profundidad centrado detrás de la tarjeta */}
+      {/* 3. ÁREA CENTRAL: PANEL DE INICIO DE SESIÓN A LA IZQUIERDA */}
+      <div className="cyber-login-main relative z-20 flex-1 flex items-center justify-start px-4 sm:px-10 md:px-14 lg:px-20 xl:px-28 py-6 pointer-events-auto">
+        {/* Halo radial de profundidad centrado detrás de la tarjeta en la izquierda */}
         <div
-          className="absolute w-[580px] h-[580px] rounded-full pointer-events-none -z-10 blur-3xl opacity-75"
+          className="absolute left-4 sm:left-10 md:left-14 lg:left-20 xl:left-28 w-[520px] h-[520px] rounded-full pointer-events-none -z-10 blur-3xl opacity-75"
           style={{
             background:
               'radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(6, 182, 212, 0.10) 45%, transparent 70%)',
@@ -292,19 +265,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </p>
           </div>
 
-          {/* Mini-HUD de Estado en Vivo con Alto Contraste */}
+          {/* Mini-HUD de Estado en Vivo Protegido (Sin exponer puertos ni protocolos internos) */}
           <div className="grid grid-cols-3 gap-2 mb-5 p-2.5 rounded-xl bg-[#08130f]/90 border border-emerald-500/40 text-center font-mono text-[10px] shadow-sm">
             <div className="p-1">
-              <div className="text-slate-300 font-semibold">TELEFONÍA</div>
-              <div className="text-emerald-400 font-black mt-0.5 tracking-wider">ACTIVA</div>
+              <div className="text-slate-300 font-semibold">CANAL DE VOZ</div>
+              <div className="text-emerald-400 font-black mt-0.5 tracking-wider">ACTIVO</div>
             </div>
             <div className="p-1 border-x border-emerald-500/25">
-              <div className="text-slate-300 font-semibold">PUERTO SIP</div>
-              <div className="text-cyan-400 font-black mt-0.5 tracking-wider">5060 UDP</div>
+              <div className="text-slate-300 font-semibold">SEGURIDAD</div>
+              <div className="text-cyan-400 font-black mt-0.5 tracking-wider">AES-256 GCM</div>
             </div>
             <div className="p-1">
-              <div className="text-slate-300 font-semibold">AUDIO HD</div>
-              <div className="text-emerald-400 font-black mt-0.5 tracking-wider">BIDIRECCIONAL</div>
+              <div className="text-slate-300 font-semibold">ENLACE</div>
+              <div className="text-emerald-400 font-black mt-0.5 tracking-wider">PROTEGIDO</div>
             </div>
           </div>
 
@@ -326,7 +299,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <span className="tracking-wide">USUARIO / EXTENSIÓN</span>
                 </span>
                 <span className="text-[10px] text-emerald-300 bg-emerald-950/90 border border-emerald-500/50 px-2 py-0.5 rounded-md font-semibold tracking-wider shadow-sm">
-                  PJSIP AUTH
+                  ACCESO SEGURO
                 </span>
               </label>
               <div className="relative group">
@@ -415,19 +388,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </button>
           </form>
 
-          {/* Pie informativo discreto sin botones de acceso rápido */}
+          {/* Pie informativo discreto */}
           <div className="mt-5 pt-3 border-t border-emerald-500/20 text-[10px] text-slate-400 font-mono flex items-center justify-between">
             <span className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               Cifrado AES-256
             </span>
-            <span className="text-emerald-400/80 font-bold">Black Hat Engine</span>
+            <span className="text-emerald-400/80 font-bold">Black Hat Engine v4.2</span>
           </div>
         </div>
         )}
       </div>
 
-      {/* 4. FOOTER FLOTANTE TRANSLÚCIDA CON RESUMEN DE INFRAESTRUCTURA */}
+      {/* 4. FOOTER FLOTANTE TRANSLÚCIDA CON RESUMEN DE INFRAESTRUCTURA SIN DATOS SENSIBLES */}
       <footer className="relative z-20 w-full px-4 sm:px-8 py-3 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-slate-300 bg-black/75 backdrop-blur-md border-t border-emerald-500/30 pointer-events-auto gap-2">
         <div className="flex items-center space-x-2 text-emerald-400 font-bold">
           <Activity className="w-3.5 h-3.5" />
@@ -435,11 +408,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </div>
 
         <div className="flex items-center space-x-3 text-slate-400">
-          <span className="text-emerald-300 font-bold">Black Hat Core</span>
+          <span className="text-emerald-300 font-bold">Enlace Seguro</span>
           <span>&bull;</span>
-          <span className="text-cyan-300 font-bold">AMI/ARI Sockets</span>
+          <span className="text-cyan-300 font-bold">Protección Zero-Trust</span>
           <span>&bull;</span>
-          <span className="text-emerald-300 font-bold">Denoise Rx/Tx</span>
+          <span className="text-emerald-300 font-bold">Cifrado de Extremo a Extremo</span>
         </div>
       </footer>
     </div>

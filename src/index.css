@@ -39,6 +39,14 @@
   color-scheme: dark !important;
 }
 
+/* Gradiente radial de color negro a esmeralda oscuro intenso */
+.cyber-login-gradient {
+  background-color: #000000 !important;
+  background-image: radial-gradient(ellipse 110% 90% at 50% 40%, #000000 0%, #01140e 35%, #022c22 65%, #064e3b 100%) !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
+}
+
 /* Inputs de alto contraste para el login del sistema Black Hat Dialer */
 .cyber-login-input {
   background-color: #0c1713 !important;

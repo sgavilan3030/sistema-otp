@@ -86,43 +86,37 @@ export const CyberDialerCanvas: React.FC = () => {
 
     window.addEventListener('resize', handleResize);
 
-    const matrixChars = '0123456789ABCDEF#*+<>@%&/!=SIPVOIPRTPHD20';
+    const matrixChars = '0123456789ABCDEF#*+<>@%&/!=VOIPRTPHD256TLS';
     const telecomTelemetry = [
-      'BLACK HAT DIALER SYSTEM CORE',
-      'PJSIP/1001 REGISTERED',
-      'TELEVOX 52.144.46.192 UP',
-      'SIP/2.0 200 OK',
-      'INVITE sip:target@carrier',
-      'JITTERBUFFER=max_350,target_60',
-      'DENOISE(rx/tx)=ON',
-      'OPUS 48kHz FULLBAND HD',
-      'G.722 WIDEBAND 16kHz',
-      'ASTDB PUT ivr_vars',
-      'AMI FAST ORIGINATE OK',
-      'ARI STASIS BRIDGE ENCRYPTED',
-      'CDR LOGGED BILLSEC=48',
-      'LATENCY 14ms JITTER 0.1ms',
-      'PRESS-1 READY -> RET_AGENT',
-      'LIVE OTP: 7777 / 6666 / 5555',
-      'AUDIO: STEREO DUAL-LEG HD',
+      'BLACK HAT DIALER SYSTEM • NOC CORE',
+      'CARRIER TRUNK 01 [SECURE]: ACTIVE',
+      'VOICE CHANNEL LATENCY: 12ms JITTER: 0.05ms',
+      'HARDENED TELEMETRY MATRIX: VERIFIED',
+      'CIPHER: AES-256-GCM • SHA-384 HANDSHAKE',
+      'FULLBAND HD AUDIO 48kHz CODEC: LOCKED',
+      'GEO-REDUNDANT FIBER LINK: 7/7 ONLINE',
+      'ZERO-TRUST VOIP PERIMETER: ARMED',
+      'NOISE SUPPRESSION DSP: 99.4% OPTIMAL',
+      'PACKET LOSS: 0.00% • FORWARD ERROR CORRECTION',
+      'REAL-TIME AUDIT LOGGING: SECURE VAULT',
+      'ANTI-INTERCEPTION FILTERS: ENGAGED',
+      'AUTOMATED BURST TRAFFIC SHAPER: ON',
+      'DIRECT DIAL CORE: SYNCHRONIZED',
     ];
 
     const nodeLabels = [
-      'PJSIP / 1001',
-      'PJSIP / 1002',
-      'TELEVOX TRUNK',
-      'TWILIO GATEWAY',
-      'AMI : 5038',
-      'ARI : 8088',
-      'ASTDB.SQLITE3',
-      'IVR-PRESS1',
-      'OTP-7777',
-      'OTP-6666',
-      'DSP-OPUS-48K',
-      'DENOISE-RX/TX',
-      'RTP-STREAM-HD',
-      'CORE-KERNEL-20',
-      'JITTER-BUFFER-350',
+      'POP-US-EAST',
+      'POP-US-WEST',
+      'POP-EU-CENTRAL',
+      'POP-UK-NORTH',
+      'POP-AP-EAST',
+      'POP-AP-SOUTH',
+      'POP-SA-BRAZIL',
+      'CORE-GATEWAY-01',
+      'RELAY-DSP-48K',
+      'FIBER-TRUNK-A',
+      'SECURE-CRYPTO-NODE',
+      'ZERO-LOSS-CACHE',
     ];
 
     let nodes: Node[] = [];
@@ -217,14 +211,8 @@ export const CyberDialerCanvas: React.FC = () => {
         ctx.save();
         ctx.scale(dpr, dpr);
 
-        // 1. VIBRANT HIGH-CONTRAST OBSIDIAN CYBER BACKGROUND
-        const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-        bgGrad.addColorStop(0, '#010906');
-        bgGrad.addColorStop(0.35, '#031710');
-        bgGrad.addColorStop(0.7, '#02120d');
-        bgGrad.addColorStop(1, '#000402');
-        ctx.fillStyle = bgGrad;
-        ctx.fillRect(0, 0, width, height);
+        // 1. TRANSPARENT CLEAR FOR CYBER-LOGIN-GRADIENT
+        ctx.clearRect(0, 0, width, height);
 
         // Glowing Ambient Nebulas
         const orb1 = ctx.createRadialGradient(
@@ -318,21 +306,21 @@ export const CyberDialerCanvas: React.FC = () => {
           }
         });
 
-        // 4. FLOATING TELEMETRY BANNERS
-        const bannerY1 = (time * 30) % (height + 200) - 80;
+        // 4. FLOATING TELEMETRY BANNERS (OPSEC-CLEAN)
+        const bannerY1 = (time * 25) % (height + 200) - 80;
         ctx.font = 'bold 11px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.7)';
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.75)';
         ctx.fillText(
-          `>> PJSIP ENGINE RUNNING: ${telecomTelemetry[Math.floor(time * 0.5) % telecomTelemetry.length]}`,
-          width * 0.04,
+          `>> SECURE TELECOM CORE: ${telecomTelemetry[Math.floor(time * 0.5) % telecomTelemetry.length]}`,
+          width > 900 ? width * 0.44 : width * 0.05,
           bannerY1
         );
 
-        const bannerY2 = height - ((time * 35) % (height + 200) - 80);
-        ctx.fillStyle = 'rgba(52, 211, 153, 0.7)';
+        const bannerY2 = height - ((time * 30) % (height + 200) - 80);
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.75)';
         ctx.fillText(
-          `>> MATRIX TELEPHONY LINK: ${telecomTelemetry[Math.floor(time * 0.7 + 3) % telecomTelemetry.length]}`,
-          width * 0.52,
+          `>> ENCRYPTED VOICE CARRIER: ${telecomTelemetry[Math.floor(time * 0.7 + 3) % telecomTelemetry.length]}`,
+          width > 900 ? width * 0.48 : width * 0.10,
           bannerY2
         );
 
@@ -579,10 +567,10 @@ export const CyberDialerCanvas: React.FC = () => {
         });
 
         // 9. DYNAMIC AUDIO EQUALIZER FREQUENCY BARS (FOOTER)
-        const eqBarCount = Math.min(Math.floor(width / 18), 54);
-        const eqStartX = width * 0.02;
+        const eqBarCount = Math.min(Math.floor(width / 22), 48);
+        const eqStartX = width > 900 ? width * 0.44 : width * 0.05;
         const eqBaseY = height - 16;
-        const barW = Math.max(4, Math.floor((width * 0.42) / eqBarCount) - 3);
+        const barW = Math.max(4, Math.floor((width * 0.50) / eqBarCount) - 3);
 
         ctx.save();
         for (let b = 0; b < eqBarCount; b++) {
@@ -590,7 +578,7 @@ export const CyberDialerCanvas: React.FC = () => {
             Math.sin(time * 4 + b * 0.35) * 0.45 +
             Math.cos(time * 6 - b * 0.5) * 0.35 +
             Math.sin(time * 8 + b * 0.8) * 0.2;
-          const barH = Math.max(6, Math.abs(val) * 48 + 6);
+          const barH = Math.max(6, Math.abs(val) * 44 + 6);
 
           const bx = eqStartX + b * (barW + 3);
           const by = eqBaseY - barH;
@@ -607,9 +595,9 @@ export const CyberDialerCanvas: React.FC = () => {
         ctx.font = 'bold 10px "JetBrains Mono", monospace';
         ctx.fillStyle = '#34d399';
         ctx.fillText(
-          '● DSP LIVE SPECTRUM: OPUS 48kHz HD AUDIO STREAM • DENOISE RX/TX ACTIVE • 0.0% LOSS',
+          '● DSP VOICE SPECTRUM: HD AUDIO 48kHz • HARDENED ENCRYPTION • 0.00% PACKET LOSS',
           eqStartX,
-          eqBaseY - 58
+          eqBaseY - 54
         );
         ctx.restore();
 
