@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
     prompt: {
       title: 'Prompt Maestro AI',
-      subtitle: 'Instrucciones maestras para Asterisk 20 y reglas de telefonía',
+      subtitle: 'Instrucciones maestras para Black Hat Dialer System y reglas de telefonía',
       icon: Zap,
     },
     extensions: {
@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div>
                 <div className="flex items-center space-x-2">
                   <span className="text-xs text-slate-500 font-mono hidden sm:inline">
-                    Asterisk 20 /
+                    Black Hat Dialer System /
                   </span>
                   <h2 className="text-sm sm:text-base font-bold text-white tracking-tight leading-none">
                     {currentTabInfo.title}

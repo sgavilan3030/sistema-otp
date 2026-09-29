@@ -17,14 +17,65 @@
 }
 
 /* 1. LIENZO PRINCIPAL Y FONDOS DE PANTALLA */
-.theme-light,
-.theme-light.bg-slate-950,
-.theme-light .bg-slate-950,
-.theme-light.min-h-screen,
-.theme-light body,
-.theme-light main {
+.theme-light:not(.cyber-login-page),
+.theme-light.bg-slate-950:not(.cyber-login-page),
+.theme-light .bg-slate-950:not(.cyber-login-wrapper *),
+.theme-light.min-h-screen:not(.cyber-login-page),
+.theme-light body:not(.cyber-login-page),
+.theme-light main:not(.cyber-login-main):not(.cyber-login-wrapper *) {
   background-color: #f8fafc !important;
   color: #0f172a !important;
+}
+
+/* Reglas inmunes para el Login Cyber Black Hat (Siempre en Modo Oscuro de Alto Contraste) */
+.cyber-login-wrapper,
+.cyber-login-wrapper *,
+.cyber-login-main,
+.cyber-login-main *,
+.cyber-login-page,
+.cyber-login-page *,
+.cyber-login-canvas {
+  box-sizing: border-box;
+  color-scheme: dark !important;
+}
+
+/* Inputs de alto contraste para el login del sistema Black Hat Dialer */
+.cyber-login-input {
+  background-color: #0c1713 !important;
+  color: #ffffff !important;
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
+.cyber-login-input:hover {
+  background-color: #11221c !important;
+  border-color: rgba(52, 211, 153, 0.9) !important;
+}
+.cyber-login-input:focus {
+  background-color: #152922 !important;
+  border-color: #34d399 !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(16, 185, 129, 0.35), 0 0 16px rgba(16, 185, 129, 0.25) !important;
+  outline: none !important;
+}
+.cyber-login-input::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+/* Prevenir que el tema claro sobreescriba fondos o textos en el panel de login */
+.theme-light .cyber-login-wrapper [class*="bg-slate-900"],
+.theme-light .cyber-login-wrapper [class*="bg-slate-950"],
+.theme-light .cyber-login-wrapper [class*="bg-black"],
+.theme-light .cyber-login-page [class*="bg-slate-900"],
+.theme-light .cyber-login-page [class*="bg-slate-950"],
+.theme-light .cyber-login-page [class*="bg-black"] {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+}
+
+.theme-light .cyber-login-wrapper [class*="text-slate-100"],
+.theme-light .cyber-login-wrapper [class*="text-slate-200"],
+.theme-light .cyber-login-wrapper [class*="text-white"],
+.theme-light .cyber-login-page [class*="text-white"] {
+  color: #ffffff !important;
 }
 
 /* 2. TARJETAS Y CONTENEDORES SUPERFICIALES */

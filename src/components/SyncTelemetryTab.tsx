@@ -75,7 +75,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
         <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
           <div className="flex items-center space-x-2 pb-3 border-b border-slate-800">
             <Settings2 className="w-4 h-4 text-emerald-400" />
-            <h3 className="font-bold text-white text-sm">Credenciales Asterisk 20</h3>
+            <h3 className="font-bold text-white text-sm">Credenciales Black Hat Core</h3>
           </div>
 
           <div className="space-y-3 text-xs">
@@ -190,7 +190,7 @@ export const SyncTelemetryTab: React.FC<SyncTelemetryTabProps> = ({
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
               <span className="font-mono text-xs font-bold text-slate-300">
-                Asterisk 20 Socket Terminal (AMI :5038 &bull; ARI :8088)
+                Black Hat Dialer Socket Terminal (AMI :5038 &bull; ARI :8088)
               </span>
             </div>
 

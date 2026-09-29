@@ -538,7 +538,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span>Prueba en Vivo del IVR con Asterisk 20</span>
+                <span>Prueba en Vivo del IVR (Black Hat Dialer)</span>
                 <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
                   Listo para Probar
                 </span>
@@ -772,7 +772,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
           <Zap className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Diagrama de Flujo en Asterisk 20 (Audios + Dialplan)</span>
+          <span>Diagrama de Flujo en Black Hat Dialer (Audios + Dialplan)</span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center text-xs">
           <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-center">

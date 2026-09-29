@@ -12,7 +12,7 @@ export function generatePjsipConf(extensions: PjsipExtension[], carriers: Carrie
   }
 
   let conf = `; ==============================================================================
-; ASTERISK 20 - PJSIP CONFIGURATION (Generado por Asterisk 20 Governor)
+; BLACK HAT DIALER SYSTEM - PJSIP CONFIGURATION
 ; Sincronización automática vía AMI: "pjsip reload"
 ; Puerto SIP de Transporte Activo: ${activePort}
 ; ==============================================================================
@@ -901,7 +901,7 @@ server {
 export function generateSetupScript(): string {
   return `#!/bin/bash
 # ==============================================================================
-# SCRIPT DE PUESTA EN MARCHA RÁPIDA: ASTERISK 20 GOVERNOR & SYNC
+# SCRIPT DE PUESTA EN MARCHA RÁPIDA: BLACK HAT DIALER SYSTEM & SYNC
 # Compatible con Ubuntu 22.04 / 24.04 LTS y Debian 11/12
 # ==============================================================================
 

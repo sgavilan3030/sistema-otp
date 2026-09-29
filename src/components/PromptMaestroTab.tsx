@@ -47,7 +47,7 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
                 <Sparkles className="w-5 h-5" />
               </span>
               <h2 className="text-xl font-bold text-white tracking-tight">
-                Prompt Maestro para Gobernar Asterisk 20
+                Prompt Maestro • Black Hat Dialer System
               </h2>
             </div>
             <p className="text-sm text-slate-300 max-w-3xl">

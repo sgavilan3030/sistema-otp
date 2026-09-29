@@ -430,7 +430,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                 Diagnóstico y Banco de Pruebas AMI / ARI
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                Asterisk 20 Live
+                Black Hat Dialer Live
               </span>
             </div>
             <p className="text-sm text-slate-400 mt-0.5">
@@ -566,7 +566,7 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
             <div className="px-5 py-3.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Resultados del Test de Conectividad Asterisk 20</span>
+                <span>Resultados del Test de Conectividad Black Hat Core</span>
               </h3>
               <span className="text-xs font-mono text-slate-500">
                 Última verificación: {new Date().toLocaleTimeString()}

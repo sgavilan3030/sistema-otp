@@ -501,7 +501,7 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
           key: '+18005550199',
           value: `APROBADO_EXT_${originatingExten}`,
           updatedAt: new Date().toLocaleTimeString(),
-          description: `Autorización manual por operador en Asterisk 20`,
+          description: `Autorización manual por operador en Black Hat Dialer System`,
         });
       }
 
@@ -633,12 +633,12 @@ export const CallSimulatorModal: React.FC<CallSimulatorModalProps> = ({
         <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-black font-black text-sm shadow-md shadow-emerald-500/20">
-              *20
+              🎩
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <h3 className="font-bold text-white text-sm">
-                  Simulador de Llamadas Asterisk 20 &bull; WebRTC &amp; Agent HUD
+                  Simulador de Llamadas Black Hat Dialer &bull; WebRTC &amp; Agent HUD
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                   <Radio className="w-3 h-3 animate-pulse" />

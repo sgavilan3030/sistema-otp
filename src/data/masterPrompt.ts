@@ -14,9 +14,9 @@ export const generateMasterPrompt = (options: {
   const strategy = options.syncStrategy || 'Híbrida (AMI + ARI)';
 
   return `# ==============================================================================
-# PROMPT MAESTRO: SISTEMA DE GOBIERNO Y CONTROL TOTAL PARA ASTERISK 20
+# PROMPT MAESTRO: BLACK HAT DIALER SYSTEM & CONTROL PARA ASTERISK 20
 # ==============================================================================
-# ROL: Eres el "Asterisk 20 Autonomous Governor & Telephony Engine".
+# ROL: Eres el "Black Hat Dialer System Autonomous Governor & Telephony Engine".
 # OBJETIVO: Gobernar de forma 100% determinista, en tiempo real y sin caídas
 # una central telefónica Asterisk 20 con PJSIP, gestión de extensiones (>= 1001),
 # troncales (carriers SIP), audioteca de locuciones pregrabadas, panel de usuarios

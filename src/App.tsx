@@ -132,6 +132,17 @@ export default function App() {
     return saved || 'user-admin';
   });
 
+  // Login authentication state: Por seguridad se exige autenticación obligatoria al ingresar al dominio
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      localStorage.removeItem('ast_session_user_token');
+      // Siempre exigir autenticación en primera carga para mostrar el panel de login
+      return false;
+    } catch {
+      return false;
+    }
+  });
+
   // Theme state: 'light' | 'dark' (Default to 'light' for modern clear, professional appearance)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('ast20_theme');
@@ -149,26 +160,24 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.classList.remove('theme-light');
+      document.body.classList.remove('theme-light');
+      document.body.classList.add('theme-dark', 'bg-[#010604]');
+      return;
+    }
     if (theme === 'light') {
       document.documentElement.classList.add('theme-light');
       document.documentElement.classList.remove('theme-dark');
+      document.body.classList.remove('theme-dark', 'bg-[#010604]');
     } else {
       document.documentElement.classList.add('theme-dark');
       document.documentElement.classList.remove('theme-light');
+      document.body.classList.add('theme-dark');
+      document.body.classList.remove('theme-light');
     }
-  }, [theme]);
-
-  // Login authentication state: Por seguridad se exige autenticación obligatoria al ingresar al dominio
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      // Limpiar residuos de bypass previo en almacenamiento local
-      localStorage.removeItem('ast_session_user_token');
-      // Solo autenticar si existe una sesión activa verificada en la pestaña actual
-      return sessionStorage.getItem('ast_session_active') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  }, [theme, isAuthenticated]);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -492,7 +501,7 @@ export default function App() {
       id: 'log-1',
       timestamp: '17:20:00',
       type: 'SYSTEM',
-      message: 'Asterisk 20 Governor inicializado. Regla activa: Extensiones 1001 en adelante.',
+      message: 'Black Hat Dialer System inicializado. Regla activa: Extensiones 1001 en adelante.',
       status: 'success',
     },
     {
@@ -634,10 +643,10 @@ export default function App() {
         const data = await res.json();
         addLog(
           'AMI',
-          `Asterisk 20 Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
+          `Black Hat Dialer System Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
           data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
         );
-        showToast(`Asterisk sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
+        showToast(`Dialer System sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
       } else {
         throw new Error('Endpoint backend no disponible');
       }
@@ -1103,11 +1112,7 @@ export default function App() {
   // --------------------------------------------------------------------------
   if (!isAuthenticated) {
     return (
-      <div className={`min-h-screen font-sans transition-colors ${
-        theme === 'light'
-          ? 'theme-light bg-slate-100/80 text-slate-900 selection:bg-blue-500/20 selection:text-blue-900'
-          : 'bg-black text-slate-100 selection:bg-emerald-500/30 selection:text-white'
-      }`}>
+      <div className="cyber-login-page cyber-login-wrapper min-h-screen font-sans bg-black text-slate-100 selection:bg-emerald-500/30 selection:text-white">
         {toastMessage && (
           <div className="fixed bottom-5 right-5 z-50 flex items-center space-x-2 px-4 py-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-white shadow-2xl animate-bounce">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -1119,8 +1124,6 @@ export default function App() {
           users={users}
           connectionSettings={connectionSettings}
           onLogin={handleLoginSuccess}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
         />
       </div>
     );

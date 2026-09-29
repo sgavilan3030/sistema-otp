@@ -206,7 +206,7 @@ VALUES ('${e.extension}', ${e.maxContacts}, 'yes', 60);`
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-base font-bold text-white">
-                  Motor de Base de Datos Nativo SQLite3 en Asterisk 20
+                  Motor de Base de Datos Nativo SQLite3 en Black Hat Dialer
                 </h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
                   AstDB &bull; Realtime PJSIP &bull; CDR SQLite3
@@ -656,7 +656,7 @@ VALUES ('${e.extension}', ${e.maxContacts}, 'yes', 60);`
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <Terminal className="w-4 h-4 text-indigo-400" />
-                <span>Consola Interactiva AstDB &amp; SQLite3 (Asterisk 20 CLI / AMI)</span>
+                <span>Consola Interactiva AstDB &amp; SQLite3 (Black Hat Dialer CLI / AMI)</span>
               </span>
               <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>

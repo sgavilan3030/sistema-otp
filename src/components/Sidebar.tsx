@@ -154,18 +154,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-b border-slate-800/80 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black font-black text-xl tracking-tight flex-shrink-0">
-                *20
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-900 via-emerald-950 to-emerald-500/30 border border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-500/10 text-emerald-400 font-black text-lg tracking-wider flex-shrink-0 font-mono">
+                🎩
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-sm font-bold text-white tracking-tight leading-tight">
-                    Asterisk 20 Gov
+                  <h1 className="text-sm font-bold text-white tracking-tight leading-tight truncate">
+                    Black Hat Dialer System
                   </h1>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
                 </div>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  PJSIP &bull; AMI &bull; SQLite3
+                <p className="text-[10px] text-emerald-400/80 font-mono tracking-wider uppercase">
+                  System Core &bull; v20.4
                 </p>
               </div>
             </div>

@@ -403,7 +403,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-white text-base">Estado de Enlace Asterisk 20 (Extensiones 1001 y 1002)</h3>
+                <h3 className="font-bold text-white text-base">Estado de Enlace Black Hat Dialer (Extensiones 1001 y 1002)</h3>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                   PJSIP Engine
