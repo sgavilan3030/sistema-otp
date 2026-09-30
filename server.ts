@@ -4743,6 +4743,16 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    const publicPath = path.join(process.cwd(), 'public');
+
+    // Serve public static directory (including images, assets)
+    if (fs.existsSync(publicPath)) {
+      app.use(express.static(publicPath, {
+        maxAge: '1h',
+        etag: true,
+      }));
+    }
+
     // Cache static assets (JS, CSS, images, audio, webfonts) for 1 year immutable
     app.use('/assets', express.static(path.join(distPath, 'assets'), {
       maxAge: '1y',
