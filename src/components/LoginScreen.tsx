@@ -164,29 +164,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         {/* Imagen cinematográfica realista del operador y la central tecnológica */}
         <div className="absolute inset-0 z-0">
           <img
-            src="/src/assets/images/black_hat_operator_1790692414501.jpg"
-            alt="Operador Black Hat y Equipos Tecnológicos"
+            src="/src/assets/images/black_hat_dialer_1790738766525.jpg"
+            alt="Black Hat Dialer System - Operador Clandestino y Central Telefónica"
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center brightness-[0.82] contrast-[1.12]"
+            className="w-full h-full object-cover object-center brightness-[0.88] contrast-[1.15]"
           />
           {/* Capas de gradiente para viñeta y legibilidad del panel izquierdo */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
               background: `
-                linear-gradient(to right, rgba(0,0,0,0.92) 0%, rgba(1,10,7,0.82) 35%, rgba(2,20,15,0.40) 65%, rgba(0,0,0,0.80) 100%),
-                radial-gradient(ellipse 110% 100% at 50% 30%, rgba(6,78,59,0.25) 0%, rgba(2,44,34,0.45) 50%, rgba(0,0,0,0.85) 100%)
+                linear-gradient(to right, rgba(0,0,0,0.94) 0%, rgba(1,10,7,0.80) 36%, rgba(2,20,15,0.22) 68%, rgba(0,0,0,0.78) 100%),
+                radial-gradient(ellipse 110% 100% at 50% 30%, rgba(6,78,59,0.14) 0%, rgba(2,44,34,0.32) 50%, rgba(0,0,0,0.80) 100%)
               `,
             }}
           />
         </div>
 
-        {/* Canvas de telemetría interactivo sobre la imagen */}
-        <CyberDialerCanvas />
+        {/* Canvas de telemetría interactivo sobre la imagen con mezcla de pantalla sutil */}
+        <div className="absolute inset-0 opacity-40 mix-blend-screen pointer-events-none">
+          <CyberDialerCanvas />
+        </div>
 
         {/* Overlay holográfico sutil de líneas de barrido */}
         <div
-          className="absolute inset-0 pointer-events-none opacity-20"
+          className="absolute inset-0 pointer-events-none opacity-15"
           style={{
             backgroundImage:
               'repeating-linear-gradient(0deg, rgba(16,185,129,0.06) 0px, rgba(16,185,129,0.06) 1px, transparent 1px, transparent 4px)',
