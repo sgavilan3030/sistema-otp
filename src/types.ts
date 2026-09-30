@@ -327,3 +327,55 @@ export interface CallSimulationLog {
   text: string;
   dtmf?: string;
 }
+
+export interface HoldMusicPreset {
+  id: string;
+  name: string;
+  path: string;
+  description: string;
+  category?: string;
+}
+
+export interface CampaignEntity {
+  id: string;
+  name: string;
+  subtitle: string;
+  icon: 'building' | 'card' | 'message' | 'lock' | 'shopping' | 'sliders';
+  color: string;
+  defaultCallerName?: string;
+  defaultCallerNum?: string;
+  introAudioPath: string;    // Saludo / Alerta
+  promptAudioPath: string;   // Solicitud OTP
+  agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
+  successAudioPath: string;  // Validación Exitosa
+  waitAudioPath?: string;    // Espera
+  holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
+  isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
+}
+
+export interface LiveCall {
+  id: string;
+  number: string;
+  clientName?: string;
+  agent: string;             // Extensión ej: "1001"
+  agentName?: string;        // Nombre ej: "Juan Pérez"
+  agentAvatar?: string;
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'machine' | 'ended';
+  statusText?: string;
+  startTime: number;
+  answeredAt?: number;
+  duration: number;          // Segundos transcurridos en vivo
+  entityId?: string;
+  entityName?: string;
+  holdMusic?: string;
+  holdMusicName?: string;
+  channel?: string;
+  bridgedChannel?: string;
+  trunk?: string;
+  digit?: string;
+  isOnHold?: boolean;
+  holdStartedAt?: number;
+  callerId?: string;
+  notes?: string;
+}
+

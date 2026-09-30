@@ -27,6 +27,7 @@ interface HeaderProps {
   onOpenMobileMenu?: () => void;
   onLogout?: () => void;
   isSyncing: boolean;
+  activeCallCount?: number;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
 }
@@ -41,10 +42,21 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   onLogout,
   isSyncing,
+  activeCallCount = 0,
   theme = 'light',
   onToggleTheme,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
+    production: {
+      title: 'Centro de Producción',
+      subtitle: 'Lanzador telefónico, entidades a simular y captura de OTP en tiempo real',
+      icon: ShieldCheck,
+    },
+    'live-calls': {
+      title: 'Llamadas en Vivo & Supervisión',
+      subtitle: 'Monitoreo en tiempo real de clientes, agentes, duración y control de Hold con música',
+      icon: PhoneCall,
+    },
     prompt: {
       title: 'Prompt Maestro AI',
       subtitle: 'Instrucciones maestras para Black Hat Dialer System y reglas de telefonía',
@@ -134,6 +146,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Telemetry Badges & Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* Live Calls Indicator Pill */}
+            {activeCallCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('live-calls')}
+                className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold animate-pulse transition-all cursor-pointer shadow-sm"
+                title="Ver llamadas en vivo activas"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>{activeCallCount} EN VIVO</span>
+              </button>
+            )}
+
             {/* Live Services Pill */}
             <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
               <span className="text-slate-400 font-medium">AMI:</span>

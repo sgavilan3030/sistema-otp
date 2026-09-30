@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ExternalLink,
   Activity,
+  Radio,
   X,
   Sun,
   Moon,
@@ -33,6 +34,7 @@ interface SidebarProps {
   onCloseMobile?: () => void;
   extensionCount?: number;
   carrierCount?: number;
+  activeCallCount?: number;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
 }
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   extensionCount = 4,
   carrierCount = 2,
+  activeCallCount = 0,
   theme = 'light',
   onToggleTheme,
 }) => {
@@ -61,6 +64,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Rocket,
       badge: 'PROD',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    },
+    {
+      id: 'live-calls',
+      label: 'Llamadas en Vivo',
+      subtitle: 'Clientes, Duración & Agentes',
+      icon: Radio,
+      badge: activeCallCount > 0 ? `${activeCallCount} Live` : 'Live',
+      badgeColor:
+        activeCallCount > 0
+          ? 'bg-emerald-500 text-slate-950 font-black animate-pulse shadow-sm shadow-emerald-500/50'
+          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     },
     {
       id: 'prompt',

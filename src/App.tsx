@@ -28,6 +28,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { ProductionOperationsTab } from './components/ProductionOperationsTab';
+import { LiveCallsTab } from './components/LiveCallsTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
 import { CarriersTab } from './components/CarriersTab';
@@ -208,6 +209,26 @@ export default function App() {
     const interval = setInterval(pollGlobalOtp, 2500);
     return () => clearInterval(interval);
   }, [dismissedOtpKey]);
+
+  // Live active calls monitor across tabs
+  const [activeCallCount, setActiveCallCount] = useState<number>(0);
+  useEffect(() => {
+    const pollLiveCalls = async () => {
+      try {
+        const res = await fetch('/api/asterisk/live/calls');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.calls)) {
+            const running = data.calls.filter((c: any) => c.status !== 'ended').length;
+            setActiveCallCount(running);
+          }
+        }
+      } catch (_) {}
+    };
+    pollLiveCalls();
+    const interval = setInterval(pollLiveCalls, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleCopyOtp = (otp: string) => {
     navigator.clipboard.writeText(otp);
@@ -1160,6 +1181,7 @@ export default function App() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         extensionCount={extensions.length}
         carrierCount={carriers.length}
+        activeCallCount={activeCallCount}
         theme={theme}
         onToggleTheme={handleToggleTheme}
       />
@@ -1176,6 +1198,7 @@ export default function App() {
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onLogout={handleLogout}
           isSyncing={isSyncing}
+          activeCallCount={activeCallCount}
           theme={theme}
           onToggleTheme={handleToggleTheme}
         />
@@ -1188,7 +1211,19 @@ export default function App() {
             audios={audios}
             onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
+            onNavigateToLiveCalls={() => setActiveTab('live-calls')}
             isSyncing={isSyncing}
+          />
+        )}
+
+        {activeTab === 'live-calls' && (
+          <LiveCallsTab
+            extensions={extensions}
+            carriers={carriers}
+            users={users}
+            audios={audios}
+            onTriggerSync={handleQuickSync}
+            onNavigateToProduction={() => setActiveTab('production')}
           />
         )}
 
