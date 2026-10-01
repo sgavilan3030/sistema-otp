@@ -224,7 +224,7 @@ interface RoleConfig {
   title: string;
   badge: string;
   badgeColor: string;
-  category: 'press1' | 'otp';
+  category: 'press1' | 'otp' | 'hold';
   icon: React.ComponentType<{ className?: string }>;
   description: string;
   astDbKey: string;
@@ -369,7 +369,7 @@ const SYSTEM_ROLES: RoleConfig[] = [
     title: 'Música en Espera (Hold MOH en MicroSIP)',
     badge: 'MOH MicroSIP',
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    category: 'press1',
+    category: 'hold',
     icon: Music,
     description: 'Pista de audio reproducida en bucle al cliente cuando el operador presiona "Hold" en MicroSIP o en el softphone de agente.',
     astDbKey: 'ivr_vars default_hold_music',
@@ -467,7 +467,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
   const [isSyncingRole, setIsSyncingRole] = useState<Record<string, boolean>>({});
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
-  const [filterCategory, setFilterCategory] = useState<'all' | 'press1' | 'otp'>('all');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'press1' | 'otp' | 'hold'>('all');
 
   // Fetch active audio assignments on mount - respects manual lock state
   const fetchActiveAssignments = async () => {
@@ -774,6 +774,53 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const recordingTimerRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const holdFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isReloadingMoh, setIsReloadingMoh] = useState(false);
+
+  const handleHoldFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setStagedFileDataUrl(dataUrl);
+      setStagedFileName(file.name);
+      setStagedFileSize(`${(file.size / 1024).toFixed(1)} KB`);
+      setStagedDuration(25.0);
+      setNewAudioName(file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' '));
+      setNewAudioCategory('hold_music');
+      setAutoActivateRole(true);
+      setIsUploadModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleReloadMoh = async () => {
+    setIsReloadingMoh(true);
+    try {
+      const res = await fetch('/api/asterisk/ami/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'moh reload' }),
+      });
+      await res.json();
+      setFeedbackMsg({
+        text: '✓ Módulo de Música en Espera (res_musiconhold) recargado con éxito en Asterisk.',
+        type: 'success',
+      });
+      setTimeout(() => setFeedbackMsg(null), 4000);
+    } catch (e: any) {
+      setFeedbackMsg({
+        text: `Error al recargar MOH: ${e.message}`,
+        type: 'info',
+      });
+      setTimeout(() => setFeedbackMsg(null), 4000);
+    } finally {
+      setIsReloadingMoh(false);
+    }
+  };
 
   // Dedicated upload state per slot
   const [uploadingSlot, setUploadingSlot] = useState<Record<string, boolean>>({});
@@ -1148,6 +1195,13 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             accept="audio/*,.wav,.mp3,.ogg,.gsm"
             className="hidden"
           />
+          <input
+            type="file"
+            ref={holdFileInputRef}
+            onChange={handleHoldFileInputChange}
+            accept="audio/*,.wav,.mp3,.ogg,.gsm"
+            className="hidden"
+          />
         </div>
       </div>
 
@@ -1172,6 +1226,135 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           </button>
         </div>
       )}
+
+      {/* SECTION 0: PANEL DEDICADO DE MÚSICA EN ESPERA (HOLD / MOH) */}
+      {(() => {
+        const currentHoldPath = activeAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_';
+        const matchedAudio = audios.find((a) => a.asteriskPath === currentHoldPath.replace(/\.wav$/, ''));
+        const isPlayingHold = matchedAudio && playingAudioId === matchedAudio.id;
+        const isHoldSyncing = !!isSyncingRole.hold_music;
+
+        return (
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-950/70 via-slate-900 to-slate-950 p-5 border border-cyan-500/30 shadow-xl space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0 shadow-lg shadow-cyan-500/10">
+                  <Music className="w-6 h-6 text-cyan-400 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Música de Espera en Llamada (Hold MOH - MicroSIP / Asterisk)</span>
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                      ✓ Blindado & En Vivo
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1 max-w-3xl">
+                    Esta es la pista que escucha el cliente en bucle continuo cuando el operador presiona <strong>Hold</strong> en MicroSIP. Está sincronizada en todos los códecs de Asterisk para evitar cualquier cruce de audio o tonos de fábrica.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botón de subida directa de audio de Hold */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => holdFileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-black shadow-lg shadow-cyan-500/20 transition-all cursor-pointer active:scale-95"
+                  title="Subir un archivo de audio (WAV, MP3, GSM) para usar como Música en Espera"
+                >
+                  <UploadCloud className="w-4 h-4 text-black" />
+                  <span>Subir Música de Hold (WAV / MP3)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleReloadMoh}
+                  disabled={isReloadingMoh}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Recargar el módulo res_musiconhold en Asterisk para aplicar cambios de archivos"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isReloadingMoh ? 'animate-spin text-cyan-400' : 'text-slate-400'}`} />
+                  <span>{isReloadingMoh ? 'Recargando...' : 'Recargar MOH'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Pista Activa y Selector Rápido */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* Tarjeta de Audio Activo con Reproductor */}
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-cyan-500/20 flex flex-col justify-between space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium">Pista activa actualmente:</span>
+                  <span className="font-mono text-cyan-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    {currentHoldPath}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-white truncate">
+                      {matchedAudio?.name || 'Música de Hold Personalizada'}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-mono truncate">
+                      {matchedAudio?.fileName || 'archivo_hold.wav'} • {matchedAudio?.durationSec || 25}s • {matchedAudio?.fileSize || '1.2 MB'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePlayByPath(currentHoldPath)}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-600/30 cursor-pointer transition-all"
+                    title="Escuchar audio de espera configurado"
+                  >
+                    {isPlayingHold ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span>{isPlayingHold ? 'Pausar' : 'Escuchar Hold'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selector para cambiar de Audio en 1 Clic */}
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between space-y-2">
+                <label className="text-xs text-slate-300 font-medium flex items-center justify-between">
+                  <span>Cambiar pista de Hold por otra de la biblioteca:</span>
+                  <span className="text-[10px] text-emerald-400 font-mono">1 Clic Asterisk</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={currentHoldPath}
+                    disabled={isHoldSyncing}
+                    onChange={(e) => handleAssignRoleDirect('hold_music', e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:border-cyan-400 focus:outline-none"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>AstDB: ivr_vars/default_hold_music</span>
+                  <span>MOH: /var/lib/asterisk/moh</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Guía de Rutas y Ubicación física */}
+            <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-800/30 text-slate-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="text-[11px] leading-relaxed">
+                  <strong>¿Dónde subir tus archivos?</strong> Puedes usar el botón verde <strong>"Subir Música de Hold"</strong> arriba, o si usas SFTP/SSH en el VPS: 
+                  <code className="text-cyan-300 bg-slate-950 px-1 py-0.5 rounded mx-1">/var/lib/asterisk/moh/</code> y 
+                  <code className="text-cyan-300 bg-slate-950 px-1 py-0.5 rounded mx-1">/var/lib/asterisk/sounds/custom/</code>.
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* SECTION 1: DIVISIÓN INDIVIDUAL DE AUDIOS PARA EXTENSIONES DE CAPTURA OTP */}
       <div className="space-y-6">
@@ -1500,7 +1683,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+          <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs flex-wrap">
             <button
               onClick={() => setFilterCategory('all')}
               className={`px-2.5 py-1 rounded transition-colors ${
@@ -1510,6 +1693,17 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               }`}
             >
               Todos ({SYSTEM_ROLES.length})
+            </button>
+            <button
+              onClick={() => setFilterCategory('hold')}
+              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+                filterCategory === 'hold'
+                  ? 'bg-cyan-500 text-black font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Music className="w-3 h-3" />
+              <span>MOH Hold (1)</span>
             </button>
             <button
               onClick={() => setFilterCategory('otp')}
@@ -1529,7 +1723,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Press 1 (3)
+              Press 1 (2)
             </button>
           </div>
         </div>

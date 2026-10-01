@@ -1325,6 +1325,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
           audioSuccess: currentAudios.successAudioPath,
+          holdMusic: campaignEntities.find((e) => e.id === selectedService)?.holdMusicAudioPath || 'custom/moh_corporate_loop',
         }),
       });
 

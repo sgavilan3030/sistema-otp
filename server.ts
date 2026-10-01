@@ -2962,6 +2962,16 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       astDbCommands.push(`database put ivr_vars ${formattedDest}_success "${audioSuccess.trim()}"`);
     }
 
+    const holdMusic = (req.body.holdMusic || req.body.audioHold || '').trim();
+    if (holdMusic) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_hold_music "${holdMusic}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_hold_music "${holdMusic}"`);
+      astDbCommands.push(`database put ivr_vars default_hold_music "${holdMusic}"`);
+      applyHoldMusicToAsteriskMoh(holdMusic);
+      activeAudioAssignments.hold_music = holdMusic;
+      saveActiveAudioAssignments(activeAudioAssignments);
+    }
+
     // Batch sync AstDB variables in background without blocking originate
     for (const c of astDbCommands) {
       executeAsteriskCommand(c).catch(() => {});
@@ -4240,6 +4250,7 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       wait = 'custom/un_momento_validando_informacion',
       success = 'custom/operacion_bloqueada_exito',
       agent = 'custom/conectar_asesor_banco',
+      holdMusic,
       destination,
       isManualSave,
     } = req.body;
@@ -4280,6 +4291,15 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       if (wait) commands.push(`database put ivr_vars ${tgt}_wait "${wait}"`);
       if (success) commands.push(`database put ivr_vars ${tgt}_success "${success}"`);
       if (agent) commands.push(`database put ivr_vars ${tgt}_agent "${agent}"`);
+      if (holdMusic) commands.push(`database put ivr_vars ${tgt}_hold_music "${holdMusic.trim()}"`);
+    }
+
+    if (holdMusic && holdMusic.trim()) {
+      const cleanMoh = holdMusic.trim();
+      commands.push(`database put ivr_vars default_hold_music "${cleanMoh}"`);
+      applyHoldMusicToAsteriskMoh(cleanMoh);
+      activeAudioAssignments.hold_music = cleanMoh;
+      saveActiveAudioAssignments(activeAudioAssignments);
     }
 
     // Execute in background
@@ -4294,6 +4314,7 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
       wait,
       success,
       agent,
+      holdMusic,
     });
 
     res.json({
