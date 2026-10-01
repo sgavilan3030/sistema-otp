@@ -103,9 +103,16 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
         for (const cmd of commands) {
           socket.write(`Action: Command\r\nCommand: ${cmd}\r\n\r\n`);
         }
+        // Safety timeout to ensure logoff if --END COMMAND-- is not caught
         setTimeout(() => {
-          socket.write(`Action: Logoff\r\n\r\n`);
-        }, 150);
+          try { socket.write(`Action: Logoff\r\n\r\n`); } catch (_) {}
+        }, 1200);
+      }
+
+      if (loggedIn && (buffer.includes('--END COMMAND--') || buffer.includes('Response: Error'))) {
+        setTimeout(() => {
+          try { socket.write(`Action: Logoff\r\n\r\n`); } catch (_) {}
+        }, 50);
       }
 
       if (buffer.includes('Response: Goodbye')) {
@@ -1002,32 +1009,22 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice, Anti-Jitter y Cancelacion de Ruido) al conectar con asesor\n`;
+  dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice y corte limpio de MOH) al conectar con asesor\n`;
   dialplanContent += `[sub-audio-quality]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer Adaptativo y Calidad HD en Canal: \${CHANNEL} ===)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer Optimizado y Limpieza MOH en Canal: \${CHANNEL} ===)\n`;
+  dialplanContent += ` same => n,StopMusicOnHold()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
-  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio HD y Denoise en ambas vías\n`;
+  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio HD y corte limpio de MOH\n`;
   dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN} con optimización HD)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,StopMusicOnHold()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -3434,7 +3431,7 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
     exec(`mkdir -p "${mohDir}" && chmod 777 "${mohDir}"`, () => {});
   }
 
-  // 2. Overwrite all demo and default tracks in MOH directory so no factory audio ever leaks
+  // 2. Overwrite all demo, default and previously tested tracks in MOH directory so no other audio ever leaks or crosses
   const mohTargets = [
     'macroform-cold_day',
     'manolo_camp-morning_coffee',
@@ -3444,6 +3441,21 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
     'custom_moh',
     'default_hold',
     '01_hold_music',
+    'hold_music',
+    'active_hold',
+    'moh_banco_elegante',
+    'moh_corporate_loop',
+    'moh_digital_hold',
+    'moh_jazz_telecom',
+    'mi_audio',
+    'banrearreglado',
+    'alerta_banco_antifraude',
+    'conectar_asesor_banco',
+    'acceso_restringido_exito',
+    'bienvenida_corporativa',
+    'bienvenida_press1',
+    'solicitar_codigo_otp',
+    'un_momento_validando_informacion',
   ];
 
   if (fs.existsSync(srcFile)) {
@@ -5000,7 +5012,7 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
 // Endpoint to toggle Hold (Music on Hold) for a live call
 app.post('/api/asterisk/call/hold', async (req, res) => {
   try {
-    const { number, channel, hold = true, holdMusic = 'custom/moh_banco_elegante' } = req.body;
+    const { number, channel, hold = true, holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_' } = req.body;
     const cleanNum = String(number || '').trim().replace(/[^0-9]/g, '');
 
     const updateState = (state: CallState) => {
@@ -5062,7 +5074,7 @@ app.post('/api/asterisk/call/simulate', async (req, res) => {
       agentName = 'Operador Asignado',
       entityId = 'bank',
       entityName = 'Banco / Antifraude',
-      holdMusic = 'custom/moh_banco_elegante',
+      holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_',
       trunk = 'televox',
     } = req.body;
 

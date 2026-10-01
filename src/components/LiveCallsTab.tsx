@@ -230,7 +230,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           number: call.number,
           channel: call.channel,
           hold: !isCurrentlyOnHold,
-          holdMusic: call.holdMusic || 'custom/moh_corporate_loop',
+          holdMusic: call.holdMusic || 'custom/voz_comercial_para_barrick_pueblo_viejo_',
         }),
       });
       const data = await res.json();
