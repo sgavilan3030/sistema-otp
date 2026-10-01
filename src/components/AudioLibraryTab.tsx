@@ -32,6 +32,7 @@ import {
   Clock,
   ShieldCheck,
   Layers,
+  Music,
 } from 'lucide-react';
 
 interface AudioLibraryTabProps {
@@ -362,6 +363,17 @@ const SYSTEM_ROLES: RoleConfig[] = [
     description: 'Audio cuando el asesor marca el código como inválido ("El código ingresado no es correcto, por favor vuelva a ingresarlo.").',
     astDbKey: 'ivr_vars default_failure',
     fallbackDefault: 'custom/token_invalido_reintente',
+  },
+  {
+    role: 'hold_music',
+    title: 'Música en Espera (Hold MOH en MicroSIP)',
+    badge: 'MOH MicroSIP',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    category: 'press1',
+    icon: Music,
+    description: 'Pista de audio reproducida en bucle al cliente cuando el operador presiona "Hold" en MicroSIP o en el softphone de agente.',
+    astDbKey: 'ivr_vars default_hold_music',
+    fallbackDefault: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
   },
 ];
 
@@ -1052,7 +1064,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
 
     // Auto-activate as live audio in Asterisk if requested
-    if (autoActivateRole && newAudioCategory !== 'custom' && newAudioCategory !== 'hold_music') {
+    if (autoActivateRole && newAudioCategory !== 'custom') {
       handleAssignRoleDirect(newAudioCategory as AudioRole, cleanPath);
     }
 
@@ -1950,6 +1962,26 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                     <span>Fallo</span>
                     {activeAssignments.otp_failure === audio.asteriskPath && <span>✓ (Activo)</span>}
                   </button>
+
+                  <button
+                    onClick={() => {
+                      if (activeAssignments.hold_music === audio.asteriskPath) {
+                        handleDeactivateRole('hold_music');
+                      } else {
+                        handleAssignRoleDirect('hold_music', audio.asteriskPath);
+                      }
+                    }}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.hold_music === audio.asteriskPath
+                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-600'
+                        : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
+                    }`}
+                    title={activeAssignments.hold_music === audio.asteriskPath ? "Música de Hold activa en MicroSIP. Clic para desactivar" : "Asignar como Música de Espera (Hold) para MicroSIP y Asterisk"}
+                  >
+                    <Music className="w-3 h-3" />
+                    <span>MOH Hold</span>
+                    {activeAssignments.hold_music === audio.asteriskPath && <span>✓ (Activo)</span>}
+                  </button>
                 </div>
               </div>
             </div>
@@ -2016,7 +2048,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               </div>
 
               {/* Auto activate checkbox */}
-              {newAudioCategory !== 'custom' && newAudioCategory !== 'hold_music' && (
+              {newAudioCategory !== 'custom' && (
                 <label className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 cursor-pointer">
                   <input
                     type="checkbox"

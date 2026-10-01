@@ -272,6 +272,7 @@ export default function App() {
     otp_wait: 'custom/un_momento_validando_informacion',
     otp_success: 'custom/operacion_bloqueada_exito',
     otp_failure: 'custom/token_invalido_reintente',
+    hold_music: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
   });
 
   // Manual Locks State for Audios 6666, 7777 and IVR Script/Entity

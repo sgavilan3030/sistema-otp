@@ -160,6 +160,7 @@ export interface ActiveAudioAssignments {
   otp_wait: string;
   otp_success: string;
   otp_failure: string;
+  hold_music?: string;
   [key: string]: string | undefined;
 }
 
