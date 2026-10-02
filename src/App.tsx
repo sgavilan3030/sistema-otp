@@ -192,6 +192,7 @@ export default function App() {
 
   useEffect(() => {
     const pollGlobalOtp = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/asterisk/otp/records');
         const data = await res.json();
@@ -206,7 +207,7 @@ export default function App() {
     };
 
     pollGlobalOtp();
-    const interval = setInterval(pollGlobalOtp, 2500);
+    const interval = setInterval(pollGlobalOtp, 4000);
     return () => clearInterval(interval);
   }, [dismissedOtpKey]);
 
@@ -214,6 +215,7 @@ export default function App() {
   const [activeCallCount, setActiveCallCount] = useState<number>(0);
   useEffect(() => {
     const pollLiveCalls = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/asterisk/live/calls');
         if (res.ok) {
@@ -226,7 +228,7 @@ export default function App() {
       } catch (_) {}
     };
     pollLiveCalls();
-    const interval = setInterval(pollLiveCalls, 2000);
+    const interval = setInterval(pollLiveCalls, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -385,10 +387,13 @@ export default function App() {
     }
   }, [currentUserId, currentUser?.username]);
 
-  // Poll server state every 3.5s and on window focus
+  // Poll server state every 4.5s and on window focus
   useEffect(() => {
     fetchUserState();
-    const interval = setInterval(() => fetchUserState(), 3500);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchUserState();
+    }, 4500);
     const handleFocus = () => fetchUserState();
     window.addEventListener('focus', handleFocus);
     return () => {

@@ -962,13 +962,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   useEffect(() => {
     fetchCapturedOtps();
-    const interval = setInterval(fetchCapturedOtps, 2000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchCapturedOtps();
+    }, 3500);
     return () => clearInterval(interval);
   }, []);
 
   // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 7777 u 8888 desde extensión 1002/1001)
   useEffect(() => {
     const pollLiveChannels = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/asterisk/live/channels');
         const data = await res.json();
@@ -1011,7 +1015,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 channel: ivrChannel.channel,
               };
             });
-          } else if (activeCall?.isActive && activeCall.duration >= 5 && Array.isArray(data.channels)) {
+          } else if (activeCall?.isActive && (activeCall.duration || 0) >= 5 && Array.isArray(data.channels)) {
             // Si la llamada estaba activa pero ya no figura en ningún canal de Asterisk
             const queryClean = activeCall.number.replace(/[^0-9]/g, '');
             const channelStillAlive = data.channels.some((c: any) => {
@@ -1027,9 +1031,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 2500);
+    const chanInterval = setInterval(pollLiveChannels, 3500);
     return () => clearInterval(chanInterval);
-  }, [selectedService, activeCall?.isActive, activeCall?.channel, activeCall?.number, activeCall?.duration, activeCall?.status]);
+  }, [selectedService, activeCall?.isActive, activeCall?.channel, activeCall?.number, activeCall?.status]);
 
   // Check if there is an active call running on Asterisk on mount
   useEffect(() => {
@@ -1060,6 +1064,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!activeCall?.isActive || activeCall.status === 'ended') return;
 
     const watcherInterval = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const queryNum = activeCall.number.replace(/[^0-9]/g, '');
         if (!queryNum) return;

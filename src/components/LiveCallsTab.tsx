@@ -170,6 +170,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
 
   // Poll live calls from Asterisk server
   const fetchLiveCalls = async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const res = await fetch('/api/asterisk/live/calls');
       if (res.ok) {
@@ -184,8 +185,8 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
 
   useEffect(() => {
     fetchLiveCalls();
-    // Poll Asterisk every 2 seconds
-    const interval = setInterval(fetchLiveCalls, 2000);
+    // Poll Asterisk every 3.5 seconds
+    const interval = setInterval(fetchLiveCalls, 3500);
     return () => clearInterval(interval);
   }, []);
 

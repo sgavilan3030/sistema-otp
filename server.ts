@@ -20,25 +20,107 @@ let isAmiExecuting = false;
 
 const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || 'http://169.58.66.206:3000';
 
-export async function executeAsteriskCommand(cmd: string): Promise<string> {
-  // 1. Try local CLI if asterisk binary is installed
-  try {
-    const localRes = await new Promise<string>((resolve) => {
-      exec(`asterisk -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2000 }, (err, stdout) => {
-        if (!err && stdout && stdout.trim()) {
-          resolve(stdout.trim());
-        } else {
-          resolve('');
-        }
-      });
-    });
-    if (localRes) return localRes;
-  } catch (_) {}
+const hasLocalAsterisk = fs.existsSync('/usr/sbin/asterisk') || fs.existsSync('/usr/bin/asterisk');
+let remoteConsecutiveFailures = 0;
+let remoteLastFailureTime = 0;
+let remoteLastSuccessTime = 0;
 
-  // 2. Try remote VPS HTTP bridge (vmi3461829 / 169.58.66.206:3000)
+// High-speed memory cache for Asterisk CLI queries to prevent socket flooding, CPU spikes, and Asterisk lockup
+interface CliCacheEntry {
+  output: string;
+  timestamp: number;
+}
+const cliCommandCache = new Map<string, CliCacheEntry>();
+let isLocalCliRunning = false;
+
+// Helper to invalidate CLI cache when write actions occur
+export function invalidateCliCache(pattern?: string) {
+  if (!pattern) {
+    cliCommandCache.clear();
+  } else {
+    for (const key of Array.from(cliCommandCache.keys())) {
+      if (key.includes(pattern)) {
+        cliCommandCache.delete(key);
+      }
+    }
+  }
+}
+
+export async function executeAsteriskCommand(cmd: string): Promise<string> {
+  const isChannelsCheck = cmd.includes('core show channels');
+  const isReadOnly =
+    cmd.startsWith('show') ||
+    cmd.startsWith('core show') ||
+    cmd.startsWith('pjsip show') ||
+    cmd.startsWith('database show') ||
+    cmd.startsWith('moh show') ||
+    cmd.startsWith('manager show') ||
+    cmd.startsWith('ari show') ||
+    cmd.includes('show channels');
+  const now = Date.now();
+
+  // Dynamic TTL based on query type to maintain real-time responsiveness without hammering Asterisk CLI
+  const ttl = isChannelsCheck
+    ? 3000
+    : (cmd.startsWith('pjsip show')
+      ? 5000
+      : (cmd.startsWith('database show') ? 4000 : 4000));
+
+  // 0. Return cached read-only result immediately (0ms) if within TTL
+  if (isReadOnly) {
+    const cached = cliCommandCache.get(cmd);
+    if (cached && (now - cached.timestamp < ttl)) {
+      return cached.output;
+    }
+  }
+
+  // 1. Try local CLI ONLY if asterisk binary is physically installed
+  if (hasLocalAsterisk) {
+    // If local CLI is currently busy running a command and this is a read request, return cached (or empty)
+    // to strictly prevent concurrent UNIX socket collisions that choke Asterisk PJSIP
+    if (isLocalCliRunning && isReadOnly) {
+      const existing = cliCommandCache.get(cmd);
+      if (existing) return existing.output;
+    }
+
+    try {
+      isLocalCliRunning = true;
+      const localRes = await new Promise<string>((resolve) => {
+        exec(`asterisk -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2200 }, (err, stdout) => {
+          if (!err && stdout !== undefined && stdout !== null) {
+            resolve(stdout.trim());
+          } else {
+            resolve('');
+          }
+        });
+      });
+
+      // Cache the result even if empty (0 channels or empty AstDB is a valid result that MUST be cached to prevent polling loops!)
+      if (isReadOnly) {
+        cliCommandCache.set(cmd, { output: localRes, timestamp: Date.now() });
+      } else {
+        invalidateCliCache();
+      }
+
+      return localRes;
+    } catch (_) {}
+    finally {
+      isLocalCliRunning = false;
+    }
+  }
+
+  // 2. Try remote VPS HTTP bridge with Circuit Breaker
+  const isCircuitOpen = remoteConsecutiveFailures >= 2 && (now - remoteLastFailureTime < 25000);
+
+  // If remote VPS is down/timing out, skip read-only requests immediately so UI never hangs
+  if (isCircuitOpen && isReadOnly) {
+    return cliCommandCache.get(cmd)?.output || '';
+  }
+
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timeoutMs = isCircuitOpen ? 800 : (isReadOnly ? 1200 : 2500);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,19 +130,37 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     clearTimeout(timer);
     if (resp.ok) {
       const data = (await resp.json()) as any;
-      if (data && data.output) {
+      if (data && data.output !== undefined) {
+        remoteConsecutiveFailures = 0;
+        remoteLastSuccessTime = Date.now();
+        if (isReadOnly) {
+          cliCommandCache.set(cmd, { output: data.output, timestamp: Date.now() });
+        }
         return data.output;
       }
+    } else {
+      remoteConsecutiveFailures++;
+      remoteLastFailureTime = Date.now();
     }
-  } catch (_) {}
+  } catch (_) {
+    remoteConsecutiveFailures++;
+    remoteLastFailureTime = Date.now();
+  }
 
-  // 3. Fallback to raw local AMI socket
-  try {
-    const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
-    if (amiRes && !amiRes.startsWith('AMI Error')) return amiRes;
-  } catch (_) {}
+  // 3. Fallback to raw local AMI socket only if local Asterisk might exist
+  if (hasLocalAsterisk) {
+    try {
+      const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
+      if (amiRes && !amiRes.startsWith('AMI Error')) {
+        if (isReadOnly) {
+          cliCommandCache.set(cmd, { output: amiRes, timestamp: Date.now() });
+        }
+        return amiRes;
+      }
+    } catch (_) {}
+  }
 
-  return '';
+  return cliCommandCache.get(cmd)?.output || '';
 }
 
 function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
@@ -893,27 +993,26 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
   return pjsipContent;
 }
 
-// Robust PJSIP endpoint and contact reader from Asterisk CLI or AMI
+let cachedPjsipEndpoints: { raw: string; parsed: any[]; timestamp: number } | null = null;
+let isQueryingEndpoints = false;
+
+// Robust PJSIP endpoint and contact reader from Asterisk CLI or AMI with memory caching
 async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any[] }> {
+  const now = Date.now();
+  if (cachedPjsipEndpoints && (now - cachedPjsipEndpoints.timestamp < 5000)) {
+    return cachedPjsipEndpoints;
+  }
+  if (isQueryingEndpoints && cachedPjsipEndpoints) {
+    return cachedPjsipEndpoints;
+  }
+
+  isQueryingEndpoints = true;
   let output = '';
   try {
-    output = await new Promise<string>((resolve) => {
-      exec('asterisk -rx "pjsip show endpoints"', { timeout: 3500 }, (err, stdout) => {
-        if (!err && stdout && stdout.trim()) {
-          resolve(stdout.trim());
-        } else {
-          resolve('');
-        }
-      });
-    });
+    output = await executeAsteriskCommand('pjsip show endpoints');
   } catch (_) {}
-
-  if (!output) {
-    try {
-      output = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-        'pjsip show endpoints',
-      ]);
-    } catch (_) {}
+  finally {
+    isQueryingEndpoints = false;
   }
 
   const lines = output.split('\n');
@@ -2699,8 +2798,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         const extNum = ext.extension;
         const cidNum = ext.callerIdNum || outboundCid;
         const cidName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
-        exec(`asterisk -rx 'database put extension_cid ${extNum}/number "${cidNum}"'`, () => {});
-        exec(`asterisk -rx 'database put extension_cid ${extNum}/name "${cidName}"'`, () => {});
+        executeAsteriskCommand(`database put extension_cid ${extNum}/number "${cidNum}"`).catch(() => {});
+        executeAsteriskCommand(`database put extension_cid ${extNum}/name "${cidName}"`).catch(() => {});
       }
     }
 
@@ -2724,29 +2823,20 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       `database put ivr_vars 8888_success "${defaultSuccess}"`,
       `database put ivr_vars 8888_agent "${defaultAgent}"`,
       `database put ivr_vars 8888_agent_exten "1001"`,
-      `database put ivr_vars 6666_intro "${defaultIntro}"`,
-      `database put ivr_vars 6666_prompt "${defaultPrompt}"`,
-      `database put ivr_vars 6666_wait "${defaultWait}"`,
-      `database put ivr_vars 6666_success "${defaultSuccess}"`,
-      `database put ivr_vars 6666_agent "${defaultAgent}"`,
-      `database put ivr_vars 6666_agent_exten "1001"`,
       `database put ivr_vars 7777_intro "${defaultIntro}"`,
       `database put ivr_vars 7777_prompt "${defaultPrompt}"`,
       `database put ivr_vars 7777_wait "${defaultWait}"`,
       `database put ivr_vars 7777_success "${defaultSuccess}"`,
       `database put ivr_vars 7777_agent "${defaultAgent}"`,
       `database put ivr_vars 7777_agent_exten "1001"`,
-      `database put ivr_vars global_intro "${defaultIntro}"`,
-      `database put ivr_vars global_prompt "${defaultPrompt}"`,
-      `database put ivr_vars global_wait "${defaultWait}"`,
-      `database put ivr_vars global_success "${defaultSuccess}"`,
-      `database put ivr_vars global_agent "${defaultAgent}"`,
-      `database put ivr_vars global_agent_exten "1001"`,
     ];
 
-    for (const dCmd of defaultAudiosCommands) {
-      exec(`asterisk -rx '${dCmd}'`, () => {});
-    }
+    (async () => {
+      for (const dCmd of defaultAudiosCommands) {
+        await executeAsteriskCommand(dCmd).catch(() => {});
+      }
+      invalidateCliCache();
+    })();
 
     // Save in memory for download endpoints
     lastGeneratedPjsip = pjsipContent;
@@ -4065,6 +4155,35 @@ function getUserConfigPath(userId?: string, username?: string): string {
   return path.join(USER_CONFIGS_DIR, `${safeKey}.json`);
 }
 
+function stripHeavyBlobs(state: any) {
+  if (!state || typeof state !== 'object') return state;
+  const clone = { ...state };
+  if (Array.isArray(clone.audios)) {
+    clone.audios = clone.audios.map((a: any) => {
+      if (a && a.dataUrl && a.dataUrl.length > 500) {
+        const { dataUrl, ...rest } = a;
+        return rest;
+      }
+      return a;
+    });
+  }
+  return clone;
+}
+
+// Lightweight version check: returns version timestamp (30 bytes) so clients don't poll 1.7MB payloads
+app.get('/api/app/user-state/version', (req, res) => {
+  try {
+    const userId = String(req.query.userId || '').trim();
+    const username = String(req.query.username || '').trim();
+    const userPath = getUserConfigPath(userId, username);
+    if (fs.existsSync(userPath)) {
+      const stats = fs.statSync(userPath);
+      return res.json({ success: true, version: stats.mtimeMs });
+    }
+  } catch (_) {}
+  res.json({ success: true, version: 0 });
+});
+
 // User-exclusive state retrieval: guarantees that each user (e.g. admin) always loads their exact configuration across any browser
 app.get('/api/app/user-state', (req, res) => {
   try {
@@ -4074,21 +4193,21 @@ app.get('/api/app/user-state', (req, res) => {
 
     if (fs.existsSync(userPath)) {
       const data = fs.readFileSync(userPath, 'utf-8');
-      return res.json({ success: true, state: JSON.parse(data), source: 'user_file' });
+      return res.json({ success: true, state: stripHeavyBlobs(JSON.parse(data)), source: 'user_file' });
     }
 
     if (username && !userId) {
       const fallbackPath = getUserConfigPath(`user-${username}`);
       if (fs.existsSync(fallbackPath)) {
         const data = fs.readFileSync(fallbackPath, 'utf-8');
-        return res.json({ success: true, state: JSON.parse(data), source: 'user_fallback' });
+        return res.json({ success: true, state: stripHeavyBlobs(JSON.parse(data)), source: 'user_fallback' });
       }
     }
 
     // Fallback to global app_state.json and initialize user's profile
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
-      const parsed = JSON.parse(data);
+      const parsed = stripHeavyBlobs(JSON.parse(data));
       try {
         fs.writeFileSync(userPath, JSON.stringify(parsed, null, 2), 'utf-8');
       } catch (_) {}
@@ -4111,7 +4230,7 @@ app.post('/api/app/user-state', (req, res) => {
       fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
     }
     const stateWithTimestamp = {
-      ...state,
+      ...stripHeavyBlobs(state),
       lastUpdated: Date.now(),
       savedByUserId: userId || 'unknown',
       savedByUsername: username || 'unknown',
@@ -4329,10 +4448,11 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
 });
 
 // Endpoint to retrieve active audio configuration from Asterisk AstDB
-app.get('/api/asterisk/audio/config', (req, res) => {
-  exec(`asterisk -rx 'database show ivr_vars'`, (err, stdout) => {
+app.get('/api/asterisk/audio/config', async (req, res) => {
+  try {
+    const stdout = await executeAsteriskCommand('database show ivr_vars');
     const audios: Record<string, string> = {};
-    if (!err && stdout) {
+    if (stdout) {
       const lines = stdout.split('\n');
       for (const line of lines) {
         // Line format: /ivr_vars/key : value
@@ -4356,7 +4476,9 @@ app.get('/api/asterisk/audio/config', (req, res) => {
       },
       allKeys: audios,
     });
-  });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message, audios: {} });
+  }
 });
 
 // Verify if an audio file exists physically in Asterisk sounds directory
@@ -4684,79 +4806,79 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
 
   const now = Date.now();
 
-  // Si ya se sincronizó hace menos de 2000ms y no se fuerza refresh, devolver en memoria
-  if (!forceFresh && (now - lastAstDbSyncTime < 2000 || isSyncingAstDb)) {
-    return res.json({ success: true, records: capturedOtpHistory });
-  }
-
-  isSyncingAstDb = true;
-  // Sincronizar también con la base interna AstDB de Asterisk (local o VPS remoto)
-  try {
-    const codesOutput = await executeAsteriskCommand('database show otp_codes');
-    const statusOutput = await executeAsteriskCommand('database show otp_status');
-
-    const statusMap: Record<string, 'valid' | 'invalid' | 'pending'> = {};
-    if (statusOutput) {
-      const sLines = statusOutput.split('\n');
-      for (const line of sLines) {
-        const clean = line.replace(/^Output:\s*/, '').trim();
-        const m = clean.match(/^\/otp_status\/([^\s:]*)\s*:\s*([a-zA-Z]+)/);
-        if (m) {
-          const num = m[1].trim();
-          const st = m[2].trim().toLowerCase();
-          if (st === 'valid' || st === 'invalid' || st === 'pending') {
-            statusMap[num] = st;
-          }
-        }
-      }
-    }
-
-    if (codesOutput) {
-      const lines = codesOutput.split('\n');
-      for (const line of lines) {
-        const cleanLine = line.replace(/^Output:\s*/, '').trim();
-        const match = cleanLine.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
-        if (match) {
-          const num = match[1].trim();
-          const code = match[2].trim();
-          const currentStatus = statusMap[num] || 'pending';
-          const existingIndex = capturedOtpHistory.findIndex((r) => r.number === num && r.otp === code);
-
-          if (existingIndex >= 0) {
-            // Actualizar status si cambió
-            capturedOtpHistory[existingIndex].status = currentStatus;
-          } else {
-            // Nuevo registro detectado desde AstDB -> ponerlo al frente
-            capturedOtpHistory.unshift({
-              id: 'astdb-' + num + '-' + code,
-              number: num,
-              otp: code,
-              timestamp: new Date().toLocaleTimeString(),
-              createdAt: Date.now(),
-              channel: 'Ext. 7777',
-              service: 'Banco / Antifraude (7777)',
-              status: currentStatus,
-            });
-            if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
-          }
-        }
-      }
-    }
-
-    // Actualizar estados sincronizados desde AstDB para todos los registros
-    for (const r of capturedOtpHistory) {
-      if (statusMap[r.number]) {
-        r.status = statusMap[r.number];
-      }
-    }
-    lastAstDbSyncTime = Date.now();
-  } catch (err: any) {
-    console.warn('AstDB sync warning:', err.message);
-  } finally {
-    isSyncingAstDb = false;
-  }
-
+  // Return real-time memory records immediately (< 1ms) so the web UI never freezes
   res.json({ success: true, records: capturedOtpHistory });
+
+  // Optional background sync with Asterisk AstDB every 10 seconds without blocking response
+  if (!isSyncingAstDb && (forceFresh || now - lastAstDbSyncTime >= 10000)) {
+    isSyncingAstDb = true;
+    (async () => {
+      try {
+        const codesOutput = await executeAsteriskCommand('database show otp_codes');
+        const statusOutput = await executeAsteriskCommand('database show otp_status');
+
+        const statusMap: Record<string, 'valid' | 'invalid' | 'pending'> = {};
+        if (statusOutput) {
+          const sLines = statusOutput.split('\n');
+          for (const line of sLines) {
+            const clean = line.replace(/^Output:\s*/, '').trim();
+            const m = clean.match(/^\/otp_status\/([^\s:]*)\s*:\s*([a-zA-Z]+)/);
+            if (m) {
+              const num = m[1].trim();
+              const st = m[2].trim().toLowerCase();
+              if (st === 'valid' || st === 'invalid' || st === 'pending') {
+                statusMap[num] = st;
+              }
+            }
+          }
+        }
+
+        if (codesOutput) {
+          const lines = codesOutput.split('\n');
+          for (const line of lines) {
+            const cleanLine = line.replace(/^Output:\s*/, '').trim();
+            const match = cleanLine.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
+            if (match) {
+              const num = match[1].trim();
+              const code = match[2].trim();
+              const currentStatus = statusMap[num] || 'pending';
+              const existingIndex = capturedOtpHistory.findIndex((r) => r.number === num && r.otp === code);
+
+              if (existingIndex >= 0) {
+                // Actualizar status si cambió
+                capturedOtpHistory[existingIndex].status = currentStatus;
+              } else {
+                // Nuevo registro detectado desde AstDB -> ponerlo al frente
+                capturedOtpHistory.unshift({
+                  id: 'astdb-' + num + '-' + code,
+                  number: num,
+                  otp: code,
+                  timestamp: new Date().toLocaleTimeString(),
+                  createdAt: Date.now(),
+                  channel: 'Ext. 7777',
+                  service: 'Banco / Antifraude (7777)',
+                  status: currentStatus,
+                });
+                if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+              }
+            }
+          }
+        }
+
+        // Actualizar estados sincronizados desde AstDB para todos los registros
+        for (const r of capturedOtpHistory) {
+          if (statusMap[r.number]) {
+            r.status = statusMap[r.number];
+          }
+        }
+        lastAstDbSyncTime = Date.now();
+      } catch (err: any) {
+        console.warn('AstDB sync warning:', err.message);
+      } finally {
+        isSyncingAstDb = false;
+      }
+    })().catch(() => {});
+  }
 });
 
 // Endpoint to delete/clear captured records and wipe old tests from Asterisk AstDB
@@ -4782,11 +4904,6 @@ app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async 
 app.get('/api/asterisk/live/channels', async (req, res) => {
   try {
     let amiOutput = await executeAsteriskCommand('core show channels concise');
-    if (!amiOutput) {
-      amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-        'core show channels concise',
-      ]);
-    }
 
     const parsedChannels: any[] = [];
     if (amiOutput) {
@@ -4807,6 +4924,28 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
             callerId: parts[7] || '',
             duration: parts[10] || '',
             bridgedChannel: parts[11] || '',
+          });
+        }
+      }
+    }
+
+    // Synthesize active channels from memory callStatusStore if remote output was empty
+    if (parsedChannels.length === 0) {
+      const now = Date.now();
+      for (const call of callStatusStore.values()) {
+        if (call.status !== 'ended' && call.status !== 'machine' && (now - call.timestamp < 1800000)) {
+          const liveDuration = Math.max(0, Math.floor((now - (call.answeredAt || call.startTime || call.timestamp)) / 1000));
+          parsedChannels.push({
+            channel: call.channel || `PJSIP/${call.agent || '1001'}-live`,
+            context: 'ivr-press1',
+            extension: call.number || '8888',
+            priority: '1',
+            state: call.status === 'talking' ? 'Up' : 'Ring',
+            application: call.isOnHold ? 'MusicOnHold' : 'Dial',
+            data: call.agent || '1001',
+            callerId: call.number || 'Cliente',
+            duration: String(liveDuration),
+            bridgedChannel: call.bridgedChannel || '',
           });
         }
       }

