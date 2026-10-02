@@ -162,7 +162,9 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Live Services Pill */}
             <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
               <span className="text-slate-400 font-medium">AMI:</span>
-              <span className="text-emerald-400 font-mono font-semibold">:{connectionSettings.amiPort} OK</span>
+              <span className={`font-mono font-semibold ${connectionSettings.status === 'error' ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+                :{connectionSettings.amiPort} {connectionSettings.status === 'error' ? 'RETRY' : 'OK'}
+              </span>
               <span className="text-slate-700">|</span>
               <span className="text-slate-400 font-medium">ARI:</span>
               <span className="text-blue-400 font-mono font-semibold">:{connectionSettings.ariPort} OK</span>

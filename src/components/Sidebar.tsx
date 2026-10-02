@@ -199,7 +199,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="mt-3 grid grid-cols-3 gap-1 pt-2.5 border-t border-slate-900 text-[10px] font-mono">
             <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
               <span className="text-slate-500 block">AMI</span>
-              <span className="text-emerald-400 font-bold">:{connectionSettings.amiPort}</span>
+              <span className={`font-bold ${connectionSettings.status === 'error' ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+                :{connectionSettings.amiPort}
+              </span>
             </div>
             <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
               <span className="text-slate-500 block">ARI</span>

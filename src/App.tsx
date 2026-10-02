@@ -652,8 +652,138 @@ export default function App() {
     addLog('SQLITE', `Ejecutando en SQLite3 / Asterisk CLI: ${cmd}`);
   };
 
-  // Full Hot Reload Execution
+  // =========================================================================
+  // AMI CLIENT-SIDE RETRY CONTROLLER WITH EXPONENTIAL BACKOFF
+  // =========================================================================
+  interface AmiClientBackoffState {
+    consecutiveFailures: number;
+    baseDelayMs: number;
+    maxDelayMs: number;
+    currentDelayMs: number;
+    nextAllowedTime: number;
+    isBackoffActive: boolean;
+    lastFailureTime: number;
+    lastSuccessTime: number;
+    lastError: string;
+  }
+
+  const [amiBackoff, setAmiBackoff] = useState<AmiClientBackoffState>({
+    consecutiveFailures: 0,
+    baseDelayMs: 1000,
+    maxDelayMs: 32000,
+    currentDelayMs: 1000,
+    nextAllowedTime: 0,
+    isBackoffActive: false,
+    lastFailureTime: 0,
+    lastSuccessTime: 0,
+    lastError: '',
+  });
+
+  const amiBackoffRef = useRef(amiBackoff);
+  useEffect(() => {
+    amiBackoffRef.current = amiBackoff;
+  }, [amiBackoff]);
+
+  // Exponential backoff calculator with jitter: min(32s, 1s * 2^(failures-1)) + jitter
+  const calculateAmiBackoffDelay = (failures: number): number => {
+    const base = 1000;
+    const max = 32000;
+    const exponent = Math.min(failures - 1, 5);
+    const expDelay = Math.min(max, base * Math.pow(2, exponent));
+    const jitter = Math.floor(Math.random() * (expDelay * 0.15));
+    return expDelay + jitter;
+  };
+
+  const recordAmiSuccessClient = () => {
+    if (amiBackoffRef.current.consecutiveFailures > 0 || amiBackoffRef.current.isBackoffActive) {
+      addLog(
+        'AMI',
+        `[AMI RECONECTADO] Conexión establecida con éxito con Asterisk :5038 tras ${amiBackoffRef.current.consecutiveFailures} reintentos. Backoff finalizado.`,
+        undefined,
+        'success'
+      );
+    }
+    setAmiBackoff({
+      consecutiveFailures: 0,
+      baseDelayMs: 1000,
+      maxDelayMs: 32000,
+      currentDelayMs: 1000,
+      nextAllowedTime: 0,
+      isBackoffActive: false,
+      lastFailureTime: 0,
+      lastSuccessTime: Date.now(),
+      lastError: '',
+    });
+    setConnectionSettings((prev) => (prev.status === 'connected' ? prev : { ...prev, status: 'connected' }));
+  };
+
+  const recordAmiFailureClient = (errMsg: string) => {
+    const now = Date.now();
+    const newFailures = amiBackoffRef.current.consecutiveFailures + 1;
+    const delay = calculateAmiBackoffDelay(newFailures);
+    const nextTime = now + delay;
+    const cooldownSec = Math.round(delay / 1000);
+
+    setAmiBackoff({
+      consecutiveFailures: newFailures,
+      baseDelayMs: 1000,
+      maxDelayMs: 32000,
+      currentDelayMs: delay,
+      nextAllowedTime: nextTime,
+      isBackoffActive: true,
+      lastFailureTime: now,
+      lastSuccessTime: amiBackoffRef.current.lastSuccessTime,
+      lastError: errMsg,
+    });
+    setConnectionSettings((prev) => (prev.status === 'error' ? prev : { ...prev, status: 'error' }));
+
+    addLog(
+      'AMI',
+      `[AMI BACKOFF ACTIVADO] Intento fallido #${newFailures} (${errMsg}). Reconexión en pausa por ${cooldownSec}s para evitar bucles.`,
+      `Estrategia: min(32s, 1s * 2^${Math.min(newFailures - 1, 5)}) + jitter => ${delay}ms\nSiguiente reintento permitido: ${new Date(nextTime).toLocaleTimeString()}`,
+      'failed'
+    );
+    showToast(`Asterisk no accesible. Cooldown AMI: ${cooldownSec}s`, 'error');
+  };
+
+  const handleResetAmiBackoff = async () => {
+    setAmiBackoff({
+      consecutiveFailures: 0,
+      baseDelayMs: 1000,
+      maxDelayMs: 32000,
+      currentDelayMs: 1000,
+      nextAllowedTime: 0,
+      isBackoffActive: false,
+      lastFailureTime: 0,
+      lastSuccessTime: Date.now(),
+      lastError: '',
+    });
+    setConnectionSettings((prev) => ({ ...prev, status: 'connected' }));
+    try {
+      await fetch('/api/asterisk/ami/reset-backoff', { method: 'POST' });
+    } catch (_) {}
+    addLog('AMI', '[AMI BACKOFF RESET] Circuito restablecido manualmente por el operador.', undefined, 'success');
+    showToast('Backoff AMI restablecido');
+  };
+
+  // Full Hot Reload Execution with Backoff Check
   const handleQuickSync = async (extsToSync = extensions, carriersToSync = carriers) => {
+    const now = Date.now();
+    const state = amiBackoffRef.current;
+
+    // Check if AMI circuit is currently in exponential backoff
+    if (state.isBackoffActive && now < state.nextAllowedTime) {
+      const remainingSec = Math.max(1, Math.ceil((state.nextAllowedTime - now) / 1000));
+      addLog(
+        'AMI',
+        `[SYNC PAUSADO] Sincronización evitada para prevenir saturación de Asterisk (${remainingSec}s restantes).`,
+        `Asterisk no está accesible actualmente. Los cambios locales se mantienen protegidos.`,
+        'pending'
+      );
+      showToast(`Sincronización en pausa (${remainingSec}s restantes)`, 'info');
+      return;
+    }
+
     setIsSyncing(true);
     addLog(
       'AMI',
@@ -662,6 +792,9 @@ export default function App() {
     );
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       const res = await fetch('/api/asterisk/sync/extensions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -669,10 +802,13 @@ export default function App() {
           extensions: extsToSync,
           carriers: carriersToSync,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
+        recordAmiSuccessClient();
         addLog(
           'AMI',
           `Black Hat Dialer System Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
@@ -680,15 +816,16 @@ export default function App() {
         );
         showToast(`Dialer System sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
       } else {
-        throw new Error('Endpoint backend no disponible');
+        throw new Error('Servidor Asterisk no disponible');
       }
-    } catch (err) {
+    } catch (err: any) {
+      recordAmiFailureClient(err.message || 'Fallo de sincronización AMI');
       addLog(
         'AMI',
-        'PJSIP reloaded successfully.',
-        `Output: Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
+        'PJSIP reloaded locally (offline cache active).',
+        `Output: Cambios guardados en memoria local. Cooldown aplicado para evitar saturación de red.`
       );
-      showToast('Sincronización completada en Asterisk');
+      showToast('Sincronización local completada (Asterisk offline)');
     } finally {
       setIsSyncing(false);
     }
@@ -1061,11 +1198,30 @@ export default function App() {
     }
   };
 
-  // Custom AMI Command Runner
-  const handleExecuteAmiCommand = async (command: string) => {
-    addLog('AMI', `> ${command}`);
+  // Custom AMI Command Runner with Exponential Backoff and Controlled Retry Limit
+  const handleExecuteAmiCommand = async (command: string, retryAttempt = 0) => {
+    const now = Date.now();
+    const state = amiBackoffRef.current;
+
+    // Check Circuit Breaker / Cooldown Guard
+    if (state.isBackoffActive && now < state.nextAllowedTime && retryAttempt === 0) {
+      const remainingSec = Math.max(1, Math.ceil((state.nextAllowedTime - now) / 1000));
+      addLog(
+        'AMI',
+        `[REINTENTO LIMITADO] Comando en pausa: servidor Asterisk no accesible. Cooldown activo (${remainingSec}s restantes).`,
+        `Error previo: ${state.lastError || 'Conexión rechazada'}\nPara reintentar ahora, haz clic en "Restablecer Backoff AMI".`,
+        'pending'
+      );
+      showToast(`AMI en espera de reconexión (${remainingSec}s)`, 'info');
+      return;
+    }
+
+    addLog('AMI', retryAttempt > 0 ? `[REINTENTO #${retryAttempt}] > ${command}` : `> ${command}`);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
       const res = await fetch('/api/asterisk/ami/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1076,66 +1232,95 @@ export default function App() {
           secret: connectionSettings.amiSecret || 'Robert2026RDTGcvgbsg',
           command,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
       const data = await res.json();
-      if (data.success && data.output) {
+      if (res.ok && data.success && data.output && !data.output.startsWith('AMI Error') && !data.output.startsWith('AMI Backoff')) {
+        recordAmiSuccessClient();
         addLog('AMI', `Response: Success (AMI :5038)`, data.output, 'success');
         return;
-      } else if (data.error) {
-        addLog('AMI', `Aviso AMI: ${data.error}`, undefined, 'failed');
-      }
-    } catch (_) {}
-
-    // Local client-side parsed fallback view
-    setTimeout(() => {
-      if (command.includes('show endpoints')) {
-        const endpointsOutput = extensions
-          .map(
-            (e) =>
-              `Endpoint: <Endpoint/ContId: ${e.extension}> Registered  ${e.status.toUpperCase()}  rtt: 14.1ms`
-          )
-          .join('\n');
-        addLog(
-          'AMI',
-          `Response: Success\nMessage: Endpoints list follows`,
-          endpointsOutput
-        );
-      } else if (command.includes('show registrations')) {
-        const regOutput = carriers
-          .filter((c) => c.authType === 'registration')
-          .map(
-            (c) =>
-              `Outbound Registration: <Registration/ContId: ${c.name}_reg> Registered  Status: Registered (exp. 3588s)`
-          )
-          .join('\n');
-        addLog(
-          'AMI',
-          `Response: Success\nOutbound registrations`,
-          regOutput || 'No registration trunks configured'
-        );
-      } else if (command.includes('reload')) {
-        handleQuickSync();
-      } else if (command.includes('core show channels')) {
-        addLog(
-          'AMI',
-          `Channel list`,
-          `Channel: PJSIP/1001-0000000a  State: Up  Application: Dial  Data: PJSIP/1001\n0 active channels`
-        );
-      } else if (command.includes('ari show apps')) {
-        addLog(
-          'ARI',
-          `Registered ARI Stasis Apps`,
-          `Name: ${otpConfig.stasisAppName} (Active channels: 0)\nName: press1_ivr_app (Active channels: 0)`
-        );
       } else {
+        const errorMsg = data.error || (data.output?.includes('Backoff activo') ? data.output : 'Error de respuesta en Asterisk AMI');
+        recordAmiFailureClient(errorMsg);
+
+        // Controlled Retry Mechanism with Exponential Backoff (up to 2 retries max)
+        if (retryAttempt < 2) {
+          const nextAttempt = retryAttempt + 1;
+          const nextDelay = calculateAmiBackoffDelay(nextAttempt);
+          const nextSec = Math.round(nextDelay / 1000);
+          addLog(
+            'AMI',
+            `[PROGRAMANDO REINTENTO #${nextAttempt}] Esperando ${nextSec}s con backoff exponencial antes de reintentar...`,
+            undefined,
+            'pending'
+          );
+          setTimeout(() => {
+            handleExecuteAmiCommand(command, nextAttempt);
+          }, nextDelay);
+        }
+      }
+    } catch (err: any) {
+      const isTimeout = err.name === 'AbortError';
+      const errorMsg = isTimeout ? 'Timeout al conectar al socket AMI (4s)' : (err.message || 'Fallo de conexión');
+      recordAmiFailureClient(errorMsg);
+
+      // Controlled Retry Mechanism with Exponential Backoff
+      if (retryAttempt < 2) {
+        const nextAttempt = retryAttempt + 1;
+        const nextDelay = calculateAmiBackoffDelay(nextAttempt);
+        const nextSec = Math.round(nextDelay / 1000);
         addLog(
           'AMI',
-          `Response: Processed`,
-          `Executed: ${command}\nOutput: Comando enviado a Asterisk.`
+          `[PROGRAMANDO REINTENTO #${nextAttempt}] Esperando ${nextSec}s con backoff exponencial antes de reintentar...`,
+          undefined,
+          'pending'
         );
+        setTimeout(() => {
+          handleExecuteAmiCommand(command, nextAttempt);
+        }, nextDelay);
       }
-    }, 200);
+    }
   };
+
+  // Periodic AMI Health Synchronizer with Strict Backoff & Document Visibility
+  useEffect(() => {
+    const checkAmiHealth = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      const now = Date.now();
+      const state = amiBackoffRef.current;
+
+      // Strictly obey backoff cooldown: do NOT ping if waiting for nextAllowedTime
+      if (state.isBackoffActive && now < state.nextAllowedTime) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/asterisk/telemetry/logs');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.amiHealth && data.amiHealth.isCircuitOpen) {
+            setAmiBackoff((prev) => ({
+              ...prev,
+              consecutiveFailures: data.amiHealth.consecutiveFailures,
+              currentDelayMs: data.amiHealth.currentDelayMs,
+              nextAllowedTime: now + (data.amiHealth.remainingCooldownSec * 1000),
+              isBackoffActive: true,
+              lastError: data.amiHealth.lastError,
+            }));
+            setConnectionSettings((prev) => (prev.status === 'error' ? prev : { ...prev, status: 'error' }));
+          } else if (data.amiHealth && !data.amiHealth.isCircuitOpen && state.consecutiveFailures > 0) {
+            recordAmiSuccessClient();
+          }
+        }
+      } catch (_) {}
+    };
+
+    const interval = setInterval(checkAmiHealth, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     setIsAuthenticated(false);
