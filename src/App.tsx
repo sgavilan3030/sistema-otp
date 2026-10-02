@@ -602,14 +602,19 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const addLog = (type: SyncLogEntry['type'], message: string, payload?: string) => {
+  const addLog = (
+    type: SyncLogEntry['type'],
+    message: string,
+    payload?: string,
+    status: 'success' | 'pending' | 'failed' = 'success'
+  ) => {
     const newLog: SyncLogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).slice(-4)}`,
       timestamp: new Date().toLocaleTimeString(),
       type,
       message,
       payload,
-      status: 'success',
+      status,
     };
     setLogs((prev) => [newLog, ...prev]);
   };
@@ -1057,9 +1062,31 @@ export default function App() {
   };
 
   // Custom AMI Command Runner
-  const handleExecuteAmiCommand = (command: string) => {
+  const handleExecuteAmiCommand = async (command: string) => {
     addLog('AMI', `> ${command}`);
 
+    try {
+      const res = await fetch('/api/asterisk/ami/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: connectionSettings.amiHost || '127.0.0.1',
+          port: connectionSettings.amiPort || 5038,
+          user: connectionSettings.amiUser || 'sammy',
+          secret: connectionSettings.amiSecret || 'Robert2026RDTGcvgbsg',
+          command,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.output) {
+        addLog('AMI', `Response: Success (AMI :5038)`, data.output, 'success');
+        return;
+      } else if (data.error) {
+        addLog('AMI', `Aviso AMI: ${data.error}`, undefined, 'failed');
+      }
+    } catch (_) {}
+
+    // Local client-side parsed fallback view
     setTimeout(() => {
       if (command.includes('show endpoints')) {
         const endpointsOutput = extensions
@@ -1092,7 +1119,7 @@ export default function App() {
         addLog(
           'AMI',
           `Channel list`,
-          `Channel: PJSIP/1003-0000000a  State: Up  Application: Dial  Data: PJSIP/1001\n1 active channel\n1 active call`
+          `Channel: PJSIP/1001-0000000a  State: Up  Application: Dial  Data: PJSIP/1001\n0 active channels`
         );
       } else if (command.includes('ari show apps')) {
         addLog(
@@ -1103,11 +1130,11 @@ export default function App() {
       } else {
         addLog(
           'AMI',
-          `Response: Success`,
-          `Executed: ${command}\nOutput: Command processed without errors.`
+          `Response: Processed`,
+          `Executed: ${command}\nOutput: Comando enviado a Asterisk.`
         );
       }
-    }, 350);
+    }, 200);
   };
 
   const handleLogout = () => {

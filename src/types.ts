@@ -315,7 +315,7 @@ export interface AsteriskConnectionSettings {
 export interface SyncLogEntry {
   id: string;
   timestamp: string;
-  type: 'AMI' | 'ARI' | 'PJSIP' | 'SQLITE' | 'SYSTEM' | 'ERROR';
+  type: 'AMI' | 'ARI' | 'PJSIP' | 'SQLITE' | 'SYSTEM' | 'ERROR' | 'CLI';
   message: string;
   payload?: string;
   status: 'success' | 'pending' | 'failed';

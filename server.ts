@@ -33,6 +33,138 @@ interface CliCacheEntry {
 const cliCommandCache = new Map<string, CliCacheEntry>();
 let isLocalCliRunning = false;
 
+// ==============================================================================
+// SERVER TELEMETRY & EXPONENTIAL BACKOFF FOR AMI
+// ==============================================================================
+
+export interface ServerTelemetryLog {
+  id: string;
+  timestamp: string;
+  type: 'AMI' | 'ARI' | 'CLI' | 'SYSTEM' | 'PJSIP';
+  message: string;
+  payload?: string;
+  status: 'success' | 'warning' | 'error';
+}
+
+const serverTelemetryLogs: ServerTelemetryLog[] = [
+  {
+    id: `log-init-${Date.now()}`,
+    timestamp: new Date().toLocaleTimeString(),
+    type: 'SYSTEM',
+    message: 'Sistema Asterisk 20 con control de concurrencia y Backoff Exponencial AMI activo.',
+    payload: 'Diagnóstico: Bucle de "Remote UNIX connection" neutralizado con caché de lectura y control de reconexión.',
+    status: 'success',
+  },
+];
+
+export function addServerTelemetryLog(
+  type: 'AMI' | 'ARI' | 'CLI' | 'SYSTEM' | 'PJSIP',
+  message: string,
+  payload?: string,
+  status: 'success' | 'warning' | 'error' = 'success'
+) {
+  const entry: ServerTelemetryLog = {
+    id: `srv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: new Date().toLocaleTimeString(),
+    type,
+    message,
+    payload,
+    status,
+  };
+  serverTelemetryLogs.unshift(entry);
+  if (serverTelemetryLogs.length > 250) {
+    serverTelemetryLogs.length = 250;
+  }
+}
+
+// Circuit Breaker & Exponential Backoff State for AMI
+export interface AmiHealthState {
+  consecutiveFailures: number;
+  lastFailureTime: number;
+  lastSuccessTime: number;
+  nextAllowedAttemptTime: number;
+  currentDelayMs: number;
+  lastError: string;
+  isCircuitOpen: boolean;
+  totalAttempts: number;
+  successfulAttempts: number;
+}
+
+const amiHealthState: AmiHealthState = {
+  consecutiveFailures: 0,
+  lastFailureTime: 0,
+  lastSuccessTime: 0,
+  nextAllowedAttemptTime: 0,
+  currentDelayMs: 1000,
+  lastError: '',
+  isCircuitOpen: false,
+  totalAttempts: 0,
+  successfulAttempts: 0,
+};
+
+const AMI_BASE_BACKOFF_MS = 1000;  // 1s base delay
+const AMI_MAX_BACKOFF_MS = 32000;  // 32s max delay cap
+const AMI_TIMEOUT_MS = 3000;       // 3s socket connection timeout
+
+function recordAmiSuccess() {
+  amiHealthState.successfulAttempts += 1;
+  if (amiHealthState.consecutiveFailures > 0 || amiHealthState.isCircuitOpen) {
+    addServerTelemetryLog(
+      'AMI',
+      `[AMI RESTABLECIDO] Conexión TCP :5038 recuperada exitosamente tras ${amiHealthState.consecutiveFailures} reintentos. Circuito CERRADO.`,
+      undefined,
+      'success'
+    );
+  }
+  amiHealthState.consecutiveFailures = 0;
+  amiHealthState.currentDelayMs = AMI_BASE_BACKOFF_MS;
+  amiHealthState.nextAllowedAttemptTime = 0;
+  amiHealthState.isCircuitOpen = false;
+  amiHealthState.lastSuccessTime = Date.now();
+  amiHealthState.lastError = '';
+}
+
+function recordAmiFailure(errMsg: string) {
+  const now = Date.now();
+  amiHealthState.consecutiveFailures += 1;
+  amiHealthState.lastFailureTime = now;
+  amiHealthState.lastError = errMsg;
+
+  // Exponential backoff: min(MAX, BASE * 2^(failures - 1)) + jitter
+  const exponent = Math.min(amiHealthState.consecutiveFailures - 1, 5);
+  const calculatedDelay = Math.min(
+    AMI_MAX_BACKOFF_MS,
+    AMI_BASE_BACKOFF_MS * Math.pow(2, exponent)
+  );
+  // Add 10-15% jitter to prevent thundering herd
+  const jitter = Math.floor(Math.random() * (calculatedDelay * 0.15));
+  amiHealthState.currentDelayMs = calculatedDelay + jitter;
+  amiHealthState.nextAllowedAttemptTime = now + amiHealthState.currentDelayMs;
+  amiHealthState.isCircuitOpen = true;
+
+  const cooldownSec = Math.round(amiHealthState.currentDelayMs / 1000);
+  addServerTelemetryLog(
+    'AMI',
+    `[AMI BACKOFF EXPONENCIAL] Fallo #${amiHealthState.consecutiveFailures} en socket 5038: "${errMsg}". Cooldown de reconexión: ${cooldownSec}s`,
+    `Fórmula: min(${AMI_MAX_BACKOFF_MS}ms, ${AMI_BASE_BACKOFF_MS}ms * 2^${exponent}) + jitter => ${amiHealthState.currentDelayMs}ms. Siguiente intento permitido: ${new Date(amiHealthState.nextAllowedAttemptTime).toLocaleTimeString()}`,
+    'warning'
+  );
+}
+
+export function resetAmiBackoff() {
+  amiHealthState.consecutiveFailures = 0;
+  amiHealthState.currentDelayMs = AMI_BASE_BACKOFF_MS;
+  amiHealthState.nextAllowedAttemptTime = 0;
+  amiHealthState.isCircuitOpen = false;
+  amiHealthState.lastError = '';
+  addServerTelemetryLog(
+    'AMI',
+    `[AMI BACKOFF RESET] Circuito restablecido manualmente por operador. Listo para reconectar.`,
+    undefined,
+    'success'
+  );
+}
+
 // Helper to invalidate CLI cache when write actions occur
 export function invalidateCliCache(pattern?: string) {
   if (!pattern) {
@@ -100,6 +232,7 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
         cliCommandCache.set(cmd, { output: localRes, timestamp: Date.now() });
       } else {
         invalidateCliCache();
+        addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
       }
 
       return localRes;
@@ -151,7 +284,7 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
   if (hasLocalAsterisk) {
     try {
       const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
-      if (amiRes && !amiRes.startsWith('AMI Error')) {
+      if (amiRes && !amiRes.startsWith('AMI Error') && !amiRes.startsWith('AMI Backoff')) {
         if (isReadOnly) {
           cliCommandCache.set(cmd, { output: amiRes, timestamp: Date.now() });
         }
@@ -177,17 +310,41 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
     return Promise.resolve(amiCachedResult.data);
   }
 
+  // 1. Backoff Check: If circuit is open and we haven't reached nextAllowedAttemptTime, reject immediately!
+  // This prevents freezing the Node.js event loop and socket descriptor exhaustion
+  if (amiHealthState.isCircuitOpen && now < amiHealthState.nextAllowedAttemptTime) {
+    const remainingSec = Math.max(1, Math.ceil((amiHealthState.nextAllowedAttemptTime - now) / 1000));
+    const backoffNotice = `AMI Backoff activo (${remainingSec}s restantes) tras fallo: ${amiHealthState.lastError || 'Conexión rechazada'}`;
+    return Promise.resolve(amiCachedResult?.data || `AMI Error: ${backoffNotice}`);
+  }
+
+  amiHealthState.totalAttempts += 1;
   isAmiExecuting = true;
 
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let buffer = '';
     let loggedIn = false;
-    const timeout = setTimeout(() => {
+    let isSettled = false;
+
+    const finalize = (output: string, isErr = false, errDetail = '') => {
+      if (isSettled) return;
+      isSettled = true;
       isAmiExecuting = false;
-      try { socket.destroy(); } catch (e) {}
-      resolve(buffer || amiCachedResult?.data || 'Timeout AMI (4s)');
-    }, 4500);
+      try { socket.destroy(); } catch (_) {}
+      if (isErr) {
+        recordAmiFailure(errDetail || 'Error desconocido en socket AMI');
+      }
+      resolve(output);
+    };
+
+    const timeout = setTimeout(() => {
+      finalize(
+        buffer || amiCachedResult?.data || 'Timeout AMI (3s)',
+        true,
+        `Timeout de respuesta (${AMI_TIMEOUT_MS}ms) en ${host}:${port}`
+      );
+    }, AMI_TIMEOUT_MS);
 
     socket.connect(port, host, () => {
       const loginPayload = `Action: Login\r\nUsername: ${user}\r\nSecret: ${secret}\r\nEvents: off\r\n\r\n`;
@@ -200,13 +357,19 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
 
       if ((buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success')) && !loggedIn) {
         loggedIn = true;
+        recordAmiSuccess();
         for (const cmd of commands) {
           socket.write(`Action: Command\r\nCommand: ${cmd}\r\n\r\n`);
         }
-        // Safety timeout to ensure logoff if --END COMMAND-- is not caught
         setTimeout(() => {
           try { socket.write(`Action: Logoff\r\n\r\n`); } catch (_) {}
         }, 1200);
+      }
+
+      if (buffer.includes('Message: Authentication failed')) {
+        clearTimeout(timeout);
+        finalize(buffer, true, `Autenticación fallida para usuario '${user}'`);
+        return;
       }
 
       if (loggedIn && (buffer.includes('--END COMMAND--') || buffer.includes('Response: Error'))) {
@@ -217,29 +380,36 @@ function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret =
 
       if (buffer.includes('Response: Goodbye')) {
         clearTimeout(timeout);
-        isAmiExecuting = false;
-        try { socket.end(); } catch (e) {}
         if (isChannelsCheck) {
           amiCachedResult = { data: buffer, timestamp: Date.now() };
         }
-        resolve(buffer);
+        finalize(buffer, false);
       }
     });
 
     socket.on('error', (err) => {
       clearTimeout(timeout);
-      isAmiExecuting = false;
-      try { socket.destroy(); } catch (e) {}
-      resolve(amiCachedResult?.data || `AMI Error: ${err.message}`);
+      finalize(
+        amiCachedResult?.data || `AMI Error: ${err.message}`,
+        true,
+        `${err.message} en ${host}:${port}`
+      );
     });
 
     socket.on('close', () => {
       clearTimeout(timeout);
-      isAmiExecuting = false;
       if (isChannelsCheck && buffer) {
         amiCachedResult = { data: buffer, timestamp: Date.now() };
       }
-      resolve(buffer);
+      if (!loggedIn && !isSettled) {
+        finalize(
+          buffer || 'AMI Socket cerrado sin autenticación',
+          true,
+          `Conexión cerrada prematuramente en ${host}:${port}`
+        );
+      } else {
+        finalize(buffer || amiCachedResult?.data || '', false);
+      }
     });
   });
 }
@@ -2757,6 +2927,45 @@ app.post('/api/asterisk/ami/test', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Telemetry and Health monitor endpoint
+app.get('/api/asterisk/telemetry/logs', (req, res) => {
+  const now = Date.now();
+  const remainingCooldownSec =
+    amiHealthState.isCircuitOpen && amiHealthState.nextAllowedAttemptTime > now
+      ? Math.max(0, Math.ceil((amiHealthState.nextAllowedAttemptTime - now) / 1000))
+      : 0;
+
+  res.json({
+    success: true,
+    logs: serverTelemetryLogs,
+    amiHealth: {
+      ...amiHealthState,
+      remainingCooldownSec,
+    },
+    cliStats: {
+      cachedKeys: cliCommandCache.size,
+      isLocalCliRunning,
+    },
+  });
+});
+
+// Endpoint to reset AMI exponential backoff circuit breaker manually
+app.post('/api/asterisk/ami/reset-backoff', (req, res) => {
+  resetAmiBackoff();
+  res.json({
+    success: true,
+    message: 'Backoff exponencial AMI reseteado exitosamente. Listo para reconectar.',
+    amiHealth: amiHealthState,
+  });
+});
+
+// Endpoint to clear server telemetry logs
+app.post('/api/asterisk/telemetry/clear', (req, res) => {
+  serverTelemetryLogs.length = 0;
+  addServerTelemetryLog('SYSTEM', 'Historial de logs de telemetría limpiado por el operador.', undefined, 'success');
+  res.json({ success: true, message: 'Logs de telemetría limpiados.' });
 });
 
 // Endpoint to sync all extensions directly into /etc/asterisk/pjsip.conf and reload
