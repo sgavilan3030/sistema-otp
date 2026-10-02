@@ -206,8 +206,13 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     }
   }
 
-  // 1. Try local CLI ONLY if asterisk binary is physically installed
+  // 1. Try local CLI ONLY if asterisk binary is physically installed and Asterisk daemon is running
   if (hasLocalAsterisk) {
+    // If Asterisk daemon socket does not exist, Asterisk is stopped - do NOT spawn useless failing subprocesses
+    if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
+      return isReadOnly ? (cliCommandCache.get(cmd)?.output || '') : '';
+    }
+
     // If local CLI is currently busy running a command and this is a read request, return cached (or empty)
     // to strictly prevent concurrent UNIX socket collisions that choke Asterisk PJSIP
     if (isLocalCliRunning && isReadOnly) {
@@ -811,11 +816,12 @@ function ensureCustomAudioFilesExist() {
     const wavPath = path.join(customDir, `${aud.name}.wav`);
     const gsmPath = path.join(customDir, `${aud.name}.gsm`);
 
-    // 1. Garantizar de forma sincrónica e inmediata que el archivo exista en disco
+    // 1. Garantizar de forma sincrónica e inmediata que el archivo exista en disco en formato PCM 8kHz compatible con Asterisk
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
       try {
         const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
         fs.writeFileSync(wavPath, buf);
+        try { fs.chmodSync(wavPath, 0o666); } catch (_) {}
       } catch (err) {
         const tmp = `/tmp/${aud.name}.wav`;
         try {
@@ -825,20 +831,6 @@ function ensureCustomAudioFilesExist() {
           });
         } catch (_) {}
       }
-    }
-
-    // 2. Generar locución de voz humana real en español vía Google TTS y convertir con ffmpeg
-    if (aud.text) {
-      const q = encodeURIComponent(aud.text);
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${q}`;
-      const tmpMp3 = `/tmp/${aud.name}.mp3`;
-      const generateTtsCmd = `curl -s -L -A "Mozilla/5.0" "${ttsUrl}" -o "${tmpMp3}" && (ffmpeg -y -i "${tmpMp3}" -ar 8000 -ac 1 -c:a pcm_s16le "${wavPath}" || sox "${tmpMp3}" -r 8000 -c 1 -b 16 "${wavPath}") && rm -f "${tmpMp3}"`;
-      exec(generateTtsCmd, (err) => {
-        if (!err && fs.existsSync(wavPath)) {
-          // Asegurar permisos de lectura para Asterisk
-          try { fs.chmodSync(wavPath, 0o666); } catch (_) {}
-        }
-      });
     }
   }
 }
@@ -3777,20 +3769,12 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   // 3. Write proper musiconhold.conf with /var/lib/asterisk/moh directory
   ensureMusiconholdConfExists();
 
-  // 4. Overwrite remote or local Asterisk files via built-in Asterisk CLI "file convert" in all common audio formats
-  const formats = ['wav', 'ulaw', 'alaw', 'sln', 'gsm', 'g722'];
-  for (const t of mohTargets) {
-    for (const fmt of formats) {
-      executeAsteriskCommand(`file convert /var/lib/asterisk/sounds/custom/${baseName}.wav /var/lib/asterisk/moh/${t}.${fmt}`).catch(() => {});
-    }
-  }
-
-  // 5. Update AstDB keys
+  // 4. Update AstDB keys
   executeAsteriskCommand(`database put ivr_vars default_hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars global_hold_music "${cleanPath}"`).catch(() => {});
 
-  // 6. Reload MOH in Asterisk
+  // 5. Reload MOH in Asterisk
   executeAsteriskCommand('moh reload').catch(() => {});
 
   // 7. Forward to remote Asterisk if configured
@@ -4077,10 +4061,8 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
   saveActiveAudioAssignments(activeAudioAssignments);
 
   for (const cmd of commands) {
-    exec(`asterisk -rx '${cmd}'`, () => {});
     executeAsteriskCommand(cmd).catch(() => {});
   }
-  exec(`asterisk -rx 'dialplan reload'`, () => {});
   executeAsteriskCommand('dialplan reload').catch(() => {});
   console.log(`[AUDIO ASSIGNED] Rol ${role} actualizado a ${cleanPath}`);
 }
@@ -5595,10 +5577,14 @@ async function startServer() {
         fs.mkdirSync('/etc/asterisk', { recursive: true, mode: 0o755 });
       }
     } catch (_) {}
-    // Auto-verify and provision default 8kHz audios on startup
+    // Auto-verify and provision default 8kHz audios on startup (instant PCM wave buffers)
     try {
       ensureCustomAudioFilesExist();
-      applyAllActiveAssignmentsToAsterisk();
+      setTimeout(() => {
+        if (fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
+          applyAllActiveAssignmentsToAsterisk();
+        }
+      }, 5000);
     } catch (e: any) {
       console.warn('Initial audio check warning:', e.message);
     }

@@ -1015,14 +1015,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 channel: ivrChannel.channel,
               };
             });
-          } else if (activeCall?.isActive && (activeCall.duration || 0) >= 5 && Array.isArray(data.channels)) {
+          } else if (activeCallRef.current?.isActive && (activeCallRef.current.duration || 0) >= 5 && Array.isArray(data.channels)) {
             // Si la llamada estaba activa pero ya no figura en ningún canal de Asterisk
-            const queryClean = activeCall.number.replace(/[^0-9]/g, '');
+            const queryClean = activeCallRef.current.number.replace(/[^0-9]/g, '');
             const channelStillAlive = data.channels.some((c: any) => {
               const chStr = (c.channel || '') + (c.extension || '') + (c.callerId || '') + (c.data || '');
-              return (activeCall.channel && c.channel?.includes(activeCall.channel)) || (queryClean && chStr.includes(queryClean));
+              return (activeCallRef.current?.channel && c.channel?.includes(activeCallRef.current.channel)) || (queryClean && chStr.includes(queryClean));
             });
-            if (!channelStillAlive && activeCall.status !== 'ended') {
+            if (!channelStillAlive && activeCallRef.current.status !== 'ended') {
               setActiveCall((prev) => (prev ? { ...prev, isActive: false, status: 'ended' } : null));
             }
           }
@@ -1031,9 +1031,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 3500);
+    const chanInterval = setInterval(pollLiveChannels, 4000);
     return () => clearInterval(chanInterval);
-  }, [selectedService, activeCall?.isActive, activeCall?.channel, activeCall?.number, activeCall?.status]);
+  }, []);
 
   // Check if there is an active call running on Asterisk on mount
   useEffect(() => {
