@@ -8,3 +8,6 @@ coverage/
 !.env.example
 pjsip.conf
 extensions.conf
+data/user_configs/
+data/*.json
+!data/.gitkeep
