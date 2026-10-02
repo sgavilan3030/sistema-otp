@@ -1033,8 +1033,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
     pjsipContent += `asymmetric_rtp_codec = no\n`;
     pjsipContent += `timers = yes\n`;
     pjsipContent += `language = es\n`;
-    pjsipContent += `moh_suggest = default\n`;
-    pjsipContent += `moh_interpret = default\n\n`;
+    pjsipContent += `moh_suggest = default\n\n`;
 
     pjsipContent += `[${num}-auth]\n`;
     pjsipContent += `type = auth\n`;
@@ -1140,7 +1139,6 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
       pjsipContent += `timers = yes\n`;
       pjsipContent += `language = es\n`;
       pjsipContent += `moh_suggest = default\n`;
-      pjsipContent += `moh_interpret = default\n`;
       pjsipContent += `transport = transport-udp\n\n`;
 
       pjsipContent += `[${cName}-identify]\n`;
@@ -2557,9 +2555,10 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('[1001]\ntype=auth') ||
         content.includes('[1001]\r\ntype = auth') ||
         content.includes('[1002]\ntype = auth') ||
-        content.includes('mohsuggest')
+        content.includes('mohsuggest') ||
+        content.includes('moh_interpret')
       ) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos (mohsuggest) en /etc/asterisk/pjsip.conf. Reparando para registro de extensiones...');
+        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos (mohsuggest/moh_interpret) en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
       }
     } else {
