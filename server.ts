@@ -979,8 +979,6 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
   pjsipContent += `; Asterisk 20 Validated: Standard Native Transports (No Unknown Transport Errors)\n`;
   pjsipContent += `; ========================================================\n\n`;
 
-  pjsipContent += `[general]\n\n`;
-
   pjsipContent += `; --- TRANSPORTES SIP ---\n`;
   pjsipContent += `[transport-udp]\n`;
   pjsipContent += `type = transport\n`;
