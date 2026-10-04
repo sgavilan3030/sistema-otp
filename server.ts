@@ -18,9 +18,8 @@ app.use(express.urlencoded({ extended: true }));
 let amiCachedResult: { data: string; timestamp: number } | null = null;
 let isAmiExecuting = false;
 
-const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || 'http://169.58.66.206:3000';
-
 const hasLocalAsterisk = fs.existsSync('/usr/sbin/asterisk') || fs.existsSync('/usr/bin/asterisk');
+const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || (hasLocalAsterisk ? '' : 'http://169.58.66.206:3000');
 let remoteConsecutiveFailures = 0;
 let remoteLastFailureTime = 0;
 let remoteLastSuccessTime = 0;
@@ -3072,8 +3071,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       });
     });
 
-    // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge
-    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+    // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge without local Asterisk
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
@@ -3256,7 +3255,6 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_hold_music "${holdMusic}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_hold_music "${holdMusic}"`);
       astDbCommands.push(`database put ivr_vars default_hold_music "${holdMusic}"`);
-      applyHoldMusicToAsteriskMoh(holdMusic);
       activeAudioAssignments.hold_music = holdMusic;
       saveActiveAudioAssignments(activeAudioAssignments);
     }
@@ -3528,8 +3526,8 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
         applyAudioAssignmentToAsterisk(category, `custom/${cleanBaseName}`);
       }
 
-      // Replicate upload to remote VPS if available
-      if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      // Replicate upload to remote VPS if available (only from web client without local Asterisk)
+      if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
         try {
           fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/upload`, {
             method: 'POST',
@@ -3714,6 +3712,9 @@ function saveActiveAudioAssignments(data: Record<string, string>) {
 
 let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments();
 
+let lastMohReloadTime = 0;
+let lastMohAppliedPath = '';
+
 // Helper to overwrite and synchronize Asterisk Music on Hold (MOH) with custom audio
 function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
@@ -3773,18 +3774,12 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   executeAsteriskCommand(`database put ivr_vars hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars global_hold_music "${cleanPath}"`).catch(() => {});
 
-  // 5. Reload MOH in Asterisk
-  executeAsteriskCommand('moh reload').catch(() => {});
-
-  // 7. Forward to remote Asterisk if configured
-  if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
-    try {
-      fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/sync-hold-music`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
-        body: JSON.stringify({ entityId: 'default', holdMusicPath: cleanPath }),
-      }).catch(() => {});
-    } catch (_) {}
+  // 5. Reload MOH in Asterisk with debounce (avoid reloading if unchanged within 15 seconds)
+  const now = Date.now();
+  if (lastMohAppliedPath !== cleanPath || (now - lastMohReloadTime > 15000)) {
+    lastMohAppliedPath = cleanPath;
+    lastMohReloadTime = now;
+    executeAsteriskCommand('moh reload').catch(() => {});
   }
 
   console.log(`[ASTERISK-MOH] ✓ Música de Hold sincronizada en Asterisk MOH: ${cleanPath}`);
@@ -5483,8 +5478,8 @@ app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
     activeAudioAssignments.hold_music = cleanPath;
     saveActiveAudioAssignments(activeAudioAssignments);
 
-    // Replicate to remote VPS if available
-    if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+    // Replicate to remote VPS if available (only from web client without local Asterisk)
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
         fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/sync-hold-music`, {
           method: 'POST',
