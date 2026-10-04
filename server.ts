@@ -752,13 +752,18 @@ function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
 // Helper to guarantee /var/lib/asterisk/sounds/custom directory has valid PCM audio files
 function ensureCustomAudioFilesExist() {
   const customDir = SOUNDS_CUSTOM_DIR;
+  const esCustomDir = '/var/lib/asterisk/sounds/es/custom';
+  const enCustomDir = '/var/lib/asterisk/sounds/en/custom';
+
   try {
-    if (!fs.existsSync(customDir)) {
-      fs.mkdirSync(customDir, { recursive: true, mode: 0o777 });
+    for (const d of [customDir, '/var/lib/asterisk/sounds/es', '/var/lib/asterisk/sounds/en']) {
+      if (!fs.existsSync(d)) {
+        try { fs.mkdirSync(d, { recursive: true, mode: 0o777 }); } catch (_) {}
+      }
     }
-    exec(`mkdir -p "${customDir}" && chmod -R 777 "${customDir}" || sudo mkdir -p "${customDir}" && sudo chmod -R 777 "${customDir}"`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds || sudo mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && sudo chmod -R 777 /var/lib/asterisk/sounds`, () => {});
   } catch (e) {
-    exec(`mkdir -p "${customDir}" && chmod -R 777 "${customDir}" || sudo mkdir -p "${customDir}" && sudo chmod -R 777 "${customDir}"`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds || sudo mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && sudo chmod -R 777 /var/lib/asterisk/sounds`, () => {});
   }
 
   const audios = [
@@ -814,13 +819,15 @@ function ensureCustomAudioFilesExist() {
   for (const aud of audios) {
     const wavPath = path.join(customDir, `${aud.name}.wav`);
     const gsmPath = path.join(customDir, `${aud.name}.gsm`);
+    const esWavPath = path.join(esCustomDir, `${aud.name}.wav`);
+    const enWavPath = path.join(enCustomDir, `${aud.name}.wav`);
 
     // 1. Garantizar de forma sincrónica e inmediata que el archivo exista en disco en formato PCM 8kHz compatible con Asterisk
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
       try {
         const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
         fs.writeFileSync(wavPath, buf);
-        try { fs.chmodSync(wavPath, 0o666); } catch (_) {}
+        try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
       } catch (err) {
         const tmp = `/tmp/${aud.name}.wav`;
         try {
@@ -830,6 +837,14 @@ function ensureCustomAudioFilesExist() {
           });
         } catch (_) {}
       }
+    }
+
+    // Mirror to es and en directories
+    if (fs.existsSync(wavPath)) {
+      try {
+        if (!fs.existsSync(esWavPath)) fs.copyFileSync(wavPath, esWavPath);
+        if (!fs.existsSync(enWavPath)) fs.copyFileSync(wavPath, enWavPath);
+      } catch (_) {}
     }
   }
 }
@@ -1259,13 +1274,10 @@ function generateCleanDialplanConf(
   dialplanContent += `GLOBAL_DEFAULT_SUCCESS=${chosenSuccess}\n`;
   dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para inyectar cabeceras PJSIP y optimizacion de audio en canal saliente real (HD Voice, Anti-Jitter y Denoise Bidireccional)\n`;
+  dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio en canal saliente real (HD Voice y JitterBuffer)\n`;
   dialplanContent += `[sub-pjsip-headers]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== Inyectando PJSIP Headers, JitterBuffer Adaptativo y Filtros HD en Canal Saliente: \${CHANNEL} ===)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)=<sip:\${CALLERID(num)}@\${GLOBAL_CARRIER_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Optimizando canal saliente: \${CHANNEL} ===)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_200,target_30)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice y corte limpio de MOH) al conectar con asesor\n`;
@@ -1465,8 +1477,10 @@ function generateCleanDialplanConf(
 
   dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
   dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=1001)\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
@@ -2315,7 +2329,10 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-AUDIO] Reproduciendo Audio Intro: \${IVR_INTRO} para Destino: \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n(menu),Background(\${IVR_INTRO})\n`;
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Goto(menu)\n\n`;
@@ -2331,6 +2348,8 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
@@ -2419,6 +2438,13 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/8888_invalid)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/default_invalid)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=custom/opcion_invalida))\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INVALID=\${STRREPLACE(IVR_INVALID,.wav,)})\n`;
   dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT}, Fail=\${IVR_FAILURE})\n`;
 
   dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
@@ -3233,24 +3259,45 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars default_action "${targetContext}"`,
     ];
 
-    if (audioIntro && audioIntro.trim()) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_intro "${audioIntro.trim()}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_intro "${audioIntro.trim()}"`);
+    const cleanIntro = (audioIntro || '').trim().replace(/\.wav$/i, '');
+    const cleanPrompt = (audioPrompt || '').trim().replace(/\.wav$/i, '');
+    const cleanAgent = (audioAgent || '').trim().replace(/\.wav$/i, '');
+    const cleanSuccess = (audioSuccess || '').trim().replace(/\.wav$/i, '');
+
+    if (cleanIntro) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_intro "${cleanIntro}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_intro "${cleanIntro}"`);
+      if (cleanDest === '8888') {
+        astDbCommands.push(`database put ivr_vars 8888_intro "${cleanIntro}"`);
+        astDbCommands.push(`database put ivr_vars default_intro "${cleanIntro}"`);
+      }
     }
-    if (audioPrompt && audioPrompt.trim()) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_prompt "${audioPrompt.trim()}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_prompt "${audioPrompt.trim()}"`);
+    if (cleanPrompt) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_prompt "${cleanPrompt}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_prompt "${cleanPrompt}"`);
+      if (cleanDest === '8888') {
+        astDbCommands.push(`database put ivr_vars 8888_prompt "${cleanPrompt}"`);
+        astDbCommands.push(`database put ivr_vars default_prompt "${cleanPrompt}"`);
+      }
     }
-    if (audioAgent && audioAgent.trim()) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_agent "${audioAgent.trim()}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_agent "${audioAgent.trim()}"`);
+    if (cleanAgent) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_agent "${cleanAgent}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_agent "${cleanAgent}"`);
+      if (cleanDest === '8888') {
+        astDbCommands.push(`database put ivr_vars 8888_agent "${cleanAgent}"`);
+        astDbCommands.push(`database put ivr_vars default_agent "${cleanAgent}"`);
+      }
     }
-    if (audioSuccess && audioSuccess.trim()) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_success "${audioSuccess.trim()}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_success "${audioSuccess.trim()}"`);
+    if (cleanSuccess) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_success "${cleanSuccess}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_success "${cleanSuccess}"`);
+      if (cleanDest === '8888') {
+        astDbCommands.push(`database put ivr_vars 8888_success "${cleanSuccess}"`);
+        astDbCommands.push(`database put ivr_vars default_success "${cleanSuccess}"`);
+      }
     }
 
-    const holdMusic = (req.body.holdMusic || req.body.audioHold || '').trim();
+    const holdMusic = (req.body.holdMusic || req.body.audioHold || '').trim().replace(/\.wav$/i, '');
     if (holdMusic) {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_hold_music "${holdMusic}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_hold_music "${holdMusic}"`);
@@ -3278,10 +3325,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       }
     } catch (_) {}
 
-    // Determine channel: if <= 4 digits, direct internal extension
-    // Otherwise use Local channel to pass through [from-internal] with /n flag to prevent premature optimization
+    // Determine channel:
+    // If destination is an internal IVR test extension (8888, 7777, etc.), route through Local channel
+    // If <= 4 digits (and not IVR extension), direct SIP endpoint (e.g. agent phone 1001)
+    // Otherwise standard outbound call via Local NANP routing
     let channel = '';
-    if (cleanDest.length <= 4) {
+    if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777'].includes(cleanDest)) {
+      channel = `Local/${cleanDest}@from-internal/n`;
+    } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else {
       channel = `Local/${formattedDest}@from-internal/n`;
