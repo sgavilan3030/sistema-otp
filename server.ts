@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import https from 'https';
 import { exec } from 'child_process';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
@@ -749,6 +750,87 @@ function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
   return buffer;
 }
 
+async function downloadAndConvertTts(text: string, destWavPath: string, esWavPath: string, enWavPath: string) {
+  if (!text) return;
+  try {
+    const baseName = path.basename(destWavPath, '.wav');
+    const words = text.split(' ');
+    const chunks: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      if ((cur + ' ' + w).length <= 80) {
+        cur = cur ? cur + ' ' + w : w;
+      } else {
+        if (cur) chunks.push(cur);
+        cur = w;
+      }
+    }
+    if (cur) chunks.push(cur);
+
+    const tmpFiles: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encodeURIComponent(chunk)}`;
+      const tmp = `/tmp/tts_${baseName}_${i}_${Date.now()}.mp3`;
+      tmpFiles.push(tmp);
+      await new Promise<void>((resolve, reject) => {
+        const file = fs.createWriteStream(tmp);
+        https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+          if (res.statusCode !== 200) {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+            return resolve();
+          }
+          res.pipe(file);
+          file.on('finish', () => {
+            file.close(() => resolve());
+          });
+        }).on('error', () => {
+          try { fs.unlinkSync(tmp); } catch (_) {}
+          resolve();
+        });
+      });
+    }
+
+    const validTmpFiles = tmpFiles.filter((f) => fs.existsSync(f) && fs.statSync(f).size > 0);
+    if (validTmpFiles.length > 0) {
+      const concatList = validTmpFiles.join('|');
+      const destGsmPath = destWavPath.replace(/\.wav$/, '.gsm');
+      const esGsmPath = esWavPath.replace(/\.wav$/, '.gsm');
+      const enGsmPath = enWavPath.replace(/\.wav$/, '.gsm');
+      const rootWavPath = `/var/lib/asterisk/sounds/${baseName}.wav`;
+      const rootGsmPath = `/var/lib/asterisk/sounds/${baseName}.gsm`;
+      const publicWavPath = path.join(process.cwd(), 'public/assets', `${baseName}.wav`);
+      const publicGsmPath = path.join(process.cwd(), 'public/assets', `${baseName}.gsm`);
+
+      exec(`ffmpeg -y -i "concat:${concatList}" -ar 8000 -ac 1 -c:a pcm_s16le "${destWavPath}"`, (err) => {
+        validTmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
+        if (!err && fs.existsSync(destWavPath) && fs.statSync(destWavPath).size > 1000) {
+          try { fs.chmodSync(destWavPath, 0o777); } catch (_) {}
+          try { fs.copyFileSync(destWavPath, esWavPath); } catch (_) {}
+          try { fs.copyFileSync(destWavPath, enWavPath); } catch (_) {}
+          try { fs.copyFileSync(destWavPath, rootWavPath); } catch (_) {}
+          try { fs.copyFileSync(destWavPath, publicWavPath); } catch (_) {}
+
+          // Also generate native 8kHz GSM format for zero-transcoding playback
+          exec(`ffmpeg -y -i "${destWavPath}" -ar 8000 -ac 1 -c:a libgsm "${destGsmPath}"`, (gsmErr) => {
+            if (!gsmErr && fs.existsSync(destGsmPath)) {
+              try { fs.chmodSync(destGsmPath, 0o777); } catch (_) {}
+              try { fs.copyFileSync(destGsmPath, esGsmPath); } catch (_) {}
+              try { fs.copyFileSync(destGsmPath, enGsmPath); } catch (_) {}
+              try { fs.copyFileSync(destGsmPath, rootGsmPath); } catch (_) {}
+              try { fs.copyFileSync(destGsmPath, publicGsmPath); } catch (_) {}
+            }
+          });
+
+          console.log(`[TTS VOICE] ✓ Audio de voz humana generado en español (WAV y GSM): ${baseName}`);
+        }
+      });
+    } else {
+      validTmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
+    }
+  } catch (_) {}
+}
+
 // Helper to guarantee /var/lib/asterisk/sounds/custom directory has valid PCM audio files
 function ensureCustomAudioFilesExist() {
   const customDir = SOUNDS_CUSTOM_DIR;
@@ -756,14 +838,14 @@ function ensureCustomAudioFilesExist() {
   const enCustomDir = '/var/lib/asterisk/sounds/en/custom';
 
   try {
-    for (const d of [customDir, '/var/lib/asterisk/sounds/es', '/var/lib/asterisk/sounds/en']) {
+    for (const d of [customDir, esCustomDir, enCustomDir, '/var/lib/asterisk/sounds/es', '/var/lib/asterisk/sounds/en', path.join(process.cwd(), 'public/assets')]) {
       if (!fs.existsSync(d)) {
         try { fs.mkdirSync(d, { recursive: true, mode: 0o777 }); } catch (_) {}
       }
     }
-    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds || sudo mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && sudo chmod -R 777 /var/lib/asterisk/sounds`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
   } catch (e) {
-    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds || sudo mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && sudo chmod -R 777 /var/lib/asterisk/sounds`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
   }
 
   const audios = [
@@ -822,28 +904,41 @@ function ensureCustomAudioFilesExist() {
     const esWavPath = path.join(esCustomDir, `${aud.name}.wav`);
     const enWavPath = path.join(enCustomDir, `${aud.name}.wav`);
 
-    // 1. Garantizar de forma sincrónica e inmediata que el archivo exista en disco en formato PCM 8kHz compatible con Asterisk
+    // 1. Check if valid audio (> 50KB or exists)
+    let needsGeneration = false;
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
+      needsGeneration = true;
+    } else {
       try {
-        const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
-        fs.writeFileSync(wavPath, buf);
-        try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
-      } catch (err) {
-        const tmp = `/tmp/${aud.name}.wav`;
-        try {
-          fs.writeFileSync(tmp, generatePcm8kWaveBuffer(3.5, aud.freq));
-          exec(`cp "${tmp}" "${wavPath}" || sudo cp "${tmp}" "${wavPath}"`, () => {
-            try { fs.unlinkSync(tmp); } catch (_) {}
-          });
-        } catch (_) {}
-      }
+        if (fs.existsSync(wavPath) && fs.statSync(wavPath).size < 50000 && aud.text) {
+          needsGeneration = true;
+        }
+      } catch (_) {}
     }
 
-    // Mirror to es and en directories
-    if (fs.existsSync(wavPath)) {
+    if (needsGeneration) {
+      if (aud.text) {
+        downloadAndConvertTts(aud.text, wavPath, esWavPath, enWavPath);
+      } else {
+        try {
+          const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
+          fs.writeFileSync(wavPath, buf);
+          try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
+        } catch (_) {}
+      }
+    } else {
+      // Ensure mirrored
       try {
-        if (!fs.existsSync(esWavPath)) fs.copyFileSync(wavPath, esWavPath);
-        if (!fs.existsSync(enWavPath)) fs.copyFileSync(wavPath, enWavPath);
+        if (fs.existsSync(wavPath)) {
+          if (!fs.existsSync(esWavPath)) fs.copyFileSync(wavPath, esWavPath);
+          if (!fs.existsSync(enWavPath)) fs.copyFileSync(wavPath, enWavPath);
+        }
+        if (fs.existsSync(gsmPath)) {
+          const esGsm = path.join(esCustomDir, `${aud.name}.gsm`);
+          const enGsm = path.join(enCustomDir, `${aud.name}.gsm`);
+          if (!fs.existsSync(esGsm)) fs.copyFileSync(gsmPath, esGsm);
+          if (!fs.existsSync(enGsm)) fs.copyFileSync(gsmPath, enGsm);
+        }
       } catch (_) {}
     }
   }
@@ -952,9 +1047,9 @@ export const defaultCarriersList = [
     outboundCallerIdName: 'Seguridad Bancaria',
     codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
-    status: 'reachable',
+    status: 'disabled',
     latencyMs: 24,
-    enabled: true,
+    enabled: false,
   },
 ];
 
@@ -1238,7 +1333,7 @@ async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any
 }
 
 // Generate clean Asterisk extensions.conf (Dialplan) with complete routing, multi-carrier failover and IVR capture
-function generateCleanDialplanConf(
+export function generateCleanDialplanConf(
   carriersInput: any = defaultCarriersList,
   carrierHostFallback = '52.144.46.192',
   audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {}
@@ -1522,17 +1617,29 @@ function generateCleanDialplanConf(
       } else {
         block += ` same => n,NoOp(=== [OUTBOUND] Intentando llamada por Troncal Primaria: ${cSlug} a ${destVar} ===)\n`;
       }
-      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Ttb(sub-pjsip-headers^s^1))\n`;
+
+      const cHost = c.host;
+      const cPort = c.port || 5060;
+
+      // Explicit PJSIP URI outbound dial: Dial(PJSIP/endpoint/sip:number@host:port)
+      // This completely avoids the "Could not create dialog to invalid URI 'televox_aor'" error
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
-      if (!isLast) {
+
+      // If call was answered or client is busy, do not failover
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+
+      // 11-digit NANP fallback to 10-digit if carrier rejects country code prefix
+      if (tag === '11d') {
+        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS] Intentando llamada a 10 digitos por ${cSlug}: \${destVar:1} ===)\n`;
+        block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${destVar:1}@${cHost}:${cPort},60,Tt)\n`;
         block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       }
     });
-    if (enabledCarriers.length > 1) {
-      block += ` same => n(end_carrier_${tag}),Hangup()\n\n`;
-    } else {
-      block += ` same => n,Hangup()\n\n`;
-    }
+
+    block += ` same => n(${`end_carrier_${tag}`}),Hangup()\n\n`;
     return block;
   };
 
@@ -1545,12 +1652,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
@@ -1565,12 +1671,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=1\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`1\${EXTEN}`, '10d');
@@ -1584,12 +1689,11 @@ function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${CUSTOM_CID_NUM}))\n`;
+  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
@@ -2581,9 +2685,13 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('[1001]\r\ntype = auth') ||
         content.includes('[1002]\ntype = auth') ||
         content.includes('mohsuggest') ||
-        content.includes('moh_interpret')
+        content.includes('moh_interpret') ||
+        !content.includes('[televox]') ||
+        !content.includes('[televox_aor]') ||
+        !content.includes('[ghost]') ||
+        !content.includes('[ghost_aor]')
       ) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos (mohsuggest/moh_interpret) en /etc/asterisk/pjsip.conf. Reparando...');
+        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas, parámetros inválidos o falta de carriers en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
       }
     } else {
@@ -3326,12 +3434,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     } catch (_) {}
 
     // Determine channel:
-    // If destination is an internal IVR test extension (8888, 7777, etc.), route through Local channel
+    // If destination is an internal IVR test extension (8888, 7777, etc.), route to the agent softphone (PJSIP/1001)
+    // so the softphone actually rings, answers, and connects to the IVR for audio testing!
     // If <= 4 digits (and not IVR extension), direct SIP endpoint (e.g. agent phone 1001)
     // Otherwise standard outbound call via Local NANP routing
     let channel = '';
     if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777'].includes(cleanDest)) {
-      channel = `Local/${cleanDest}@from-internal/n`;
+      channel = `PJSIP/${agentExten || '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else {
@@ -3825,12 +3934,14 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   executeAsteriskCommand(`database put ivr_vars hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars global_hold_music "${cleanPath}"`).catch(() => {});
 
-  // 5. Reload MOH in Asterisk with debounce (avoid reloading if unchanged within 15 seconds)
+  // 5. Reload MOH in Asterisk ONLY if the track has actually changed (strict protection against reload loops)
   const now = Date.now();
-  if (lastMohAppliedPath !== cleanPath || (now - lastMohReloadTime > 15000)) {
+  if (lastMohAppliedPath !== cleanPath && (now - lastMohReloadTime > 15000)) {
     lastMohAppliedPath = cleanPath;
     lastMohReloadTime = now;
     executeAsteriskCommand('moh reload').catch(() => {});
+  } else if (!lastMohAppliedPath) {
+    lastMohAppliedPath = cleanPath;
   }
 
   console.log(`[ASTERISK-MOH] ✓ Música de Hold sincronizada en Asterisk MOH: ${cleanPath}`);
@@ -4651,9 +4762,11 @@ app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
     if (holdMusic && holdMusic.trim()) {
       const cleanMoh = holdMusic.trim();
       commands.push(`database put ivr_vars default_hold_music "${cleanMoh}"`);
-      applyHoldMusicToAsteriskMoh(cleanMoh);
-      activeAudioAssignments.hold_music = cleanMoh;
-      saveActiveAudioAssignments(activeAudioAssignments);
+      if (cleanMoh !== activeAudioAssignments.hold_music) {
+        applyHoldMusicToAsteriskMoh(cleanMoh);
+        activeAudioAssignments.hold_music = cleanMoh;
+        saveActiveAudioAssignments(activeAudioAssignments);
+      }
     }
 
     // Execute in background
