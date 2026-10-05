@@ -19,7 +19,20 @@ app.use(express.urlencoded({ extended: true }));
 let amiCachedResult: { data: string; timestamp: number } | null = null;
 let isAmiExecuting = false;
 
-const hasLocalAsterisk = fs.existsSync('/usr/sbin/asterisk') || fs.existsSync('/usr/bin/asterisk');
+export const hasLocalAsterisk =
+  fs.existsSync('/usr/sbin/asterisk') ||
+  fs.existsSync('/usr/local/sbin/asterisk') ||
+  fs.existsSync('/usr/bin/asterisk') ||
+  fs.existsSync('/usr/local/bin/asterisk') ||
+  fs.existsSync('/var/run/asterisk/asterisk.ctl');
+
+export function getAsteriskBinary(): string {
+  for (const bin of ['/usr/sbin/asterisk', '/usr/local/sbin/asterisk', '/usr/bin/asterisk', '/usr/local/bin/asterisk']) {
+    if (fs.existsSync(bin)) return bin;
+  }
+  return 'asterisk';
+}
+
 const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || (hasLocalAsterisk ? '' : 'http://169.58.66.206:3000');
 let remoteConsecutiveFailures = 0;
 let remoteLastFailureTime = 0;
@@ -193,10 +206,10 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
 
   // Dynamic TTL based on query type to maintain real-time responsiveness without hammering Asterisk CLI
   const ttl = isChannelsCheck
-    ? 3000
+    ? 3500
     : (cmd.startsWith('pjsip show')
-      ? 5000
-      : (cmd.startsWith('database show') ? 4000 : 4000));
+      ? 6000
+      : (cmd.startsWith('database show') ? 5000 : 4000));
 
   // 0. Return cached read-only result immediately (0ms) if within TTL
   if (isReadOnly) {
@@ -206,7 +219,7 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     }
   }
 
-  // 1. Try local CLI ONLY if asterisk binary is physically installed and Asterisk daemon is running
+  // 1. Try local CLI ONLY if asterisk daemon is running
   if (hasLocalAsterisk) {
     // If Asterisk daemon socket does not exist, Asterisk is stopped - do NOT spawn useless failing subprocesses
     if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
@@ -222,8 +235,9 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
 
     try {
       isLocalCliRunning = true;
+      const bin = getAsteriskBinary();
       const localRes = await new Promise<string>((resolve) => {
-        exec(`asterisk -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2200 }, (err, stdout) => {
+        exec(`${bin} -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2500 }, (err, stdout) => {
           if (!err && stdout !== undefined && stdout !== null) {
             resolve(stdout.trim());
           } else {
@@ -244,6 +258,13 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     } catch (_) {}
     finally {
       isLocalCliRunning = false;
+    }
+
+    // CRITICAL: If local Asterisk daemon socket exists, local CLI is authoritative.
+    // Do NOT fall through to AMI on read-only queries if CLI returned empty; that was causing
+    // constant login/logout storms in the Asterisk console.
+    if (isReadOnly) {
+      return cliCommandCache.get(cmd)?.output || '';
     }
   }
 
@@ -285,8 +306,8 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     remoteLastFailureTime = Date.now();
   }
 
-  // 3. Fallback to raw local AMI socket only if local Asterisk might exist
-  if (hasLocalAsterisk) {
+  // 3. Fallback to raw local AMI socket only if local Asterisk might exist and local ctl wasn't reachable
+  if (hasLocalAsterisk && !fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
     try {
       const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
       if (amiRes && !amiRes.startsWith('AMI Error') && !amiRes.startsWith('AMI Backoff')) {
@@ -301,13 +322,27 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
   return cliCommandCache.get(cmd)?.output || '';
 }
 
+const amiQueryCache = new Map<string, { output: string; timestamp: number }>();
+
 function sendAmiAction(host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
   const isChannelsCheck = commands.length === 1 && commands[0].includes('core show channels');
+  const isReadOnly = commands.length === 1 && (
+    commands[0].startsWith('core show') ||
+    commands[0].startsWith('pjsip show') ||
+    commands[0].startsWith('database show')
+  );
   const now = Date.now();
 
   // If it's a routine channel poll and we have a fresh response from < 8s ago, reuse cache to avoid spamming CLI
   if (isChannelsCheck && amiCachedResult && (now - amiCachedResult.timestamp) < 8000) {
     return Promise.resolve(amiCachedResult.data);
+  }
+
+  if (isReadOnly) {
+    const cachedAmi = amiQueryCache.get(commands[0]);
+    if (cachedAmi && now - cachedAmi.timestamp < 5000) {
+      return Promise.resolve(cachedAmi.output);
+    }
   }
 
   // If another query is already in flight, return cached if available or wait
@@ -903,17 +938,47 @@ function ensureCustomAudioFilesExist() {
     const gsmPath = path.join(customDir, `${aud.name}.gsm`);
     const esWavPath = path.join(esCustomDir, `${aud.name}.wav`);
     const enWavPath = path.join(enCustomDir, `${aud.name}.wav`);
+    const rootWavPath = `/var/lib/asterisk/sounds/${aud.name}.wav`;
+    const rootGsmPath = `/var/lib/asterisk/sounds/${aud.name}.gsm`;
+    const localAssetWav = path.join(process.cwd(), 'public/assets', `${aud.name}.wav`);
+    const localAssetGsm = path.join(process.cwd(), 'public/assets', `${aud.name}.gsm`);
 
-    // 1. Check if valid audio (> 50KB or exists)
+    // Priority 1: If pre-generated natural human Spanish voice exists in public/assets, copy it immediately!
+    if (fs.existsSync(localAssetWav) && fs.statSync(localAssetWav).size > 1000) {
+      try {
+        fs.copyFileSync(localAssetWav, wavPath);
+        fs.copyFileSync(localAssetWav, esWavPath);
+        fs.copyFileSync(localAssetWav, enWavPath);
+        try { fs.copyFileSync(localAssetWav, rootWavPath); } catch (_) {}
+        try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
+        try { fs.chmodSync(esWavPath, 0o777); } catch (_) {}
+        try { fs.chmodSync(enWavPath, 0o777); } catch (_) {}
+      } catch (_) {}
+
+      if (fs.existsSync(localAssetGsm)) {
+        try {
+          fs.copyFileSync(localAssetGsm, gsmPath);
+          fs.copyFileSync(localAssetGsm, path.join(esCustomDir, `${aud.name}.gsm`));
+          fs.copyFileSync(localAssetGsm, path.join(enCustomDir, `${aud.name}.gsm`));
+          try { fs.copyFileSync(localAssetGsm, rootGsmPath); } catch (_) {}
+          try { fs.chmodSync(gsmPath, 0o777); } catch (_) {}
+        } catch (_) {}
+      }
+      continue;
+    }
+
+    // Priority 2: Check if valid audio exists and is not just an old 3.5s sine beep (~56044 bytes)
     let needsGeneration = false;
     if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
       needsGeneration = true;
-    } else {
+    } else if (aud.text) {
       try {
-        if (fs.existsSync(wavPath) && fs.statSync(wavPath).size < 50000 && aud.text) {
+        if (!fs.existsSync(wavPath) || fs.statSync(wavPath).size <= 56100) {
           needsGeneration = true;
         }
-      } catch (_) {}
+      } catch (_) {
+        needsGeneration = true;
+      }
     }
 
     if (needsGeneration) {
@@ -1632,8 +1697,9 @@ export function generateCleanDialplanConf(
 
       // 11-digit NANP fallback to 10-digit if carrier rejects country code prefix
       if (tag === '11d') {
-        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS] Intentando llamada a 10 digitos por ${cSlug}: \${destVar:1} ===)\n`;
-        block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${destVar:1}@${cHost}:${cPort},60,Tt)\n`;
+        const dest10 = destVar.replace(/}$/, ':1}');
+        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS] Intentando llamada a 10 digitos por ${cSlug}: ${dest10} ===)\n`;
+        block += ` same => n,Dial(PJSIP/${cSlug}/sip:${dest10}@${cHost}:${cPort},60,Tt)\n`;
         block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
         block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       }
@@ -2688,8 +2754,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('moh_interpret') ||
         !content.includes('[televox]') ||
         !content.includes('[televox_aor]') ||
-        !content.includes('[ghost]') ||
-        !content.includes('[ghost_aor]')
+        content.includes('ghostcall.online') ||
+        content.includes('vip.ghostcall.online') ||
+        content.includes('[reg_ghost]')
       ) {
         console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas, parámetros inválidos o falta de carriers en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
