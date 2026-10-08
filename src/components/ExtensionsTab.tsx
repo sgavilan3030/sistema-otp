@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert, ArrowRight, DollarSign } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -10,6 +10,7 @@ interface ExtensionsTabProps {
   onSimulateQualify: (extNumber: string) => void;
   onSyncAsterisk?: () => void;
   onResetDefaultExtensions?: () => void;
+  onNavigateToReseller?: () => void;
   isSyncing?: boolean;
 }
 
@@ -21,6 +22,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onSimulateQualify,
   onSyncAsterisk,
   onResetDefaultExtensions,
+  onNavigateToReseller,
   isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -241,23 +243,34 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setValidationError(null);
     if (!extNumber || !extSecret) return;
 
-    const num = parseInt(extNumber.trim(), 10);
-    if (isNaN(num) || num < 1001) {
-      setValidationError('Las extensiones en Asterisk 20 deben ser a partir de 1001 (rango permitido: 1001 en adelante).');
-      return;
+    const rawExt = extNumber.trim();
+    const isPureDigits = /^\d+$/.test(rawExt);
+
+    if (isPureDigits) {
+      const num = parseInt(rawExt, 10);
+      if (num < 1001) {
+        setValidationError('Las extensiones numéricas en Asterisk deben ser a partir de 1001. O puedes escribir un nombre alfanumérico como "juan_perez" o "agente_carlos" para registrarte en MicroSIP por nombre.');
+        return;
+      }
+    } else {
+      // Validación de Nombre Alfanumérico para MicroSIP (letras, números, guión bajo o guión)
+      if (!/^[a-zA-Z][a-zA-Z0-9_\-]{1,31}$/.test(rawExt)) {
+        setValidationError('El nombre de extensión para MicroSIP debe iniciar con una letra y tener entre 2 y 32 caracteres (solo letras, números y guiones). Ejemplo: "juan_perez", "agente_carlos", "ventas_vip".');
+        return;
+      }
     }
 
     // Check duplicate
     const duplicate = extensions.find(
-      (e) => e.extension === extNumber.trim() && (!editingExt || e.id !== editingExt.id)
+      (e) => e.extension.toLowerCase() === rawExt.toLowerCase() && (!editingExt || e.id !== editingExt.id)
     );
     if (duplicate) {
-      setValidationError(`La extensión ${extNumber} ya existe para "${duplicate.name}". Elija otro número.`);
+      setValidationError(`La extensión o nombre "${rawExt}" ya existe para "${duplicate.name}". Elija otro identificador.`);
       return;
     }
 
-    const effectiveCidNum = (extCallerIdNum || extNumber).trim();
-    const effectiveCidName = (extCallerIdName || extName || `Ext ${extNumber}`).trim();
+    const effectiveCidNum = (extCallerIdNum || rawExt).trim();
+    const effectiveCidName = (extCallerIdName || extName || `Ext ${rawExt}`).trim();
     const callerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
     const portNum = parseInt(String(extPort), 10);
     if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
@@ -268,8 +281,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     if (editingExt) {
       onUpdateExtension({
         ...editingExt,
-        extension: extNumber.trim(),
-        name: extName || `Ext ${extNumber}`,
+        extension: rawExt,
+        name: extName || (isPureDigits ? `Ext ${rawExt}` : rawExt),
         secret: extSecret,
         context: extContext,
         transport: extTransport,
@@ -285,9 +298,9 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
       });
     } else {
       onAddExtension({
-        id: `ext-${extNumber}-${Date.now()}`,
-        extension: extNumber.trim(),
-        name: extName || `Ext ${extNumber}`,
+        id: `ext-${rawExt}-${Date.now()}`,
+        extension: rawExt,
+        name: extName || (isPureDigits ? `Ext ${rawExt}` : rawExt),
         secret: extSecret,
         context: extContext,
         transport: extTransport,
@@ -392,6 +405,39 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             <span>Nueva Extensión PJSIP</span>
           </button>
         </div>
+      </div>
+
+      {/* Reventa de Minutos & Nombres MicroSIP Direct Promotion Banner */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border border-emerald-500/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center space-x-3.5">
+          <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/10">
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-white text-base">
+                ¿Deseas revender minutos o registrar softphones por NOMBRE en vez de número?
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950 uppercase shadow-sm">
+                ★ NUEVO MÓDULO
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+              En el nuevo módulo <strong className="text-emerald-400">Reventa de Minutos</strong> puedes crear clientes con cuentas alfanuméricas (ej. <code className="text-emerald-300 font-mono">juan_perez</code>, <code className="text-emerald-300 font-mono">agente1</code>), fijar tarifas por minuto, recargar saldos prepago y descargar el archivo <code className="text-cyan-300 font-mono">microsip.ini</code> autoconfigurado.
+            </p>
+          </div>
+        </div>
+
+        {onNavigateToReseller && (
+          <button
+            id="btn-goto-reseller-from-ext"
+            onClick={onNavigateToReseller}
+            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all shrink-0 cursor-pointer"
+          >
+            <span>Ir a Reventa de Minutos</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Asterisk 20 PJSIP Live Diagnostic & Repair Banner */}
@@ -820,19 +866,18 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">
-                    Número de Extensión * <span className="text-emerald-400 font-mono">(≥ 1001)</span>
+                    Número o Nombre de Extensión *
                   </label>
                   <input
-                    type="number"
-                    min="1001"
+                    type="text"
                     required
                     value={extNumber}
                     onChange={(e) => setExtNumber(e.target.value)}
-                    placeholder="1005"
+                    placeholder="1005 o juan_perez"
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Admitido: 1001 en adelante
+                    Permite números (ej. <b className="text-emerald-400">1005</b>) o Nombres para MicroSIP (ej. <b className="text-sky-400">juan_perez</b>, <b className="text-sky-400">agente1</b>)
                   </span>
                 </div>
                 <div>

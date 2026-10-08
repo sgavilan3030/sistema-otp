@@ -50,6 +50,7 @@ import {
   Settings2,
   Zap,
   ArrowRight,
+  DollarSign,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -85,6 +86,7 @@ interface ProductionOperationsTabProps {
   onAddAudio?: (audio: AudioPrompt) => void;
   onTriggerSync: () => void;
   onNavigateToLiveCalls?: () => void;
+  onNavigateToReseller?: () => void;
   isSyncing: boolean;
 }
 
@@ -94,6 +96,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   audios = [],
   onAddAudio,
   onTriggerSync,
+  onNavigateToLiveCalls,
+  onNavigateToReseller,
   isSyncing,
 }) => {
   // Mode selection: individual direct launch vs ivr action tab vs bulk list
@@ -1492,6 +1496,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="text-[10px] text-slate-500 uppercase font-mono">Asesor Asignado</div>
               <div className="font-bold text-emerald-400 font-mono">Ext. {agentExtension}</div>
             </div>
+
+            {onNavigateToReseller && (
+              <button
+                id="btn-banner-reseller"
+                type="button"
+                onClick={onNavigateToReseller}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 transition-all cursor-pointer"
+                title="Ir al módulo de Reventa de Minutos y MicroSIP por Nombre"
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Reventa Minutos</span>
+                <span className="px-1 py-0.2 rounded bg-slate-950 text-emerald-400 text-[9px] font-black uppercase">
+                  NUEVO
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -3183,6 +3203,11 @@ GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco
 [from-internal]
 ; 1. Extensiones internas (1001-1004)
 exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN})
+ same => n,Dial(PJSIP/\${EXTEN},30,Tt)
+ same => n,Hangup()
+
+; 1b. Extensiones por nombre para MicroSIP (ej. juan_perez, agente1)
+exten => _[a-zA-Z].,1,NoOp(Llamada a extension por nombre \${EXTEN})
  same => n,Dial(PJSIP/\${EXTEN},30,Tt)
  same => n,Hangup()
 

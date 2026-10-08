@@ -380,3 +380,79 @@ export interface LiveCall {
   notes?: string;
 }
 
+export interface ResellerClient {
+  id: string;
+  name: string;
+  company?: string;
+  sipUsername: string; // Nombre alfanumérico para registrar en MicroSIP (ej. juan_perez)
+  sipPassword: string;
+  currency: 'USD' | 'DOP';
+  balance: number; // Saldo en $
+  allocatedMinutes: number; // Minutos disponibles
+  usedMinutes: number; // Minutos consumidos
+  costPerMinute: number; // Tarifa base por minuto ($)
+  planType: 'prepago' | 'paquete_minutos' | 'postpago';
+  status: 'active' | 'suspended' | 'low_balance';
+  creditLimit: number; // Margen negativo permitido (0 = corte estricto)
+  cutoffOnZero: boolean;
+  contactPhone?: string;
+  contactEmail?: string;
+  notes?: string;
+  createdAt: string;
+  lastRechargeDate?: string;
+  totalRecharges: number;
+  assignedCarrierId?: string;
+}
+
+export interface MinutePackage {
+  id: string;
+  name: string;
+  minutes: number;
+  price: number;
+  currency: 'USD' | 'DOP';
+  description: string;
+  destination: string;
+  popular?: boolean;
+}
+
+export interface RechargeRecord {
+  id: string;
+  clientId: string;
+  clientName: string;
+  sipUsername: string;
+  amount: number;
+  currency: 'USD' | 'DOP';
+  minutesAdded: number;
+  paymentMethod: 'zelle' | 'cash' | 'usdt_crypto' | 'bank_transfer' | 'credit_card' | 'voucher';
+  reference: string;
+  timestamp: string;
+  notes?: string;
+  invoiceNumber: string;
+}
+
+export interface ResellerRate {
+  id: string;
+  prefix: string;
+  destination: string;
+  wholesaleCost: number; // Costo Carrier ($/min)
+  retailPrice: number;   // Precio de reventa al cliente ($/min)
+  marginPercent: number; // Margen %
+  billingIncrement: number; // Segundos (ej. 60 o 6)
+  status: 'active' | 'inactive';
+}
+
+export interface ResellerCdr {
+  id: string;
+  clientId: string;
+  clientName: string;
+  sipUsername: string;
+  destinationNumber: string;
+  durationSec: number;
+  billableMinutes: number;
+  costDeducted: number;
+  rateApplied: number;
+  timestamp: string;
+  carrierUsed: string;
+  disposition: 'ANSWERED' | 'NO ANSWER' | 'BUSY' | 'FAILED';
+}
+

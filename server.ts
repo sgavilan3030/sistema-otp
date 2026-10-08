@@ -1162,8 +1162,9 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
   pjsipContent += `bind = 0.0.0.0:8089\n\n`;
 
   for (const ext of extsToUse) {
-    const rawNum = (ext.extension || ext.id || ext.number || ext.num || '').toString();
-    const num = rawNum.replace(/\D/g, '') || '1001';
+    const rawVal = (ext.extension || ext.id || ext.number || ext.num || '').toString().trim();
+    // Permitir tanto números (1001) como nombres alfanuméricos para MicroSIP (ej. juan_perez, agente1)
+    const num = rawVal.replace(/[^a-zA-Z0-9_\-]/g, '') || '1001';
     const pass = ext.secret || ext.password || 'Secr3tP@ssw0rd!1001';
     const callerIdNum = ext.callerIdNum || ext.outboundCallerId || num;
     const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
@@ -1451,6 +1452,14 @@ export function generateCleanDialplanConf(
   dialplanContent += `[from-internal]\n`;
   dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio HD y corte limpio de MOH\n`;
   dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN} con optimización HD)\n`;
+  dialplanContent += ` same => n,StopMusicOnHold()\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
+  dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; 1b. Llamadas directas a extensiones por nombre para MicroSIP (ej: juan_perez, agente1)\n`;
+  dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con optimización HD)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
@@ -5980,6 +5989,157 @@ app.get('/api/asterisk/spy/stream', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ==========================================
+// MODULO REVENTA DE MINUTOS & CONFIGURACION MICROSIP
+// ==========================================
+
+// In-memory / persistent file cache for reseller billing
+const resellerDataPath = path.join(process.cwd(), 'reseller_data.json');
+let resellerStore = {
+  clients: [] as any[],
+  recharges: [] as any[],
+  rates: [] as any[],
+};
+
+try {
+  if (fs.existsSync(resellerDataPath)) {
+    const raw = fs.readFileSync(resellerDataPath, 'utf8');
+    resellerStore = JSON.parse(raw);
+  }
+} catch (_) {}
+
+function saveResellerStore() {
+  try {
+    fs.writeFileSync(resellerDataPath, JSON.stringify(resellerStore, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+// Endpoint to fetch reseller billing data
+app.get('/api/reseller/data', (req, res) => {
+  res.json({
+    success: true,
+    data: resellerStore,
+  });
+});
+
+// Endpoint to create/update client and auto-register PJSIP extension in Asterisk
+app.post('/api/reseller/clients', async (req, res) => {
+  try {
+    const client = req.body;
+    if (!client || !client.sipUsername) {
+      return res.status(400).json({ success: false, error: 'sipUsername es requerido' });
+    }
+
+    const cleanUsername = String(client.sipUsername).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const password = client.sipPassword || 'Secr3t#Pass2026';
+
+    // Check if extension already exists in defaultExtensionsList
+    const existingIndex = defaultExtensionsList.findIndex(
+      (e) => String(e.extension).toLowerCase() === cleanUsername
+    );
+
+    const newExtObj = {
+      id: `ext-${cleanUsername}-${Date.now()}`,
+      extension: cleanUsername,
+      name: client.name || cleanUsername,
+      secret: password,
+      context: 'from-internal',
+      transport: 'transport-udp',
+      port: 47923,
+      maxContacts: 5,
+      codecs: ['ulaw', 'alaw', 'g729', 'opus'],
+      callerId: `"${client.name || cleanUsername}" <+18005550199>`,
+      callerIdNum: '+18005550199',
+      callerIdName: client.name || cleanUsername,
+      status: 'registered',
+      lastSeen: 'Creada vía Módulo Reventa MicroSIP',
+    };
+
+    if (existingIndex >= 0) {
+      defaultExtensionsList[existingIndex] = {
+        ...defaultExtensionsList[existingIndex],
+        ...newExtObj,
+      };
+    } else {
+      defaultExtensionsList.push(newExtObj as any);
+    }
+
+    // Auto-update /etc/asterisk/pjsip.conf and reload
+    try {
+      const updatedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
+      await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+      exec('asterisk -rx "pjsip reload"', () => {});
+    } catch (_) {}
+
+    // Save in reseller store
+    const existingClientIdx = resellerStore.clients.findIndex((c) => c.id === client.id || c.sipUsername === cleanUsername);
+    if (existingClientIdx >= 0) {
+      resellerStore.clients[existingClientIdx] = { ...resellerStore.clients[existingClientIdx], ...client, sipUsername: cleanUsername };
+    } else {
+      resellerStore.clients.unshift({ ...client, sipUsername: cleanUsername });
+    }
+    saveResellerStore();
+
+    res.json({
+      success: true,
+      message: `Cliente ${cleanUsername} registrado exitosamente como extensión PJSIP en Asterisk 20.`,
+      client: { ...client, sipUsername: cleanUsername },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to generate and download ready-to-use microsip.ini
+app.get('/api/reseller/microsip-ini/:username', (req, res) => {
+  const username = req.params.username;
+  const client = resellerStore.clients.find((c) => c.sipUsername === username) || {
+    name: username,
+    sipUsername: username,
+    sipPassword: 'password',
+  };
+
+  const host = req.headers.host?.split(':')[0] || '127.0.0.1';
+  const port = 47923;
+
+  const iniContent = `[Settings]
+autoAnswer=0
+denyIncoming=0
+directory=
+disableLocalRing=0
+enableLocalDTMF=1
+enableLog=0
+enableSTUN=0
+forceCodec=
+hideCallerId=0
+localPort=0
+ringtone=
+server=${host}:${port}
+singleMode=0
+volumeIn=100
+volumeOut=100
+
+[Account1]
+accountName=${client.name || username}
+server=${host}:${port}
+proxy=
+user=${client.sipUsername}
+domain=${host}:${port}
+login=${client.sipUsername}
+password=${client.sipPassword || 'password'}
+displayName=${client.name || username}
+authID=${client.sipUsername}
+transport=UDP
+mediaEncryption=
+publish=0
+regInterval=300
+`;
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="microsip_${username}.ini"`);
+  res.send(iniContent);
 });
 
 // ==========================================

@@ -32,6 +32,7 @@ import { LiveCallsTab } from './components/LiveCallsTab';
 import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
+import { MinuteResellerTab } from './components/MinuteResellerTab';
 import { CarriersTab } from './components/CarriersTab';
 import { IVRStudioTab } from './components/IVRStudioTab';
 import { SqliteTab } from './components/SqliteTab';
@@ -1431,6 +1432,7 @@ export default function App() {
             onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
+            onNavigateToReseller={() => setActiveTab('reseller')}
             isSyncing={isSyncing}
           />
         )}
@@ -1475,7 +1477,18 @@ export default function App() {
             onSimulateQualify={handleSimulateQualify}
             onSyncAsterisk={() => handleQuickSync(extensions)}
             onResetDefaultExtensions={handleResetDefaultExtensions}
+            onNavigateToReseller={() => setActiveTab('reseller')}
             isSyncing={isSyncing}
+          />
+        )}
+
+        {activeTab === 'reseller' && (
+          <MinuteResellerTab
+            extensions={extensions}
+            carriers={carriers}
+            onAddExtension={handleAddExtension}
+            onUpdateExtension={handleUpdateExtension}
+            onTriggerSync={() => handleQuickSync(extensions, carriers)}
           />
         )}
 

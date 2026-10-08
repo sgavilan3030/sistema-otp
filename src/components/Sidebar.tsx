@@ -16,6 +16,7 @@ import {
   Activity,
   Radio,
   Headphones,
+  DollarSign,
   X,
   Sun,
   Moon,
@@ -96,10 +97,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'extensions',
       label: 'Extensiones PJSIP',
-      subtitle: '≥ 1001 Endpoints',
+      subtitle: '≥ 1001 Endpoints & Nombres',
       icon: PhoneCall,
       badge: `${extensionCount}`,
       badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+    },
+    {
+      id: 'reseller',
+      label: 'Reventa de Minutos',
+      subtitle: 'Saldo, Facturas & MicroSIP',
+      icon: DollarSign,
+      badge: '★ NUEVO',
+      badgeColor: 'bg-emerald-500 text-slate-950 font-black animate-pulse shadow-sm shadow-emerald-500/50',
     },
     {
       id: 'carriers',
@@ -282,6 +291,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all text-left group ${
                   isActive
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold shadow-sm'
+                    : item.id === 'reseller'
+                    ? 'text-emerald-300 bg-emerald-950/25 hover:bg-emerald-900/40 border border-emerald-500/30 hover:border-emerald-400 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
                 }`}
               >
