@@ -259,7 +259,7 @@ exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP a \${EXTEN} via ${slug} --
  same => n,Set(PJSIP_HEADER(add,Privacy)=none)
  same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${c.host}>)
  same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${c.host}>;party=calling;screen=yes;privacy=off)
- same => n,Dial(PJSIP/\${EXTEN}@${slug},,${flags})
+ same => n,Dial(PJSIP/${slug}/sip:\${EXTEN}@${c.host}:${c.port || 5060},,${flags})
  same => n,Hangup()`;
   })
   .join('\n\n')}

