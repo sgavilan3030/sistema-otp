@@ -29,6 +29,7 @@ import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { ProductionOperationsTab } from './components/ProductionOperationsTab';
 import { LiveCallsTab } from './components/LiveCallsTab';
+import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
 import { CarriersTab } from './components/CarriersTab';
@@ -1442,6 +1443,17 @@ export default function App() {
             audios={audios}
             onTriggerSync={handleQuickSync}
             onNavigateToProduction={() => setActiveTab('production')}
+            onNavigateToSpy={() => setActiveTab('call-spy')}
+          />
+        )}
+
+        {activeTab === 'call-spy' && (
+          <CallSpyMonitorTab
+            extensions={extensions}
+            carriers={carriers}
+            users={users}
+            onTriggerSync={handleQuickSync}
+            onNavigateToLiveCalls={() => setActiveTab('live-calls')}
           />
         )}
 

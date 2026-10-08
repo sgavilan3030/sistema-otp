@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   PhoneCall,
+  Headphones,
   RefreshCw,
   Menu,
   LogOut,
@@ -56,6 +57,11 @@ export const Header: React.FC<HeaderProps> = ({
       title: 'Llamadas en Vivo & Supervisión',
       subtitle: 'Monitoreo en tiempo real de clientes, agentes, duración y control de Hold con música',
       icon: PhoneCall,
+    },
+    'call-spy': {
+      title: 'Módulo de Escucha en Vivo (ChanSpy)',
+      subtitle: 'Escucha en tiempo real de llamadas entre operadores y clientes, modo susurro y conferencia',
+      icon: Headphones,
     },
     prompt: {
       title: 'Prompt Maestro AI',

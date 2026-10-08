@@ -61,6 +61,7 @@ interface LiveCallsTabProps {
   audios?: AudioPrompt[];
   onTriggerSync?: () => void;
   onNavigateToProduction?: () => void;
+  onNavigateToSpy?: () => void;
 }
 
 export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
@@ -70,6 +71,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   audios = [],
   onTriggerSync,
   onNavigateToProduction,
+  onNavigateToSpy,
 }) => {
   const [liveCalls, setLiveCalls] = useState<LiveCallItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -278,6 +280,36 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       setFeedbackMsg({ text: 'Error al colgar canal en Asterisk.', type: 'error' });
     }
     setTimeout(() => setFeedbackMsg(null), 3000);
+  };
+
+  // Start ChanSpy monitoring call to supervisor's extension
+  const handleStartSpy = async (call: LiveCallItem) => {
+    try {
+      const supervisorExten = localStorage.getItem('ast20_supervisor_exten') || '1001';
+      const res = await fetch('/api/asterisk/spy/originate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supervisorExten,
+          targetExten: call.agent || '1001',
+          targetChannel: call.channel,
+          targetNumber: call.number,
+          mode: 'spy',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedbackMsg({
+          text: `🎧 Llamando a tu extensión ${supervisorExten} para escuchar a ${call.number}. ¡Descuelga tu softphone!`,
+          type: 'success',
+        });
+      } else {
+        setFeedbackMsg({ text: 'Error al iniciar escucha ChanSpy.', type: 'error' });
+      }
+    } catch (_) {
+      setFeedbackMsg({ text: 'Error de conexión con Asterisk.', type: 'error' });
+    }
+    setTimeout(() => setFeedbackMsg(null), 5000);
   };
 
   // Simulate a test active call for instant verification
@@ -727,6 +759,17 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
 
                       {/* Botones de Control de la Llamada */}
                       <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                        {/* Botón Espiar Llamada en Vivo (ChanSpy) */}
+                        <button
+                          type="button"
+                          onClick={() => handleStartSpy(call)}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+                          title="Llama a tu extensión para escuchar la llamada en vivo (ChanSpy silencioso)"
+                        >
+                          <Headphones className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Espiar</span>
+                        </button>
+
                         {/* Botón Toggle Hold / Música de Espera */}
                         <button
                           type="button"

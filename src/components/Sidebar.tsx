@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Activity,
   Radio,
+  Headphones,
   X,
   Sun,
   Moon,
@@ -75,6 +76,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         activeCallCount > 0
           ? 'bg-emerald-500 text-slate-950 font-black animate-pulse shadow-sm shadow-emerald-500/50'
           : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    },
+    {
+      id: 'call-spy',
+      label: 'Escucha en Vivo (Espía)',
+      subtitle: 'Audio ChanSpy & Whisper',
+      icon: Headphones,
+      badge: 'AUDIO',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
     },
     {
       id: 'prompt',
