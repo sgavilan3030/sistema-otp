@@ -3010,18 +3010,20 @@ async function autoRepairAsteriskPjsipOnStartup() {
       needsRepair = true;
     }
 
-    if (needsRepair) {
-      const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
-      await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+    // Always generate pure up-to-date PJSIP config with all stored users and reload Asterisk
+    const storedUsers = loadStoredUsers();
+    const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers, storedUsers);
+    await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+    try {
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
-      lastGeneratedPjsip = cleanPjsip;
+    } catch (_) {}
+    lastGeneratedPjsip = cleanPjsip;
 
-      exec('asterisk -rx "pjsip reload"', () => {});
-      try {
-        await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
-      } catch (_) {}
-      console.log('[PJSIP-REPAIR] ✓ /etc/asterisk/pjsip.conf reparado y recargado con éxito con televox, 1001 y 1002.');
-    }
+    exec('asterisk -rx "pjsip reload"', () => {});
+    try {
+      await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
+    } catch (_) {}
+    console.log('[PJSIP-INIT] ✓ /etc/asterisk/pjsip.conf sincronizado y recargado con éxito con todos los usuarios y carriers.');
 
     // Ensure AMD and Audio Codecs / RTP configuration exists
     ensureAmdConfExists();
@@ -5236,6 +5238,130 @@ app.get('/api/asterisk/audio/raw/:name', (req, res) => {
   res.send(wavBuffer);
 });
 
+// Universal 1-liner bash updater for remote VPS
+app.get('/api/vps/update.sh', (req, res) => {
+  const host = req.get('host') || 'localhost:3000';
+  const proto = req.protocol || 'http';
+  const baseUrl = `${proto}://${host}`;
+
+  const bashScript = `#!/usr/bin/env bash
+# ==========================================================
+# ACTUALIZADOR TOTAL AUTOMATICO PARA VPS ASTERISK 20
+# ==========================================================
+set -e
+
+echo ""
+echo "=========================================================="
+echo "    INICIANDO ACTUALIZACION COMPLETA EN TU VPS"
+echo "=========================================================="
+echo ""
+
+APP_DIR=""
+if [ -d "/var/www/sistema-otp" ]; then
+  APP_DIR="/var/www/sistema-otp"
+elif [ -d "/var/www/black-hat-dialer" ]; then
+  APP_DIR="/var/www/black-hat-dialer"
+elif [ -f "$(pwd)/package.json" ]; then
+  APP_DIR="$(pwd)"
+elif [ -d "/root/sistema-otp" ]; then
+  APP_DIR="/root/sistema-otp"
+fi
+
+if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
+  echo "=== [1/6] Entrando al directorio del proyecto: $APP_DIR ==="
+  cd "$APP_DIR"
+
+  echo "=== [2/6] Descargando ultimos cambios de GitHub (git pull) ==="
+  if [ -d ".git" ]; then
+    git fetch --all || true
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+    [ "$BRANCH" = "HEAD" ] && BRANCH="main"
+    git stash --include-untracked 2>/dev/null || true
+    git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || git pull --force || true
+  fi
+
+  echo "=== [3/6] Instalando dependencias de Node.js ==="
+  npm install --prefer-offline --no-audit 2>/dev/null || npm install || true
+
+  echo "=== [4/6] Compilando nueva version del sistema (npm run build) ==="
+  npm run build
+fi
+
+echo "=== [5/6] Sincronizando configuracion pura Asterisk 20 ==="
+mkdir -p /etc/asterisk
+mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
+mkdir -p /var/spool/asterisk/outgoing
+chmod 777 /var/spool/asterisk/outgoing 2>/dev/null || true
+
+curl -sSLk "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf || true
+curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf || true
+
+cat << 'EOF_MGR' > /etc/asterisk/manager.conf
+[general]
+enabled = yes
+port = 5038
+bindaddr = 0.0.0.0
+
+[sammy]
+secret = Robert2026RDTGcvgbsg
+read = all
+write = all
+
+[admin]
+secret = mysecretpass
+read = all
+write = all
+EOF_MGR
+
+echo "Recargando Asterisk PJSIP, Dialplan y Manager..."
+asterisk -rx "pjsip reload" 2>/dev/null || true
+asterisk -rx "dialplan reload" 2>/dev/null || true
+asterisk -rx "manager reload" 2>/dev/null || true
+
+echo "=== [6/6] Reiniciando servicio de la aplicacion en el VPS ==="
+if command -v pm2 >/dev/null 2>&1 && pm2 list 2>/dev/null | grep -qE "online|stopped|errored"; then
+  pm2 restart all
+  pm2 save 2>/dev/null || true
+  echo "✓ Proceso PM2 reiniciado exitosamente."
+elif systemctl is-active --quiet asterisk-web 2>/dev/null; then
+  systemctl restart asterisk-web
+  echo "✓ Servicio systemd asterisk-web reiniciado."
+elif systemctl is-active --quiet dialer 2>/dev/null; then
+  systemctl restart dialer
+  echo "✓ Servicio systemd dialer reiniciado."
+elif systemctl is-active --quiet otp 2>/dev/null; then
+  systemctl restart otp
+  echo "✓ Servicio systemd otp reiniciado."
+else
+  fuser -k 3000/tcp 2>/dev/null || true
+  pkill -9 -f "dist/server.cjs" 2>/dev/null || true
+  pkill -9 -f "tsx server.ts" 2>/dev/null || true
+  sleep 1
+  if [ -n "$APP_DIR" ]; then
+    cd "$APP_DIR"
+    nohup npm start > app.log 2>&1 &
+    echo "✓ Aplicacion iniciada con 'npm start' en segundo plano (PID: $!)."
+  fi
+fi
+
+echo ""
+echo "=========================================================="
+echo "    ¡ACTUALIZACION COMPLETADA EXITOSAMENTE!"
+echo "=========================================================="
+echo " 1. Codigo compilado en dist/ (Reventa de Minutos y MicroSIP activos)."
+echo " 2. Asterisk 20 actualizado en puerto 47923."
+echo " 3. Servicio Node.js reiniciado y escuchando en el puerto 3000."
+echo ""
+echo " >>> ATENCION CRITICA <<<"
+echo " En tu navegador presiona CTRL + F5 (o abre una ventana de incógnito)"
+echo " para limpiar la caché del navegador y ver todos los cambios nuevos."
+echo "=========================================================="
+`;
+
+  res.setHeader('Content-Type', 'text/x-shellscript; charset=utf-8');
+  res.send(bashScript);
+});
+
 // Universal 1-liner bash installer for remote VPS vmi3461829
 app.get('/api/asterisk/install.sh', (req, res) => {
   const host = req.get('host') || 'localhost:3000';
@@ -6074,14 +6200,9 @@ app.post('/api/asterisk/spy/originate', async (req, res) => {
 
     // 1. Try AMI Action: Originate
     try {
-      const amiRes = await sendAmiAction({
-        Action: 'Originate',
-        Channel: `PJSIP/${cleanSup}`,
-        Application: 'ChanSpy',
-        Data: `${chanPrefix},${spyOptions}`,
-        CallerID: `Supervisor ${mode.toUpperCase()} <*55>`,
-        Async: 'true',
-      });
+      const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+        `originate PJSIP/${cleanSup} application ChanSpy ${chanPrefix},${spyOptions}`
+      ]);
       if (amiRes && !amiRes.toLowerCase().includes('error') && !amiRes.toLowerCase().includes('failed')) {
         originateSuccess = true;
         message = `Llamando a tu extensión ${cleanSup} para conectar escucha (${mode})`;
@@ -6559,7 +6680,9 @@ app.get('/api/reseller/deduct', (req, res) => {
 // ==========================================
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production' && !fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))) {
+  const isProd = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
+
+  if (!isProd) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -6584,15 +6707,22 @@ async function startServer() {
       etag: true,
     }));
 
-    // Cache generic static public files
+    // Cache generic static public files, but NEVER cache HTML files
     app.use(express.static(distPath, {
-      maxAge: '1h',
-      etag: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      },
     }));
 
     // SPA fallback: index.html should revalidate so updates are immediate
     app.get('*', (req, res) => {
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

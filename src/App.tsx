@@ -1182,6 +1182,7 @@ export default function App() {
           maxContacts: 10,
           codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
           status: 'registered',
+          callerId: `"${newUser.name}" <${(newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser}>`,
           callerIdNum: (newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser,
           callerIdName: newUser.name,
         };

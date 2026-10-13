@@ -980,6 +980,16 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
                   asterisk -rx "manager show users"
                 </pre>
               </div>
+
+              <div className="space-y-1 pt-2 border-t border-slate-800/80">
+                <span className="text-amber-400 text-[11px] font-semibold">⚡ Actualizar sistema completo en el VPS (Git + Build + Asterisk):</span>
+                <pre className="p-2 rounded bg-slate-950 text-emerald-400 border border-amber-500/30 overflow-x-auto text-[11px]">
+                  bash update_vps.sh
+                </pre>
+                <div className="text-[10px] text-slate-400">
+                  Compila con npm run build, sincroniza Asterisk y reinicia Node.js. En el navegador usa <strong className="text-white">Ctrl + F5</strong>.
+                </div>
+              </div>
             </div>
           </div>
         </div>

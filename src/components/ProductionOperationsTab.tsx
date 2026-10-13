@@ -661,8 +661,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [launchFeedback, setLaunchFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSyncingAudios, setIsSyncingAudios] = useState(false);
   const [audioSyncFeedback, setAudioSyncFeedback] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isCopiedVpsCmd, setIsCopiedVpsCmd] = useState(false);
+  const [isCopiedOneLiner, setIsCopiedOneLiner] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const enabledCarriers = carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled');
   const activeCarrierObj = enabledCarriers[0] || carriers[0];
@@ -3147,22 +3148,44 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
-            {/* Script Autónomo VPS */}
-            <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-3">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-2">
-                  <Terminal className="w-5 h-5 text-amber-400 shrink-0" />
+            {/* Actualizador Integral del VPS y Asterisk 20 */}
+            <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                    <Terminal className="w-5 h-5 shrink-0" />
+                  </div>
                   <div>
-                    <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider">
-                      Script Autónomo para Aplicar en Servidor VPS (vmi3461829)
+                    <h4 className="text-sm font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                      <span>Actualizador Completo del Sistema en VPS (Asterisk 20)</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] normal-case border border-emerald-500/30">
+                        1-Click Script
+                      </span>
                     </h4>
-                    <p className="text-[11px] text-slate-400">
-                      Actualiza /etc/asterisk/extensions.conf con este flujo y recarga Asterisk.
+                    <p className="text-xs text-slate-400">
+                      Descarga últimos cambios, compila (npm run build), actualiza Asterisk y reinicia Node.js.
                     </p>
                   </div>
                 </div>
 
-                <button
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const host = window.location.host || 'IP_DEL_VPS:3000';
+                      const proto = window.location.protocol || 'http:';
+                      const oneLiner = `curl -sSLk "${proto}//${host}/api/vps/update.sh" | bash || bash update_vps.sh`;
+                      navigator.clipboard.writeText(oneLiner);
+                      setIsCopiedOneLiner(true);
+                      setTimeout(() => setIsCopiedOneLiner(false), 2500);
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{isCopiedOneLiner ? '¡Comando Copiado!' : 'Copiar Comando 1-Línea VPS'}</span>
+                  </button>
+
+                  <button
                   type="button"
                   onClick={() => {
                     const fullScript = `#!/usr/bin/env bash
@@ -3385,10 +3408,40 @@ echo "=========================================================="`;
                   <span>{isCopiedVpsCmd ? '¡Script Copiado!' : 'Copiar Script SSH'}</span>
                 </button>
               </div>
+            </div>
 
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Haz clic en <strong>"Copiar Script SSH"</strong> y pégalo directamente en la consola SSH de tu servidor Asterisk (<code className="text-amber-300">vmi3461829</code>). Aplicará las rutas de audio de esta campaña y recargará el dialplan al instante.
-              </p>
+            {/* Bloque explicativo de por qué no se reflejaban los cambios */}
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2">
+                <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <span>⚠️ ¿Por qué a veces no se aplican los cambios al actualizar en tu VPS?</span>
+                </div>
+                <ul className="text-slate-300 space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
+                  <li>
+                    <strong className="text-white">Falta de compilación (npm run build):</strong> En producción, Node.js y la web corren desde la carpeta compilada <code className="text-amber-300 bg-black/40 px-1 py-0.5 rounded">dist/</code>. Al hacer <code className="text-amber-300 bg-black/40 px-1 py-0.5 rounded">git pull</code>, los cambios de código no surten efecto hasta que ejecutas <code className="text-emerald-400 font-bold bg-black/40 px-1 py-0.5 rounded">npm run build</code>.
+                  </li>
+                  <li>
+                    <strong className="text-white">Caché del navegador:</strong> El navegador almacena la versión previa en caché. Presiona <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-white font-mono font-bold">Ctrl + F5</kbd> (o abre en incógnito) para refrescar la interfaz.
+                  </li>
+                  <li>
+                    <strong className="text-white">Recarga de Asterisk:</strong> Para cargar nuevas extensiones o dialplans, Asterisk debe ejecutar <code className="text-sky-300 bg-black/40 px-1 py-0.5 rounded">pjsip reload && dialplan reload</code>.
+                  </li>
+                  <li>
+                    <strong className="text-white">Reinicio de Node:</strong> El proceso PM2 o systemd debe reiniciarse (<code className="text-sky-300 bg-black/40 px-1 py-0.5 rounded">pm2 restart all</code>) para cargar el nuevo servidor backend.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Terminal Snippet */}
+              <div className="space-y-1">
+                <div className="text-[11px] text-slate-400 font-medium">
+                  Comando 1-línea para ejecutar en la terminal SSH de tu VPS:
+                </div>
+                <div className="p-3 rounded-xl bg-black/80 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center justify-between overflow-x-auto">
+                  <code>
+                    curl -sSLk "{typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://TU_IP:3000'}/api/vps/update.sh" | bash
+                  </code>
+                </div>
+              </div>
             </div>
           </div>
 
