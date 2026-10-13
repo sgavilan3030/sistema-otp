@@ -74,10 +74,23 @@ asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
 
 echo "=== [6/6] Reiniciando servicio de la aplicacion Node.js ==="
-if command -v pm2 >/dev/null 2>&1 && pm2 list 2>/dev/null | grep -qE "online|stopped|errored"; then
-  pm2 restart all
+# Garantizar que el puerto 3000 no quede bloqueado por procesos zombies o huérfanos
+echo "Liberando puerto 3000 si hay procesos bloqueándolo..."
+if command -v pm2 >/dev/null 2>&1; then
+  pm2 stop all 2>/dev/null || true
+fi
+fuser -k 3000/tcp 2>/dev/null || true
+pkill -9 -f "dist/server.cjs" 2>/dev/null || true
+pkill -9 -f "tsx server.ts" 2>/dev/null || true
+sleep 1
+
+if command -v pm2 >/dev/null 2>&1; then
+  # Si ya existe en PM2 lo arrancamos limpio, si no lo creamos
+  pm2 delete all 2>/dev/null || true
+  cd "$APP_DIR"
+  pm2 start dist/server.cjs --name "sistema-otp"
   pm2 save 2>/dev/null || true
-  echo "✓ Proceso PM2 reiniciado exitosamente."
+  echo "✓ Proceso PM2 'sistema-otp' iniciado limpiamente en el puerto 3000."
 elif systemctl is-active --quiet asterisk-web 2>/dev/null; then
   systemctl restart asterisk-web
   echo "✓ Servicio systemd asterisk-web reiniciado."
@@ -88,11 +101,6 @@ elif systemctl is-active --quiet otp 2>/dev/null; then
   systemctl restart otp
   echo "✓ Servicio systemd otp reiniciado."
 else
-  # Liberar puerto 3000 si hay procesos previos colgados
-  fuser -k 3000/tcp 2>/dev/null || true
-  pkill -9 -f "dist/server.cjs" 2>/dev/null || true
-  pkill -9 -f "tsx server.ts" 2>/dev/null || true
-  sleep 1
   nohup npm start > app.log 2>&1 &
   echo "✓ Aplicacion iniciada con 'npm start' en segundo plano (PID: $!)."
 fi
