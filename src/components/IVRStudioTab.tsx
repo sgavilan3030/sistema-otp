@@ -39,6 +39,8 @@ interface IVRStudioTabProps {
   otpConfig: OtpCaptureConfig;
   extensions: PjsipExtension[];
   audios: AudioPrompt[];
+  currentUser?: any;
+  isAdmin?: boolean;
   onSavePress1: (config: Press1Config) => void;
   onSaveOtp: (config: OtpCaptureConfig) => void;
   onTriggerSync: () => void;
@@ -55,11 +57,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   otpConfig: initialOtp,
   extensions,
   audios,
+  currentUser,
+  isAdmin: propIsAdmin,
   onSavePress1,
   onSaveOtp,
   onTriggerSync,
   isSyncing,
 }) => {
+  const activeUser = currentUser || (() => {
+    try {
+      const stored = localStorage.getItem('ast20_auth_user');
+      if (stored) return JSON.parse(stored);
+      const allUsers = localStorage.getItem('ast20_users');
+      if (allUsers) {
+        const parsed = JSON.parse(allUsers);
+        const currentId = localStorage.getItem('ast20_current_user_id');
+        return parsed.find((u: any) => u.id === currentId) || parsed[0];
+      }
+    } catch (_) {}
+    return null;
+  })();
+
+  const isAdmin = propIsAdmin !== undefined ? propIsAdmin : (activeUser ? activeUser.role === 'admin' : true);
+
   const [press1, setPress1] = useState<Press1Config>(initialPress1);
   const [otp, setOtp] = useState<OtpCaptureConfig>(initialOtp);
   const [isPlayingTTS, setIsPlayingTTS] = useState<string | null>(null);
@@ -171,6 +191,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   const holdMusicAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const handleUpdateEntityHoldMusic = (entityId: string, holdMusicPath: string) => {
+    if (!isAdmin) {
+      setSavedFeedback('🔒 Se requieren privilegios de Administrador para modificar la música de hold del guión.');
+      setTimeout(() => setSavedFeedback(null), 3500);
+      return;
+    }
     setEntities((prev) => {
       const next = prev.map((ent) =>
         ent.id === entityId ? { ...ent, holdMusicAudioPath: holdMusicPath } : ent
@@ -961,14 +986,29 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               <Music className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Música de Hold / Espera por Guión o Entidad</span>
-                <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
-                  ASTERISK MOH
-                </span>
-              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>Música de Hold / Espera por Guión o Entidad</span>
+                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
+                    ASTERISK MOH
+                  </span>
+                </h3>
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    <span>Administrador</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Solo Lectura (Admin requerido)</span>
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400">
-                Asigna una pista de música de espera única para cada guión o entidad bancaria simulada en el IVR.
+                {isAdmin
+                  ? 'Asigna una pista de música de espera única para cada guión o entidad bancaria simulada en el IVR.'
+                  : 'Consulta de pistas de música de espera asignadas por guión. La edición está reservada a administradores.'}
               </p>
             </div>
           </div>
@@ -1018,11 +1058,20 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
                 {/* Selector de Pista de Música de Hold */}
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-mono mb-1">Pista de Espera (Hold):</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-slate-400 font-mono">Pista de Espera (Hold):</label>
+                    {!isAdmin && (
+                      <span className="text-[9px] font-semibold text-amber-400 flex items-center gap-0.5">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>Solo Admin</span>
+                      </span>
+                    )}
+                  </div>
                   <select
                     value={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}
                     onChange={(e) => handleUpdateEntityHoldMusic(ent.id, e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    disabled={!isAdmin}
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {presetHoldMusics.map((moh) => (
                       <option key={moh.id} value={moh.path}>

@@ -1583,6 +1583,7 @@ export default function App() {
             otpConfig={otpConfig}
             extensions={extensions}
             audios={audios}
+            currentUser={currentUser}
             onSavePress1={setPress1Config}
             onSaveOtp={setOtpConfig}
             onTriggerSync={handleQuickSync}

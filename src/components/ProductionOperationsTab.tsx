@@ -4106,6 +4106,15 @@ echo "=========================================================="`;
 
             {/* Body */}
             <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {!isAdmin && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Modo Solo Lectura:</strong> Solo los usuarios con rol de <strong>Administrador</strong> tienen privilegios para editar o guardar nombres, Caller IDs y audios de este guión.
+                  </span>
+                </div>
+              )}
+
               {/* Bloque 1: Datos de la Entidad */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -4120,8 +4129,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.name}
                       onChange={(e) => setEditingEntity({ ...editingEntity, name: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="ej. Banco Banreservas"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -4131,8 +4141,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.subtitle}
                       onChange={(e) => setEditingEntity({ ...editingEntity, subtitle: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="ej. Transferencia desconocida"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4143,7 +4154,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.icon}
                       onChange={(e) => setEditingEntity({ ...editingEntity, icon: e.target.value as any })}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="building">Banco / Financiera (Edificio)</option>
                       <option value="card">Tarjeta de Crédito (Tarjeta)</option>
@@ -4160,8 +4172,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.defaultCallerName || ''}
                       onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerName: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="ej. BANRESERVAS"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -4171,8 +4184,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.defaultCallerNum || ''}
                       onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerNum: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="ej. 8099602110"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4197,11 +4211,12 @@ echo "=========================================================="`;
                       </div>
                     </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <label className={`relative inline-flex items-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} shrink-0`}>
                     <input
                       type="checkbox"
                       checked={!!editingEntity.isLocked}
                       onChange={(e) => setEditingEntity({ ...editingEntity, isLocked: e.target.checked })}
+                      disabled={!isAdmin}
                       className="sr-only peer"
                     />
                     <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
@@ -4249,7 +4264,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.introAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="custom/banrearreglado">custom/banrearreglado (Banreservas Intro)</option>
                       <option value="custom/alerta_cargo_tarjeta">custom/alerta_cargo_tarjeta</option>
@@ -4266,8 +4282,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.introAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/mi_audio)"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4302,7 +4319,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.promptAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-purple-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos ("Por favor digite su TOKEN de 6 dígitos") [RECOMENDADO]</option>
                       <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos ("Por favor digite su TOKEN de 6 dígitos")</option>
@@ -4321,8 +4339,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.promptAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/solicitar_otp)"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4357,7 +4376,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.agentAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-sky-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="custom/conectar_asesor_banco">custom/conectar_asesor_banco ("Un momento, transfiriendo...")</option>
                       <option value="custom/conectar_asesor">custom/conectar_asesor</option>
@@ -4375,8 +4395,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.agentAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/conectar_asesor)"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4411,7 +4432,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.successAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
                       <option value="custom/tarjeta_protegida">custom/tarjeta_protegida</option>
@@ -4429,8 +4451,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.successAudioPath}
                       onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/exito)"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4465,7 +4488,8 @@ echo "=========================================================="`;
                     <select
                       value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
                       onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="custom/moh_banco_elegante">custom/moh_banco_elegante (Espera Bancaria Piano & Chimes)</option>
                       <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Música Corporativa Suave)</option>
@@ -4484,8 +4508,9 @@ echo "=========================================================="`;
                       type="text"
                       value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
                       onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
+                      disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/mi_musica_hold)"
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
