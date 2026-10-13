@@ -261,13 +261,21 @@ export interface SystemUser {
   username?: string;
   email: string;
   password?: string;
-  role: 'admin' | 'supervisor' | 'agent' | 'custom';
+  role: 'admin' | 'supervisor' | 'agent' | 'reseller_client' | 'custom';
   assignedExtensions: string[]; // extensions >= 1001
   permissions: UserPermissions;
   status: 'active' | 'inactive';
   avatarColor: string;
   createdAt: string;
   lastLogin?: string;
+  // Campos de Reventa de Minutos y Softphone Manual MicroSIP
+  accountType?: 'agent' | 'reseller_client';
+  balance?: number; // Saldo en $ USD
+  allocatedMinutes?: number; // Minutos disponibles
+  usedMinutes?: number; // Minutos consumidos
+  costPerMinute?: number; // Tarifa por minuto ($ USD)
+  cutoffOnZero?: boolean; // Corte automático en saldo 0
+  carrierId?: string; // Troncal asignada para llamadas salientes
 }
 
 export interface AstDbEntry {

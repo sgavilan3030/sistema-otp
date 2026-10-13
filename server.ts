@@ -599,6 +599,14 @@ icesupport=yes
       writeAsteriskConfigFile(rtpPath, rtpContent);
       console.log('✓ Configuración /etc/asterisk/rtp.conf creada');
     }
+    const mgrPath = '/etc/asterisk/manager.conf';
+    if (!fs.existsSync(mgrPath)) {
+      const mgrContent = `[general]\nenabled = yes\nport = 5038\nbindaddr = 0.0.0.0\n\n[sammy]\nsecret = Robert2026RDTGcvgbsg\nread = all\nwrite = all\n\n[admin]\nsecret = mysecretpass\nread = all\nwrite = all\n`;
+      writeAsteriskConfigFile(mgrPath, mgrContent);
+      writeAsteriskConfigFile(path.join(process.cwd(), 'manager.conf'), mgrContent);
+      console.log('✓ Configuración /etc/asterisk/manager.conf creada para AMI');
+      exec('asterisk -rx "manager reload"', () => {});
+    }
   } catch (_) {}
 }
 
@@ -694,6 +702,59 @@ function amiFastOriginate(
       }
     });
   });
+}
+
+// Fallback originate using Asterisk call spooler or valid CLI syntax without invalid callerid tokens
+function fallbackOriginate(
+  channel: string,
+  context: string,
+  exten: string,
+  callerId: string,
+  variables: Record<string, string> = {}
+) {
+  // Method A: Asterisk Call Spooler (/var/spool/asterisk/outgoing/)
+  const spoolDir = '/var/spool/asterisk/outgoing';
+  try {
+    if (fs.existsSync(spoolDir) || fs.existsSync('/var/spool/asterisk')) {
+      let varLines = '';
+      for (const [k, v] of Object.entries(variables)) {
+        if (v !== undefined && v !== null && v !== '') {
+          varLines += `Set: ${k}=${v}\n`;
+        }
+      }
+      const callContent = 
+`Channel: ${channel}
+CallerID: ${callerId}
+Context: ${context}
+Extension: ${exten}
+Priority: 1
+MaxRetries: 0
+RetryTime: 60
+WaitTime: 45
+${varLines}
+`;
+      const tempPath = `/tmp/ast_call_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.call`;
+      fs.writeFileSync(tempPath, callContent, 'utf8');
+      const targetPath = path.join(spoolDir, path.basename(tempPath));
+      exec(`mv "${tempPath}" "${targetPath}" || sudo mv "${tempPath}" "${targetPath}" || cp "${tempPath}" "${targetPath}"`, () => {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+      });
+      console.log(`[SPOOL ORIGINATE] Archivo .call enviado a ${spoolDir} para ${channel}`);
+      return true;
+    }
+  } catch (_) {}
+
+  // Method B: Asterisk CLI with standard syntax (Asterisk CLI: channel originate <channel> extension <exten>@<context> 1)
+  // Standard Asterisk CLI syntax does not accept callerid token; CallerID is picked up from AstDB or dialed context
+  const cliCmd = `asterisk -rx "channel originate ${channel} extension ${exten}@${context} 1"`;
+  exec(cliCmd, (err, stdout) => {
+    if (err) {
+      console.log(`[CLI ORIGINATE NOTICE] (${channel}): ${err.message.split('\n')[0]}`);
+    } else {
+      console.log('[CLI ORIGINATE SUCCESS]:', stdout.trim());
+    }
+  });
+  return true;
 }
 
 const SOUNDS_CUSTOM_DIR = '/var/lib/asterisk/sounds/custom';
@@ -1118,14 +1179,155 @@ export const defaultCarriersList = [
   },
 ];
 
-// Cached store of last synchronized carriers
+// Centralized Application State & Users Persistence (Sync across browsers, devices and MicroSIP)
+const DATA_DIR = path.join(process.cwd(), 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
+const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
+
+try {
+  if (!fs.existsSync(USER_CONFIGS_DIR)) {
+    fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+  }
+} catch (_) {}
+
+function loadStoredUsers(): any[] {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const raw = fs.readFileSync(USERS_FILE, 'utf8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) return list;
+    }
+  } catch (_) {}
+  try {
+    if (fs.existsSync(APP_STATE_FILE)) {
+      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.users) && parsed.users.length > 0) return parsed.users;
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveStoredUsers(users: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+    // Also keep app_state.json users in sync
+    if (fs.existsSync(APP_STATE_FILE)) {
+      try {
+        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        parsed.users = users;
+        parsed.lastUpdated = Date.now();
+        fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+// Cached store of last synchronized carriers and users
 let lastSyncedCarriers: any[] = defaultCarriersList;
+let lastSyncedUsers: any[] = loadStoredUsers();
 
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
 // CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
 // Transports must use standard Asterisk names [transport-udp], [transport-tcp], [transport-wss] with custom bind port.
-function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedCarriers): string {
-  const extsToUse = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
+function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedCarriers, extraUsers: any[] = []): string {
+  const baseExts = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
+  const mergedExtsMap = new Map<string, any>();
+
+  // 1. Process base extensions
+  for (const ext of baseExts) {
+    const rawVal = (ext.extension || ext.id || ext.number || ext.num || '').toString().trim();
+    const cleanId = rawVal.replace(/[^a-zA-Z0-9_\-]/g, '') || '1001';
+    mergedExtsMap.set(cleanId.toLowerCase(), {
+      ...ext,
+      extension: cleanId,
+    });
+  }
+
+  // 2. Process extra users and stored users (so MicroSIP usernames and passwords work in Asterisk without 'contraseña incorrecta')
+  const storedUsers = loadStoredUsers();
+  const allUsersToProcess = [
+    ...(Array.isArray(extraUsers) ? extraUsers : []),
+    ...lastSyncedUsers,
+    ...storedUsers,
+  ];
+
+  for (const u of allUsersToProcess) {
+    if (!u) continue;
+    const rawU = String(u.username || (u.email ? u.email.split('@')[0] : '') || u.name || '').trim();
+    const cleanU = rawU.toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+    const userPassword = u.password || 'Secr3t#Pass2026';
+    if (cleanU) {
+      const uKey = cleanU;
+      if (!mergedExtsMap.has(uKey)) {
+        mergedExtsMap.set(uKey, {
+          id: `ext-${cleanU}`,
+          extension: cleanU,
+          name: u.name || cleanU,
+          secret: userPassword,
+          context: 'from-internal',
+          transport: 'transport-udp',
+          port: 47923,
+          maxContacts: 10,
+          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          callerIdNum: (Array.isArray(u.assignedExtensions) && u.assignedExtensions[0]) || cleanU,
+          callerIdName: u.name || cleanU,
+          status: 'registered',
+        });
+      } else {
+        const existing = mergedExtsMap.get(uKey);
+        existing.secret = userPassword;
+        existing.name = u.name || existing.name;
+      }
+
+      // Also synchronize password to any assigned numeric extensions (e.g. 1001)
+      if (Array.isArray(u.assignedExtensions)) {
+        for (const assigned of u.assignedExtensions) {
+          const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+          if (mergedExtsMap.has(cleanAssigned)) {
+            const extToSync = mergedExtsMap.get(cleanAssigned);
+            extToSync.secret = userPassword;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Process resellerStore clients
+  if (typeof resellerStore !== 'undefined' && resellerStore && Array.isArray(resellerStore.clients)) {
+    for (const c of resellerStore.clients) {
+      if (!c) continue;
+      const rawC = String(c.sipUsername || c.name || '').trim();
+      const cleanC = rawC.replace(/[^a-zA-Z0-9_\-]/g, '');
+      if (cleanC && c.sipPassword) {
+        const cKey = cleanC.toLowerCase();
+        if (!mergedExtsMap.has(cKey)) {
+          mergedExtsMap.set(cKey, {
+            id: `ext-${cleanC}`,
+            extension: cleanC,
+            name: c.name || cleanC,
+            secret: c.sipPassword,
+            context: 'from-internal',
+            transport: 'transport-udp',
+            port: 47923,
+            maxContacts: 10,
+            codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+            callerIdNum: cleanC,
+            callerIdName: c.name || cleanC,
+            status: 'registered',
+          });
+        } else {
+          const existing = mergedExtsMap.get(cKey);
+          existing.secret = c.sipPassword;
+        }
+      }
+    }
+  }
+
+  const extsToUse = Array.from(mergedExtsMap.values());
 
   // Determine active SIP transport port (default 47923 exclusively)
   let activePort = 47923;
@@ -1718,11 +1920,28 @@ export function generateCleanDialplanConf(
     return block;
   };
 
+  // Reglas de normalizacion para llamadas marcadas con +, 00 o 011 desde MicroSIP
+  dialplanContent += `; 2d. Normalización de marcación internacional manual desde MicroSIP (+, 00, 011)\n`;
+  dialplanContent += `exten => _+X.,1,NoOp(Marcación saliente con prefijo + normalizada: \${EXTEN:1})\n`;
+  dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:1},1)\n\n`;
+  dialplanContent += `exten => _00X.,1,NoOp(Marcación saliente con prefijo 00 normalizada: \${EXTEN:2})\n`;
+  dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:2},1)\n\n`;
+  dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
+  dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
+
   dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_11d)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_11d)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_11d)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
+  dialplanContent += ` same => n,Congestion(34)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_11d),Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
@@ -1740,7 +1959,15 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_10d)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_10d)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_10d)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
+  dialplanContent += ` same => n,Congestion(34)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_10d),Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=1\${EXTEN})\n`;
@@ -1759,7 +1986,15 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_univ)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_univ)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_univ)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
+  dialplanContent += ` same => n,Congestion(34)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_univ),Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
@@ -1776,7 +2011,8 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=\${CALLING_AGENT}&secs=\${CDR(billsec)}&dest=\${TARGET_NUM}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio HD)\n`;
@@ -3184,8 +3420,16 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const carrierHost = primaryCarrier.host || '127.0.0.1';
     const outboundCid = primaryCarrier.outboundCallerId || '+18005550199';
 
+    const usersToInclude = (Array.isArray(req.body.users) && req.body.users.length > 0)
+      ? req.body.users
+      : loadStoredUsers();
+    if (Array.isArray(req.body.users) && req.body.users.length > 0) {
+      saveStoredUsers(req.body.users);
+      lastSyncedUsers = req.body.users;
+    }
+
     // Generate clean pjsip.conf using validated Asterisk 20 generator
-    const pjsipContent = generateCleanPjsipConf(extensions, validCarriers);
+    const pjsipContent = generateCleanPjsipConf(extensions, validCarriers, usersToInclude);
 
     // Generate extensions.conf (Dialplan) with outbound multi-carrier failover routing and dedicated IVRs
     const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body);
@@ -3558,18 +3802,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         if (fastResult.success) {
           console.log(`[FAST ORIGINATE SUCCESS] Llamada enviada a Asterisk vía AMI socket para ${channel} (${cleanDest})`);
         } else {
-          console.warn('[FAST ORIGINATE FALLBACK] AMI retornó advertencia, disparando CLI fallback:', fastResult.message);
-          const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
-          exec(originateCmd, (err, stdout) => {
-            if (err) console.error('[CLI ORIGINATE ERROR]:', err.message);
-            else console.log('[CLI ORIGINATE SUCCESS]:', stdout.trim());
-          });
+          console.warn('[FAST ORIGINATE FALLBACK] AMI retornó advertencia, disparando fallback:', fastResult.message);
+          fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
         }
       })
       .catch((err) => {
-        console.warn('[FAST ORIGINATE EXCEPTION] Ejecutando CLI fallback:', err.message);
-        const originateCmd = `asterisk -rx "channel originate ${channel} extension s@${targetContext} callerid \\"${effectiveCidName}\\" <${effectiveCidNum}>"`;
-        exec(originateCmd, () => {});
+        console.warn('[FAST ORIGINATE EXCEPTION] Ejecutando fallback de llamada:', err.message);
+        fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
       });
 
     // Fallback simulation: only for internal softphone testing (8888 or 7777)
@@ -4561,15 +4800,7 @@ app.get('/api/asterisk/action/get-default', (req, res) => {
 });
 
 // Centralized Application State Persistence (Sync across browsers and devices)
-const DATA_DIR = path.join(process.cwd(), 'data');
-const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
-const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
-
-try {
-  if (!fs.existsSync(USER_CONFIGS_DIR)) {
-    fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
-  }
-} catch (_) {}
+// (DATA_DIR, USER_CONFIGS_DIR, and APP_STATE_FILE are initialized at the top)
 
 function getUserConfigPath(userId?: string, username?: string): string {
   const rawKey = (userId || username || 'admin').toString().trim().toLowerCase();
@@ -6094,15 +6325,18 @@ app.post('/api/reseller/clients', async (req, res) => {
 
 // Endpoint to generate and download ready-to-use microsip.ini
 app.get('/api/reseller/microsip-ini/:username', (req, res) => {
-  const username = req.params.username;
-  const client = resellerStore.clients.find((c) => c.sipUsername === username) || {
-    name: username,
+  const username = String(req.params.username || '').trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+  const stored = loadStoredUsers();
+  const foundUser = stored.find((u) => String(u.username || '').toLowerCase() === username);
+  const client = resellerStore.clients.find((c) => String(c.sipUsername || '').toLowerCase() === username) || {
+    name: foundUser?.name || username,
     sipUsername: username,
-    sipPassword: 'password',
+    sipPassword: foundUser?.password || 'password123',
   };
 
   const host = req.headers.host?.split(':')[0] || '127.0.0.1';
   const port = 47923;
+  const pass = client.sipPassword || foundUser?.password || 'password123';
 
   const iniContent = `[Settings]
 autoAnswer=0
@@ -6125,12 +6359,12 @@ volumeOut=100
 accountName=${client.name || username}
 server=${host}:${port}
 proxy=
-user=${client.sipUsername}
+user=${username}
 domain=${host}:${port}
-login=${client.sipUsername}
-password=${client.sipPassword || 'password'}
+login=${username}
+password=${pass}
 displayName=${client.name || username}
-authID=${client.sipUsername}
+authID=${username}
 transport=UDP
 mediaEncryption=
 publish=0
@@ -6140,6 +6374,184 @@ regInterval=300
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="microsip_${username}.ini"`);
   res.send(iniContent);
+});
+
+// Endpoint to list all users from disk persistence
+app.get('/api/users', (req, res) => {
+  try {
+    const users = loadStoredUsers();
+    res.json({ success: true, users });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to sync users and provision PJSIP endpoints in Asterisk 20 (fixing 'contraseña incorrecta' in MicroSIP)
+app.post('/api/users/sync-sip', async (req, res) => {
+  try {
+    const { user, users } = req.body;
+    let stored = loadStoredUsers();
+    if (Array.isArray(users) && users.length > 0) {
+      stored = users;
+      saveStoredUsers(users);
+      lastSyncedUsers = users;
+    }
+    const targetUser = user || (Array.isArray(users) && users[users.length - 1]);
+    if (!targetUser) {
+      return res.status(400).json({ success: false, error: 'No se recibieron datos de usuario' });
+    }
+
+    const rawUser = String(targetUser.username || (targetUser.email ? targetUser.email.split('@')[0] : '') || targetUser.name || '').trim();
+    const cleanUser = rawUser.toLowerCase().replace(/[^a-z0-9_\-]/g, '') || 'usuario';
+    const password = targetUser.password || 'Secr3t#Pass2026';
+
+    // 1. Ensure user is updated in stored users array
+    const existingIdx = stored.findIndex((u) => String(u.username || '').toLowerCase() === cleanUser);
+    const updatedUserObj = { ...targetUser, username: cleanUser, password };
+    if (existingIdx >= 0) {
+      stored[existingIdx] = { ...stored[existingIdx], ...updatedUserObj };
+    } else {
+      stored.push(updatedUserObj);
+    }
+    saveStoredUsers(stored);
+    lastSyncedUsers = stored;
+
+    // 2. Ensure user is in defaultExtensionsList as full PJSIP Endpoint
+    const extIdx = defaultExtensionsList.findIndex((e) => String(e.extension).toLowerCase() === cleanUser);
+    const extObj = {
+      id: `ext-${cleanUser}`,
+      extension: cleanUser,
+      name: targetUser.name || cleanUser,
+      secret: password,
+      context: 'from-internal',
+      transport: 'transport-udp',
+      port: 47923,
+      maxContacts: 10,
+      codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+      callerIdNum: (Array.isArray(targetUser.assignedExtensions) && targetUser.assignedExtensions[0]) || cleanUser,
+      callerIdName: targetUser.name || cleanUser,
+      status: 'registered',
+      lastSeen: 'Autogenerado para MicroSIP',
+    };
+
+    if (extIdx >= 0) {
+      defaultExtensionsList[extIdx] = { ...defaultExtensionsList[extIdx], ...extObj };
+    } else {
+      defaultExtensionsList.push(extObj as any);
+    }
+
+    // 3. If user has assigned numeric extensions (e.g. 1001), also sync password of 1001 to matching password
+    if (Array.isArray(targetUser.assignedExtensions)) {
+      for (const assigned of targetUser.assignedExtensions) {
+        const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+        const matched = defaultExtensionsList.find((e) => String(e.extension).toLowerCase() === cleanAssigned);
+        if (matched) {
+          matched.secret = password;
+        }
+      }
+    }
+
+    // 4. Save in resellerStore for minutes billing
+    const balance = typeof targetUser.balance === 'number' ? targetUser.balance : 10.00;
+    const ratePerMinute = typeof targetUser.costPerMinute === 'number' ? targetUser.costPerMinute : (typeof targetUser.ratePerMinute === 'number' ? targetUser.ratePerMinute : 0.02);
+    const existingClientIdx = resellerStore.clients.findIndex((c) => c.sipUsername === cleanUser || c.id === targetUser.id);
+    const clientRecord = {
+      id: targetUser.id || `res-${cleanUser}`,
+      name: targetUser.name || cleanUser,
+      sipUsername: cleanUser,
+      sipPassword: password,
+      currency: 'USD',
+      balance: balance,
+      allocatedMinutes: Math.round(balance / (ratePerMinute || 0.02)),
+      usedMinutes: targetUser.usedMinutes || 0,
+      costPerMinute: ratePerMinute,
+      planType: 'prepago',
+      status: targetUser.status === 'inactive' ? 'suspended' : 'active',
+      creditLimit: 0,
+      cutoffOnZero: targetUser.cutoffOnZero !== false,
+      createdAt: targetUser.createdAt || new Date().toISOString().split('T')[0],
+      totalRecharges: 1,
+    };
+
+    if (existingClientIdx >= 0) {
+      resellerStore.clients[existingClientIdx] = { ...resellerStore.clients[existingClientIdx], ...clientRecord };
+    } else {
+      resellerStore.clients.unshift(clientRecord);
+    }
+    saveResellerStore();
+
+    // 5. AstDB persistence for CallerID and Balance (BOTH for username AND for all assigned numeric extensions)
+    const targetsToProvisionInDb = [cleanUser];
+    if (Array.isArray(targetUser.assignedExtensions)) {
+      for (const ext of targetUser.assignedExtensions) {
+        const cExt = String(ext).replace(/[^a-zA-Z0-9_\-]/g, '');
+        if (cExt && !targetsToProvisionInDb.includes(cExt)) {
+          targetsToProvisionInDb.push(cExt);
+        }
+      }
+    }
+
+    for (const tgt of targetsToProvisionInDb) {
+      executeAsteriskCommand(`database put reseller_balance ${tgt} "${balance}"`).catch(() => {});
+      executeAsteriskCommand(`database put reseller_rate ${tgt} "${ratePerMinute}"`).catch(() => {});
+      executeAsteriskCommand(`database put reseller_cutoff ${tgt} "${targetUser.cutoffOnZero !== false ? '1' : '0'}"`).catch(() => {});
+      executeAsteriskCommand(`database put extension_cid ${tgt}/number "${(Array.isArray(targetUser.assignedExtensions) && targetUser.assignedExtensions[0]) || cleanUser}"`).catch(() => {});
+      executeAsteriskCommand(`database put extension_cid ${tgt}/name "${targetUser.name || cleanUser}"`).catch(() => {});
+    }
+
+    // 6. Generate and write clean pjsip.conf
+    const updatedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers, stored);
+    await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+    await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+
+    // Also write extensions.conf to ensure dialplan supports manual dialing
+    const updatedDialplan = generateCleanDialplanConf(lastSyncedCarriers);
+    await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
+    await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
+
+    // 7. Hot reload Asterisk
+    exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+    try {
+      await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload', 'dialplan reload']);
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Credenciales de MicroSIP sincronizadas en Asterisk 20. El usuario ${cleanUser} ya puede iniciar sesión en MicroSIP sin error de contraseña.`,
+      username: cleanUser,
+      password: password,
+      assignedExtensions: targetUser.assignedExtensions || [],
+      port: 47923,
+      balance: balance,
+      costPerMinute: ratePerMinute,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to deduct balance after manual call hangup
+app.get('/api/reseller/deduct', (req, res) => {
+  try {
+    const { client, secs, dest } = req.query as { client: string; secs: string; dest: string };
+    if (!client) return res.json({ success: false });
+    const cleanUser = String(client).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const durationSecs = parseInt(secs || '0', 10);
+    const billedMinutes = Math.max(1, Math.ceil(durationSecs / 60));
+
+    const cli = resellerStore.clients.find((c) => c.sipUsername === cleanUser);
+    if (cli) {
+      const rate = cli.costPerMinute || 0.02;
+      const callCost = parseFloat((billedMinutes * rate).toFixed(4));
+      cli.balance = Math.max(0, parseFloat((cli.balance - callCost).toFixed(2)));
+      cli.usedMinutes = (cli.usedMinutes || 0) + billedMinutes;
+      saveResellerStore();
+      executeAsteriskCommand(`database put reseller_balance ${cleanUser} "${cli.balance}"`).catch(() => {});
+    }
+    res.json({ success: true });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
 });
 
 // ==========================================

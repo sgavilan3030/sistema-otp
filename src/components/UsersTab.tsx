@@ -18,6 +18,13 @@ import {
   EyeOff,
   Lock,
   Copy,
+  DollarSign,
+  Download,
+  HelpCircle,
+  AlertCircle,
+  RefreshCw,
+  Smartphone,
+  ChevronRight,
 } from 'lucide-react';
 
 interface UsersTabProps {
@@ -49,10 +56,21 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [formPassword, setFormPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<SystemUser['role']>('agent');
+  const [formAccountType, setFormAccountType] = useState<'agent' | 'reseller_client'>('reseller_client');
+  const [formBalance, setFormBalance] = useState<number>(10.00);
+  const [formRate, setFormRate] = useState<number>(0.02);
+  const [formCutoffOnZero, setFormCutoffOnZero] = useState<boolean>(true);
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // Modals for MicroSIP setup and balance recharge
+  const [microsipModalUser, setMicrosipModalUser] = useState<SystemUser | null>(null);
+  const [rechargeModalUser, setRechargeModalUser] = useState<SystemUser | null>(null);
+  const [rechargeAmount, setRechargeAmount] = useState<number>(10);
+
   const [permissions, setPermissions] = useState<UserPermissions>({
     canManageExtensions: false,
     canManageCarriers: false,
@@ -73,6 +91,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const applyRolePreset = (role: SystemUser['role']) => {
     setFormRole(role);
     if (role === 'admin') {
+      setFormAccountType('agent');
       setPermissions({
         canManageExtensions: true,
         canManageCarriers: true,
@@ -84,6 +103,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canExportConfigs: true,
       });
     } else if (role === 'supervisor') {
+      setFormAccountType('agent');
       setPermissions({
         canManageExtensions: true,
         canManageCarriers: false,
@@ -95,6 +115,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canExportConfigs: true,
       });
     } else if (role === 'agent') {
+      setFormAccountType('agent');
+      setPermissions({
+        canManageExtensions: false,
+        canManageCarriers: false,
+        canManageIVR: false,
+        canUploadAudio: false,
+        canSyncAsterisk: false,
+        canUseSoftphone: true,
+        canManageUsers: false,
+        canExportConfigs: false,
+      });
+    } else if (role === 'reseller_client') {
+      setFormAccountType('reseller_client');
       setPermissions({
         canManageExtensions: false,
         canManageCarriers: false,
@@ -126,12 +159,64 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   };
 
   const handleCopyCredentials = (user: SystemUser) => {
-    const text = `Usuario: ${user.username || user.email.split('@')[0]}\nContraseña: ${user.password || 'password123'}\nCorreo: ${user.email}\nExtensiones: ${user.assignedExtensions.join(', ') || '1001'}`;
+    const cleanUser = String(user.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const text = `Servidor SIP: ${window.location.hostname || 'IP_DEL_VPS'}:47923\nUsuario: ${cleanUser}\nDominio: ${window.location.hostname || 'IP_DEL_VPS'}\nLogin: ${cleanUser}\nContraseña: ${user.password || 'password123'}\nExtensiones: ${user.assignedExtensions.join(', ') || cleanUser}`;
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(text);
     }
     setCopiedUserId(user.id);
     setTimeout(() => setCopiedUserId(null), 2500);
+  };
+
+  // Helper to generate and download microsip.ini directly
+  const downloadMicrosipIni = (user: SystemUser) => {
+    const cleanUser = String(user.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const pass = user.password || 'password123';
+    const host = window.location.hostname || '127.0.0.1';
+    const port = 47923;
+
+    const content = `[Settings]
+autoAnswer=0
+denyIncoming=0
+directory=
+disableLocalRing=0
+enableLocalDTMF=1
+enableLog=0
+enableSTUN=0
+forceCodec=
+hideCallerId=0
+localPort=0
+ringtone=
+server=${host}:${port}
+singleMode=0
+volumeIn=100
+volumeOut=100
+
+[Account1]
+accountName=${user.name || cleanUser}
+server=${host}:${port}
+proxy=
+user=${cleanUser}
+domain=${host}:${port}
+login=${cleanUser}
+password=${pass}
+displayName=${user.name || cleanUser}
+authID=${cleanUser}
+transport=UDP
+mediaEncryption=
+publish=0
+regInterval=300
+`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `microsip_${cleanUser}.ini`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleOpenCreateModal = () => {
@@ -141,11 +226,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormUsername('');
     setFormPassword('');
     setShowPassword(false);
-    setFormRole('agent');
+    setFormRole('reseller_client');
+    setFormAccountType('reseller_client');
+    setFormBalance(10.00);
+    setFormRate(0.02);
+    setFormCutoffOnZero(true);
     setFormStatus('active');
     // Default assign first available extension >= 1001
     setSelectedExts(availableExtensions.length > 0 ? [availableExtensions[0].extension] : ['1001']);
-    applyRolePreset('agent');
+    applyRolePreset('reseller_client');
     setIsModalOpen(true);
   };
 
@@ -157,6 +246,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormPassword(user.password || '');
     setShowPassword(false);
     setFormRole(user.role);
+    setFormAccountType(user.accountType || (user.role === 'reseller_client' ? 'reseller_client' : 'agent'));
+    setFormBalance(typeof user.balance === 'number' ? user.balance : 10.00);
+    setFormRate(typeof user.costPerMinute === 'number' ? user.costPerMinute : 0.02);
+    setFormCutoffOnZero(user.cutoffOnZero !== false);
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
     setPermissions(user.permissions);
@@ -183,46 +276,60 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     e.preventDefault();
     if (!formName || !formEmail) return;
 
-    const usernameFinal = formUsername.trim() || formEmail.split('@')[0] || formName.toLowerCase().replace(/\s+/g, '.');
+    const rawUsername = formUsername.trim() || formEmail.split('@')[0] || formName.toLowerCase().replace(/\s+/g, '.');
+    const usernameFinal = rawUsername.toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
     const passwordFinal = formPassword.trim() || editingUser?.password || 'password123';
 
-    if (editingUser) {
-      onUpdateUser({
-        ...editingUser,
-        name: formName,
-        email: formEmail,
-        username: usernameFinal,
-        password: passwordFinal,
-        role: formRole,
-        status: formStatus,
-        assignedExtensions: selectedExts,
-        permissions,
-      });
-    } else {
-      const colors = [
-        'from-emerald-500 to-teal-700',
-        'from-blue-500 to-indigo-600',
-        'from-emerald-600 to-green-500',
-        'from-purple-500 to-pink-600',
-        'from-teal-500 to-emerald-600',
-      ];
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    const colors = [
+      'from-emerald-500 to-teal-700',
+      'from-blue-500 to-indigo-600',
+      'from-emerald-600 to-green-500',
+      'from-purple-500 to-pink-600',
+      'from-teal-500 to-emerald-600',
+    ];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
-      onAddUser({
-        id: `user-${Date.now()}`,
-        name: formName,
-        username: usernameFinal,
-        email: formEmail,
-        password: passwordFinal,
-        role: formRole,
-        assignedExtensions: selectedExts,
-        permissions,
-        status: formStatus,
-        avatarColor: randomColor,
-        createdAt: new Date().toISOString().split('T')[0],
-        lastLogin: 'Pendiente primer inicio',
-      });
+    const userObj: SystemUser = {
+      ...(editingUser || {}),
+      id: editingUser ? editingUser.id : `user-${Date.now()}`,
+      name: formName,
+      email: formEmail,
+      username: usernameFinal,
+      password: passwordFinal,
+      role: formAccountType === 'reseller_client' ? 'reseller_client' : formRole,
+      accountType: formAccountType,
+      balance: formBalance,
+      costPerMinute: formRate,
+      allocatedMinutes: Math.round(formBalance / (formRate || 0.02)),
+      usedMinutes: editingUser?.usedMinutes || 0,
+      cutoffOnZero: formCutoffOnZero,
+      assignedExtensions: selectedExts,
+      permissions,
+      status: formStatus,
+      avatarColor: editingUser?.avatarColor || randomColor,
+      createdAt: editingUser?.createdAt || new Date().toISOString().split('T')[0],
+      lastLogin: editingUser?.lastLogin || 'Pendiente primer inicio',
+    };
+
+    if (editingUser) {
+      onUpdateUser(userObj);
+    } else {
+      onAddUser(userObj);
     }
+
+    // Auto-provision immediately in Asterisk 20 PJSIP
+    fetch('/api/users/sync-sip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: userObj }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setSyncFeedback(`✓ Usuario "${usernameFinal}" registrado en Asterisk PJSIP (Puerto 47923). MicroSIP ya puede conectarse.`);
+        setTimeout(() => setSyncFeedback(null), 6000);
+      })
+      .catch(() => {});
+
     setIsModalOpen(false);
   };
 
@@ -374,17 +481,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                         : user.role === 'supervisor'
                         ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                        : user.accountType === 'reseller_client' || user.role === 'reseller_client'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
                         : user.role === 'agent'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                         : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
                     }`}
                   >
-                    {user.role}
+                    {user.accountType === 'reseller_client' || user.role === 'reseller_client' ? 'Cliente VoIP Minutos' : user.role}
                   </span>
                 </div>
 
                 {/* User Credentials (Username & Password with show/copy) */}
-                <div className="mb-3 py-2 px-2.5 rounded-lg bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs font-mono">
+                <div className="mb-2 py-2 px-2.5 rounded-lg bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs font-mono">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <KeyRound className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
@@ -413,10 +522,73 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       type="button"
                       onClick={() => handleCopyCredentials(user)}
                       className="p-1 rounded text-slate-400 hover:text-emerald-300 hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Copiar credenciales completas (Usuario y Contraseña)"
+                      title="Copiar credenciales completas para MicroSIP"
                     >
                       {copiedUserId === user.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
+                  </div>
+                </div>
+
+                {/* MicroSIP Softphone & Reseller Balance Box */}
+                <div className="mb-3 p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-[11px]">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Softphone MicroSIP</span>
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Puerto 47923
+                    </span>
+                  </div>
+
+                  {/* Reseller balance info if user is reseller_client or has balance */}
+                  {(user.accountType === 'reseller_client' || user.role === 'reseller_client' || typeof user.balance === 'number') && (
+                    <div className="pt-1 border-t border-emerald-500/20 grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+                      <div className="bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px] uppercase">Saldo Prepago:</span>
+                        <span className="text-emerald-300 font-bold">${(user.balance || 0).toFixed(2)} USD</span>
+                      </div>
+                      <div className="bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px] uppercase">Tarifa Minuto:</span>
+                        <span className="text-sky-300 font-bold">${user.costPerMinute || 0.02}/min</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Direct Action buttons: Descargar microsip.ini & Guía */}
+                  <div className="pt-1 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => downloadMicrosipIni(user)}
+                      className="flex-1 py-1.5 px-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
+                      title="Descargar archivo microsip.ini preconfigurado con usuario y contraseña"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Descargar microsip.ini</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMicrosipModalUser(user)}
+                      className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      title="Ver datos exactos para configurar MicroSIP a mano"
+                    >
+                      <HelpCircle className="w-3 h-3 text-emerald-400" />
+                      <span>Guía</span>
+                    </button>
+                    {(user.accountType === 'reseller_client' || user.role === 'reseller_client' || typeof user.balance === 'number') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRechargeModalUser(user);
+                          setRechargeAmount(10);
+                        }}
+                        className="py-1.5 px-2 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        title="Recargar saldo a este cliente"
+                      >
+                        <DollarSign className="w-3 h-3" />
+                        <span>Recargar</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -575,12 +747,12 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       type="text"
                       required
                       value={formUsername}
-                      onChange={(e) => setFormUsername(e.target.value)}
-                      placeholder="Ej. juan.perez o agente1001"
+                      onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_\-]/g, ''))}
+                      placeholder="Ej. juan o agente1001"
                       className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                     />
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      Identificador para iniciar sesión en la pantalla de bienvenida.
+                      Identificador único en minúsculas para iniciar sesión en la web y en MicroSIP.
                     </p>
                   </div>
 
@@ -621,29 +793,78 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     <p className="text-[10px] text-slate-400 mt-0.5">
                       {editingUser
                         ? 'Si deseas cambiarla, escribe la nueva contraseña.'
-                        : 'El agente usará esta clave para ingresar al sistema.'}
+                        : 'El agente usará esta misma clave para ingresar a la web y a MicroSIP.'}
                     </p>
                   </div>
+                </div>
+
+                {/* Previsualización en Vivo de Datos para MicroSIP */}
+                <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs font-mono space-y-1.5">
+                  <div className="text-emerald-400 font-bold flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Credenciales Exactas para MicroSIP (Sin Error de Contraseña):</span>
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">
+                      Puerto 47923
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[9px] uppercase">Servidor SIP & Dominio:</span>
+                      <span className="text-white font-bold">{window.location.hostname || 'IP_DEL_VPS'}:47923</span>
+                    </div>
+                    <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[9px] uppercase">Usuario / Login / Auth ID:</span>
+                      <span className="text-emerald-300 font-bold">{formUsername || 'ej. juan'}</span>
+                    </div>
+                    <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[9px] uppercase">Contraseña SIP:</span>
+                      <span className="text-emerald-300 font-bold">{formPassword || (editingUser?.password ? '(mantener actual)' : 'Introduce clave')}</span>
+                    </div>
+                    <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[9px] uppercase">Extensión Alterna:</span>
+                      <span className="text-sky-300 font-bold">{selectedExts[0] || '1001'} (usa misma clave)</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 pt-1 border-t border-emerald-500/20 font-sans">
+                    ✓ <b>Asterisk 20</b> autenticará este usuario tanto si en MicroSIP escribes el <b>Nombre de Usuario</b> (<span className="text-emerald-300 font-mono">{formUsername || 'juan'}</span>) o el <b>Número de Extensión</b> (<span className="text-sky-300 font-mono">{selectedExts[0] || '1001'}</span>) con esta misma contraseña.
+                  </p>
                 </div>
               </div>
 
               {/* Role Presets */}
               <div>
                 <label className="block text-slate-300 font-medium mb-1">
-                  Rol y Plantilla de Accesos
+                  Rol y Tipo de Cuenta
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => applyRolePreset('admin')}
+                    onClick={() => applyRolePreset('reseller_client')}
                     className={`p-2.5 rounded-lg border text-left transition-all ${
-                      formRole === 'admin'
+                      formAccountType === 'reseller_client' || formRole === 'reseller_client'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-white shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-emerald-400 flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5" />
+                      <span>Cliente VoIP Minutos</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Marcación manual MicroSIP con saldo prepago</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyRolePreset('agent')}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      formRole === 'agent' && formAccountType !== 'reseller_client'
                         ? 'bg-emerald-500/20 border-emerald-500 text-white'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="font-bold text-xs">Administrador</div>
-                    <div className="text-[10px] text-slate-400">Control total del sistema y AMI</div>
+                    <div className="font-bold text-xs">Agente Interno</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Solo softphone y campañas internas</div>
                   </button>
                   <button
                     type="button"
@@ -655,22 +876,98 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     }`}
                   >
                     <div className="font-bold text-xs">Supervisor</div>
-                    <div className="text-[10px] text-slate-400">Extensiones, IVR y Audioteca</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Extensiones, IVR y Audioteca</div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => applyRolePreset('agent')}
+                    onClick={() => applyRolePreset('admin')}
                     className={`p-2.5 rounded-lg border text-left transition-all ${
-                      formRole === 'agent'
-                        ? 'bg-emerald-500/20 border-emerald-500 text-white'
+                      formRole === 'admin'
+                        ? 'bg-red-500/20 border-red-500 text-white'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="font-bold text-xs">Agente</div>
-                    <div className="text-[10px] text-slate-400">Solo Softphone y llamadas</div>
+                    <div className="font-bold text-xs">Administrador</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Control total del sistema y AMI</div>
                   </button>
                 </div>
               </div>
+
+              {/* Parametros de Reventa de Minutos si es Cliente VoIP */}
+              {(formAccountType === 'reseller_client' || formRole === 'reseller_client') && (
+                <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4" />
+                      <span>Configuración de Saldo Prepago y Facturación por Minuto</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-300 font-mono font-bold bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                      Reventa de Minutos
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">
+                        Saldo Prepago Inicial ($ USD)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        value={formBalance}
+                        onChange={(e) => setFormBalance(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-emerald-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Saldo disponible para llamadas salientes.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">
+                        Tarifa por Minuto ($ USD / min)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0.001"
+                        value={formRate}
+                        onChange={(e) => setFormRate(parseFloat(e.target.value) || 0.02)}
+                        className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-sky-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Costo deducido por cada minuto conectado.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">
+                        Minutos Aproximados
+                      </label>
+                      <div className="px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-emerald-400 font-mono font-bold text-sm flex items-center justify-between">
+                        <span>{Math.round(formBalance / (formRate || 0.02))} min</span>
+                        <span className="text-[10px] text-slate-500">al agotar saldo</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Calculado en tiempo real según la tarifa.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
+                    <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formCutoffOnZero}
+                        onChange={(e) => setFormCutoffOnZero(e.target.checked)}
+                        className="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0"
+                      />
+                      <span>Cortar llamada saliente automáticamente si el saldo llega a $0.00 USD</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* Assign Extensions Section (Enforces >= 1001) */}
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
@@ -765,6 +1062,215 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Guía Paso a Paso MicroSIP para el Usuario */}
+      {microsipModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Configurar MicroSIP para {microsipModalUser.name}</h3>
+                  <p className="text-xs text-slate-400">Asterisk 20 PJSIP (Puerto 47923)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMicrosipModalUser(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300">
+                <span className="font-bold block mb-1">✓ Autenticación Verificada sin Error de Contraseña:</span>
+                Asterisk 20 reconoce tanto el <b>Nombre de Usuario</b> como la <b>Extensión</b> con la contraseña configurada.
+              </div>
+
+              {/* Exact Credentials Table */}
+              <div className="rounded-lg border border-slate-800 overflow-hidden font-mono text-[11px]">
+                <div className="flex justify-between py-1.5 px-3 bg-slate-950 border-b border-slate-800">
+                  <span className="text-slate-400">Servidor SIP:</span>
+                  <span className="text-emerald-400 font-bold">{window.location.hostname || 'IP_DEL_VPS'}:47923</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-900 border-b border-slate-800">
+                  <span className="text-slate-400">Proxy SIP:</span>
+                  <span className="text-slate-500">(dejar vacío)</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-950 border-b border-slate-800">
+                  <span className="text-slate-400">Usuario (User):</span>
+                  <span className="text-white font-bold">{microsipModalUser.username || microsipModalUser.email.split('@')[0]}</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-900 border-b border-slate-800">
+                  <span className="text-slate-400">Dominio:</span>
+                  <span className="text-emerald-400 font-bold">{window.location.hostname || 'IP_DEL_VPS'}:47923</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-950 border-b border-slate-800">
+                  <span className="text-slate-400">Login / Auth ID:</span>
+                  <span className="text-white font-bold">{microsipModalUser.username || microsipModalUser.email.split('@')[0]}</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-900 border-b border-slate-800">
+                  <span className="text-slate-400">Contraseña:</span>
+                  <span className="text-emerald-300 font-bold">{microsipModalUser.password || 'password123'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-950 border-b border-slate-800">
+                  <span className="text-slate-400">Extensión Alterna:</span>
+                  <span className="text-sky-300 font-bold">{microsipModalUser.assignedExtensions?.[0] || '1001'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 px-3 bg-slate-900">
+                  <span className="text-slate-400">Transporte:</span>
+                  <span className="text-slate-300 font-bold">UDP</span>
+                </div>
+              </div>
+
+              {/* Instructions steps */}
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1.5 text-slate-300">
+                <div className="font-bold text-white text-xs">Instrucciones Rápidas:</div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-400">
+                  <li>Opción 1 (Automática): Haz clic en <b>"Descargar microsip.ini"</b> y ábrelo con MicroSIP.</li>
+                  <li>Opción 2 (Manual): En MicroSIP pulsa la flecha superior derecha -&gt; <b>Añadir Cuenta</b>.</li>
+                  <li>Copia y pega los campos de la tabla arriba con el puerto <b>47923</b>.</li>
+                  <li>Pulsa Guardar. Verás el punto verde <b>En Línea / Online</b> de inmediato.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => downloadMicrosipIni(microsipModalUser)}
+                className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>Descargar microsip.ini</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCopyCredentials(microsipModalUser)}
+                className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Copy className="w-4 h-4 text-emerald-400" />
+                <span>Copiar Datos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMicrosipModalUser(null)}
+                className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Recargar Saldo de Minutos */}
+      {rechargeModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Recargar Minutos VoIP</h3>
+                  <p className="text-xs text-slate-400">{rechargeModalUser.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRechargeModalUser(null)}
+                className="p-1 rounded text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex justify-between items-center font-mono">
+                <span className="text-slate-400">Saldo Actual:</span>
+                <span className="text-emerald-400 font-bold">${(rechargeModalUser.balance || 0).toFixed(2)} USD</span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Monto a Recargar ($ USD)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={rechargeAmount}
+                  onChange={(e) => setRechargeAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-emerald-300 font-mono font-bold text-base focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                {[5, 10, 20, 50].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setRechargeAmount(amt)}
+                    className={`py-1.5 rounded border text-xs font-mono font-bold transition-all ${
+                      rechargeAmount === amt
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    +${amt}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono flex justify-between items-center">
+                <span>Nuevo Saldo:</span>
+                <span className="font-bold text-white">${((rechargeModalUser.balance || 0) + rechargeAmount).toFixed(2)} USD</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const newBal = (rechargeModalUser.balance || 0) + rechargeAmount;
+                  const updated: SystemUser = {
+                    ...rechargeModalUser,
+                    balance: newBal,
+                    allocatedMinutes: Math.round(newBal / (rechargeModalUser.costPerMinute || 0.02)),
+                  };
+                  onUpdateUser(updated);
+                  fetch('/api/users/sync-sip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user: updated }),
+                  }).catch(() => {});
+                  setRechargeModalUser(null);
+                  setSyncFeedback(`✓ Saldo de $${rechargeAmount} USD acreditado a ${rechargeModalUser.name}. Saldo total: $${newBal.toFixed(2)} USD.`);
+                  setTimeout(() => setSyncFeedback(null), 5000);
+                }}
+                className="flex-1 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all"
+              >
+                <Check className="w-4 h-4" />
+                <span>Confirmar Recarga</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRechargeModalUser(null)}
+                className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

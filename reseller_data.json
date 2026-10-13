@@ -1,0 +1,23 @@
+{
+  "clients": [
+    {
+      "id": "user-pedro",
+      "name": "Pedro VoIP",
+      "sipUsername": "pedro",
+      "sipPassword": "miClave123",
+      "currency": "USD",
+      "balance": 25,
+      "allocatedMinutes": 1250,
+      "usedMinutes": 0,
+      "costPerMinute": 0.02,
+      "planType": "prepago",
+      "status": "active",
+      "creditLimit": 0,
+      "cutoffOnZero": true,
+      "createdAt": "2026-10-12",
+      "totalRecharges": 1
+    }
+  ],
+  "recharges": [],
+  "rates": []
+}

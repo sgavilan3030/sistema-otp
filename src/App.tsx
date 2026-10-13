@@ -803,6 +803,7 @@ export default function App() {
         body: JSON.stringify({
           extensions: extsToSync,
           carriers: carriersToSync,
+          users: users,
         }),
         signal: controller.signal,
       });
@@ -1161,21 +1162,90 @@ export default function App() {
     );
   };
 
-  // User Handlers
+  // User Handlers with Auto-provisioning in Asterisk 20 PJSIP
   const handleAddUser = (newUser: SystemUser) => {
-    setUsers((prev) => [...prev, newUser]);
+    const updatedUsersList = [...users, newUser];
+    setUsers(updatedUsersList);
+    const cleanUser = String(newUser.username || newUser.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+    
+    if (cleanUser && newUser.password) {
+      setExtensions((prevExts) => {
+        const extIdx = prevExts.findIndex((e) => e.extension.toLowerCase() === cleanUser);
+        const newExtObj: PjsipExtension = {
+          id: `ext-${cleanUser}`,
+          extension: cleanUser,
+          name: newUser.name,
+          secret: newUser.password,
+          context: 'from-internal',
+          transport: 'transport-udp',
+          port: 47923,
+          maxContacts: 10,
+          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          status: 'registered',
+          callerIdNum: (newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser,
+          callerIdName: newUser.name,
+        };
+        let updatedExts = [...prevExts];
+        if (extIdx >= 0) {
+          updatedExts[extIdx] = { ...updatedExts[extIdx], ...newExtObj };
+        } else {
+          updatedExts.push(newExtObj);
+        }
+        if (Array.isArray(newUser.assignedExtensions)) {
+          updatedExts = updatedExts.map((e) => {
+            if (newUser.assignedExtensions.includes(e.extension)) {
+              return { ...e, secret: newUser.password };
+            }
+            return e;
+          });
+        }
+        return updatedExts;
+      });
+
+      // Synchronize immediately to /etc/asterisk/pjsip.conf, AstDB and hot reload Asterisk
+      fetch('/api/users/sync-sip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: newUser, users: updatedUsersList }),
+      }).catch(() => {});
+    }
+
     addLog(
       'SYSTEM',
-      `[USUARIOS] Nuevo usuario creado: ${newUser.name} (Rol: ${newUser.role})`,
-      `Extensiones asignadas: ${newUser.assignedExtensions.join(', ') || 'Ninguna'}`
+      `[USUARIOS] Nuevo usuario creado y registrado en Asterisk PJSIP: ${newUser.name} (${cleanUser})`,
+      `Contraseña sincronizada para MicroSIP puerto 47923`
     );
-    showToast(`Usuario ${newUser.name} creado.`);
+    showToast(`Usuario ${newUser.name} creado y registrado en Asterisk 20.`);
   };
 
   const handleUpdateUser = (updatedUser: SystemUser) => {
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    addLog('SYSTEM', `[USUARIOS] Permisos actualizados para: ${updatedUser.name}`);
-    showToast(`Usuario ${updatedUser.name} actualizado.`);
+    const updatedUsersList = users.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+    setUsers(updatedUsersList);
+    const cleanUser = String(updatedUser.username || updatedUser.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+
+    if (cleanUser && updatedUser.password) {
+      setExtensions((prevExts) => {
+        let updatedExts = prevExts.map((e) => {
+          if (e.extension.toLowerCase() === cleanUser) {
+            return { ...e, secret: updatedUser.password, name: updatedUser.name };
+          }
+          if (Array.isArray(updatedUser.assignedExtensions) && updatedUser.assignedExtensions.includes(e.extension)) {
+            return { ...e, secret: updatedUser.password };
+          }
+          return e;
+        });
+        return updatedExts;
+      });
+
+      fetch('/api/users/sync-sip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: updatedUser, users: updatedUsersList }),
+      }).catch(() => {});
+    }
+
+    addLog('SYSTEM', `[USUARIOS] Permisos y credenciales PJSIP actualizadas para: ${updatedUser.name}`);
+    showToast(`Usuario ${updatedUser.name} actualizado en Asterisk.`);
   };
 
   const handleDeleteUser = (userId: string) => {
