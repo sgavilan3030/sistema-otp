@@ -722,6 +722,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [otpRecords, setOtpRecords] = useState<CapturedOtpRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [isHangingUp, setIsHangingUp] = useState(false);
   const [launchFeedback, setLaunchFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSyncingAudios, setIsSyncingAudios] = useState(false);
   const [audioSyncFeedback, setAudioSyncFeedback] = useState<string | null>(null);
@@ -1448,16 +1449,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Hangup active call
   const handleHangupActiveCall = async () => {
+    setIsHangingUp(true);
     try {
       await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channel: activeCall?.channel,
-          number: activeCall?.number,
+          number: activeCall?.number || targetNumber.trim(),
         }),
       });
-    } catch (e) {}
+    } catch (e) {} finally {
+      setIsHangingUp(false);
+    }
     setActiveCall((prev) => (prev ? { ...prev, status: 'ended', isActive: false } : null));
     setLaunchFeedback({
       text: 'Llamada colgada por el operador.',
@@ -2620,21 +2624,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Big Launch Button */}
-              <div className="pt-2">
+              {/* Action Buttons: Launch & Hangup */}
+              <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <button
                   id="btn-launch-production-call"
                   onClick={handleLaunchProductionCall}
-                  disabled={isLaunching || !targetNumber.trim()}
-                  className="w-full py-4 rounded-xl font-black text-base bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  disabled={isLaunching || isHangingUp || !targetNumber.trim()}
+                  className="sm:col-span-2 py-4 px-4 rounded-xl font-black text-sm sm:text-base bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer"
                 >
                   {isLaunching ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <RefreshCw className="w-5 h-5 animate-spin shrink-0" />
                   ) : (
-                    <Rocket className="w-5 h-5" />
+                    <Rocket className="w-5 h-5 shrink-0" />
                   )}
-                  <span>
-                    {isLaunching ? 'Lanzando Llamada a Asterisk...' : 'INICIAR LLAMADA DE PRODUCCIÓN AHORA'}
+                  <span className="truncate">
+                    {isLaunching ? 'Lanzando Llamada...' : 'INICIAR LLAMADA'}
+                  </span>
+                </button>
+
+                <button
+                  id="btn-hangup-production-call"
+                  type="button"
+                  onClick={handleHangupActiveCall}
+                  disabled={isHangingUp || isLaunching}
+                  className="py-4 px-4 rounded-xl font-black text-sm sm:text-base bg-gradient-to-r from-rose-600 to-red-500 hover:from-rose-500 hover:to-red-400 text-white shadow-xl shadow-rose-600/25 border border-rose-400/30 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                  title="Colgar llamada activa o en curso inmediatamente en Asterisk"
+                >
+                  {isHangingUp ? (
+                    <RefreshCw className="w-5 h-5 animate-spin shrink-0" />
+                  ) : (
+                    <PhoneOff className="w-5 h-5 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {isHangingUp ? 'Colgando...' : 'COLGAR'}
                   </span>
                 </button>
               </div>
@@ -3563,11 +3585,22 @@ echo "=========================================================="`;
               <button
                 type="button"
                 onClick={handleLaunchProductionCall}
-                disabled={isLaunching || !targetNumber.trim()}
-                className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all w-full sm:w-auto"
+                disabled={isLaunching || isHangingUp || !targetNumber.trim()}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all flex-1 sm:flex-initial cursor-pointer"
               >
                 <PhoneCall className={`w-4 h-4 ${isLaunching ? 'animate-bounce' : ''}`} />
-                <span>{isLaunching ? 'Lanzando Llamada...' : 'Lanzar Llamada Ahora'}</span>
+                <span>{isLaunching ? 'Lanzando...' : 'Lanzar Llamada'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleHangupActiveCall}
+                disabled={isHangingUp || isLaunching}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 border border-rose-400/30 transition-all flex-1 sm:flex-initial cursor-pointer"
+                title="Colgar llamada activa inmediatamente en Asterisk"
+              >
+                <PhoneOff className="w-4 h-4" />
+                <span>{isHangingUp ? 'Colgando...' : 'Colgar'}</span>
               </button>
             </div>
           </div>
