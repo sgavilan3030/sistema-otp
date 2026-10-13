@@ -1500,6 +1500,7 @@ export default function App() {
             extensions={extensions}
             carriers={carriers}
             audios={audios}
+            currentUser={currentUser}
             onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}

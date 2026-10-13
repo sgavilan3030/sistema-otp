@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt } from '../types';
+import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser } from '../types';
 import {
   Rocket,
   PhoneCall,
@@ -83,6 +83,7 @@ interface ProductionOperationsTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
   audios?: AudioPrompt[];
+  currentUser?: SystemUser;
   onAddAudio?: (audio: AudioPrompt) => void;
   onTriggerSync: () => void;
   onNavigateToLiveCalls?: () => void;
@@ -94,12 +95,28 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   extensions,
   carriers,
   audios = [],
+  currentUser,
   onAddAudio,
   onTriggerSync,
   onNavigateToLiveCalls,
   onNavigateToReseller,
   isSyncing,
 }) => {
+  // Determinar usuario activo y privilegios de Administrador para proteger edición de Guiones / Entidades
+  const activeUser = currentUser || (() => {
+    try {
+      const savedUsers = localStorage.getItem('ast20_users');
+      const savedId = localStorage.getItem('ast20_current_user_id') || 'user-admin';
+      if (savedUsers) {
+        const parsed = JSON.parse(savedUsers);
+        return parsed.find((u: any) => u.id === savedId) || parsed[0];
+      }
+    } catch (e) {}
+    return null;
+  })();
+
+  const isAdmin = activeUser ? activeUser.role === 'admin' : true;
+
   // Mode selection: individual direct launch vs ivr action tab vs bulk list
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'bulk'>('single');
 
@@ -239,6 +256,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [isEntitySaved, setIsEntitySaved] = useState(false);
 
   const handleSaveAndLockCurrentEntity = async () => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para guardar o modificar la configuración del guión.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
     if (!current) return;
     setIsEntitySaving(true);
@@ -291,6 +313,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   };
 
   const handleUnlockCurrentEntity = async () => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para desbloquear el guión.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
     if (!current) return;
     try {
@@ -324,6 +351,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const handleStartInlineRename = (ent: CampaignEntity, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para editar o renombrar este guión.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     setInlineRenamingId(ent.id);
     setInlineNameVal(ent.name);
     setInlineSubtitleVal(ent.subtitle || '');
@@ -331,6 +363,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const handleSaveInlineRename = (entityId: string, e?: React.MouseEvent | React.KeyboardEvent) => {
     if (e) e.stopPropagation();
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para renombrar guiones.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      setInlineRenamingId(null);
+      return;
+    }
     if (!inlineNameVal.trim()) {
       setInlineRenamingId(null);
       return;
@@ -389,6 +427,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     slot: keyof CampaignAudioConfig,
     audioPath: string
   ) => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para modificar los audios del guión.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     const cleanPath = audioPath.trim();
     setCampaignEntities((prev) => {
       const updated = prev.map((ent) => {
@@ -431,6 +474,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Save complete entity from modal
   const handleSaveEntity = async (updatedEntity: CampaignEntity) => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Solo usuarios Administradores pueden guardar cambios en este guión.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      setIsEntityModalOpen(false);
+      return;
+    }
     setCampaignEntities((prev) => {
       const exists = prev.some((e) => e.id === updatedEntity.id);
       let next: CampaignEntity[];
@@ -502,6 +551,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Add new entity
   const handleAddNewEntity = () => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Solo usuarios Administradores pueden crear nuevos guiones en el IVR.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     const newId = 'custom_' + Date.now();
     const newEntity: CampaignEntity = {
       id: newId,
@@ -523,6 +577,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Delete entity
   const handleDeleteEntity = (entityId: string) => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para eliminar guiones.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     if (campaignEntities.length <= 1) return;
     setCampaignEntities((prev) => {
       const next = prev.filter((e) => e.id !== entityId);
@@ -544,6 +603,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Reset to factory defaults
   const handleResetEntities = () => {
+    if (!isAdmin) {
+      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para restablecer los guiones.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
     if (confirm('¿Restablecer todos los guiones y asignaciones de audio a los valores de fábrica?')) {
       setCampaignEntities(initialCampaignEntities);
       try {
@@ -2210,97 +2274,121 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           <span>Desbloqueado</span>
                         </span>
                       )}
+                      {isAdmin ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" title="Tienes privilegios de Administrador para editar y crear guiones">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          <span>Administrador</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Solo los usuarios con rol de Administrador pueden editar o crear guiones">
+                          <Lock className="w-3 h-3 text-amber-400" />
+                          <span>Solo Lectura (Admin requerido)</span>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Selecciona una entidad para la llamada o haz clic en <strong className="text-emerald-400">Editar</strong> para cambiar su nombre, textos y los 4 audios pregrabados.
+                      {isAdmin ? (
+                        <>Selecciona una entidad para la llamada o haz clic en <strong className="text-emerald-400">Editar</strong> para cambiar su nombre, textos y los 4 audios pregrabados.</>
+                      ) : (
+                        <>Selecciona la entidad que se simulará en la llamada activa. La edición y creación de guiones está protegida y reservada a <strong className="text-amber-400">Administradores</strong>.</>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleSaveAndLockCurrentEntity}
-                      disabled={isEntitySaving}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
-                      title="Guardar y bloquear este guión contra sobreescritura automática"
-                    >
-                      {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isEntitySaving ? 'Guardando...' : 'Guardar Configuración'}</span>
-                    </button>
-
-                    {campaignEntities.find((e) => e.id === selectedService)?.isLocked && (
-                      <button
-                        type="button"
-                        onClick={handleUnlockCurrentEntity}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
-                        title="Desbloquear guión para permitir sincronización automática"
-                      >
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>Desbloquear</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleAddNewEntity}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm"
-                      title="Crear un nuevo guión con audios personalizados"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Nuevo Guión</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
-                        setEditingEntity({ ...current });
-                        setIsEntityModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
-                      title="Editar el guión actualmente seleccionado"
-                    >
-                      <Pencil className="w-3 h-3 text-amber-400" />
-                      <span>Editar Seleccionado</span>
-                    </button>
-                    {campaignEntities.length > 1 && (
-                      confirmDeleteId === selectedService ? (
-                        <div className="inline-flex items-center gap-1 bg-rose-950/90 px-2 py-1 rounded-lg border border-rose-500/60">
-                          <span className="text-[10px] font-bold text-rose-300">¿Eliminar guión seleccionado?</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEntity(selectedService)}
-                            className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold shadow"
-                          >
-                            Sí
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
+                    {isAdmin ? (
+                      <>
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteId(selectedService)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all"
-                          title="Eliminar el guión actualmente seleccionado"
+                          onClick={handleSaveAndLockCurrentEntity}
+                          disabled={isEntitySaving}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
+                          title="Guardar y bloquear este guión contra sobreescritura automática"
                         >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Eliminar Seleccionado</span>
+                          {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          <span>{isEntitySaving ? 'Guardando...' : 'Guardar Configuración'}</span>
                         </button>
-                      )
+
+                        {campaignEntities.find((e) => e.id === selectedService)?.isLocked && (
+                          <button
+                            type="button"
+                            onClick={handleUnlockCurrentEntity}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
+                            title="Desbloquear guión para permitir sincronización automática"
+                          >
+                            <Unlock className="w-3.5 h-3.5" />
+                            <span>Desbloquear</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleAddNewEntity}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm"
+                          title="Crear un nuevo guión con audios personalizados"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Nuevo Guión</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+                            setEditingEntity({ ...current });
+                            setIsEntityModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+                          title="Editar el guión actualmente seleccionado"
+                        >
+                          <Pencil className="w-3 h-3 text-amber-400" />
+                          <span>Editar Seleccionado</span>
+                        </button>
+                        {campaignEntities.length > 1 && (
+                          confirmDeleteId === selectedService ? (
+                            <div className="inline-flex items-center gap-1 bg-rose-950/90 px-2 py-1 rounded-lg border border-rose-500/60">
+                              <span className="text-[10px] font-bold text-rose-300">¿Eliminar guión seleccionado?</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEntity(selectedService)}
+                                className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold shadow"
+                              >
+                                Sí
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(selectedService)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all"
+                              title="Eliminar el guión actualmente seleccionado"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Eliminar Seleccionado</span>
+                            </button>
+                          )
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleResetEntities}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all"
+                          title="Restablecer guiones de fábrica"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Restablecer</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs bg-slate-900/90 border border-amber-500/30 text-amber-300 shadow-sm" title="Solo los usuarios con rol de Administrador pueden modificar este guión">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Edición de Guiones protegida (Solo Administrador)</span>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleResetEntities}
-                      className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all"
-                      title="Restablecer guiones de fábrica"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Restablecer</span>
-                    </button>
                   </div>
                 </div>
 
@@ -2343,7 +2431,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                             <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-emerald-500/20' : 'bg-slate-800'}`}>
                               {renderIcon()}
                             </div>
-                            {inlineRenamingId === ent.id ? (
+                            {inlineRenamingId === ent.id && isAdmin ? (
                               <div className="flex-1 space-y-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="text"
@@ -2387,11 +2475,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               </div>
                             ) : (
                               <div
-                                className="truncate cursor-pointer group/title flex-1"
-                                onClick={(e) => handleStartInlineRename(ent, e)}
-                                title="Haz clic para renombrar directamente"
+                                className={`truncate flex-1 ${isAdmin ? 'cursor-pointer group/title' : ''}`}
+                                onClick={(e) => {
+                                  if (isAdmin) handleStartInlineRename(ent, e);
+                                }}
+                                title={isAdmin ? "Haz clic para renombrar directamente" : ent.name}
                               >
-                                <div className="text-xs font-bold text-white leading-tight truncate flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
+                                <div className={`text-xs font-bold text-white leading-tight truncate flex items-center gap-1.5 ${isAdmin ? 'hover:text-emerald-400 transition-colors' : ''}`}>
                                   <span>{ent.name}</span>
                                   {ent.isLocked && (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
@@ -2399,13 +2489,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                                       <span>Bloqueado</span>
                                     </span>
                                   )}
-                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/title:opacity-100 text-slate-400 transition-opacity" />
+                                  {isAdmin && (
+                                    <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/title:opacity-100 text-slate-400 transition-opacity" />
+                                  )}
                                 </div>
                                 <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>
                               </div>
                             )}
                           </div>
-                          {inlineRenamingId !== ent.id && (
+                          {isAdmin && inlineRenamingId !== ent.id && (
                             confirmDeleteId === ent.id ? (
                               <div
                                 className="flex items-center gap-1 bg-rose-950/90 p-1 rounded-lg border border-rose-500/60 shrink-0"
@@ -4403,7 +4495,7 @@ echo "=========================================================="`;
             {/* Footer */}
             <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
               <div>
-                {campaignEntities.length > 1 && (
+                {isAdmin && campaignEntities.length > 1 && (
                   confirmDeleteId === editingEntity.id ? (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-rose-400 font-bold">¿Seguro que deseas eliminar este guión?</span>
@@ -4444,27 +4536,36 @@ echo "=========================================================="`;
                   }}
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
                 >
-                  Cancelar
+                  {isAdmin ? 'Cancelar' : 'Cerrar'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveEntity({ ...editingEntity, isLocked: true })}
-                  disabled={!editingEntity.name.trim()}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
-                  title="Guardar y activar bloqueo manual (isLocked: true)"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Guardar y Bloquear (isLocked)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveEntity(editingEntity)}
-                  disabled={!editingEntity.name.trim()}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Configuración</span>
-                </button>
+                {isAdmin ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEntity({ ...editingEntity, isLocked: true })}
+                      disabled={!editingEntity.name.trim()}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+                      title="Guardar y activar bloqueo manual (isLocked: true)"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Guardar y Bloquear (isLocked)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEntity(editingEntity)}
+                      disabled={!editingEntity.name.trim()}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Guardar Configuración</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Solo Administradores pueden guardar cambios</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
