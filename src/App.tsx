@@ -1207,7 +1207,7 @@ export default function App() {
       fetch('/api/users/sync-sip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: newUser, users: updatedUsersList }),
+        body: JSON.stringify({ user: newUser }),
       }).catch(() => {});
     }
 
@@ -1241,7 +1241,7 @@ export default function App() {
       fetch('/api/users/sync-sip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: updatedUser, users: updatedUsersList }),
+        body: JSON.stringify({ user: updatedUser }),
       }).catch(() => {});
     }
 
@@ -1628,6 +1628,7 @@ export default function App() {
           <UsersTab
             users={users}
             extensions={extensions}
+            carriers={carriers}
             currentUserId={currentUserId}
             onSwitchUser={handleSwitchUser}
             onAddUser={handleAddUser}

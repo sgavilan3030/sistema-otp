@@ -28,18 +28,31 @@ echo "=== [1/6] Directorio de la aplicacion: $APP_DIR ==="
 cd "$APP_DIR"
 
 echo "=== [2/6] Descargando ultimos cambios de GitHub (git pull) ==="
+# Preservar bases de datos de clientes, saldos y configuraciones activas
+mkdir -p /tmp/ast20_db_backup
+[ -f reseller_data.json ] && cp -f reseller_data.json /tmp/ast20_db_backup/reseller_data.json 2>/dev/null || true
+[ -d data ] && cp -rf data /tmp/ast20_db_backup/ 2>/dev/null || true
+
 if [ -d ".git" ]; then
   echo "-> Actualizando repositorio git..."
   git fetch --all || true
   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
   [ "$BRANCH" = "HEAD" ] && BRANCH="main"
-  # Preservar cambios y descartar conflictos de merge
-  git stash --include-untracked 2>/dev/null || true
-  git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || git pull --force || true
+  git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git pull --force || true
   echo "✓ Repositorio actualizado a la última versión remota."
 else
   echo "Aviso: No se detectó repositorio .git directo, usando archivos locales actuales."
 fi
+
+# Restaurar bases de datos de clientes y saldos para que ninguna actualización sobreescriba datos
+if [ -f /tmp/ast20_db_backup/reseller_data.json ]; then
+  cp -f /tmp/ast20_db_backup/reseller_data.json ./reseller_data.json 2>/dev/null || true
+fi
+if [ -d /tmp/ast20_db_backup/data ]; then
+  mkdir -p ./data
+  cp -rn /tmp/ast20_db_backup/data/* ./data/ 2>/dev/null || true
+fi
+
 
 echo "=== [3/6] Instalando/verificando dependencias de Node.js ==="
 npm install --prefer-offline --no-audit 2>/dev/null || npm install || true

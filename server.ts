@@ -1881,12 +1881,41 @@ export function generateCleanDialplanConf(
              ` same => n,Hangup()\n\n`;
     }
     let block = '';
+    const labelEnd = `end_carrier_${tag}`;
+
+    // 1. Check if calling agent has an assigned dedicated carrier in AstDB (database put user_carrier <user> <carrier>)
+    block += ` same => n,Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})})\n`;
+    block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
+    block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = ""]?standard_carriers_${tag})\n`;
+    block += ` same => n,NoOp(=== [CARRIER DEDICADO] Usuario \${CALLERID(num)} tiene asignada la troncal: \${ASSIGNED_CARRIER} ===)\n`;
+
+    // Generate dedicated carrier attempt for each carrier matching the assigned slug
+    enabledCarriers.forEach((c) => {
+      const cSlug = c.name.replace(/\s+/g, '_');
+      const cHost = c.host;
+      const cPort = c.port || 5060;
+      block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${c.id}"]?skip_dedicated_${cSlug}_${tag})\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}:${cPort}) a ${destVar} ===)\n`;
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      if (tag === '11d') {
+        const dest10 = destVar.replace(/}$/, ':1}');
+        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS TRONCAL ASIGNADA] Marcando a 10 digitos por ${cSlug}: ${dest10} ===)\n`;
+        block += ` same => n,Dial(PJSIP/${cSlug}/sip:${dest10}@${cHost}:${cPort},60,Tt)\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      }
+      block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
+    });
+
+    // 2. Standard failover routing if no assigned carrier or if assigned carrier is not defined
+    block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de troncales habilitadas ===)\n`;
     enabledCarriers.forEach((c, idx) => {
       const cSlug = c.name.replace(/\s+/g, '_');
       const isFirst = idx === 0;
-      const isLast = idx === enabledCarriers.length - 1;
       const labelNext = `try_carrier_${tag}_${idx + 1}`;
-      const labelEnd = `end_carrier_${tag}`;
 
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} ===)\n`;
@@ -1898,7 +1927,6 @@ export function generateCleanDialplanConf(
       const cPort = c.port || 5060;
 
       // Explicit PJSIP URI outbound dial: Dial(PJSIP/endpoint/sip:number@host:port)
-      // This completely avoids the "Could not create dialog to invalid URI 'televox_aor'" error
       block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
 
@@ -3422,12 +3450,22 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const carrierHost = primaryCarrier.host || '127.0.0.1';
     const outboundCid = primaryCarrier.outboundCallerId || '+18005550199';
 
-    const usersToInclude = (Array.isArray(req.body.users) && req.body.users.length > 0)
-      ? req.body.users
-      : loadStoredUsers();
+    const storedUsersList = loadStoredUsers();
+    let usersToInclude = storedUsersList;
     if (Array.isArray(req.body.users) && req.body.users.length > 0) {
-      saveStoredUsers(req.body.users);
-      lastSyncedUsers = req.body.users;
+      const mergedMap = new Map<string, any>();
+      for (const u of storedUsersList) {
+        if (u && (u.id || u.username)) mergedMap.set(String(u.id || u.username).toLowerCase(), u);
+      }
+      for (const u of req.body.users) {
+        if (u && (u.id || u.username)) {
+          const k = String(u.id || u.username).toLowerCase();
+          mergedMap.set(k, { ...(mergedMap.get(k) || {}), ...u });
+        }
+      }
+      usersToInclude = Array.from(mergedMap.values());
+      saveStoredUsers(usersToInclude);
+      lastSyncedUsers = usersToInclude;
     }
 
     // Generate clean pjsip.conf using validated Asterisk 20 generator
@@ -5272,12 +5310,24 @@ if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
   cd "$APP_DIR"
 
   echo "=== [2/6] Descargando ultimos cambios de GitHub (git pull) ==="
+  mkdir -p /tmp/ast20_db_backup
+  [ -f reseller_data.json ] && cp -f reseller_data.json /tmp/ast20_db_backup/reseller_data.json 2>/dev/null || true
+  [ -d data ] && cp -rf data /tmp/ast20_db_backup/ 2>/dev/null || true
+
   if [ -d ".git" ]; then
     git fetch --all || true
     BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
     [ "$BRANCH" = "HEAD" ] && BRANCH="main"
-    git stash --include-untracked 2>/dev/null || true
-    git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || git pull --force || true
+    git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git pull --force || true
+  fi
+
+  # Restaurar base de datos de clientes y saldos para que ninguna actualizacion los sobreescriba
+  if [ -f /tmp/ast20_db_backup/reseller_data.json ]; then
+    cp -f /tmp/ast20_db_backup/reseller_data.json ./reseller_data.json 2>/dev/null || true
+  fi
+  if [ -d /tmp/ast20_db_backup/data ]; then
+    mkdir -p ./data
+    cp -rn /tmp/ast20_db_backup/data/* ./data/ 2>/dev/null || true
   fi
 
   echo "=== [3/6] Instalando dependencias de Node.js ==="
@@ -6425,7 +6475,7 @@ app.post('/api/reseller/clients', async (req, res) => {
       exec('asterisk -rx "pjsip reload"', () => {});
     } catch (_) {}
 
-    // Save in reseller store
+    // Save in reseller store with granular merge
     const existingClientIdx = resellerStore.clients.findIndex((c) => c.id === client.id || c.sipUsername === cleanUsername);
     if (existingClientIdx >= 0) {
       resellerStore.clients[existingClientIdx] = { ...resellerStore.clients[existingClientIdx], ...client, sipUsername: cleanUsername };
@@ -6434,11 +6484,73 @@ app.post('/api/reseller/clients', async (req, res) => {
     }
     saveResellerStore();
 
+    // Granular AstDB balance and rate update ONLY for this client
+    if (typeof client.balance === 'number') {
+      executeAsteriskCommand(`database put reseller_balance ${cleanUsername} "${client.balance}"`).catch(() => {});
+    }
+    if (typeof client.costPerMinute === 'number') {
+      executeAsteriskCommand(`database put reseller_rate ${cleanUsername} "${client.costPerMinute}"`).catch(() => {});
+    }
+    executeAsteriskCommand(`database put reseller_cutoff ${cleanUsername} "${client.cutoffOnZero !== false ? '1' : '0'}"`).catch(() => {});
+
+    // Save assigned carrier in AstDB for dedicated routing
+    const assignedCarrier = client.assignedCarrierId || client.carrierId || '';
+    if (assignedCarrier && assignedCarrier !== 'auto') {
+      executeAsteriskCommand(`database put user_carrier ${cleanUsername} "${assignedCarrier}"`).catch(() => {});
+    } else {
+      executeAsteriskCommand(`database del user_carrier ${cleanUsername}`).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: `Cliente ${cleanUsername} registrado exitosamente como extensión PJSIP en Asterisk 20.`,
       client: { ...client, sipUsername: cleanUsername },
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to delete a reseller client without wiping other clients
+app.delete('/api/reseller/clients/:clientId', async (req, res) => {
+  try {
+    const clientId = String(req.params.clientId || '').trim();
+    const idx = resellerStore.clients.findIndex((c) => c.id === clientId || c.sipUsername === clientId);
+    if (idx >= 0) {
+      const removed = resellerStore.clients.splice(idx, 1)[0];
+      saveResellerStore();
+      if (removed && removed.sipUsername) {
+        executeAsteriskCommand(`database del reseller_balance ${removed.sipUsername}`).catch(() => {});
+        executeAsteriskCommand(`database del reseller_rate ${removed.sipUsername}`).catch(() => {});
+      }
+    }
+    res.json({ success: true, message: 'Cliente eliminado correctamente' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to log individual recharge without touching entire database
+app.post('/api/reseller/recharges', async (req, res) => {
+  try {
+    const recharge = req.body;
+    if (!recharge || !recharge.sipUsername) {
+      return res.status(400).json({ success: false, error: 'Datos de recarga incompletos' });
+    }
+    const cleanUser = String(recharge.sipUsername).trim().toLowerCase();
+    const client = resellerStore.clients.find((c) => c.sipUsername === cleanUser || c.id === recharge.clientId);
+    if (client) {
+      client.balance = Number(((client.balance || 0) + (parseFloat(recharge.amount) || 0)).toFixed(2));
+      client.allocatedMinutes = (client.allocatedMinutes || 0) + (parseInt(recharge.minutesAdded) || 0);
+      client.totalRecharges = (client.totalRecharges || 0) + 1;
+      client.lastRechargeDate = new Date().toISOString().split('T')[0];
+      saveResellerStore();
+      executeAsteriskCommand(`database put reseller_balance ${cleanUser} "${client.balance}"`).catch(() => {});
+    }
+    if (!Array.isArray(resellerStore.recharges)) resellerStore.recharges = [];
+    resellerStore.recharges.unshift(recharge);
+    saveResellerStore();
+    res.json({ success: true, balance: client?.balance });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -6513,9 +6625,23 @@ app.post('/api/users/sync-sip', async (req, res) => {
     const { user, users } = req.body;
     let stored = loadStoredUsers();
     if (Array.isArray(users) && users.length > 0) {
-      stored = users;
-      saveStoredUsers(users);
-      lastSyncedUsers = users;
+      // Merge users instead of blindly overwriting the whole database
+      const userMap = new Map<string, any>();
+      for (const u of stored) {
+        if (u && (u.id || u.username)) {
+          userMap.set(String(u.id || u.username).toLowerCase(), u);
+        }
+      }
+      for (const u of users) {
+        if (u && (u.id || u.username)) {
+          const key = String(u.id || u.username).toLowerCase();
+          const prev = userMap.get(key) || {};
+          userMap.set(key, { ...prev, ...u });
+        }
+      }
+      stored = Array.from(userMap.values());
+      saveStoredUsers(stored);
+      lastSyncedUsers = stored;
     }
     const targetUser = user || (Array.isArray(users) && users[users.length - 1]);
     if (!targetUser) {
@@ -6612,12 +6738,18 @@ app.post('/api/users/sync-sip', async (req, res) => {
       }
     }
 
+    const userCarrier = targetUser.carrierId || targetUser.assignedCarrierId || '';
     for (const tgt of targetsToProvisionInDb) {
       executeAsteriskCommand(`database put reseller_balance ${tgt} "${balance}"`).catch(() => {});
       executeAsteriskCommand(`database put reseller_rate ${tgt} "${ratePerMinute}"`).catch(() => {});
       executeAsteriskCommand(`database put reseller_cutoff ${tgt} "${targetUser.cutoffOnZero !== false ? '1' : '0'}"`).catch(() => {});
       executeAsteriskCommand(`database put extension_cid ${tgt}/number "${(Array.isArray(targetUser.assignedExtensions) && targetUser.assignedExtensions[0]) || cleanUser}"`).catch(() => {});
       executeAsteriskCommand(`database put extension_cid ${tgt}/name "${targetUser.name || cleanUser}"`).catch(() => {});
+      if (userCarrier && userCarrier !== 'auto') {
+        executeAsteriskCommand(`database put user_carrier ${tgt} "${userCarrier}"`).catch(() => {});
+      } else {
+        executeAsteriskCommand(`database del user_carrier ${tgt}`).catch(() => {});
+      }
     }
 
     // 6. Generate and write clean pjsip.conf

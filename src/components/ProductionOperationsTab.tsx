@@ -19,7 +19,6 @@ import {
   RefreshCw,
   Trash2,
   Download,
-  Flame,
   KeyRound,
   AlertCircle,
   Building2,
@@ -117,8 +116,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const isAdmin = activeUser ? activeUser.role === 'admin' : true;
 
-  // Mode selection: individual direct launch vs ivr action tab vs bulk list
-  const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'bulk'>('single');
+  // Mode selection: individual direct launch vs ivr action tab
+  const [productionMode, setProductionMode] = useState<'single' | 'ivr_action'>('single');
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -674,12 +673,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<any>(null);
-
-  // Bulk launch state
-  const [bulkNumbersText, setBulkNumbersText] = useState('');
-  const [bulkQueue, setBulkQueue] = useState<string[]>([]);
-  const [isBulkRunning, setIsBulkRunning] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState({ total: 0, completed: 0, current: '' });
 
   // Real-time Active Call HUD State
   const [activeCall, setActiveCall] = useState<{
@@ -1736,19 +1729,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           }`}>
             {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1' : 'Híbrido'}
           </span>
-        </button>
-
-        <button
-          id="btn-tab-bulk-campaign"
-          onClick={() => setProductionMode('bulk')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            productionMode === 'bulk'
-              ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Flame className="w-4 h-4" />
-          <span>Campañas Masivas por Lotes (Bulk Dialer)</span>
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -3607,51 +3587,7 @@ echo "=========================================================="`;
         </div>
       )}
 
-      {/* BULK DIALER PANEL */}
-      {productionMode === 'bulk' && (
-        <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Flame className="w-5 h-5 text-emerald-400" />
-              <span>Marcador Masivo por Lotes (Bulk Campaign)</span>
-            </h3>
-            <span className="text-xs text-slate-400">Pega tu lista de números telefónicos</span>
-          </div>
 
-          <textarea
-            id="textarea-bulk-numbers"
-            rows={6}
-            value={bulkNumbersText}
-            onChange={(e) => setBulkNumbersText(e.target.value)}
-            placeholder="16104803845&#10;14155552671&#10;12125559823"
-            className="w-full p-4 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-emerald-500 focus:outline-none"
-          />
-
-          <div className="flex items-center justify-between pt-2">
-            <div className="text-xs text-slate-400">
-              Total de números detectados:{' '}
-              <strong className="text-emerald-400 font-mono">
-                {bulkNumbersText.split('\n').filter((n) => n.trim().length >= 8).length}
-              </strong>
-            </div>
-
-            <button
-              id="btn-launch-bulk"
-              onClick={() => {
-                const nums = bulkNumbersText.split('\n').filter((n) => n.trim().length >= 8);
-                if (nums.length > 0) {
-                  setTargetNumber(nums[0].trim());
-                  setProductionMode('single');
-                  alert(`Cargado primer número de la lista: ${nums[0].trim()}`);
-                }
-              }}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
-            >
-              Cargar al Disparador de Producción
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* LIVE CAPTURED OTP MONITOR FOR AGENT (Prominent HUD) */}
       {otpRecords.length > 0 && showLiveMonitor && (

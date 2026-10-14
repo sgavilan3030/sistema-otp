@@ -37,6 +37,7 @@ import {
   ChevronRight,
   Sliders,
   Percent,
+  Network,
 } from 'lucide-react';
 
 interface MinuteResellerTabProps {
@@ -413,6 +414,7 @@ export const MinuteResellerTab: React.FC<MinuteResellerTabProps> = ({
   const [formCostPerMin, setFormCostPerMin] = useState(0.018);
   const [formInitialBalance, setFormInitialBalance] = useState(15.0);
   const [formCutoffOnZero, setFormCutoffOnZero] = useState(true);
+  const [formCarrierId, setFormCarrierId] = useState<string>('auto');
   const [formPhone, setFormPhone] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formNotes, setFormNotes] = useState('');
@@ -425,6 +427,25 @@ export const MinuteResellerTab: React.FC<MinuteResellerTabProps> = ({
   const [rechargeNotes, setRechargeNotes] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+
+  // Load from server database on mount to guarantee real persistent storage
+  useEffect(() => {
+    fetch('/api/reseller/data')
+      .then((r) => r.json())
+      .then((res) => {
+        if (res && res.success && res.data) {
+          if (Array.isArray(res.data.clients) && res.data.clients.length > 0) {
+            setClients(res.data.clients);
+            try { localStorage.setItem('ast20_reseller_clients', JSON.stringify(res.data.clients)); } catch (_) {}
+          }
+          if (Array.isArray(res.data.recharges) && res.data.recharges.length > 0) {
+            setRecharges(res.data.recharges);
+            try { localStorage.setItem('ast20_reseller_recharges', JSON.stringify(res.data.recharges)); } catch (_) {}
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Synchronize with server / localStorage
   const saveClients = (newClients: ResellerClient[]) => {
@@ -512,6 +533,7 @@ regInterval=300
     setFormCostPerMin(0.018);
     setFormInitialBalance(18.0);
     setFormCutoffOnZero(true);
+    setFormCarrierId('auto');
     setFormPhone('');
     setFormEmail('');
     setFormNotes('');
@@ -529,6 +551,7 @@ regInterval=300
     setFormCostPerMin(cli.costPerMinute);
     setFormInitialBalance(cli.balance);
     setFormCutoffOnZero(cli.cutoffOnZero);
+    setFormCarrierId(cli.assignedCarrierId || 'auto');
     setFormPhone(cli.contactPhone || '');
     setFormEmail(cli.contactEmail || '');
     setFormNotes(cli.notes || '');
@@ -575,6 +598,7 @@ regInterval=300
             sipPassword: formSipPassword,
             costPerMinute: formCostPerMin,
             cutoffOnZero: formCutoffOnZero,
+            assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
             contactPhone: formPhone,
             contactEmail: formEmail,
             notes: formNotes,
@@ -583,6 +607,16 @@ regInterval=300
         return c;
       });
       saveClients(updatedClients);
+
+      // Persist individual edited client to server without touching other clients
+      const editedRecord = updatedClients.find((c) => c.id === editingClient.id);
+      if (editedRecord) {
+        fetch('/api/reseller/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editedRecord),
+        }).catch(() => {});
+      }
 
       // Update PJSIP extension in memory if present
       if (onUpdateExtension) {
@@ -613,6 +647,7 @@ regInterval=300
         status: formInitialBalance > 2 ? 'active' : 'low_balance',
         creditLimit: 0,
         cutoffOnZero: formCutoffOnZero,
+        assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
         contactPhone: formPhone,
         contactEmail: formEmail,
         notes: formNotes,
@@ -622,6 +657,13 @@ regInterval=300
 
       const updated = [newClient, ...clients];
       saveClients(updated);
+
+      // Persist new client to server
+      fetch('/api/reseller/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newClient),
+      }).catch(() => {});
 
       // Record initial recharge if > 0
       if (formInitialBalance > 0) {
@@ -640,6 +682,11 @@ regInterval=300
           invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
         };
         saveRecharges([initialRec, ...recharges]);
+        fetch('/api/reseller/recharges', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(initialRec),
+        }).catch(() => {});
       }
 
       // Automatically register new named PJSIP extension in Asterisk
@@ -679,6 +726,9 @@ regInterval=300
     if (confirm(`¿Estás seguro de eliminar el cliente "${cli.name}" (${cli.sipUsername})?`)) {
       const updated = clients.filter((c) => c.id !== id);
       saveClients(updated);
+      fetch(`/api/reseller/clients/${encodeURIComponent(cli.id || cli.sipUsername)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
       showToast(`Cliente "${cli.name}" eliminado.`);
     }
   };
@@ -727,6 +777,13 @@ regInterval=300
       invoiceNumber: invNumber,
     };
     saveRecharges([newRecord, ...recharges]);
+
+    // Send atomic recharge to backend to credit only this client
+    fetch('/api/reseller/recharges', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRecord),
+    }).catch(() => {});
 
     setIsRechargeModalOpen(false);
     setReceiptModalRecord(newRecord);
@@ -1074,6 +1131,22 @@ regInterval=300
                         <span className="text-slate-500 text-[10px]">Tarifa/Min:</span>
                         <span className="text-white font-bold">${client.costPerMinute.toFixed(3)}</span>
                       </div>
+                    </div>
+
+                    <div className="pt-1 border-t border-slate-900 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 flex items-center gap-1">
+                        <Network className="w-3 h-3 text-sky-400" />
+                        <span>Ruta SIP Saliente:</span>
+                      </span>
+                      {client.assignedCarrierId ? (
+                        <span className="font-mono text-sky-300 font-bold bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/30 text-[10px]">
+                          📡 {client.assignedCarrierId}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[10px] bg-slate-900 px-2 py-0.5 rounded">
+                          🌐 Pool General
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1756,6 +1829,42 @@ regInterval=300
                 <label htmlFor="chk-cutoff" className="text-slate-300 text-xs font-semibold">
                   Cortar llamadas automáticamente cuando el saldo llegue a 0 (Modo Prepago Estricto)
                 </label>
+              </div>
+
+              {/* Dedicated Carrier / Trunk Selector */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-200 text-xs font-bold flex items-center gap-1.5">
+                    <Network className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Carrier / Troncal SIP Saliente Asignada</span>
+                  </label>
+                  <span className="text-[10px] text-sky-300 font-mono bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
+                    Ruta Dedicada
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Selecciona la troncal exclusiva por la que saldrán las llamadas de este cliente en MicroSIP.
+                </p>
+                <select
+                  value={formCarrierId}
+                  onChange={(e) => setFormCarrierId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-sky-400 font-mono"
+                >
+                  <option value="auto">🌐 Automático / Pool General (Failover estándar entre troncales activas)</option>
+                  {carriers.map((c) => {
+                    const cSlug = c.name.replace(/\s+/g, '_');
+                    return (
+                      <option key={c.id} value={cSlug}>
+                        📡 {c.name} ({c.host}:{c.port || 5060}) {c.status === 'reachable' ? '● En línea' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {formCarrierId !== 'auto' && (
+                  <p className="text-[10px] text-emerald-400 font-medium">
+                    ✓ Asterisk enrutará prioritariamente las llamadas de este cliente por la troncal <strong className="font-mono text-white">{formCarrierId}</strong>.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">

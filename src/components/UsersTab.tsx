@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SystemUser, PjsipExtension, UserPermissions } from '../types';
+import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk } from '../types';
 import {
   Users,
   UserPlus,
@@ -25,11 +25,13 @@ import {
   RefreshCw,
   Smartphone,
   ChevronRight,
+  Network,
 } from 'lucide-react';
 
 interface UsersTabProps {
   users: SystemUser[];
   extensions: PjsipExtension[];
+  carriers?: CarrierTrunk[];
   currentUserId: string;
   onSwitchUser: (userId: string) => void;
   onAddUser: (user: SystemUser) => void;
@@ -40,6 +42,7 @@ interface UsersTabProps {
 export const UsersTab: React.FC<UsersTabProps> = ({
   users,
   extensions,
+  carriers = [],
   currentUserId,
   onSwitchUser,
   onAddUser,
@@ -60,6 +63,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [formBalance, setFormBalance] = useState<number>(10.00);
   const [formRate, setFormRate] = useState<number>(0.02);
   const [formCutoffOnZero, setFormCutoffOnZero] = useState<boolean>(true);
+  const [formCarrierId, setFormCarrierId] = useState<string>('auto');
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
@@ -231,6 +235,7 @@ regInterval=300
     setFormBalance(10.00);
     setFormRate(0.02);
     setFormCutoffOnZero(true);
+    setFormCarrierId('auto');
     setFormStatus('active');
     // Default assign first available extension >= 1001
     setSelectedExts(availableExtensions.length > 0 ? [availableExtensions[0].extension] : ['1001']);
@@ -250,6 +255,7 @@ regInterval=300
     setFormBalance(typeof user.balance === 'number' ? user.balance : 10.00);
     setFormRate(typeof user.costPerMinute === 'number' ? user.costPerMinute : 0.02);
     setFormCutoffOnZero(user.cutoffOnZero !== false);
+    setFormCarrierId(user.carrierId || 'auto');
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
     setPermissions(user.permissions);
@@ -303,6 +309,7 @@ regInterval=300
       allocatedMinutes: Math.round(formBalance / (formRate || 0.02)),
       usedMinutes: editingUser?.usedMinutes || 0,
       cutoffOnZero: formCutoffOnZero,
+      carrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       assignedExtensions: selectedExts,
       permissions,
       status: formStatus,
@@ -590,6 +597,23 @@ regInterval=300
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Assigned Carrier Badge */}
+                <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
+                    <Network className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Troncal Saliente:</span>
+                  </span>
+                  {user.carrierId ? (
+                    <span className="text-[10px] font-mono font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/40">
+                      📡 {user.carrierId}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                      🌐 Pool General
+                    </span>
+                  )}
                 </div>
 
                 {/* Assigned Extensions (>= 1001) */}
@@ -968,6 +992,43 @@ regInterval=300
                   </div>
                 </div>
               )}
+
+              {/* Dedicated Carrier / Trunk Selector */}
+              <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-slate-200 font-semibold flex items-center gap-1.5 text-xs">
+                    <Network className="w-4 h-4 text-sky-400" />
+                    <span>Carrier / Troncal SIP Saliente Asignada</span>
+                  </label>
+                  <span className="text-[10px] text-sky-300 font-mono bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
+                    Ruta Dedicada
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Define por cuál troncal SIP saldrán las llamadas de este usuario cuando marque desde MicroSIP o el marcador web.
+                </p>
+
+                <select
+                  value={formCarrierId}
+                  onChange={(e) => setFormCarrierId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-sky-400 font-mono"
+                >
+                  <option value="auto">🌐 Automático / Pool General (Failover estándar entre troncales activas)</option>
+                  {carriers.map((c) => {
+                    const cSlug = c.name.replace(/\s+/g, '_');
+                    return (
+                      <option key={c.id} value={cSlug}>
+                        📡 {c.name} ({c.host}:{c.port || 5060}) {c.status === 'reachable' ? '● En línea' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {formCarrierId !== 'auto' && (
+                  <p className="text-[10px] text-emerald-400 font-medium">
+                    ✓ Asterisk enrutará prioritariamente las llamadas de este usuario por la troncal <strong className="font-mono text-white">{formCarrierId}</strong>.
+                  </p>
+                )}
+              </div>
 
               {/* Assign Extensions Section (Enforces >= 1001) */}
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
