@@ -1141,7 +1141,7 @@ export const defaultCarriersList = [
     id: 'trunk-televox',
     name: 'televox',
     authType: 'registration',
-    host: '52.144.46.192',
+    host: 'voip.ghostcall.online',
     port: 5060,
     username: 'sgavilan30',
     secret: 'Robert2026',
@@ -1152,7 +1152,7 @@ export const defaultCarriersList = [
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
-    fromuser: 'sgavilan30',
+    fromuser: '',
     sendrpid: 'yes',
     trustrpid: 'yes',
     insecure: 'port,invite',
@@ -1226,14 +1226,50 @@ function saveStoredUsers(users: any[]) {
   } catch (_) {}
 }
 
+const CARRIERS_FILE = path.join(DATA_DIR, 'carriers.json');
+
+function loadStoredCarriers(): any[] {
+  try {
+    if (fs.existsSync(CARRIERS_FILE)) {
+      const raw = fs.readFileSync(CARRIERS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  try {
+    if (fs.existsSync(APP_STATE_FILE)) {
+      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.carriers) && parsed.carriers.length > 0) return parsed.carriers;
+    }
+  } catch (_) {}
+  return defaultCarriersList;
+}
+
+function saveStoredCarriers(carriers: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CARRIERS_FILE, JSON.stringify(carriers, null, 2), 'utf8');
+    if (fs.existsSync(APP_STATE_FILE)) {
+      try {
+        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        parsed.carriers = carriers;
+        parsed.lastUpdated = Date.now();
+        fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 // Cached store of last synchronized carriers and users
-let lastSyncedCarriers: any[] = defaultCarriersList;
+let lastSyncedCarriers: any[] = loadStoredCarriers();
 let lastSyncedUsers: any[] = loadStoredUsers();
 
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
 // CRITICAL: In Asterisk PJSIP, endpoint, auth, and aor MUST have distinct category names (e.g. [1001], [1001-auth], [1001-aor]).
 // Transports must use standard Asterisk names [transport-udp], [transport-tcp], [transport-wss] with custom bind port.
-function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedCarriers, extraUsers: any[] = []): string {
+export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList, carriers: any[] = lastSyncedCarriers, extraUsers: any[] = []): string {
   const baseExts = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
   const mergedExtsMap = new Map<string, any>();
 
@@ -1495,7 +1531,7 @@ function generateCleanPjsipConf(extensions: any[], carriers: any[] = lastSyncedC
         const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
         pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
       }
-      const endpointFromUser = carrier.fromuser || cUser;
+      const endpointFromUser = carrier.fromuser;
       if (endpointFromUser) {
         pjsipContent += `from_user = ${endpointFromUser}\n`;
       }
@@ -1603,7 +1639,7 @@ async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any
 // Generate clean Asterisk extensions.conf (Dialplan) with complete routing, multi-carrier failover and IVR capture
 export function generateCleanDialplanConf(
   carriersInput: any = defaultCarriersList,
-  carrierHostFallback = '52.144.46.192',
+  carrierHostFallback = 'voip.ghostcall.online',
   audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {}
 ): string {
   const carriersList: any[] = Array.isArray(carriersInput)
@@ -1615,6 +1651,8 @@ export function generateCleanDialplanConf(
   const enabledCarriers = carriersList.filter((c) => c && c.name && c.enabled !== false && c.status !== 'disabled');
   const primaryCarrier = enabledCarriers[0] || carriersList[0] || { name: 'carrier_default', host: carrierHostFallback };
   const carrierHost = primaryCarrier.host || carrierHostFallback;
+  const defaultCidNum = (primaryCarrier.outboundCallerId || '+18005550199').replace(/[^0-9]/g, '') || '18005550199';
+  const defaultCidName = primaryCarrier.outboundCallerIdName || 'Seguridad Bancaria';
 
   let dialplanContent = `; ========================================================\n`;
   dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
@@ -1631,6 +1669,8 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `[globals]\n`;
   dialplanContent += `GLOBAL_CARRIER_HOST=${carrierHost}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_CID_NUM=${defaultCidNum}\n`;
+  dialplanContent += `GLOBAL_DEFAULT_CID_NAME=${defaultCidName}\n`;
   dialplanContent += `GLOBAL_DEFAULT_INTRO=${chosenIntro}\n`;
   dialplanContent += `GLOBAL_DEFAULT_PROMPT=${chosenPrompt}\n`;
   dialplanContent += `GLOBAL_DEFAULT_WAIT=${chosenWait}\n`;
@@ -1886,6 +1926,7 @@ export function generateCleanDialplanConf(
     // 1. Check if calling agent has an assigned dedicated carrier in AstDB (database put user_carrier <user> <carrier>)
     block += ` same => n,Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})})\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
+    block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CHANNEL(endpoint)})}))\n`;
     block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = ""]?standard_carriers_${tag})\n`;
     block += ` same => n,NoOp(=== [CARRIER DEDICADO] Usuario \${CALLERID(num)} tiene asignada la troncal: \${ASSIGNED_CARRIER} ===)\n`;
 
@@ -1895,23 +1936,22 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${c.id}"]?skip_dedicated_${cSlug}_${tag})\n`;
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}:${cPort}) a ${destVar} ===)\n`;
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
-      block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} a 11 digitos ${destVar} ===)\n`;
+      // Direct PJSIP endpoint dial with full AOR resolution & registration auth
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
+      block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} direct finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      if (tag === '11d') {
-        const dest10 = destVar.replace(/}$/, ':1}');
-        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS TRONCAL ASIGNADA] Marcando a 10 digitos por ${cSlug}: ${dest10} ===)\n`;
-        block += ` same => n,Dial(PJSIP/${cSlug}/sip:${dest10}@${cHost}:${cPort},60,Tt)\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      }
+      // Failover via explicit URI if direct endpoint dial failed
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} URI finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
     });
 
     // 2. Standard failover routing if no assigned carrier or if assigned carrier is not defined
-    block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de troncales habilitadas ===)\n`;
+    block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de troncales habilitadas a 11 digitos ===)\n`;
     enabledCarriers.forEach((c, idx) => {
       const cSlug = c.name.replace(/\s+/g, '_');
       const isFirst = idx === 0;
@@ -1920,31 +1960,26 @@ export function generateCleanDialplanConf(
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} ===)\n`;
       } else {
-        block += ` same => n,NoOp(=== [OUTBOUND] Intentando llamada por Troncal Primaria: ${cSlug} a ${destVar} ===)\n`;
+        block += ` same => n,NoOp(=== [OUTBOUND] Intentando llamada por Troncal Primaria: ${cSlug} a 11 digitos ${destVar} ===)\n`;
       }
 
       const cHost = c.host;
       const cPort = c.port || 5060;
 
-      // Explicit PJSIP URI outbound dial: Dial(PJSIP/endpoint/sip:number@host:port)
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
-      block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
-
-      // If call was answered or client is busy, do not failover
+      // 1st attempt: Canonical PJSIP endpoint dial (PJSIP/number@endpoint)
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
+      block += ` same => n,NoOp(=== Troncal ${cSlug} direct finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
 
-      // 11-digit NANP fallback to 10-digit if carrier rejects country code prefix
-      if (tag === '11d') {
-        const dest10 = destVar.replace(/}$/, ':1}');
-        block += ` same => n,NoOp(=== [REINTENTO 10-DIGITOS] Intentando llamada a 10 digitos por ${cSlug}: ${dest10} ===)\n`;
-        block += ` same => n,Dial(PJSIP/${cSlug}/sip:${dest10}@${cHost}:${cPort},60,Tt)\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      }
+      // 2nd attempt: Explicit SIP URI dial
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      block += ` same => n,NoOp(=== Troncal ${cSlug} URI finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
 
-    block += ` same => n(${`end_carrier_${tag}`}),Hangup()\n\n`;
+    block += ` same => n(${labelEnd}),Hangup()\n\n`;
     return block;
   };
 
@@ -1957,81 +1992,68 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
 
-  dialplanContent += `; 3. Regla Saliente USA / Canada 11 digitos (ej. 16104803845) con Multi-Carrier Failover\n`;
+  dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 16104803845) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CHANNEL(endpoint)}" != ""]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_BAL=\${IF($["\${DB(reseller_balance/\${CALLING_USER})}" != ""]?\${DB(reseller_balance/\${CALLING_USER})}:\${DB(reseller_balance/\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_CUT=\${IF($["\${DB(reseller_cutoff/\${CALLING_USER})}" != ""]?\${DB(reseller_cutoff/\${CALLING_USER})}:\${DB(reseller_cutoff/\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_11d)\n`;
-  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_11d)\n`;
+  dialplanContent += ` same => n,GotoIf($[0\${CLIENT_BAL} > 0]?allow_11d)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_11d)\n`;
-  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Usuario \${CALLING_USER} sin saldo prepago ===)\n`;
   dialplanContent += ` same => n,Congestion(34)\n`;
   dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += ` same => n(allow_11d),Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n(allow_11d),Set(DB(last_agent_call/\${EXTEN})=\${CALLING_USER})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_USER}/number)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_USER}/name)}))\n`;
   dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
-  dialplanContent += `; 4. Regla Saliente USA / Canada 10 digitos (ej. 6104803845 -> prepends 1) con Multi-Carrier Failover\n`;
-  dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos a 1\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(__CALL_DEST=1\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_10d)\n`;
-  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_10d)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_10d)\n`;
-  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
-  dialplanContent += ` same => n,Congestion(34)\n`;
-  dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += ` same => n(allow_10d),Set(DB(last_agent_call/1\${EXTEN})=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(TARGET_DEST=1\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += generateOutboundDialSteps(`1\${EXTEN}`, '10d');
+  dialplanContent += `; 4. Regla Saliente USA / Canada / RD 10 digitos (ej. 8494386040) -> Convierte automáticamente a 11 digitos (18494386040) requeridos por el proveedor\n`;
+  dialplanContent += `exten => _NXXNXXXXXX,1,NoOp(Llamada Saliente 10 digitos normalizada a 11 digitos para carrier: 1\${EXTEN})\n`;
+  dialplanContent += ` same => n,Goto(from-internal,1\${EXTEN},1)\n\n`;
 
   dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CHANNEL(endpoint)}" != ""]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_BAL=\${DB(reseller_balance/\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLIENT_CUT=\${DB(reseller_cutoff/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_BAL=\${IF($["\${DB(reseller_balance/\${CALLING_USER})}" != ""]?\${DB(reseller_balance/\${CALLING_USER})}:\${DB(reseller_balance/\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(CLIENT_CUT=\${IF($["\${DB(reseller_cutoff/\${CALLING_USER})}" != ""]?\${DB(reseller_cutoff/\${CALLING_USER})}:\${DB(reseller_cutoff/\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${CLIENT_BAL}" = ""]?allow_univ)\n`;
-  dialplanContent += ` same => n,GotoIf($[\${CLIENT_BAL} > 0]?allow_univ)\n`;
+  dialplanContent += ` same => n,GotoIf($[0\${CLIENT_BAL} > 0]?allow_univ)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CLIENT_CUT}" != "1"]?allow_univ)\n`;
-  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Cliente \${CALLERID(num)} sin saldo prepago ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CORTE SALDO $0.00] Usuario \${CALLING_USER} sin saldo prepago ===)\n`;
   dialplanContent += ` same => n,Congestion(34)\n`;
   dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += ` same => n(allow_univ),Set(DB(last_agent_call/\${EXTEN})=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n(allow_univ),Set(DB(last_agent_call/\${EXTEN})=\${CALLING_USER})\n`;
+  dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_USER}/number)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_USER}/name)}))\n`;
   dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
@@ -3026,12 +3048,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('mohsuggest') ||
         content.includes('moh_interpret') ||
         !content.includes('[televox]') ||
-        !content.includes('[televox_aor]') ||
-        content.includes('ghostcall.online') ||
-        content.includes('vip.ghostcall.online') ||
-        content.includes('[reg_ghost]')
+        !content.includes('[televox_aor]')
       ) {
-        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas, parámetros inválidos o falta de carriers en /etc/asterisk/pjsip.conf. Reparando...');
+        console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
       }
     } else {
@@ -3040,7 +3059,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
 
     // Always generate pure up-to-date PJSIP config with all stored users and reload Asterisk
     const storedUsers = loadStoredUsers();
-    const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers, storedUsers);
+    const storedCarriers = loadStoredCarriers();
+    lastSyncedCarriers = storedCarriers;
+    const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, storedCarriers, storedUsers);
     await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
     try {
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
@@ -3058,7 +3079,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
     ensureAudioCodecsAndRtpConfExists();
 
     // Auto-generate dialplan baseline and keep synced
-    const cleanDialplan = generateCleanDialplanConf();
+    const cleanDialplan = generateCleanDialplanConf(storedCarriers);
     lastGeneratedDialplan = cleanDialplan;
     try {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
@@ -3444,10 +3465,13 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     const validCarriers = Array.isArray(carriers) ? carriers : defaultCarriersList;
     lastSyncedCarriers = validCarriers;
+    if (Array.isArray(carriers) && carriers.length > 0) {
+      saveStoredCarriers(validCarriers);
+    }
     const enabledCarriers = validCarriers.filter((c: any) => c && c.name && c.enabled !== false && c.status !== 'disabled');
-    const primaryCarrier = enabledCarriers[0] || validCarriers[0] || { name: 'carrier_default', host: '127.0.0.1' };
+    const primaryCarrier = enabledCarriers[0] || validCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
     const activeCarrier = primaryCarrier.name ? primaryCarrier.name.replace(/\s+/g, '_') : 'carrier_default';
-    const carrierHost = primaryCarrier.host || '127.0.0.1';
+    const carrierHost = primaryCarrier.host || 'voip.ghostcall.online';
     const outboundCid = primaryCarrier.outboundCallerId || '+18005550199';
 
     const storedUsersList = loadStoredUsers();
@@ -6468,11 +6492,15 @@ app.post('/api/reseller/clients', async (req, res) => {
       defaultExtensionsList.push(newExtObj as any);
     }
 
-    // Auto-update /etc/asterisk/pjsip.conf and reload
+    // Auto-update /etc/asterisk/pjsip.conf and /etc/asterisk/extensions.conf and reload
     try {
       const updatedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
       await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
-      exec('asterisk -rx "pjsip reload"', () => {});
+      await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+      const updatedDialplan = generateCleanDialplanConf(lastSyncedCarriers);
+      await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
+      await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
+      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
     } catch (_) {}
 
     // Save in reseller store with granular merge
