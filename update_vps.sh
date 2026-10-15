@@ -60,28 +60,49 @@ npm install --prefer-offline --no-audit 2>/dev/null || npm install || true
 echo "=== [4/6] Compilando frontend (Vite) y backend (esbuild) en dist/ ==="
 npm run build
 
-echo "=== [5/6] Sincronizando configuracion pura Asterisk 20 ==="
+echo "=== [5/6] Sincronizando configuracion pura Asterisk 20 y Audios ==="
 mkdir -p /etc/asterisk
-mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
 mkdir -p /var/spool/asterisk/outgoing
 chmod 777 /var/spool/asterisk/outgoing 2>/dev/null || true
 
-# Copiar configuraciones locales si existen
-[ -f pjsip.conf ] && cp -f pjsip.conf /etc/asterisk/pjsip.conf || true
-[ -f extensions.conf ] && cp -f extensions.conf /etc/asterisk/extensions.conf || true
-[ -f manager.conf ] && cp -f manager.conf /etc/asterisk/manager.conf || true
+# Detectar IP pública real del VPS para NAT y RTP bidireccional
+PUBLIC_IP=$(curl -s -m 3 https://api.ipify.org || curl -s -m 3 https://ifconfig.me || curl -s -m 3 https://icanhazip.com || hostname -I | awk '{print $1}')
+echo "-> IP Pública del VPS para RTP/NAT: $PUBLIC_IP"
 
-# Copiar audios si existen
+# Copiar configuraciones locales si existen
+[ -f rtp.conf ] && cp -f rtp.conf /etc/asterisk/rtp.conf || true
+[ -f manager.conf ] && cp -f manager.conf /etc/asterisk/manager.conf || true
+[ -f extensions.conf ] && cp -f extensions.conf /etc/asterisk/extensions.conf || true
+if [ -f pjsip.conf ]; then
+  cp -f pjsip.conf /etc/asterisk/pjsip.conf
+  if [ -n "$PUBLIC_IP" ] && ! grep -q "external_media_address" /etc/asterisk/pjsip.conf; then
+    sed -i "/bind = 0.0.0.0:47923/a local_net = 127.0.0.0/8\nlocal_net = 10.0.0.0/8\nlocal_net = 172.16.0.0/12\nlocal_net = 192.168.0.0/16\nexternal_media_address = $PUBLIC_IP\nexternal_signaling_address = $PUBLIC_IP:47923" /etc/asterisk/pjsip.conf
+  fi
+fi
+
+# Copiar audios a todos los directorios estándar de Asterisk
+mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
+mkdir -p /usr/share/asterisk/sounds/custom /usr/share/asterisk/sounds/es/custom /usr/share/asterisk/sounds/en/custom
 if [ -d "public/assets" ]; then
   cp -f public/assets/*.wav /var/lib/asterisk/sounds/custom/ 2>/dev/null || true
   cp -f public/assets/*.gsm /var/lib/asterisk/sounds/custom/ 2>/dev/null || true
   cp -f public/assets/*.wav /var/lib/asterisk/sounds/es/custom/ 2>/dev/null || true
   cp -f public/assets/*.gsm /var/lib/asterisk/sounds/es/custom/ 2>/dev/null || true
+  cp -f public/assets/*.wav /var/lib/asterisk/sounds/ 2>/dev/null || true
+  cp -f public/assets/*.gsm /var/lib/asterisk/sounds/ 2>/dev/null || true
+  cp -f public/assets/*.wav /usr/share/asterisk/sounds/custom/ 2>/dev/null || true
+  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/custom/ 2>/dev/null || true
+  cp -f public/assets/*.wav /usr/share/asterisk/sounds/es/custom/ 2>/dev/null || true
+  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/es/custom/ 2>/dev/null || true
+  cp -f public/assets/*.wav /usr/share/asterisk/sounds/ 2>/dev/null || true
+  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/ 2>/dev/null || true
 fi
-chmod -R 777 /var/lib/asterisk/sounds 2>/dev/null || true
+chmod -R 777 /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
+chown -R asterisk:asterisk /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
 
 # Recargar Asterisk
-echo "Recargando Asterisk PJSIP, Dialplan y Manager..."
+echo "Recargando Asterisk PJSIP, RTP, Dialplan y Manager..."
+asterisk -rx "core reload" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
