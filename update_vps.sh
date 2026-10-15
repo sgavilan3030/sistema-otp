@@ -13,14 +13,14 @@ echo ""
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ ! -f "$APP_DIR/package.json" ]; then
-  if [ -f "/var/www/sistema-otp/package.json" ]; then
+  if [ -f "/root/sistema-otp/package.json" ]; then
+    APP_DIR="/root/sistema-otp"
+  elif [ -f "$(pwd)/package.json" ]; then
+    APP_DIR="$(pwd)"
+  elif [ -f "/var/www/sistema-otp/package.json" ]; then
     APP_DIR="/var/www/sistema-otp"
   elif [ -f "/var/www/black-hat-dialer/package.json" ]; then
     APP_DIR="/var/www/black-hat-dialer"
-  elif [ -f "$(pwd)/package.json" ]; then
-    APP_DIR="$(pwd)"
-  elif [ -f "/root/sistema-otp/package.json" ]; then
-    APP_DIR="/root/sistema-otp"
   fi
 fi
 
@@ -85,6 +85,10 @@ echo "Recargando Asterisk PJSIP, Dialplan y Manager..."
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
+asterisk -rx "pjsip send register reg_televox" 2>/dev/null || true
+asterisk -rx "pjsip send register reg_ghost" 2>/dev/null || true
+echo "Estado de registros SIP con el proveedor:"
+asterisk -rx "pjsip show registrations" 2>/dev/null || true
 
 echo "=== [6/6] Reiniciando servicio de la aplicacion Node.js ==="
 # Garantizar que el puerto 3000 no quede bloqueado por procesos zombies o huérfanos
