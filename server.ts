@@ -1544,7 +1544,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
         pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
       }
-      const endpointFromUser = carrier.fromuser;
+      const endpointFromUser = carrier.fromuser || (carrier.authType === 'registration' ? cUser : '');
       if (endpointFromUser) {
         pjsipContent += `from_user = ${endpointFromUser}\n`;
       }
@@ -1937,7 +1937,8 @@ export function generateCleanDialplanConf(
     const labelEnd = `end_carrier_${tag}`;
 
     // 1. Check if calling agent has an assigned dedicated carrier in AstDB (database put user_carrier <user> <carrier>)
-    block += ` same => n,Set(CALLING_USER_CHAN=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+    block += ` same => n,Set(CALLING_USER_CHAN=\${CALLERID(num)})\n`;
+    block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER_CHAN=\${CHANNEL(endpoint)}))\n`;
     block += ` same => n,Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})})\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_USER_CHAN})}))\n`;
@@ -1951,8 +1952,11 @@ export function generateCleanDialplanConf(
       const cPort = c.port || 5060;
       block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${c.id}"]?skip_dedicated_${cSlug}_${tag})\n`;
       block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} a 11 digitos ${destVar} ===)\n`;
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
@@ -1974,9 +1978,13 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
 
-      // Direct, standard PJSIP URI dial to trunk
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      // Primary standard endpoint dial using registered AOR
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      // Failover to direct URI on same trunk
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
@@ -2018,6 +2026,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = "18005550199"]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
@@ -2055,6 +2064,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = "18005550199"]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
