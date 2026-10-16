@@ -21,6 +21,9 @@ import {
   Server,
   Layers,
   ArrowRight,
+  Star,
+  ArrowUp,
+  ArrowDown,
   X
 } from 'lucide-react';
 
@@ -31,6 +34,7 @@ interface CarriersTabProps {
   onDeleteCarrier: (id: string) => void;
   onPingCarrier: (id: string) => void;
   onToggleCarrier?: (id: string) => void;
+  onReorderCarriers?: (reordered: CarrierTrunk[]) => void;
   onSyncAsterisk?: () => void;
   isSyncing?: boolean;
 }
@@ -42,6 +46,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   onDeleteCarrier,
   onPingCarrier,
   onToggleCarrier,
+  onReorderCarriers,
   onSyncAsterisk,
   isSyncing,
 }) => {
@@ -122,20 +127,45 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     }
   };
 
+  const handleSetPrimary = (id: string) => {
+    const target = carriers.find((c) => c.id === id);
+    if (!target) return;
+    const others = carriers.filter((c) => c.id !== id);
+    const reordered = [target, ...others];
+    if (onReorderCarriers) {
+      onReorderCarriers(reordered);
+    }
+    setSelectedCarrierId(id);
+  };
+
+  const handleMoveCarrier = (id: string, direction: 'up' | 'down') => {
+    const idx = carriers.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === carriers.length - 1) return;
+    const nextIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const copy = [...carriers];
+    const [moved] = copy.splice(idx, 1);
+    copy.splice(nextIdx, 0, moved);
+    if (onReorderCarriers) {
+      onReorderCarriers(copy);
+    }
+  };
+
   const handleOpenCreateModal = () => {
     setEditingCarrier(null);
-    setName('nuevo_carrier');
+    setName('');
     setAuthType('registration');
     setIsEnabled(true);
-    setHost('52.144.46.192');
+    setHost('');
     setPort(5060);
-    setUsername('sgavilan30');
-    setSecret('Robert2026');
+    setUsername('');
+    setSecret('');
     setInboundContext('trunkinbound');
-    setOutboundCallerId('+18005550199');
-    setSelectedCodecs(['ulaw', 'alaw']);
+    setOutboundCallerId('+18494386040');
+    setSelectedCodecs(['ulaw', 'alaw', 'g729']);
     setQualifyFreq(60);
-    setFromuser('sgavilan30');
+    setFromuser('');
     setSendrpid('yes');
     setTrustrpid('yes');
     setInsecure('port,invite');
@@ -157,7 +187,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setOutboundCallerId(c.outboundCallerId || '');
     setSelectedCodecs(c.codecs);
     setQualifyFreq(c.qualifyFreq);
-    setFromuser(c.fromuser || c.username || '');
+    setFromuser(c.fromuser || '');
     setSendrpid(c.sendrpid || 'yes');
     setTrustrpid(c.trustrpid || 'yes');
     setInsecure(c.insecure || 'port,invite');
@@ -178,24 +208,28 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !host) return;
+    if (!name.trim() || !host.trim()) return;
+
+    const cleanSlug = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const safeName = cleanSlug.startsWith('trunk_') ? cleanSlug : cleanSlug;
+    const cleanHost = host.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 
     if (editingCarrier) {
       onUpdateCarrier({
         ...editingCarrier,
-        name,
+        name: safeName,
         authType,
         enabled: isEnabled,
         status: isEnabled ? (editingCarrier.status === 'disabled' ? 'reachable' : editingCarrier.status) : 'disabled',
-        host,
-        port,
-        username,
-        secret,
-        inboundContext,
-        outboundCallerId,
+        host: cleanHost,
+        port: Number(port) || 5060,
+        username: username.trim(),
+        secret: secret.trim(),
+        inboundContext: inboundContext.trim() || 'trunkinbound',
+        outboundCallerId: outboundCallerId.trim(),
         codecs: selectedCodecs,
-        qualifyFreq,
-        fromuser,
+        qualifyFreq: Number(qualifyFreq) || 60,
+        fromuser: fromuser.trim(),
         sendrpid,
         trustrpid,
         insecure,
@@ -205,20 +239,20 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     } else {
       const newCarrier: CarrierTrunk = {
         id: `trunk-${Date.now()}`,
-        name,
+        name: safeName,
         authType,
         enabled: isEnabled,
-        host,
-        port,
-        username,
-        secret,
-        inboundContext,
-        outboundCallerId,
+        host: cleanHost,
+        port: Number(port) || 5060,
+        username: username.trim(),
+        secret: secret.trim(),
+        inboundContext: inboundContext.trim() || 'trunkinbound',
+        outboundCallerId: outboundCallerId.trim(),
         codecs: selectedCodecs,
-        qualifyFreq,
+        qualifyFreq: Number(qualifyFreq) || 60,
         status: isEnabled ? 'reachable' : 'disabled',
         latencyMs: Math.floor(Math.random() * 25) + 10,
-        fromuser,
+        fromuser: fromuser.trim(),
         sendrpid,
         trustrpid,
         insecure,
@@ -411,6 +445,7 @@ insecure=${carrierInsecure}`;
               <div className="flex flex-wrap gap-1.5">
                 {carriers.map((c, idx) => {
                   const isEnabled = c.enabled !== false && c.status !== 'disabled';
+                  const isPrimary = idx === 0;
                   return (
                     <button
                       key={c.id}
@@ -422,16 +457,54 @@ insecure=${carrierInsecure}`;
                           ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                           : 'bg-slate-900 text-rose-400/80 hover:bg-slate-800 border border-rose-900/40'
                       }`}
+                      title={isPrimary ? 'Troncal Primaria (Marcación inicial)' : `Troncal #${idx + 1} en Failover`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full ${isEnabled ? 'bg-emerald-400' : 'bg-rose-500'}`}></span>
-                      <span>[{c.name}]</span>
+                      {isPrimary && <Star className="w-3 h-3 text-amber-400 fill-current" />}
+                      <span>[{idx + 1}ª {c.name}]</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {carriers.indexOf(activeCarrier) !== 0 && onReorderCarriers && (
+                <button
+                  id={`btn-set-primary-carrier-${activeCarrier.id}`}
+                  type="button"
+                  onClick={() => handleSetPrimary(activeCarrier.id)}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+                  title="Establecer esta troncal como la principal (primera opción al marcar)"
+                >
+                  <Star className="w-3.5 h-3.5 fill-current" />
+                  <span>Hacer Primaria</span>
+                </button>
+              )}
+
+              {onReorderCarriers && (
+                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleMoveCarrier(activeCarrier.id, 'up')}
+                    disabled={carriers.indexOf(activeCarrier) === 0}
+                    className="p-1 text-slate-300 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-500 cursor-pointer"
+                    title="Subir prioridad en el pool de failover"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveCarrier(activeCarrier.id, 'down')}
+                    disabled={carriers.indexOf(activeCarrier) === carriers.length - 1}
+                    className="p-1 text-slate-300 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-500 cursor-pointer"
+                    title="Bajar prioridad en el pool de failover"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               <button
                 id={`btn-toggle-carrier-featured-${activeCarrier.id}`}
                 type="button"

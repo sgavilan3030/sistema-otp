@@ -724,8 +724,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const enabledCarriers = carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled');
-  const activeCarrierObj = enabledCarriers[0] || carriers[0];
-  const activeCarrier = activeCarrierObj ? activeCarrierObj.name : 'carrier_default';
+  const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
+  const activeCarrierObj = (selectedCarrierName !== 'auto' ? enabledCarriers.find((c) => c.name === selectedCarrierName || c.id === selectedCarrierName) : null) || enabledCarriers[0] || carriers[0];
+  const activeCarrier = selectedCarrierName !== 'auto' ? selectedCarrierName : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
   const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
 
   // Dynamic CallerID fields directly configurable by agent
@@ -2666,9 +2667,33 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
               <div className="space-y-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-500 font-mono">Troncal Asignada</div>
-                  <div className="font-bold text-white mt-0.5">{activeCarrier} (SIP UDP)</div>
-                  <div className="text-[11px] text-slate-400">Ruta saliente automática configurada</div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-[10px] text-slate-400 font-mono font-bold flex items-center gap-1">
+                      <Radio className="w-3 h-3 text-emerald-400" />
+                      <span>Troncal Saliente</span>
+                    </div>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                      {enabledCarriers.length} activas
+                    </span>
+                  </div>
+                  <select
+                    id="select-operation-carrier"
+                    value={selectedCarrierName}
+                    onChange={(e) => setSelectedCarrierName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500/60 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 transition-colors"
+                  >
+                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
+                    {enabledCarriers.map((c, idx) => (
+                      <option key={c.id} value={c.name}>
+                        {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name} ({c.host})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    {selectedCarrierName === 'auto'
+                      ? `Ruta pool con failover empezando por: ${enabledCarriers[0]?.name || 'televox'}`
+                      : `Llamada directa por troncal dedicada: ${selectedCarrierName}`}
+                  </div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">

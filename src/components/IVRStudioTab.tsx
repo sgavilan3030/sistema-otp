@@ -1138,7 +1138,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   type="number"
                   min="0"
                   max="10"
-                  value={press1.answerDelaySeconds ?? 1}
+                  value={press1.answerDelaySeconds ?? 3}
                   onChange={(e) => setPress1({ ...press1, answerDelaySeconds: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
                 />
@@ -1390,7 +1390,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   type="number"
                   min="0"
                   max="10"
-                  value={otp.answerDelaySeconds ?? 1}
+                  value={otp.answerDelaySeconds ?? 3}
                   onChange={(e) => setOtp({ ...otp, answerDelaySeconds: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-blue-500/40 text-blue-300 font-mono font-bold focus:border-blue-500 focus:outline-none"
                 />
