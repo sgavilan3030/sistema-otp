@@ -146,7 +146,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (_) {}
   };
 
-  const [agentExtension, setAgentExtension] = useState('1001');
+  const [agentExtension, setAgentExtension] = useState('ringall');
 
   // Initial predefined campaign templates
   const initialCampaignEntities: CampaignEntity[] = [
@@ -1384,7 +1384,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destination: targetNumber.trim(),
-          carrier: activeCarrier,
+          carrier: selectedCarrierName,
           callerId: effectiveCallerIdNum,
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
@@ -1543,21 +1543,47 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-              <div className="text-[10px] text-slate-500 uppercase font-mono">Troncal SIP</div>
-              <div className="font-bold text-emerald-400 flex items-center gap-1.5">
+              <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>{activeCarrier}</span>
+                <span>Troncal SIP Saliente</span>
               </div>
+              <select
+                id="select-banner-carrier"
+                value={selectedCarrierName}
+                onChange={(e) => setSelectedCarrierName(e.target.value)}
+                className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+              >
+                <option value="auto">🔄 Pool Automático</option>
+                {enabledCarriers.map((c, idx) => (
+                  <option key={c.id} value={c.name}>
+                    {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+              <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
+                <span>Destino al Presionar 1</span>
+              </div>
+              <select
+                id="select-banner-agent"
+                value={agentExtension}
+                onChange={(e) => setAgentExtension(e.target.value)}
+                className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none"
+              >
+                <option value="ringall">⚡ TODAS las Extensiones (Ring-All)</option>
+                {extensions.map((ext) => (
+                  <option key={ext.id} value={ext.extension}>
+                    👤 Ext. {ext.extension} {ext.name ? `(${ext.name})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
               <div className="text-[10px] text-slate-500 uppercase font-mono">Caller ID Saliente</div>
               <div className="font-bold text-sky-400 font-mono">{outboundCid}</div>
-            </div>
-
-            <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-              <div className="text-[10px] text-slate-500 uppercase font-mono">Asesor Asignado</div>
-              <div className="font-bold text-emerald-400 font-mono">Ext. {agentExtension}</div>
             </div>
 
             {onNavigateToReseller && (
@@ -2706,9 +2732,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-500 font-mono">Softphone del Operador</div>
-                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">Extensión {agentExtension} (PJSIP)</div>
-                  <div className="text-[11px] text-slate-400">Recibe transferencias cuando la víctima presiona 1</div>
+                  <div className="text-[10px] text-slate-500 font-mono">Destino Receptor Press 1</div>
+                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">
+                    {agentExtension === 'ringall' ? '⚡ Ring-All (Todas las Extensiones)' : `Extensión ${agentExtension} (PJSIP)`}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {agentExtension === 'ringall'
+                      ? 'Timbran todas a la vez; el 1ro en descolgar gana la llamada'
+                      : 'Recibe transferencias cuando la víctima presiona 1'}
+                  </div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900/90 border border-sky-500/30">
@@ -3243,18 +3275,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Extensión Asignada para Press-1
+                    Destino Asignado cuando el Cliente Presione 1
                   </label>
                   <select
                     value={agentExtension}
                     onChange={(e) => setAgentExtension(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                   >
-                    <option value="1001">Extensión 1001 (Operador Principal - X-Lite / MicroSIP)</option>
-                    <option value="1002">Extensión 1002 (Operador Secundario)</option>
+                    <option value="ringall">⚡ TODAS las Extensiones (Ring-All: El primero que atienda gana la llamada)</option>
+                    {extensions.map((ext) => (
+                      <option key={ext.id} value={ext.extension}>
+                        👤 Extensión {ext.extension} - {ext.name || `Agente ${ext.extension}`}
+                      </option>
+                    ))}
                   </select>
                   <div className="text-[11px] text-slate-400 mt-1">
-                    Cuando la víctima pulse 1, Asterisk marcará PJSIP/{agentExtension}.
+                    {agentExtension === 'ringall'
+                      ? '🔥 Modo Ring-All (Cacería): Sonarán simultáneamente todas las extensiones activas. La primera que conteste tomará la llamada.'
+                      : `🎯 Agente Específico: Cuando la víctima pulse 1, Asterisk marcará exclusivamente a PJSIP/${agentExtension}.`}
                   </div>
                 </div>
 

@@ -1283,7 +1283,8 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   onChange={(e) => setPress1({ ...press1, digit1Action: e.target.value as any })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none"
                 >
-                  <option value="transfer_extension">Transferir a Extensión</option>
+                  <option value="transfer_extension">Transferir a Extensión / Asesor</option>
+                  <option value="ringall">⚡ Todas las Extensiones (Ring-All - El primero que atienda gana)</option>
                   <option value="queue">Enviar a Cola de Asesores</option>
                   <option value="webhook">Disparar Webhook HTTP</option>
                 </select>
@@ -1291,13 +1292,14 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">
-                  Destino de Respaldo <span className="text-emerald-400">(≥ 1001)</span>
+                  Destino de Extensión / Asesor
                 </label>
                 <select
                   value={press1.digit1Target}
                   onChange={(e) => setPress1({ ...press1, digit1Target: e.target.value })}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 >
+                  <option value="ringall">⚡ TODAS las Extensiones (Ring-All / Cacería)</option>
                   {validExtensions.map((ext) => (
                     <option key={ext.id} value={ext.extension}>
                       Ext {ext.extension} - {ext.name}

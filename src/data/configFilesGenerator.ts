@@ -195,6 +195,7 @@ export function generateExtensionsConf(
   carriers?: CarrierTrunk[]
 ): string {
   const activeCarriers = (carriers || []).filter((c) => c && c.enabled !== false && c.status !== 'disabled');
+  const ringAllEndpoints = extensions.map((e) => `PJSIP/${e.extension}`).join('&') || 'PJSIP/1001';
   return `; ==============================================================================
 ; ASTERISK 20 - DIALPLAN EXTENSIONS.CONF
 ; Generado dinámicamente con soporte para IVR Press-1, OTP y Troncales Salientes
@@ -324,10 +325,10 @@ exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion
  same => n(agent_found),NoOp(Retornando llamada al agente que origino el contacto: \${TARGET_AGENT})
  same => n,Dial(PJSIP/\${TARGET_AGENT},30,tTkK)
  same => n,Hangup()
- same => n(fallback_target),NoOp(Sin agente en canal ni en AstDB SQLite3. Destino de respaldo: ${press1.digit1Target})
- same => n,Dial(PJSIP/${press1.digit1Target},30,tTkK)
+ same => n(fallback_target),NoOp(Destino asignado: ${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? 'Ring-All (Todas las Extensiones)' : press1.digit1Target})
+ same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkK)
  same => n,Hangup()`
-     : `same => n,Dial(PJSIP/${press1.digit1Target},30,tTkK)
+     : `same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkK)
  same => n,Hangup()`
  }
 

@@ -1232,6 +1232,41 @@ function saveStoredUsers(users: any[]) {
 }
 
 const CARRIERS_FILE = path.join(DATA_DIR, 'carriers.json');
+const EXTENSIONS_FILE = path.join(DATA_DIR, 'extensions.json');
+
+function loadStoredExtensions(): any[] {
+  try {
+    if (fs.existsSync(EXTENSIONS_FILE)) {
+      const raw = fs.readFileSync(EXTENSIONS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  try {
+    if (fs.existsSync(APP_STATE_FILE)) {
+      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.extensions) && parsed.extensions.length > 0) return parsed.extensions;
+    }
+  } catch (_) {}
+  return defaultExtensionsList;
+}
+
+function saveStoredExtensions(extensions: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(EXTENSIONS_FILE, JSON.stringify(extensions, null, 2), 'utf8');
+    if (fs.existsSync(APP_STATE_FILE)) {
+      try {
+        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        parsed.extensions = extensions;
+        parsed.lastUpdated = Date.now();
+        fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
 
 function loadStoredCarriers(): any[] {
   try {
@@ -1267,8 +1302,9 @@ function saveStoredCarriers(carriers: any[]) {
   } catch (_) {}
 }
 
-// Cached store of last synchronized carriers and users
+// Cached store of last synchronized carriers, extensions and users
 let lastSyncedCarriers: any[] = loadStoredCarriers();
+let lastSyncedExtensions: any[] = loadStoredExtensions();
 let lastSyncedUsers: any[] = loadStoredUsers();
 
 // Helper to generate syntactically pure Asterisk 20 pjsip.conf
@@ -1484,13 +1520,22 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `; TRONCALES / CARRIERS SIP (OUTBOUND & INBOUND)\n`;
     pjsipContent += `; ========================================================\n\n`;
 
+    const processedHosts = new Set<string>();
+
     for (const carrier of carriersToProcess) {
       if (!carrier.name || !carrier.host) continue;
       const isEnabled = carrier.enabled !== false && carrier.status !== 'disabled';
       const cSlug = carrier.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const cName = cSlug.startsWith('trunk_') ? cSlug : (cSlug ? cSlug : `trunk_${Date.now()}`);
-      const cHost = carrier.host.trim();
-      const cPort = carrier.port || 5060;
+
+      // Sanitización agresiva de host y puerto
+      let cHost = (carrier.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:\/\//i, '').replace(/\/.*$/, '');
+      let cPort = Number(carrier.port) || 5060;
+      if (cHost.includes(':')) {
+        const parts = cHost.split(':');
+        cHost = parts[0];
+        cPort = Number(parts[1]) || cPort;
+      }
 
       if (!isEnabled) {
         pjsipContent += `; --- CARRIER DESHABILITADO: ${cName} (${cHost}:${cPort}) ---\n`;
@@ -1503,6 +1548,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       const cContext = carrier.inboundContext || 'trunkinbound';
       const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
 
+      // CRITICAL: effectiveFromUser asegura que el From SIP coincida con la cuenta SIP para que el Carrier no rechace llamadas con 403 Forbidden
+      const effectiveFromUser = (carrier.fromuser || carrier.username || '').trim();
+
       pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
 
       if (carrier.authType === 'registration' && cSecret) {
@@ -1511,7 +1559,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `outbound_auth = auth_${cName}\n`;
         pjsipContent += `server_uri = sip:${cHost}:${cPort}\n`;
         pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
-        pjsipContent += `contact_user = ${cUser}\n`;
+        pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `retry_interval = 30\n`;
         pjsipContent += `expiration = 3600\n`;
         pjsipContent += `line = yes\n`;
@@ -1545,10 +1593,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
         pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
       }
-      const explicitFromUser = (carrier.fromuser || '').trim();
-      if (explicitFromUser) {
-        pjsipContent += `from_user = ${explicitFromUser}\n`;
-        pjsipContent += `contact_user = ${explicitFromUser}\n`;
+      if (effectiveFromUser) {
+        pjsipContent += `from_user = ${effectiveFromUser}\n`;
+        pjsipContent += `contact_user = ${effectiveFromUser}\n`;
       } else if (carrier.authType === 'registration') {
         pjsipContent += `contact_user = ${cUser}\n`;
       }
@@ -1572,10 +1619,13 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
 
       // Identify section for IP auth or non-registration trunks
       if (carrier.authType === 'ip_auth' || !cSecret) {
-        pjsipContent += `[${cName}-identify]\n`;
-        pjsipContent += `type = identify\n`;
-        pjsipContent += `endpoint = ${cName}\n`;
-        pjsipContent += `match = ${cHost}\n\n`;
+        if (!processedHosts.has(cHost)) {
+          processedHosts.add(cHost);
+          pjsipContent += `[${cName}-identify]\n`;
+          pjsipContent += `type = identify\n`;
+          pjsipContent += `endpoint = ${cName}\n`;
+          pjsipContent += `match = ${cHost}\n\n`;
+        }
       }
     }
   }
@@ -1659,7 +1709,8 @@ async function queryAsteriskPjsipEndpoints(): Promise<{ raw: string; parsed: any
 export function generateCleanDialplanConf(
   carriersInput: any = defaultCarriersList,
   carrierHostFallback = 'voip.ghostcall.online',
-  audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {}
+  audios: { audioIntro?: string; audioPrompt?: string; audioWait?: string; audioSuccess?: string; audioAgent?: string } = {},
+  extensionsInput: any[] = lastSyncedExtensions
 ): string {
   const carriersList: any[] = Array.isArray(carriersInput)
     ? carriersInput
@@ -1673,10 +1724,18 @@ export function generateCleanDialplanConf(
   const defaultCidNum = (primaryCarrier.outboundCallerId && !primaryCarrier.outboundCallerId.includes('5550199') ? primaryCarrier.outboundCallerId : '+18494386040').replace(/[^0-9]/g, '') || '18494386040';
   const defaultCidName = primaryCarrier.outboundCallerIdName || 'Seguridad Bancaria';
 
+  // Generación dinámica de la cadena Ring-All para todas las extensiones activas (ej: PJSIP/1001&PJSIP/1002...)
+  // Quien descuelga primero gana la llamada y los demás canales dejan de timbrar inmediatamente
+  const extsList = (Array.isArray(extensionsInput) && extensionsInput.length > 0) ? extensionsInput : lastSyncedExtensions;
+  const validExts = extsList.filter((e: any) => e && (e.extension || e.id));
+  const ringAllList = validExts.map((e: any) => `PJSIP/${(e.extension || e.id).toString().trim()}`).filter((s: string) => !s.endsWith('/'));
+  const ringAllDialString = ringAllList.length > 0 ? ringAllList.join('&') : 'PJSIP/1001&PJSIP/1002';
+
   let dialplanContent = `; ========================================================\n`;
   dialplanContent += `; DIALPLAN DE LLAMADAS INTERNAS Y SALIENTES VIA PJSIP\n`;
   dialplanContent += `; Auto-generado por Black Hat Dialer Asterisk Platform\n`;
   dialplanContent += `; Troncales Habilitadas: ${enabledCarriers.length} (${enabledCarriers.map((c) => c.name).join(', ') || 'Ninguna'})\n`;
+  dialplanContent += `; Extensiones Ring-All: ${ringAllList.length} (${ringAllDialString})\n`;
   dialplanContent += `; ========================================================\n\n`;
   dialplanContent += `[general]\nstatic=yes\nwriteprotect=no\n\n`;
 
@@ -1694,7 +1753,8 @@ export function generateCleanDialplanConf(
   dialplanContent += `GLOBAL_DEFAULT_PROMPT=${chosenPrompt}\n`;
   dialplanContent += `GLOBAL_DEFAULT_WAIT=${chosenWait}\n`;
   dialplanContent += `GLOBAL_DEFAULT_SUCCESS=${chosenSuccess}\n`;
-  dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n\n`;
+  dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n`;
+  dialplanContent += `GLOBAL_RINGALL_EXTENSIONS=${ringAllDialString}\n\n`;
 
   dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio en canal saliente real (HD Voice y JitterBuffer)\n`;
   dialplanContent += `[sub-pjsip-headers]\n`;
@@ -2840,9 +2900,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=ringall))\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
@@ -2852,8 +2912,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
+  dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR DIRECTO] Marcando a Extensión PJSIP/\${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n,Goto(press1_finish)\n`;
+  dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL] Marcando a TODAS las extensiones disponibles (\${GLOBAL_RINGALL_EXTENSIONS}). El primero en contestar gana la llamada ===)\n`;
+  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n(press1_finish),Hangup()\n\n`;
 
   dialplanContent += `exten => i,1,Playback(custom/opcion_invalida)\n`;
   dialplanContent += ` same => n,Goto(s,menu)\n\n`;
@@ -3008,9 +3073,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=ringall))\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
@@ -3020,8 +3085,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
+  dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR DIRECTO] Marcando a Extensión PJSIP/\${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n,Goto(otp_press1_finish)\n`;
+  dialplanContent += ` same => n(dial_otp_ringall),NoOp(=== [OTP PRESS-1 RING-ALL] Marcando a TODAS las extensiones disponibles (\${GLOBAL_RINGALL_EXTENSIONS}). El primero en contestar gana la llamada ===)\n`;
+  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n(otp_press1_finish),Hangup()\n\n`;
 
   dialplanContent += `exten => _XXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
@@ -3483,6 +3553,9 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       return res.status(400).json({ success: false, error: 'extensions must be an array' });
     }
 
+    lastSyncedExtensions = extensions;
+    saveStoredExtensions(extensions);
+
     const validCarriers = Array.isArray(carriers) ? carriers : defaultCarriersList;
     lastSyncedCarriers = validCarriers;
     if (Array.isArray(carriers) && carriers.length > 0) {
@@ -3515,8 +3588,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     // Generate clean pjsip.conf using validated Asterisk 20 generator
     const pjsipContent = generateCleanPjsipConf(extensions, validCarriers, usersToInclude);
 
-    // Generate extensions.conf (Dialplan) with outbound multi-carrier failover routing and dedicated IVRs
-    const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body);
+    // Generate extensions.conf (Dialplan) with outbound multi-carrier failover routing and Ring-All support
+    const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body, extensions);
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
@@ -3732,12 +3805,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
   try {
     const {
       destination,
-      carrier = 'televox',
+      carrier = 'auto',
       callerId = '+18005550199',
       callerIdNum,
       callerIdName,
       mode = 'press1',
-      agentExten = '1001',
+      agentExten = 'ringall',
       audioIntro = '',
       audioPrompt = '',
       audioAgent = '',
@@ -3776,23 +3849,25 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
-      `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || '1001'}"`,
+      `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || 'ringall'}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
       `database put ivr_vars ${formattedDest}_mode "${mode || 'press1'}"`,
-      `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || '1001'}"`,
+      `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || 'ringall'}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
       `database put test_client_number "${cleanDest}"`,
-      `database put extension_cid ${agentExten || '1001'}/number "${effectiveCidNum}"`,
-      `database put extension_cid ${agentExten || '1001'}/name "${effectiveCidName}"`,
+      `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/number "${effectiveCidNum}"`,
+      `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/name "${effectiveCidName}"`,
       `database put ivr_vars default_action "${targetContext}"`,
     ];
 
     if (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_carrier "${cleanCarrier}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_carrier "${cleanCarrier}"`);
-      astDbCommands.push(`database put user_carrier ${agentExten || '1001'} "${cleanCarrier}"`);
+      if (agentExten && agentExten !== 'ringall' && agentExten !== 'all') {
+        astDbCommands.push(`database put user_carrier ${agentExten} "${cleanCarrier}"`);
+      }
     } else {
       astDbCommands.push(`database del ivr_vars ${cleanDest}_carrier`);
       astDbCommands.push(`database del ivr_vars ${formattedDest}_carrier`);
@@ -3871,7 +3946,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // Otherwise standard outbound call via Local NANP routing
     let channel = '';
     if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777'].includes(cleanDest)) {
-      channel = `PJSIP/${agentExten || '1001'}`;
+      channel = `PJSIP/${(agentExten && agentExten !== 'ringall' && agentExten !== 'all') ? agentExten : '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else {
@@ -3883,8 +3958,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       number: cleanDest,
       channel,
       status: 'dialing',
-      agent: agentExten || '1001',
-      agentName: agentExten === '1001' ? 'Operador Principal' : `Agente ${agentExten}`,
+      agent: agentExten || 'ringall',
+      agentName: (agentExten === 'ringall' || agentExten === 'all')
+        ? '⚡ Todas las Extensiones (Ring-All)'
+        : (agentExten === '1001' ? 'Operador Principal (Ext. 1001)' : `Ext. ${agentExten}`),
       clientName: req.body.victimName || req.body.clientName || 'Cliente',
       entityName: service || 'Banco / Antifraude',
       entityId: req.body.entityId || 'bank',
@@ -3904,7 +3981,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
-      IVR_AGENT_EXTEN: agentExten || '1001',
+      IVR_AGENT_EXTEN: agentExten || 'ringall',
       IVR_MODE: mode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
