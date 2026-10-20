@@ -50,6 +50,9 @@ import {
   Zap,
   ArrowRight,
   DollarSign,
+  Users,
+  Layers,
+  ListOrdered,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -116,8 +119,23 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const isAdmin = activeUser ? activeUser.role === 'admin' : true;
 
-  // Mode selection: individual direct launch vs ivr action tab
-  const [productionMode, setProductionMode] = useState<'single' | 'ivr_action'>('single');
+  // User assigned extension: Si un usuario tiene extensión asignada, sus llamadas individuales retornan EXCLUSIVAMENTE a su extensión
+  const userAssignedExt = (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0)
+    ? activeUser.assignedExtensions[0]
+    : '1001';
+
+  const [agentExtension, setAgentExtension] = useState<string>(() => {
+    return userAssignedExt || '1001';
+  });
+
+  useEffect(() => {
+    if (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) {
+      setAgentExtension(activeUser.assignedExtensions[0]);
+    }
+  }, [activeUser]);
+
+  // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
+  const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -146,7 +164,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (_) {}
   };
 
-  const [agentExtension, setAgentExtension] = useState('ringall');
+  // Mass Campaign State (Donde se activa el Ring-All para que timbren todas las extensiones)
+  const [massNumbersText, setMassNumbersText] = useState('16104803845\n18005550199');
+  const [massDelaySeconds, setMassDelaySeconds] = useState(5);
+  const [isMassRunning, setIsMassRunning] = useState(false);
+  const [massCurrentIndex, setMassCurrentIndex] = useState(0);
+  const [massTotalCount, setMassTotalCount] = useState(0);
+  const [massActiveNumber, setMassActiveNumber] = useState<string | null>(null);
+  const [massLog, setMassLog] = useState<Array<{ number: string; status: 'queued' | 'calling' | 'success' | 'failed'; time: string; msg: string }>>([]);
+  const massCancelRef = useRef(false);
 
   // Initial predefined campaign templates
   const initialCampaignEntities: CampaignEntity[] = [
@@ -1517,6 +1543,105 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  // Mass campaign execution with Ring-All (All Extensions)
+  const handleStartMassCampaign = async () => {
+    const rawLines = massNumbersText.split(/[\n,;]+/);
+    const cleanNumbers = rawLines
+      .map((line) => line.trim().replace(/[^0-9]/g, ''))
+      .filter((num) => num.length >= 7);
+
+    if (cleanNumbers.length === 0) {
+      setLaunchFeedback({
+        text: 'Por favor introduce al menos un número telefónico válido para la campaña masiva.',
+        type: 'error',
+      });
+      return;
+    }
+
+    setIsMassRunning(true);
+    massCancelRef.current = false;
+    setMassTotalCount(cleanNumbers.length);
+    setMassCurrentIndex(0);
+
+    const initialQueue = cleanNumbers.map((num) => ({
+      number: num,
+      status: 'queued' as const,
+      time: new Date().toLocaleTimeString(),
+      msg: 'En cola para marcación (Ring-All activo)',
+    }));
+    setMassLog(initialQueue);
+
+    for (let i = 0; i < cleanNumbers.length; i++) {
+      if (massCancelRef.current) break;
+
+      const num = cleanNumbers[i];
+      setMassCurrentIndex(i + 1);
+      setMassActiveNumber(num);
+
+      setMassLog((prev) =>
+        prev.map((item, idx) =>
+          idx === i ? { ...item, status: 'calling', msg: 'Llamando por troncal... (Destino: Ring-All)' } : item
+        )
+      );
+
+      try {
+        const currentAudios = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+        const res = await fetch('/api/asterisk/call/originate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destination: num,
+            carrier: selectedCarrierName,
+            callerId: callerIdNum,
+            callerIdNum: callerIdNum,
+            callerIdName: callerIdName,
+            mode: callFlowMode,
+            agentExten: 'ringall', // IN MASS CAMPAIGN, ALWAYS RINGALL!
+            audioIntro: currentAudios.introAudioPath,
+            audioPrompt: currentAudios.promptAudioPath,
+            audioAgent: currentAudios.agentAudioPath,
+            audioSuccess: currentAudios.successAudioPath,
+            holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          }),
+        });
+
+        const data = await res.json();
+        setMassLog((prev) =>
+          prev.map((item, idx) =>
+            idx === i
+              ? {
+                  ...item,
+                  status: data.success ? 'success' : 'failed',
+                  msg: data.success
+                    ? 'Llamada conectada en Asterisk. Si el cliente pulsa 1 timbrarán TODAS las extensiones (Ring-All).'
+                    : (data.error || 'Error al conectar'),
+                }
+              : item
+          )
+        );
+      } catch (err: any) {
+        setMassLog((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: 'failed', msg: err.message || 'Error de red' } : item
+          )
+        );
+      }
+
+      if (i < cleanNumbers.length - 1 && !massCancelRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, Math.max(1, massDelaySeconds) * 1000));
+      }
+    }
+
+    setIsMassRunning(false);
+    setMassActiveNumber(null);
+  };
+
+  const handleStopMassCampaign = () => {
+    massCancelRef.current = true;
+    setIsMassRunning(false);
+    setMassActiveNumber(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* Production Header Banner */}
@@ -1560,19 +1685,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
                 <span>Destino al Presionar 1</span>
               </div>
-              <select
-                id="select-banner-agent"
-                value={agentExtension}
-                onChange={(e) => setAgentExtension(e.target.value)}
-                className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none"
-              >
-                <option value="ringall">⚡ TODAS las Extensiones (Ring-All)</option>
-                {extensions.map((ext) => (
-                  <option key={ext.id} value={ext.extension}>
-                    👤 Ext. {ext.extension} {ext.name ? `(${ext.name})` : ''}
-                  </option>
-                ))}
-              </select>
+              {productionMode === 'mass_campaign' ? (
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-purple-300">
+                  <Users className="w-3.5 h-3.5 text-purple-400" />
+                  <span>⚡ TODAS las Extensiones (Ring-All)</span>
+                </div>
+              ) : (!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) ? (
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Ext. {agentExtension} (Tu Extensión)</span>
+                </div>
+              ) : (
+                <select
+                  id="select-banner-agent"
+                  value={agentExtension}
+                  onChange={(e) => setAgentExtension(e.target.value)}
+                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none"
+                >
+                  {extensions.map((ext) => (
+                    <option key={ext.id} value={ext.extension}>
+                      👤 Ext. {ext.extension} {ext.name ? `(${ext.name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
@@ -1730,6 +1866,29 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         >
           <PhoneCall className="w-4 h-4" />
           <span>Disparador Individual Inmediato (1 a 1)</span>
+          <span className="text-[10px] opacity-80 font-mono">
+            (Ext. {agentExtension})
+          </span>
+        </button>
+
+        <button
+          id="btn-tab-mass-campaign"
+          onClick={() => setProductionMode('mass_campaign')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            productionMode === 'mass_campaign'
+              ? 'bg-purple-500 text-slate-950 shadow-lg shadow-purple-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Centro de Llamadas Masivas</span>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+            productionMode === 'mass_campaign'
+              ? 'bg-slate-950 text-purple-300'
+              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+          }`}>
+            ⚡ Ring-All (Todas las Extensiones)
+          </span>
         </button>
 
         <button
@@ -2680,6 +2839,253 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       )}
 
       {/* ======================================================== */}
+      {/* CENTRO DE LLAMADAS MASIVAS (RING-ALL A TODAS LAS EXTENSIONES) */}
+      {/* ======================================================== */}
+      {productionMode === 'mass_campaign' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-950 via-purple-950/40 to-slate-950 border border-purple-500/40 shadow-2xl relative overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-bold mb-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                  <span>MODO CAMPAÑA MASIVA CON RING-ALL ACTIVO</span>
+                </div>
+                <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
+                  <Users className="w-6 h-6 text-purple-400" />
+                  <span>Centro de Llamadas Masivas</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  Lanza llamadas automatizadas a una lista de números. Cuando el cliente presione 1,{' '}
+                  <strong className="text-purple-300 font-bold">timbrarán TODAS las extensiones disponibles simultáneamente</strong>{' '}
+                  ({extensions.map((e) => e.extension).join(', ')}). El primer asesor que descuelgue toma la llamada.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-purple-500/30 text-xs space-y-1">
+                <div className="text-[10px] text-purple-400 font-mono font-bold flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-purple-400" />
+                  <span>DESTINO AL PRESIONAR 1:</span>
+                </div>
+                <div className="font-bold text-white font-mono flex items-center gap-1">
+                  <span>⚡ TODAS las Extensiones (Ring-All)</span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {extensions.map((e) => e.extension).join(' & ')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Input de Números */}
+            <div className="lg:col-span-2 space-y-4 p-6 rounded-2xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4 text-purple-400" />
+                  <span>Lista de Números Telefónicos de la Campaña</span>
+                </label>
+                <span className="text-[11px] font-mono text-purple-400 font-bold">
+                  {massNumbersText.split(/[\n,;]+/).filter((x) => x.trim().length >= 7).length} números detectados
+                </span>
+              </div>
+
+              <textarea
+                id="textarea-mass-numbers"
+                rows={8}
+                value={massNumbersText}
+                onChange={(e) => setMassNumbersText(e.target.value)}
+                disabled={isMassRunning}
+                placeholder="Pega aquí los números (uno por línea o separados por coma):&#10;16104803845&#10;18005550199&#10;18295551234"
+                className="w-full p-4 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-purple-500 focus:outline-none transition-all disabled:opacity-50"
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMassNumbersText('16104803845\n18005550199\n18099602110')}
+                    disabled={isMassRunning}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Cargar Números de Prueba
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMassNumbersText('')}
+                    disabled={isMassRunning}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Limpiar Lista
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 font-mono">Intervalo entre llamadas:</label>
+                  <select
+                    value={massDelaySeconds}
+                    onChange={(e) => setMassDelaySeconds(Number(e.target.value))}
+                    disabled={isMassRunning}
+                    className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-purple-300 font-mono font-bold focus:outline-none"
+                  >
+                    <option value={2}>2 segundos</option>
+                    <option value={5}>5 segundos</option>
+                    <option value={10}>10 segundos</option>
+                    <option value={15}>15 segundos</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Botón de inicio y detención */}
+              <div className="pt-4 flex items-center gap-3">
+                {!isMassRunning ? (
+                  <button
+                    id="btn-start-mass-campaign"
+                    type="button"
+                    onClick={handleStartMassCampaign}
+                    className="flex-1 py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 hover:from-purple-400 hover:to-indigo-400 text-white shadow-xl shadow-purple-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
+                  >
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>INICIAR CAMPAÑA MASIVA (RING-ALL A TODAS LAS EXTENSIONES)</span>
+                  </button>
+                ) : (
+                  <button
+                    id="btn-stop-mass-campaign"
+                    type="button"
+                    onClick={handleStopMassCampaign}
+                    className="flex-1 py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
+                  >
+                    <Square className="w-4 h-4 fill-white" />
+                    <span>DETENER CAMPAÑA EN CURSO</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Parámetros de la campaña masiva */}
+            <div className="space-y-4 p-6 rounded-2xl bg-slate-950 border border-slate-800">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-purple-400" />
+                <span>Configuración de Difusión</span>
+              </h4>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">Troncal SIP Saliente</div>
+                  <select
+                    value={selectedCarrierName}
+                    onChange={(e) => setSelectedCarrierName(e.target.value)}
+                    disabled={isMassRunning}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+                  >
+                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
+                    {enabledCarriers.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} ({c.host})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">Guión / Audio IVR</div>
+                  <select
+                    value={selectedService}
+                    onChange={(e) => setSelectedService(e.target.value as ServiceCampaignKey)}
+                    disabled={isMassRunning}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-sky-400 font-bold focus:outline-none"
+                  >
+                    {campaignEntities.map((ent) => (
+                      <option key={ent.id} value={ent.id}>
+                        {ent.name} ({ent.subtitle})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 bg-purple-950/20">
+                  <div className="text-[10px] text-purple-300 font-mono font-bold">Regla de Distribución de Llamadas</div>
+                  <div className="text-xs font-bold text-white mt-1">Cacería Ring-All a Todas las Extensiones</div>
+                  <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                    A diferencia del modo individual (donde la llamada solo va al asesor asignado), en esta campaña masiva suenan al mismo tiempo todas las extensiones ({extensions.map((e) => e.extension).join(', ')}). El primero en contestar toma la llamada.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Registro y Progreso en Vivo de la Campaña Masiva */}
+          {massLog.length > 0 && (
+            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-purple-400" />
+                  <span>Progreso de Emisión Masiva</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300">
+                    {massCurrentIndex} / {massTotalCount} Procesados
+                  </span>
+                </h4>
+                {isMassRunning && (
+                  <span className="flex items-center gap-2 text-xs font-mono text-purple-400">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Marcando en vivo: {massActiveNumber}</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Barra de progreso */}
+              <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800">
+                <div
+                  className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full transition-all duration-300"
+                  style={{ width: `${massTotalCount > 0 ? (massCurrentIndex / massTotalCount) * 100 : 0}%` }}
+                />
+              </div>
+
+              {/* Lista de números en cola / despachados */}
+              <div className="max-h-60 overflow-y-auto space-y-1.5 font-mono text-xs pr-1">
+                {massLog.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                      item.status === 'calling'
+                        ? 'bg-purple-950/40 border-purple-500/60 text-purple-200'
+                        : item.status === 'success'
+                        ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
+                        : item.status === 'failed'
+                        ? 'bg-rose-950/20 border-rose-500/30 text-rose-300'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-slate-500 w-6">#{idx + 1}</span>
+                      <span className="font-bold text-white tracking-wider">{item.number}</span>
+                      <span className="text-[11px] opacity-80">{item.msg}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500">{item.time}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          item.status === 'calling'
+                            ? 'bg-purple-500 text-slate-950 animate-pulse'
+                            : item.status === 'success'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            : item.status === 'failed'
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {item.status === 'calling' ? 'Llamando' : item.status === 'success' ? 'Conectada' : item.status === 'failed' ? 'Fallo' : 'En Cola'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
       {/* PESTAÑA DEDICADA: ACCIÓN DEL IVR AL CONTESTAR (ESPACIO EXPANDIDO) */}
       {/* ======================================================== */}
       {productionMode === 'ivr_action' && (
@@ -3190,25 +3596,36 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Destino Asignado cuando el Cliente Presione 1
+                    Destino Asignado cuando el Cliente Presione 1 (Llamadas Individuales)
                   </label>
-                  <select
-                    value={agentExtension}
-                    onChange={(e) => setAgentExtension(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="ringall">⚡ TODAS las Extensiones (Ring-All: El primero que atienda gana la llamada)</option>
-                    {extensions.map((ext) => (
-                      <option key={ext.id} value={ext.extension}>
-                        👤 Extensión {ext.extension} - {ext.name || `Agente ${ext.extension}`}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    {agentExtension === 'ringall'
-                      ? '🔥 Modo Ring-All (Cacería): Sonarán simultáneamente todas las extensiones activas. La primera que conteste tomará la llamada.'
-                      : `🎯 Agente Específico: Cuando el usuario pulse 1, Asterisk marcará exclusivamente a PJSIP/${agentExtension}.`}
-                  </div>
+                  {!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0 ? (
+                    <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs flex items-center justify-between">
+                      <div>
+                        <div className="font-mono font-bold text-emerald-400">Extensión {agentExtension} (Tu Softphone)</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Tus llamadas individuales retornan exclusivamente a tu softphone asignado.
+                        </div>
+                      </div>
+                      <UserCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={agentExtension}
+                        onChange={(e) => setAgentExtension(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                      >
+                        {extensions.map((ext) => (
+                          <option key={ext.id} value={ext.extension}>
+                            👤 Extensión {ext.extension} - {ext.name || `Agente ${ext.extension}`}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        🎯 Agente Específico: La llamada retornará directamente a la extensión <strong className="text-white font-mono">{agentExtension}</strong>. Para hacer sonar todas las extensiones a la vez (Ring-All), utiliza la pestaña <strong>Centro de Llamadas Masivas</strong>.
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-1">
