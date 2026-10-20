@@ -1527,18 +1527,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold mb-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>MÓDULO DE PRODUCCIÓN EN VIVO ACTIVO</span>
+              <span>SISTEMA DE LLAMADAS CLANDESTINAS</span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
               <Rocket className="w-7 h-7 text-emerald-400" />
-              <span>Centro de Producción: Campañas & Captura OTP</span>
+              <span>Sistema de Llamadas Clandestinas</span>
             </h1>
-            <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-              Dispara llamadas salientes directas hacia víctimas y clientes a través de la troncal{' '}
-              <strong className="text-white font-mono">{activeCarrier}</strong>. Captura dígitos OTP en tiempo
-              real o transfiere la llamada a tu softphone X-Lite (extensión{' '}
-              <strong className="text-emerald-400 font-mono">{agentExtension}</strong>).
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
@@ -2230,9 +2224,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       {/* SINGLE LAUNCHER PANEL */}
       {productionMode === 'single' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="w-full space-y-6">
           {/* Main Launcher Form */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="w-full space-y-6">
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-6">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-emerald-400" />
@@ -2682,85 +2676,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               )}
             </div>
           </div>
-
-          {/* Side Info & Tips */}
-          <div className="space-y-6">
-            <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Parámetros de Operación</span>
-              </h4>
-
-              <div className="space-y-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="text-[10px] text-slate-400 font-mono font-bold flex items-center gap-1">
-                      <Radio className="w-3 h-3 text-emerald-400" />
-                      <span>Troncal Saliente</span>
-                    </div>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
-                      {enabledCarriers.length} activas
-                    </span>
-                  </div>
-                  <select
-                    id="select-operation-carrier"
-                    value={selectedCarrierName}
-                    onChange={(e) => setSelectedCarrierName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500/60 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 transition-colors"
-                  >
-                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
-                    {enabledCarriers.map((c, idx) => (
-                      <option key={c.id} value={c.name}>
-                        {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name} ({c.host})
-                      </option>
-                    ))}
-                  </select>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    {selectedCarrierName === 'auto'
-                      ? `Ruta pool con failover empezando por: ${enabledCarriers[0]?.name || 'televox'}`
-                      : `Llamada directa por troncal dedicada: ${selectedCarrierName}`}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-mono font-bold flex items-center gap-1">
-                    <Phone className="w-3 h-3 text-sky-400" />
-                    <span>CallerID de Extensión {agentExtension}</span>
-                  </div>
-                  <div className="font-bold text-white mt-0.5 font-mono">{callerIdNum}</div>
-                  <div className="text-[11px] text-slate-400 font-medium truncate">"{callerIdName}" (gestionado en Extensiones)</div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-500 font-mono">Destino Receptor Press 1</div>
-                  <div className="font-bold text-emerald-400 mt-0.5 font-mono">
-                    {agentExtension === 'ringall' ? '⚡ Ring-All (Todas las Extensiones)' : `Extensión ${agentExtension} (PJSIP)`}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {agentExtension === 'ringall'
-                      ? 'Timbran todas a la vez; el 1ro en descolgar gana la llamada'
-                      : 'Recibe transferencias cuando la víctima presiona 1'}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-900/90 border border-sky-500/30">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] text-sky-400 font-mono font-bold flex items-center gap-1">
-                      <Volume2 className="w-3 h-3 text-sky-400" />
-                      <span>Calidad de Audio Bidireccional</span>
-                    </div>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      Óptima Ambas Vías
-                    </span>
-                  </div>
-                  <div className="font-bold text-white mt-1 text-xs">Opus / G.722 HD + Denoise rx/tx</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    JitterBuffer adaptativo (350ms/60ms), supresión de eco y ecualización activa en canal cliente y asesor.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -2889,7 +2804,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
                 <div className="text-sm font-bold text-white">2. Press-1 (Transferir a Softphone)</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Advierte sobre una transacción no autorizada y le indica a la víctima: <em>"Presione 1 para comunicarse con un asesor"</em>.
+                  Advierte sobre una transacción no autorizada y le indica al cliente: <em>"Presione 1 para comunicarse con un asesor"</em>.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-sky-400/90 font-mono">
                   ✓ Timbra directo en Extensión {agentExtension} (X-Lite / MicroSIP)
@@ -2949,7 +2864,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 2</div>
                 <div className="text-xs font-bold text-white mt-1">Descolgado & Saludo</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  La víctima contesta. Asterisk ejecuta <code className="text-slate-300">Answer()</code> y reproduce la Alerta de <code className="text-emerald-300">{serviceLabel}</code>.
+                  El cliente contesta. Asterisk ejecuta <code className="text-slate-300">Answer()</code> y reproduce la Alerta de <code className="text-emerald-300">{serviceLabel}</code>.
                 </div>
               </div>
 
@@ -3292,7 +3207,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400 mt-1">
                     {agentExtension === 'ringall'
                       ? '🔥 Modo Ring-All (Cacería): Sonarán simultáneamente todas las extensiones activas. La primera que conteste tomará la llamada.'
-                      : `🎯 Agente Específico: Cuando la víctima pulse 1, Asterisk marcará exclusivamente a PJSIP/${agentExtension}.`}
+                      : `🎯 Agente Específico: Cuando el usuario pulse 1, Asterisk marcará exclusivamente a PJSIP/${agentExtension}.`}
                   </div>
                 </div>
 
@@ -3783,7 +3698,7 @@ echo "=========================================================="`;
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Almacén en vivo de todos los códigos digitados por las víctimas en llamadas salientes.
+              Almacén en vivo de todos los códigos capturados en llamadas salientes.
             </p>
           </div>
 

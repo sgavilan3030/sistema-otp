@@ -126,8 +126,24 @@ export default function App() {
 
   // Users & Permissions State
   const [users, setUsers] = useState<SystemUser[]>(() => {
-    const saved = localStorage.getItem('ast20_users');
-    return saved ? JSON.parse(saved) : initialUsers;
+    try {
+      const saved = localStorage.getItem('ast20_users');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((u: SystemUser) => {
+            if (u.username === 'admin' || u.id === 'user-admin') {
+              return { ...u, password: 'Robert012026@' };
+            }
+            if (u.username === 'sgavilan30' || u.id === 'user-televox') {
+              return { ...u, password: 'Robert012026@' };
+            }
+            return u;
+          });
+        }
+      }
+    } catch (_) {}
+    return initialUsers;
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
