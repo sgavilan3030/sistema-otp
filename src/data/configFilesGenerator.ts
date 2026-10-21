@@ -299,7 +299,11 @@ exten => _X.,1,NoOp(Llamada entrante trunkinbound: \${CALLERID(all)})
 [ivr-press1]
 exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  same => n,Answer()
- same => n,Wait(${press1.answerDelaySeconds ?? 3})
+ same => n,Wait(1)
+ ; Deteccion Inteligente de Operadora Automatica o Grabadora (AMD)
+ same => n,AMD()
+ same => n,NoOp(=== [AMD-DETECTION] AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)
+ same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)
  same => n,Set(LOOP_COUNT=0)
 
  same => n(menu),Set(LOOP_COUNT=$[\${LOOP_COUNT} + 1])
@@ -307,6 +311,11 @@ exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  ; Reproducir mensaje de bienvenida
  same => n,Background(custom/press1_welcome)
  same => n,WaitExten(${press1.timeoutSeconds})
+
+ same => n(amd_machine_press1),NoOp(=== [AMD OPERADORA/GRABADORA DETECTADA] Colgando e iniciando reintento ===)
+ same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${CALLERID(num)}&status=machine_detected&cause=\${AMDCAUSE}" &)
+ same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${CALLERID(num)}&cause=\${AMDCAUSE}" &)
+ same => n,Hangup()
 
 ; Opción 1 presionada
 exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion de transferencia)

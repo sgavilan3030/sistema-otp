@@ -369,7 +369,7 @@ export interface LiveCall {
   agent: string;             // Extensión ej: "1001"
   agentName?: string;        // Nombre ej: "Juan Pérez"
   agentAvatar?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'machine' | 'ended';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'machine' | 'machine_detected' | 'retrying' | 'ended';
   statusText?: string;
   startTime: number;
   answeredAt?: number;

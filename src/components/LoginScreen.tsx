@@ -250,7 +250,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 Black Hat Dialer System
               </h1>
               <p className="text-[9px] text-emerald-400 font-mono tracking-wider font-semibold">
-                CENTRAL TELEFÓNICA CLANDESTINA
+                SISTEMA TELEFÓNICO VOIP ASTERISK
               </p>
             </div>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#10b981]"></span>
@@ -477,7 +477,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <div className="hidden lg:flex flex-col items-end text-right max-w-md xl:max-w-xl space-y-3 pointer-events-none select-none z-10 pr-2">
               <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-black/85 border border-emerald-500/50 text-emerald-300 text-xs font-mono font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span>CENTRAL TELEFÓNICA CLANDESTINA</span>
+                <span>SISTEMA TELEFÓNICO VOIP ASTERISK</span>
               </div>
 
               <div className="space-y-1">

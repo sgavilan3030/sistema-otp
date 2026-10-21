@@ -171,7 +171,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [massCurrentIndex, setMassCurrentIndex] = useState(0);
   const [massTotalCount, setMassTotalCount] = useState(0);
   const [massActiveNumber, setMassActiveNumber] = useState<string | null>(null);
-  const [massLog, setMassLog] = useState<Array<{ number: string; status: 'queued' | 'calling' | 'success' | 'failed'; time: string; msg: string }>>([]);
+  const [massLog, setMassLog] = useState<Array<{
+    number: string;
+    status: 'queued' | 'calling' | 'in_line' | 'on_hold' | 'ended' | 'machine_detected' | 'failed' | 'success';
+    time: string;
+    msg: string;
+    duration?: number;
+    channel?: string;
+    cause?: string;
+  }>>([]);
+  const [massFilter, setMassFilter] = useState<'all' | 'in_line' | 'on_hold' | 'ended' | 'machine'>('all');
+  const [isHangingUpAllMass, setIsHangingUpAllMass] = useState(false);
   const massCancelRef = useRef(false);
 
   // Initial predefined campaign templates
@@ -1642,6 +1652,125 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setMassActiveNumber(null);
   };
 
+  // Hangup all active mass campaign calls in Asterisk
+  const handleHangupAllMassCalls = async () => {
+    setIsHangingUpAllMass(true);
+    massCancelRef.current = true;
+    setIsMassRunning(false);
+    setMassActiveNumber(null);
+    try {
+      await fetch('/api/asterisk/call/hangup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      setMassLog((prev) =>
+        prev.map((item) =>
+          item.status === 'calling' || item.status === 'in_line' || item.status === 'on_hold' || item.status === 'queued'
+            ? { ...item, status: 'ended', msg: 'Colgada manualmente por operador' }
+            : item
+        )
+      );
+    } catch (_) {}
+    finally {
+      setIsHangingUpAllMass(false);
+    }
+  };
+
+  // Hangup a specific mass campaign call
+  const handleHangupSpecificMassCall = async (num: string, chan?: string) => {
+    try {
+      await fetch('/api/asterisk/call/hangup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num, channel: chan }),
+      });
+      setMassLog((prev) =>
+        prev.map((item) =>
+          item.number === num
+            ? { ...item, status: 'ended', msg: 'Colgada individualmente por operador' }
+            : item
+        )
+      );
+    } catch (_) {}
+  };
+
+  // Real-time synchronization of mass campaign calls with Asterisk live status
+  useEffect(() => {
+    if (massLog.length === 0) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/asterisk/live/calls');
+        if (!res.ok) return;
+        const data = await res.json();
+        const liveList: any[] = Array.isArray(data.calls) ? data.calls : [];
+
+        setMassLog((prev) =>
+          prev.map((item) => {
+            const clean = item.number.replace(/[^0-9]/g, '');
+            const clean10 = clean.length === 11 && clean.startsWith('1') ? clean.substring(1) : clean;
+            const live = liveList.find(
+              (c) =>
+                c.number === clean ||
+                c.number === clean10 ||
+                c.number === `1${clean10}`
+            );
+
+            if (live) {
+              if (live.isOnHold || live.status === 'on_hold') {
+                return {
+                  ...item,
+                  status: 'on_hold',
+                  duration: live.duration,
+                  channel: live.channel,
+                  msg: 'Cliente en espera con música (Hold MOH)',
+                };
+              }
+              if (
+                live.status === 'in_ivr' ||
+                live.status === 'talking' ||
+                live.status === 'pressed_1' ||
+                live.status === 'transferred'
+              ) {
+                return {
+                  ...item,
+                  status: 'in_line',
+                  duration: live.duration,
+                  channel: live.channel,
+                  msg:
+                    live.status === 'pressed_1'
+                      ? '¡Cliente presionó 1! Transfiriendo a asesor'
+                      : live.status === 'transferred'
+                      ? 'Conectado en vivo con asesor'
+                      : 'Cliente en línea escuchando IVR',
+                };
+              }
+              if (live.status === 'machine_detected' || live.status === 'retrying') {
+                return {
+                  ...item,
+                  status: 'machine_detected',
+                  channel: live.channel,
+                  msg: live.cause || 'Grabadora / Operadora detectada - Colgando y reintentando',
+                };
+              }
+              if (live.status === 'ended') {
+                return {
+                  ...item,
+                  status: 'ended',
+                  duration: live.duration,
+                  cause: live.cause,
+                  msg: `Llamada colgada (${live.cause || 'Finalizada'})`,
+                };
+              }
+            }
+            return item;
+          })
+        );
+      } catch (_) {}
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [massLog.length]);
+
   return (
     <div className="space-y-6">
       {/* Production Header Banner */}
@@ -1652,11 +1781,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold mb-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>SISTEMA DE LLAMADAS CLANDESTINAS</span>
+              <span>CENTRO DE EMISIÓN DE LLAMADAS</span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
               <Rocket className="w-7 h-7 text-emerald-400" />
-              <span>Sistema de Llamadas Clandestinas</span>
+              <span>Centro de Emisión de Llamadas</span>
             </h1>
           </div>
 
@@ -2076,7 +2205,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="text-[10px] text-slate-500 mt-1">Sonando destino</div>
             </div>
 
-            {/* Paso 3: Víctima en Línea */}
+            {/* Paso 3: Cliente en Línea */}
             <div
               className={`p-3 rounded-xl border transition-all ${
                 activeCall.status === 'in_ivr'
@@ -2936,29 +3065,41 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Botón de inicio y detención */}
-              <div className="pt-4 flex items-center gap-3">
+              {/* Botones de acción masiva */}
+              <div className="pt-4 flex flex-wrap items-center gap-3">
                 {!isMassRunning ? (
                   <button
                     id="btn-start-mass-campaign"
                     type="button"
                     onClick={handleStartMassCampaign}
-                    className="flex-1 py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 hover:from-purple-400 hover:to-indigo-400 text-white shadow-xl shadow-purple-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
+                    className="flex-1 min-w-[240px] py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 hover:from-purple-400 hover:to-indigo-400 text-white shadow-xl shadow-purple-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
                   >
                     <Play className="w-4 h-4 fill-white" />
-                    <span>INICIAR CAMPAÑA MASIVA (RING-ALL A TODAS LAS EXTENSIONES)</span>
+                    <span>INICIAR CAMPAÑA MASIVA (RING-ALL)</span>
                   </button>
                 ) : (
                   <button
                     id="btn-stop-mass-campaign"
                     type="button"
                     onClick={handleStopMassCampaign}
-                    className="flex-1 py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
+                    className="flex-1 min-w-[200px] py-3.5 px-6 rounded-xl font-black text-xs uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white shadow-xl shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
                   >
                     <Square className="w-4 h-4 fill-white" />
-                    <span>DETENER CAMPAÑA EN CURSO</span>
+                    <span>PAUSAR COLA EN CURSO</span>
                   </button>
                 )}
+
+                <button
+                  id="btn-mass-hangup-all"
+                  type="button"
+                  onClick={handleHangupAllMassCalls}
+                  disabled={isHangingUpAllMass}
+                  className="py-3.5 px-5 rounded-xl font-black text-xs uppercase tracking-wider bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-xl shadow-rose-600/30 border border-rose-400/40 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  title="Colgar de inmediato todas las llamadas activas en curso en Asterisk"
+                >
+                  <PhoneOff className="w-4 h-4" />
+                  <span>{isHangingUpAllMass ? 'COLGANDO...' : 'COLGAR TODAS LAS LLAMADAS'}</span>
+                </button>
               </div>
             </div>
 
@@ -3014,74 +3155,241 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
           </div>
 
-          {/* Registro y Progreso en Vivo de la Campaña Masiva */}
-          {massLog.length > 0 && (
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-purple-400" />
-                  <span>Progreso de Emisión Masiva</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300">
-                    {massCurrentIndex} / {massTotalCount} Procesados
-                  </span>
-                </h4>
-                {isMassRunning && (
-                  <span className="flex items-center gap-2 text-xs font-mono text-purple-400">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Marcando en vivo: {massActiveNumber}</span>
-                  </span>
-                )}
-              </div>
+          {/* Registro y Progreso en Vivo de la Campaña Masiva con Filtros En Línea / Hold / Colgadas */}
+          {massLog.length > 0 && (() => {
+            const massInLineCount = massLog.filter((m) => m.status === 'in_line' || m.status === 'success').length;
+            const massOnHoldCount = massLog.filter((m) => m.status === 'on_hold').length;
+            const massEndedCount = massLog.filter((m) => m.status === 'ended' || m.status === 'failed').length;
+            const massMachineCount = massLog.filter((m) => m.status === 'machine_detected').length;
 
-              {/* Barra de progreso */}
-              <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800">
-                <div
-                  className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full transition-all duration-300"
-                  style={{ width: `${massTotalCount > 0 ? (massCurrentIndex / massTotalCount) * 100 : 0}%` }}
-                />
-              </div>
+            const filteredMassLog = massLog.filter((m) => {
+              if (massFilter === 'in_line') return m.status === 'in_line' || m.status === 'success';
+              if (massFilter === 'on_hold') return m.status === 'on_hold';
+              if (massFilter === 'ended') return m.status === 'ended' || m.status === 'failed';
+              if (massFilter === 'machine') return m.status === 'machine_detected';
+              return true;
+            });
 
-              {/* Lista de números en cola / despachados */}
-              <div className="max-h-60 overflow-y-auto space-y-1.5 font-mono text-xs pr-1">
-                {massLog.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                      item.status === 'calling'
-                        ? 'bg-purple-950/40 border-purple-500/60 text-purple-200'
-                        : item.status === 'success'
-                        ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
-                        : item.status === 'failed'
-                        ? 'bg-rose-950/20 border-rose-500/30 text-rose-300'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400'
+            return (
+              <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-purple-400" />
+                      <span>Progreso de Emisión Masiva</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300">
+                        {massCurrentIndex} / {massTotalCount} Procesados
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Visualiza en tiempo real cuáles llamadas están en línea con los clientes, cuáles están en Hold o cuáles fueron colgadas.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {isMassRunning && (
+                      <span className="flex items-center gap-2 text-xs font-mono text-purple-400 bg-purple-950/30 px-3 py-1.5 rounded-xl border border-purple-500/30">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Marcando: {massActiveNumber}</span>
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleHangupAllMassCalls}
+                      disabled={isHangingUpAllMass}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
+                      title="Colgar todas las llamadas masivas activas"
+                    >
+                      <PhoneOff className="w-3.5 h-3.5" />
+                      <span>Colgar Todas</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filtros de Estado: Todas, En Línea, En Hold, Colgadas, Grabadora */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setMassFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      massFilter === 'all'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] text-slate-500 w-6">#{idx + 1}</span>
-                      <span className="font-bold text-white tracking-wider">{item.number}</span>
-                      <span className="text-[11px] opacity-80">{item.msg}</span>
+                    Todas ({massLog.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMassFilter('in_line')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      massFilter === 'in_line'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'bg-slate-900 text-emerald-400 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>En Línea ({massInLineCount})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMassFilter('on_hold')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      massFilter === 'on_hold'
+                        ? 'bg-amber-600 text-white shadow'
+                        : 'bg-slate-900 text-amber-400 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span>En Hold ({massOnHoldCount})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMassFilter('ended')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      massFilter === 'ended'
+                        ? 'bg-rose-600 text-white shadow'
+                        : 'bg-slate-900 text-rose-400 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    <PhoneOff className="w-3 h-3" />
+                    <span>Colgadas ({massEndedCount})</span>
+                  </button>
+
+                  {massMachineCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMassFilter('machine')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                        massFilter === 'machine'
+                          ? 'bg-purple-700 text-white shadow'
+                          : 'bg-slate-900 text-purple-300 hover:bg-slate-800 border border-slate-800'
+                      }`}
+                    >
+                      <span>🤖 Operadora / Reintento ({massMachineCount})</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Barra de progreso */}
+                <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full transition-all duration-300"
+                    style={{ width: `${massTotalCount > 0 ? (massCurrentIndex / massTotalCount) * 100 : 0}%` }}
+                  />
+                </div>
+
+                {/* Lista de números con estados en tiempo real y botón individual para colgar */}
+                <div className="max-h-72 overflow-y-auto space-y-2 font-mono text-xs pr-1">
+                  {filteredMassLog.length === 0 ? (
+                    <div className="py-6 text-center text-slate-500 italic">
+                      No hay llamadas con el filtro "{massFilter === 'in_line' ? 'En Línea' : massFilter === 'on_hold' ? 'En Hold' : massFilter === 'ended' ? 'Colgadas' : 'Operadora'}"
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500">{item.time}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          item.status === 'calling'
-                            ? 'bg-purple-500 text-slate-950 animate-pulse'
-                            : item.status === 'success'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                            : item.status === 'failed'
-                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}
-                      >
-                        {item.status === 'calling' ? 'Llamando' : item.status === 'success' ? 'Conectada' : item.status === 'failed' ? 'Fallo' : 'En Cola'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  ) : (
+                    filteredMassLog.map((item, idx) => {
+                      const isInLine = item.status === 'in_line' || item.status === 'success';
+                      const isOnHold = item.status === 'on_hold';
+                      const isEnded = item.status === 'ended' || item.status === 'failed';
+                      const isMachine = item.status === 'machine_detected';
+                      const isCalling = item.status === 'calling';
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${
+                            isOnHold
+                              ? 'bg-amber-950/30 border-amber-500/50 text-amber-200'
+                              : isInLine
+                              ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200'
+                              : isMachine
+                              ? 'bg-purple-950/40 border-purple-500/50 text-purple-200'
+                              : isCalling
+                              ? 'bg-purple-950/30 border-purple-500/40 text-purple-200'
+                              : isEnded
+                              ? 'bg-slate-900/60 border-slate-800 text-slate-400'
+                              : 'bg-slate-900/40 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-[10px] text-slate-500 w-6 shrink-0">#{idx + 1}</span>
+                            <div className="truncate">
+                              <div className="font-bold text-white tracking-wider flex items-center gap-2">
+                                <span>{item.number}</span>
+                                {item.duration !== undefined && item.duration > 0 && !isEnded && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40 text-emerald-400 border border-emerald-500/30">
+                                    ⏱ {formatTime(item.duration)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] opacity-80 truncate">{item.msg}</div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                            <span className="text-[10px] text-slate-500">{item.time}</span>
+
+                            {/* Badge de Estado Específico */}
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                isOnHold
+                                  ? 'bg-amber-500 text-slate-950 animate-pulse'
+                                  : isInLine
+                                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                                  : isMachine
+                                  ? 'bg-purple-600 text-white'
+                                  : isCalling
+                                  ? 'bg-purple-500/30 text-purple-300 border border-purple-500/40 animate-pulse'
+                                  : isEnded
+                                  ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}
+                            >
+                              {isOnHold ? (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                                  <span>EN HOLD</span>
+                                </>
+                              ) : isInLine ? (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                                  <span>EN LÍNEA</span>
+                                </>
+                              ) : isMachine ? (
+                                <span>🤖 OPERADORA</span>
+                              ) : isCalling ? (
+                                <span>MARCANDO</span>
+                              ) : isEnded ? (
+                                <span>COLGADA</span>
+                              ) : (
+                                <span>EN COLA</span>
+                              )}
+                            </span>
+
+                            {/* Botón individual de Colgar para cada llamada activa o en espera */}
+                            {(isInLine || isOnHold || isCalling || isMachine) && (
+                              <button
+                                type="button"
+                                onClick={() => handleHangupSpecificMassCall(item.number, item.channel)}
+                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-600/30 hover:bg-rose-600 text-rose-200 border border-rose-500/40 flex items-center gap-1 transition-all cursor-pointer"
+                                title="Colgar esta llamada de inmediato"
+                              >
+                                <PhoneOff className="w-3 h-3" />
+                                <span>Colgar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

@@ -72,6 +72,7 @@ echo "-> IP Pública del VPS para RTP/NAT: $PUBLIC_IP"
 # Copiar configuraciones locales si existen
 [ -f rtp.conf ] && cp -f rtp.conf /etc/asterisk/rtp.conf || true
 [ -f manager.conf ] && cp -f manager.conf /etc/asterisk/manager.conf || true
+[ -f amd.conf ] && cp -f amd.conf /etc/asterisk/amd.conf || true
 [ -f extensions.conf ] && cp -f extensions.conf /etc/asterisk/extensions.conf || true
 if [ -f pjsip.conf ]; then
   cp -f pjsip.conf /etc/asterisk/pjsip.conf
