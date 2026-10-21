@@ -240,6 +240,7 @@ export interface CapturedOtpRecord {
   channel?: string;
   service?: string;
   status?: 'valid' | 'invalid' | 'pending';
+  agent?: string;
 }
 
 export interface ProductionTarget {

