@@ -3874,6 +3874,7 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
 const recentOriginateRequests = new Map<string, number>();
 const lastOriginatePayloads = new Map<string, any>();
 const callRetryAttempts = new Map<string, number>();
+const pendingRetryTimers = new Map<string, NodeJS.Timeout>();
 let isAmdEnabled: boolean = true;
 let press1DestinationMode: 'ringall' | 'specific' = 'ringall';
 let press1SelectedExtensions: string[] = ['1001'];
@@ -6246,8 +6247,17 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
       callStatusStore.set(formattedDest, retryState);
 
       // Programar reintento automático tras 5 segundos de enfriamiento
-      setTimeout(async () => {
+      const retryTimer = setTimeout(async () => {
         try {
+          // Check if retry was cancelled before executing
+          if (!pendingRetryTimers.has(clean10) && !pendingRetryTimers.has(number) && !pendingRetryTimers.has(formattedDest)) {
+            console.log(`[RETRY ABORTED] Reintento cancelado por el operador para ${clean10}.`);
+            return;
+          }
+          pendingRetryTimers.delete(clean10);
+          pendingRetryTimers.delete(number);
+          pendingRetryTimers.delete(formattedDest);
+
           console.log(`[RETRY EXECUTE] Lanzando llamada final #${currentAttempts} (máximo ${MAX_ALLOWED_DIALS}) para ${clean10}...`);
           const channel = `Local/${formattedDest}@from-internal/n`;
           const targetContext = (payload.mode === 'otp') ? 'ivr-otp' : (payload.mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
@@ -6271,6 +6281,10 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
           console.warn(`[RETRY EXCEPTION] Error al originar reintento a ${number}:`, err.message);
         }
       }, 5000);
+
+      pendingRetryTimers.set(clean10, retryTimer);
+      pendingRetryTimers.set(number, retryTimer);
+      pendingRetryTimers.set(formattedDest, retryTimer);
 
       return res.json({
         success: true,
@@ -6675,12 +6689,22 @@ app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
 
 // Endpoint to hangup an active call (individual or all mass campaign calls)
 app.post('/api/asterisk/call/hangup', async (req, res) => {
-  const { channel, number, all } = req.body;
+  const { channel, number, destination, all } = req.body;
   try {
-    if (all || (!channel && !number)) {
+    if (all) {
       // Hangup ALL active channels in Asterisk
       console.log('[HANGUP ALL] Operador solicitó colgar todas las llamadas en Asterisk');
       await executeAsteriskCommand('channel request hangup all').catch(() => {});
+      sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['Action: Hangup', 'Channel: all']).catch(() => {});
+      
+      // Clear all pending retries
+      for (const t of pendingRetryTimers.values()) {
+        clearTimeout(t);
+      }
+      pendingRetryTimers.clear();
+      callRetryAttempts.clear();
+      lastOriginatePayloads.clear();
+
       for (const [k, v] of callStatusStore.entries()) {
         if (v.status !== 'ended') {
           callStatusStore.set(k, {
@@ -6694,34 +6718,154 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
       return res.json({ success: true, message: 'Todas las llamadas activas han sido colgadas' });
     }
 
-    let targetChannel = channel;
-    if (number) {
-      const clean10 = String(number).replace(/[^0-9]/g, '');
-      const existing = callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
-      if (!targetChannel && existing?.channel) {
-        targetChannel = existing.channel;
+    const rawNum = String(number || destination || '').trim().replace(/[^0-9]/g, '');
+    const clean10 = rawNum.length === 11 && rawNum.startsWith('1') ? rawNum.substring(1) : rawNum;
+    const formattedDest = clean10.length === 10 ? `1${clean10}` : clean10;
+
+    // 1. Immediately cancel any scheduled automatic retry timer
+    [rawNum, clean10, formattedDest].forEach((key) => {
+      if (key && pendingRetryTimers.has(key)) {
+        const t = pendingRetryTimers.get(key);
+        if (t) clearTimeout(t);
+        pendingRetryTimers.delete(key);
+        console.log(`[HANGUP] Cancelado temporizador de reintento para ${key}`);
       }
-      const endedState: CallState = {
-        number: clean10,
-        channel: targetChannel || '',
-        status: 'ended',
-        cause: 'Operador colgó en interfaz',
-        timestamp: Date.now(),
-      };
+      if (key) {
+        callRetryAttempts.delete(key);
+        lastOriginatePayloads.delete(key);
+      }
+    });
+
+    const channelsToHangup = new Set<string>();
+
+    // 2. Add explicit channel if passed
+    if (channel && typeof channel === 'string' && channel.trim()) {
+      const cleanChan = channel.trim();
+      channelsToHangup.add(cleanChan);
+      if (cleanChan.endsWith('/n')) {
+        channelsToHangup.add(cleanChan.replace(/\/n$/, ''));
+      }
+    }
+
+    // 3. Inspect existing channel from memory
+    const existing = (clean10 && callStatusStore.get(clean10)) || (formattedDest && callStatusStore.get(formattedDest)) || (rawNum && callStatusStore.get(rawNum));
+    if (existing?.channel) {
+      channelsToHangup.add(existing.channel);
+      if (existing.channel.endsWith('/n')) {
+        channelsToHangup.add(existing.channel.replace(/\/n$/, ''));
+      }
+    }
+    if (existing?.bridgedChannel) {
+      channelsToHangup.add(existing.bridgedChannel);
+    }
+
+    // 4. Query live channels concisely from Asterisk to find ALL legs (Local, PJSIP Trunk, Agent phone)
+    try {
+      const channelsOutput = await executeAsteriskCommand('core show channels concise');
+      if (channelsOutput) {
+        const lines = channelsOutput.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('Output:') || trimmed.startsWith('Privilege:')) continue;
+          const parts = trimmed.split('!');
+          if (parts.length >= 7) {
+            const chName = parts[0] || '';
+            const chExten = parts[2] || '';
+            const chData = parts[6] || '';
+            const chCid = parts[7] || '';
+            const chBridged = parts[11] || '';
+
+            let isMatch = false;
+
+            // Match by phone number in channel name, extension, callerid, or application data
+            if (clean10 && clean10.length >= 7) {
+              if (
+                chName.includes(clean10) ||
+                chExten.includes(clean10) ||
+                chData.includes(clean10) ||
+                chCid.includes(clean10) ||
+                (formattedDest && (chName.includes(formattedDest) || chExten.includes(formattedDest) || chData.includes(formattedDest)))
+              ) {
+                isMatch = true;
+              }
+            }
+
+            // Match by channel prefix (e.g. if target channel is Local/... or PJSIP/...)
+            if (channel && typeof channel === 'string' && channel.trim()) {
+              const prefix = channel.split('-')[0].replace(/\/n$/, '');
+              if (prefix && chName.startsWith(prefix)) {
+                isMatch = true;
+              }
+            }
+
+            if (isMatch) {
+              channelsToHangup.add(chName);
+              if (chBridged && chBridged.length > 2) {
+                channelsToHangup.add(chBridged);
+              }
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[HANGUP QUERY WARNING]', e.message);
+    }
+
+    console.log(`[HANGUP TARGETS] Destino: ${clean10 || 'N/A'}. Canales encontrados a colgar:`, Array.from(channelsToHangup));
+
+    // 5. Terminate all matching channels in Asterisk via CLI and AMI
+    const hungupList: string[] = [];
+    for (const ch of channelsToHangup) {
+      try {
+        console.log(`[HANGUP EXECUTE] Colgando canal: ${ch}`);
+        await executeAsteriskCommand(`channel request hangup ${ch}`);
+        hungupList.push(ch);
+        // Also fire AMI hangup
+        sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+          `Action: Hangup`,
+          `Channel: ${ch}`,
+        ]).catch(() => {});
+      } catch (err: any) {
+        console.warn(`[HANGUP CHANNEL ERR] ${ch}:`, err.message);
+      }
+    }
+
+    // 6. If no specific channels were found but user clicked hangup on a number or channel:
+    if (channelsToHangup.size === 0) {
+      if (channel) {
+        await executeAsteriskCommand(`channel request hangup ${channel}`).catch(() => {});
+      } else {
+        // Fallback: hangup all active channels
+        await executeAsteriskCommand('channel request hangup all').catch(() => {});
+      }
+    }
+
+    // 7. Update memory and AstDB state to ended
+    const endedState: CallState = {
+      number: clean10 || rawNum || 'N/A',
+      channel: '',
+      status: 'ended',
+      cause: 'Operador colgó la llamada manualmente desde el panel',
+      timestamp: Date.now(),
+    };
+
+    if (clean10) {
       callStatusStore.set(clean10, endedState);
-      callStatusStore.set(`1${clean10}`, endedState);
-      if (number !== clean10) {
-        callStatusStore.set(number, endedState);
-      }
+      executeAsteriskCommand(`database put call_status "${clean10}" "ended"`).catch(() => {});
+    }
+    if (formattedDest) {
+      callStatusStore.set(formattedDest, endedState);
+      executeAsteriskCommand(`database put call_status "${formattedDest}" "ended"`).catch(() => {});
+    }
+    if (rawNum) {
+      callStatusStore.set(rawNum, endedState);
     }
 
-    if (targetChannel) {
-      await executeAsteriskCommand(`channel request hangup ${targetChannel}`).catch(() => {});
-    } else {
-      await executeAsteriskCommand('channel request hangup all').catch(() => {});
-    }
-
-    res.json({ success: true, message: `Llamada colgada exitosamente (${targetChannel || number || 'todos'})` });
+    res.json({
+      success: true,
+      message: `Llamada colgada exitosamente.`,
+      channelsHungup: hungupList,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

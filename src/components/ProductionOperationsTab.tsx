@@ -1637,13 +1637,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Hangup active call
   const handleHangupActiveCall = async () => {
     setIsHangingUp(true);
+    const numToHangup = activeCall?.number || targetNumber.trim();
+    const cleanNum = numToHangup.replace(/[^0-9]/g, '');
     try {
       await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channel: activeCall?.channel,
-          number: activeCall?.number || targetNumber.trim(),
+          number: cleanNum || numToHangup,
+          destination: cleanNum || numToHangup,
         }),
       });
     } catch (e) {} finally {
