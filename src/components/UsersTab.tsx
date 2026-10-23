@@ -33,10 +33,12 @@ interface UsersTabProps {
   extensions: PjsipExtension[];
   carriers?: CarrierTrunk[];
   currentUserId: string;
+  currentUser?: SystemUser;
   onSwitchUser: (userId: string) => void;
   onAddUser: (user: SystemUser) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
+  onNavigateToProduction?: () => void;
 }
 
 export const UsersTab: React.FC<UsersTabProps> = ({
@@ -44,10 +46,12 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   extensions,
   carriers = [],
   currentUserId,
+  currentUser,
   onSwitchUser,
   onAddUser,
   onUpdateUser,
   onDeleteUser,
+  onNavigateToProduction,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
@@ -382,6 +386,34 @@ regInterval=300
       desc: 'Descargar pjsip.conf, extensions.conf y scripts de aprovisionamiento',
     },
   ];
+
+  const activeUser = currentUser || users.find((u) => u.id === currentUserId);
+  const canManageUsers = activeUser ? (activeUser.role === 'admin' || !!activeUser.permissions?.canManageUsers) : false;
+
+  if (!canManageUsers) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto my-12 bg-slate-900 border-2 border-rose-500/40 rounded-2xl text-center space-y-4 shadow-2xl">
+        <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white">Acceso Denegado: Gestión de Usuarios</h2>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Tu usuario actual (<strong className="text-white">{activeUser?.name || 'Usuario'}</strong> - Rol: <strong className="text-amber-400 uppercase font-mono">{activeUser?.role || 'Agente'}</strong>) no cuenta con privilegios administrativos para gestionar cuentas, ver credenciales o editar permisos del sistema.
+        </p>
+        <div className="pt-2">
+          {onNavigateToProduction && (
+            <button
+              type="button"
+              onClick={onNavigateToProduction}
+              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all cursor-pointer"
+            >
+              Ir a Centro de Operaciones
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

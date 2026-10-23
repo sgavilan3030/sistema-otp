@@ -117,7 +117,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return null;
   })();
 
-  const isAdmin = activeUser ? activeUser.role === 'admin' : true;
+  const isAdmin = activeUser ? activeUser.role === 'admin' : false;
+  const isAgent = activeUser ? activeUser.role === 'agent' : false;
+  const isSupervisor = activeUser ? activeUser.role === 'supervisor' : false;
 
   // User assigned extension: Si un usuario tiene extensión asignada, sus llamadas individuales retornan EXCLUSIVAMENTE a su extensión
   const userAssignedExt = (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0)
@@ -183,6 +185,118 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [massFilter, setMassFilter] = useState<'all' | 'in_line' | 'on_hold' | 'ended' | 'machine'>('all');
   const [isHangingUpAllMass, setIsHangingUpAllMass] = useState(false);
   const massCancelRef = useRef(false);
+
+  // AMD (Answering Machine Detection / Detección de Grabadora) State
+  const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
+  const [isTogglingAmd, setIsTogglingAmd] = useState<boolean>(false);
+  const [amdFeedback, setAmdFeedback] = useState<string | null>(null);
+
+  // Press 1 Destination Setting (Ring-All vs Extensiones Específicas) with persistent save
+  const [press1DestMode, setPress1DestMode] = useState<'ringall' | 'specific'>('ringall');
+  const [press1DestExtensions, setPress1DestExtensions] = useState<string[]>(['1001']);
+  const [isSavingDest, setIsSavingDest] = useState<boolean>(false);
+  const [destSaveFeedback, setDestSaveFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Fetch AMD status & Press 1 destination configuration on mount
+  useEffect(() => {
+    fetch('/api/asterisk/amd/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && typeof data.enabled === 'boolean') {
+          setAmdEnabled(data.enabled);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/asterisk/press1-destination')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          if (data.mode === 'specific' || data.mode === 'ringall') {
+            setPress1DestMode(data.mode);
+          }
+          if (Array.isArray(data.extensions) && data.extensions.length > 0) {
+            setPress1DestExtensions(data.extensions);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleAmd = async () => {
+    setIsTogglingAmd(true);
+    setAmdFeedback(null);
+    try {
+      const nextVal = !amdEnabled;
+      const res = await fetch('/api/asterisk/amd/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextVal }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAmdEnabled(data.enabled);
+        setAmdFeedback(data.message || (data.enabled ? 'Detección de grabadora ACTIVADA' : 'Detección de grabadora DESACTIVADA'));
+        setTimeout(() => setAmdFeedback(null), 4500);
+      }
+    } catch (e: any) {
+      setAmdFeedback(`Error al alternar AMD: ${e.message}`);
+      setTimeout(() => setAmdFeedback(null), 4500);
+    } finally {
+      setIsTogglingAmd(false);
+    }
+  };
+
+  const handleToggleDestExtension = (extNum: string) => {
+    setPress1DestExtensions((prev) => {
+      if (prev.includes(extNum)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter((e) => e !== extNum);
+      } else {
+        return [...prev, extNum];
+      }
+    });
+  };
+
+  const handleSavePress1Destination = async () => {
+    setIsSavingDest(true);
+    setDestSaveFeedback(null);
+    try {
+      const res = await fetch('/api/asterisk/press1-destination/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: press1DestMode,
+          extensions: press1DestMode === 'specific' ? press1DestExtensions : [],
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDestSaveFeedback({
+          text: data.message || 'Configuración guardada exitosamente en Asterisk.',
+          type: 'success',
+        });
+        if (press1DestMode === 'ringall') {
+          setAgentExtension('ringall');
+        } else if (press1DestExtensions.length > 0) {
+          setAgentExtension(press1DestExtensions[0]);
+        }
+      } else {
+        setDestSaveFeedback({
+          text: `Error al guardar: ${data.error || 'Fallo desconocido'}`,
+          type: 'error',
+        });
+      }
+    } catch (err: any) {
+      setDestSaveFeedback({
+        text: `Error de red al guardar: ${err.message}`,
+        type: 'error',
+      });
+    } finally {
+      setIsSavingDest(false);
+      setTimeout(() => setDestSaveFeedback(null), 6000);
+    }
+  };
 
   // Initial predefined campaign templates
   const initialCampaignEntities: CampaignEntity[] = [
@@ -1468,7 +1582,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
           mode: callFlowMode,
-          agentExten: agentExtension,
+          agentExten: press1DestMode === 'ringall' ? 'ringall' : (press1DestExtensions.join('&') || agentExtension || '1001'),
           audioIntro: currentAudios.introAudioPath,
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
@@ -1886,7 +2000,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="font-bold text-sky-400 font-mono">{outboundCid}</div>
             </div>
 
-            {onNavigateToReseller && (
+            {onNavigateToReseller && isAdmin && (
               <button
                 id="btn-banner-reseller"
                 type="button"
@@ -2073,27 +2187,50 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </span>
         </button>
 
-        <button
-          id="btn-tab-ivr-action"
-          onClick={() => setProductionMode('ivr_action')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            productionMode === 'ivr_action'
-              ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Zap className="w-4 h-4" />
-          <span>Acción del IVR al Contestar</span>
-          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-            productionMode === 'ivr_action'
-              ? 'bg-slate-950 text-emerald-400'
-              : 'bg-emerald-500/20 text-emerald-300'
-          }`}>
-            {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1' : 'Híbrido'}
-          </span>
-        </button>
+        {!isAgent && (
+          <button
+            id="btn-tab-ivr-action"
+            onClick={() => setProductionMode('ivr_action')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              productionMode === 'ivr_action'
+                ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>Acción del IVR al Contestar</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+              productionMode === 'ivr_action'
+                ? 'bg-slate-950 text-emerald-400'
+                : 'bg-emerald-500/20 text-emerald-300'
+            }`}>
+              {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1' : 'Híbrido'}
+            </span>
+          </button>
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          {/* Quick AMD Toggle Button */}
+          <button
+            id="btn-quick-toggle-amd"
+            type="button"
+            onClick={handleToggleAmd}
+            disabled={isTogglingAmd}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+              amdEnabled
+                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 shadow-sm'
+                : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-sm'
+            }`}
+            title="Activar o desactivar el filtro de detección de grabadora/correo de voz (AMD) en Asterisk"
+          >
+            {isTogglingAmd ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Mic className="w-3.5 h-3.5" />
+            )}
+            <span>Detección Grabadora (AMD): <strong>{amdEnabled ? 'ACTIVADA' : 'DESACTIVADA'}</strong></span>
+          </button>
+
           {!activeCall?.isActive && (
             <button
               id="btn-open-test-8888-hud"
@@ -2610,6 +2747,222 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     className="w-1/3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:border-emerald-500 focus:outline-none hidden sm:block"
                   />
                 </div>
+              </div>
+
+              {/* CARD 1: DETECCIÓN DE GRABADORA (AMD) Y LÍMITE DE 2 REINTENTOS */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Mic className={`w-4 h-4 ${amdEnabled ? 'text-emerald-400' : 'text-rose-400'}`} />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        Sistema de Detección de Grabadora / Contestador (AMD)
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                        amdEnabled
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}>
+                        {amdEnabled ? '✓ ACTIVA' : '✕ DESACTIVADA'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {amdEnabled
+                        ? 'Si el cliente no responde y entra el correo de voz o contestador automático, Asterisk colgará y reintentará.'
+                        : 'La detección está desactivada: la llamada se conectará de inmediato sin filtrar contestadores.'}
+                    </p>
+                  </div>
+
+                  <button
+                    id="btn-toggle-amd-prod"
+                    type="button"
+                    onClick={handleToggleAmd}
+                    disabled={isTogglingAmd}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shrink-0 ${
+                      amdEnabled
+                        ? 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 hover:border-rose-400'
+                        : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400'
+                    }`}
+                  >
+                    {isTogglingAmd ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sliders className="w-3.5 h-3.5" />
+                    )}
+                    <span>{amdEnabled ? 'Desactivar Detección AMD' : 'Activar Detección AMD'}</span>
+                  </button>
+                </div>
+
+                {amdFeedback && (
+                  <div className="p-2.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>{amdFeedback}</span>
+                  </div>
+                )}
+
+                {/* Badge informativa de límite estricto de 2 marcaciones */}
+                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-sky-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-sky-300">
+                    <ShieldAlert className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>
+                      <strong>Límite de Marcación Si No Contesta:</strong> Máximo <strong>2 llamadas</strong> en total (1 llamada inicial + 1 reintento automático).
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    Estricto: No más de 2 marcaciones
+                  </span>
+                </div>
+              </div>
+
+              {/* CARD 2: DESTINO AL PRESIONAR 1 (TODAS LAS EXTENSIONES VS EXTENSIONES ESPECÍFICAS) */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <PhoneForwarded className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        Destino de Asesores al Presionar 1 (IVR Transfer)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Define si deben sonar <strong>todas las extensiones registradas</strong> al mismo tiempo o solo <strong>extensiones específicas</strong>.
+                    </p>
+                  </div>
+
+                  {/* BOTÓN PARA GUARDAR CAMBIOS */}
+                  <button
+                    id="btn-save-press1-dest"
+                    type="button"
+                    onClick={handleSavePress1Destination}
+                    disabled={isSavingDest}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                    title="Guardar la configuración de extensiones persistentemente en Asterisk"
+                  >
+                    {isSavingDest ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isSavingDest ? 'Guardando en Asterisk...' : 'Guardar Cambios de Destino'}</span>
+                  </button>
+                </div>
+
+                {/* Feedback de guardado */}
+                {destSaveFeedback && (
+                  <div
+                    className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                      destSaveFeedback.type === 'success'
+                        ? 'bg-emerald-500/10 border border-emerald-500/40 text-emerald-300'
+                        : 'bg-rose-500/10 border border-rose-500/40 text-rose-300'
+                    }`}
+                  >
+                    {destSaveFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{destSaveFeedback.text}</span>
+                  </div>
+                )}
+
+                {/* Opciones: Ring-All vs Específicas */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Opción 1: Ring-All */}
+                  <label
+                    onClick={() => setPress1DestMode('ringall')}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      press1DestMode === 'ringall'
+                        ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500/40'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="press1_dest_mode"
+                      checked={press1DestMode === 'ringall'}
+                      onChange={() => setPress1DestMode('ringall')}
+                      className="mt-1 text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Todas las Extensiones (Ring-All)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                        Suenan todas las extensiones conectadas ({extensions.map((e) => e.extension).join(', ')}). El primer asesor que descuelgue toma la llamada.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Opción 2: Extensiones Específicas */}
+                  <label
+                    onClick={() => setPress1DestMode('specific')}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      press1DestMode === 'specific'
+                        ? 'bg-sky-950/30 border-sky-500 text-white shadow-md ring-1 ring-sky-500/40'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="press1_dest_mode"
+                      checked={press1DestMode === 'specific'}
+                      onChange={() => setPress1DestMode('specific')}
+                      className="mt-1 text-sky-500 focus:ring-sky-500 bg-slate-900 border-slate-700"
+                    />
+                    <div className="flex-1">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Extensiones Específicas</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                        Solo sonarán las extensiones que marques a continuación ({press1DestExtensions.join(', ') || 'ninguna seleccionada'}).
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Sub-selector de extensiones específicas cuando el modo es 'specific' */}
+                {press1DestMode === 'specific' && (
+                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 animate-fadeIn">
+                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Marca las extensiones que deben sonar:</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {extensions.map((ext) => {
+                        const isChecked = press1DestExtensions.includes(ext.extension);
+                        return (
+                          <label
+                            key={ext.id || ext.extension}
+                            className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                              isChecked
+                                ? 'bg-sky-500/20 border-sky-500 text-sky-200 shadow-sm'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleDestExtension(ext.extension)}
+                              className="rounded text-sky-500 focus:ring-sky-500 bg-slate-950 border-slate-700"
+                            />
+                            <div className="truncate">
+                              <span className="font-mono text-white font-black">{ext.extension}</span>
+                              <span className="text-[10px] text-slate-400 ml-1 truncate">({ext.name || 'Asesor'})</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 pt-1 flex items-center justify-between">
+                      <span>Seleccionadas: <strong className="text-sky-300 font-mono">{press1DestExtensions.join(' & ') || '1001'}</strong></span>
+                      <span className="text-[10px] text-amber-400/90 italic">Recuerda hacer clic en "Guardar Cambios de Destino" para aplicar</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Service Template Selection with Dynamic Entity Management */}
@@ -4028,7 +4381,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
-            {/* Actualizador Integral del VPS y Asterisk 20 */}
+            {/* Actualizador Integral del VPS y Asterisk 20 - Solo Administradores */}
+            {isAdmin && (
             <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -4323,6 +4677,7 @@ echo "=========================================================="`;
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* Barra de Lanzamiento Inmediato desde la Pestaña del IVR */}

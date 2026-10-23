@@ -58,6 +58,7 @@ interface LiveCallsTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
   users: SystemUser[];
+  currentUser?: SystemUser;
   audios?: AudioPrompt[];
   onTriggerSync?: () => void;
   onNavigateToProduction?: () => void;
@@ -68,11 +69,13 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   extensions,
   carriers,
   users,
+  currentUser,
   audios = [],
   onTriggerSync,
   onNavigateToProduction,
   onNavigateToSpy,
 }) => {
+  const canSpy = currentUser ? (currentUser.role === 'admin' || currentUser.role === 'supervisor' || !!currentUser.permissions?.canSpy) : true;
   const [liveCalls, setLiveCalls] = useState<LiveCallItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -759,16 +762,18 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
 
                       {/* Botones de Control de la Llamada */}
                       <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                        {/* Botón Espiar Llamada en Vivo (ChanSpy) */}
-                        <button
-                          type="button"
-                          onClick={() => handleStartSpy(call)}
-                          className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-                          title="Llama a tu extensión para escuchar la llamada en vivo (ChanSpy silencioso)"
-                        >
-                          <Headphones className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Espiar</span>
-                        </button>
+                        {/* Botón Espiar Llamada en Vivo (ChanSpy) - Solo supervisores y administradores */}
+                        {canSpy && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartSpy(call)}
+                            className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+                            title="Llama a tu extensión para escuchar la llamada en vivo (ChanSpy silencioso)"
+                          >
+                            <Headphones className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Espiar</span>
+                          </button>
+                        )}
 
                         {/* Botón Toggle Hold / Música de Espera */}
                         <button

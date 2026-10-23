@@ -42,6 +42,7 @@ import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
+import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -331,6 +332,13 @@ export default function App() {
   const lastServerTimestampRef = useRef(0);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
+
+  // RBAC Access Control Guard: Automatically redirect if current user lacks permission for activeTab
+  useEffect(() => {
+    if (currentUser && !isTabAllowedForUser(activeTab, currentUser)) {
+      setActiveTab(getDefaultTabForUser(currentUser));
+    }
+  }, [currentUser, activeTab]);
 
   const fetchUserState = useCallback(async (targetUserId?: string, targetUsername?: string) => {
     try {
@@ -1291,6 +1299,7 @@ export default function App() {
     setCurrentUserId(userId);
     const user = users.find((u) => u.id === userId);
     if (user) {
+      setActiveTab(getDefaultTabForUser(user));
       showToast(`Sesión cambiada a: ${user.name} (${user.role})`);
       addLog('SYSTEM', `[SESIÓN] Operador activo cambiado a: ${user.name}`);
       try {
@@ -1437,6 +1446,7 @@ export default function App() {
   const handleLoginSuccess = async (user: SystemUser) => {
     setCurrentUserId(user.id);
     setIsAuthenticated(true);
+    setActiveTab(getDefaultTabForUser(user));
     try {
       sessionStorage.setItem('ast_session_active', 'true');
       localStorage.setItem('ast20_current_user_id', user.id);
@@ -1524,7 +1534,29 @@ export default function App() {
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'production' && (
+        {/* Guard de Seguridad RBAC en caso de acceso no autorizado a una pestaña */}
+        {!isTabAllowedForUser(activeTab, currentUser) && (
+          <div className="p-8 max-w-xl mx-auto my-12 bg-slate-900 border-2 border-rose-500/40 rounded-2xl text-center space-y-4 shadow-2xl">
+            <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Acceso Denegado</h2>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Tu usuario actual (<strong className="text-white">{currentUser?.name || 'Usuario'}</strong> - Rol: <strong className="text-amber-400 uppercase font-mono">{currentUser?.role || 'Agente'}</strong>) no cuenta con permisos para acceder al módulo <strong className="text-white uppercase font-mono">{activeTab}</strong>.
+            </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab(getDefaultTabForUser(currentUser))}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all cursor-pointer"
+              >
+                Volver a Operaciones de Llamadas
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'production' && isTabAllowedForUser('production', currentUser) && (
           <ProductionOperationsTab
             extensions={extensions}
             carriers={carriers}
@@ -1538,29 +1570,32 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'live-calls' && (
+        {activeTab === 'live-calls' && isTabAllowedForUser('live-calls', currentUser) && (
           <LiveCallsTab
             extensions={extensions}
             carriers={carriers}
             users={users}
+            currentUser={currentUser}
             audios={audios}
             onTriggerSync={handleQuickSync}
             onNavigateToProduction={() => setActiveTab('production')}
-            onNavigateToSpy={() => setActiveTab('call-spy')}
+            onNavigateToSpy={currentUser.role === 'agent' ? undefined : () => setActiveTab('call-spy')}
           />
         )}
 
-        {activeTab === 'call-spy' && (
+        {activeTab === 'call-spy' && isTabAllowedForUser('call-spy', currentUser) && (
           <CallSpyMonitorTab
             extensions={extensions}
             carriers={carriers}
             users={users}
+            currentUser={currentUser}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
+            onNavigateToProduction={() => setActiveTab('production')}
           />
         )}
 
-        {activeTab === 'prompt' && (
+        {activeTab === 'prompt' && isTabAllowedForUser('prompt', currentUser) && (
           <PromptMaestroTab
             amiPort={connectionSettings.amiPort}
             ariPort={connectionSettings.ariPort}
@@ -1569,7 +1604,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'extensions' && (
+        {activeTab === 'extensions' && isTabAllowedForUser('extensions', currentUser) && (
           <ExtensionsTab
             extensions={extensions}
             onAddExtension={handleAddExtension}
@@ -1583,7 +1618,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'reseller' && (
+        {activeTab === 'reseller' && isTabAllowedForUser('reseller', currentUser) && (
           <MinuteResellerTab
             extensions={extensions}
             carriers={carriers}
@@ -1593,7 +1628,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'carriers' && (
+        {activeTab === 'carriers' && isTabAllowedForUser('carriers', currentUser) && (
           <CarriersTab
             carriers={carriers}
             onAddCarrier={handleAddCarrier}
@@ -1607,7 +1642,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'ivr' && (
+        {activeTab === 'ivr' && isTabAllowedForUser('ivr', currentUser) && (
           <IVRStudioTab
             press1Config={press1Config}
             otpConfig={otpConfig}
@@ -1621,7 +1656,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'sqlite' && (
+        {activeTab === 'sqlite' && isTabAllowedForUser('sqlite', currentUser) && (
           <SqliteTab
             astDbEntries={astDbEntries}
             onAddAstDbEntry={handleAddAstDbEntry}
@@ -1634,7 +1669,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'audios' && (
+        {activeTab === 'audios' && isTabAllowedForUser('audios', currentUser) && (
           <AudioLibraryTab
             audios={audios}
             onAddAudio={handleAddAudio}
@@ -1654,20 +1689,22 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'users' && (
+        {activeTab === 'users' && isTabAllowedForUser('users', currentUser) && (
           <UsersTab
             users={users}
             extensions={extensions}
             carriers={carriers}
             currentUserId={currentUserId}
+            currentUser={currentUser}
             onSwitchUser={handleSwitchUser}
             onAddUser={handleAddUser}
             onUpdateUser={handleUpdateUser}
             onDeleteUser={handleDeleteUser}
+            onNavigateToProduction={() => setActiveTab('production')}
           />
         )}
 
-        {activeTab === 'sync' && (
+        {activeTab === 'sync' && isTabAllowedForUser('sync', currentUser) && (
           <SyncTelemetryTab
             settings={connectionSettings}
             onUpdateSettings={setConnectionSettings}
@@ -1679,7 +1716,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'diagnostics' && (
+        {activeTab === 'diagnostics' && isTabAllowedForUser('diagnostics', currentUser) && (
           <AmiAriDiagnosticsTab
             settings={connectionSettings}
             onUpdateSettings={setConnectionSettings}
@@ -1687,7 +1724,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'configs' && (
+        {activeTab === 'configs' && isTabAllowedForUser('configs', currentUser) && (
           <ConfigExporterTab
             extensions={extensions}
             carriers={carriers}

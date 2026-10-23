@@ -1294,18 +1294,43 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 <label className="block text-slate-300 font-medium mb-1">
                   Destino de Extensión / Asesor
                 </label>
-                <select
-                  value={press1.digit1Target}
-                  onChange={(e) => setPress1({ ...press1, digit1Target: e.target.value })}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                >
-                  <option value="ringall">⚡ TODAS las Extensiones (Ring-All / Cacería)</option>
-                  {validExtensions.map((ext) => (
-                    <option key={ext.id} value={ext.extension}>
-                      Ext {ext.extension} - {ext.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={press1.digit1Target}
+                    onChange={(e) => setPress1({ ...press1, digit1Target: e.target.value })}
+                    className="flex-1 px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  >
+                    <option value="ringall">⚡ TODAS las Extensiones (Ring-All / Cacería)</option>
+                    {validExtensions.map((ext) => (
+                      <option key={ext.id} value={ext.extension}>
+                        Ext {ext.extension} - {ext.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const mode = press1.digit1Target === 'ringall' ? 'ringall' : 'specific';
+                      const exts = press1.digit1Target === 'ringall' ? [] : [press1.digit1Target];
+                      try {
+                        await fetch('/api/asterisk/press1-destination/save', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mode, extensions: exts }),
+                        });
+                        setSavedFeedback(`✓ Destino ${press1.digit1Target === 'ringall' ? 'Ring-All (Todas las extensiones)' : `Ext. ${press1.digit1Target}`} guardado exitosamente en Asterisk.`);
+                        setTimeout(() => setSavedFeedback(null), 4000);
+                      } catch (err: any) {
+                        setSavedFeedback(`Error al guardar destino: ${err.message}`);
+                      }
+                    }}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-slate-950 font-bold rounded-md text-xs shrink-0 flex items-center gap-1 shadow cursor-pointer transition-all"
+                    title="Guardar este destino persistentemente en Asterisk"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Guardar Destino</span>
+                  </button>
+                </div>
               </div>
             </div>
 

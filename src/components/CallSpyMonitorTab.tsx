@@ -66,16 +66,20 @@ interface CallSpyMonitorTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
   users: SystemUser[];
+  currentUser?: SystemUser;
   onTriggerSync?: () => void;
   onNavigateToLiveCalls?: () => void;
+  onNavigateToProduction?: () => void;
 }
 
 export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
   extensions,
   carriers,
   users,
+  currentUser,
   onTriggerSync,
   onNavigateToLiveCalls,
+  onNavigateToProduction,
 }) => {
   // Supervisor extension configuration
   const [supervisorExten, setSupervisorExten] = useState<string>(() => {
@@ -377,6 +381,31 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
     }
     return true;
   });
+
+  if (currentUser && (currentUser.role === 'agent' || (!currentUser.permissions?.canSpy && currentUser.role !== 'admin' && currentUser.role !== 'supervisor'))) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto my-12 bg-slate-900 border-2 border-rose-500/40 rounded-2xl text-center space-y-4 shadow-2xl">
+        <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white">Acceso Restringido: Módulo de Supervisión</h2>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Tu usuario tiene asignado el rol de <strong className="text-emerald-400">Agente (Solo Llamadas)</strong>. Las funciones de espionaje telefónico silencioso (ChanSpy), susurro (*56) e intervención (*57) están reservadas exclusivamente a Supervisores y Administradores.
+        </p>
+        <div className="pt-2">
+          {onNavigateToProduction && (
+            <button
+              type="button"
+              onClick={onNavigateToProduction}
+              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all cursor-pointer"
+            >
+              Ir a Centro de Operaciones (Llamadas)
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

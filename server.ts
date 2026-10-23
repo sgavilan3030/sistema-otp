@@ -2099,7 +2099,9 @@ export function generateCleanDialplanConf(
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
 
-    block += ` same => n(${labelEnd}),Hangup()\n\n`;
+    block += ` same => n(${labelEnd}),NoOp(=== [CALL END] Destino: ${destVar} | DIALSTATUS=\${DIALSTATUS} | HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+    block += ` same => n,ExecIf($["\${DIALSTATUS}" = "NOANSWER" | "\${DIALSTATUS}" = "TIMEOUT" | "\${DIALSTATUS}" = "BUSY"]?System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=${destVar}&cause=\${DIALSTATUS}" &))\n`;
+    block += ` same => n,Hangup()\n\n`;
     return block;
   };
 
@@ -2907,10 +2909,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" || "\${AMD_ACTIVE}" = "disabled" || "\${AMD_ACTIVE}" = "off"]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} para detectar operadora o grabadora ===)\n`;
   dialplanContent += ` same => n,AMD()\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
+  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección de grabadora omitida o desactivada por usuario ===)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
@@ -2967,10 +2972,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
-  dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR DIRECTO] Marcando a Extensión PJSIP/\${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" =~ "PJSIP/"]?\${FINAL_AGENT}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Goto(press1_finish)\n`;
-  dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL] Marcando a TODAS las extensiones disponibles (\${GLOBAL_RINGALL_EXTENSIONS}). El primero en contestar gana la llamada y queda registrado ===)\n`;
+  dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n(press1_finish),Hangup()\n\n`;
 
@@ -2988,10 +2994,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" || "\${AMD_ACTIVE}" = "disabled" || "\${AMD_ACTIVE}" = "off"]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} para detectar operadora o grabadora ===)\n`;
   dialplanContent += ` same => n,AMD()\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección de grabadora omitida o desactivada por usuario ===)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
@@ -3144,10 +3153,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
-  dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR DIRECTO] Marcando a Extensión PJSIP/\${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" =~ "PJSIP/"]?\${FINAL_AGENT}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Goto(otp_press1_finish)\n`;
-  dialplanContent += ` same => n(dial_otp_ringall),NoOp(=== [OTP PRESS-1 RING-ALL] Marcando a TODAS las extensiones disponibles (\${GLOBAL_RINGALL_EXTENSIONS}). El primero en contestar gana la llamada ===)\n`;
+  dialplanContent += ` same => n(dial_otp_ringall),NoOp(=== [OTP PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n(otp_press1_finish),Hangup()\n\n`;
 
@@ -3864,6 +3874,9 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
 const recentOriginateRequests = new Map<string, number>();
 const lastOriginatePayloads = new Map<string, any>();
 const callRetryAttempts = new Map<string, number>();
+let isAmdEnabled: boolean = true;
+let press1DestinationMode: 'ringall' | 'specific' = 'ringall';
+let press1SelectedExtensions: string[] = ['1001'];
 
 app.post('/api/asterisk/call/originate', async (req, res) => {
   try {
@@ -3908,26 +3921,32 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       formattedDest = `1${cleanDest}`;
     }
 
-    // Save payload for automatic retry on answering machine detection
-    lastOriginatePayloads.set(cleanDest, { ...req.body });
-    lastOriginatePayloads.set(formattedDest, { ...req.body });
-    callRetryAttempts.delete(cleanDest);
-    callRetryAttempts.delete(formattedDest);
+    // Determine effective agent destination: if ringall, or using saved press-1 destination preference
+    const effectiveAgentExten = (agentExten && agentExten !== 'ringall' && agentExten !== 'all')
+      ? agentExten
+      : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
+
+    // Save payload for automatic retry on answering machine detection or no answer
+    lastOriginatePayloads.set(cleanDest, { ...req.body, agentExten: effectiveAgentExten });
+    lastOriginatePayloads.set(formattedDest, { ...req.body, agentExten: effectiveAgentExten });
+    // This initial call counts as attempt 1 of maximum 2
+    callRetryAttempts.set(cleanDest, 1);
+    callRetryAttempts.set(formattedDest, 1);
 
     const cleanCarrier = (carrier || '').trim();
 
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
-      `database put ivr_vars ${cleanDest}_agent_exten "${agentExten || 'ringall'}"`,
+      `database put ivr_vars ${cleanDest}_agent_exten "${effectiveAgentExten}"`,
       `database put ivr_vars ${cleanDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${cleanDest}_cid_name "${effectiveCidName}"`,
       `database put ivr_vars ${formattedDest}_mode "${mode || 'press1'}"`,
-      `database put ivr_vars ${formattedDest}_agent_exten "${agentExten || 'ringall'}"`,
+      `database put ivr_vars ${formattedDest}_agent_exten "${effectiveAgentExten}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
       `database put test_client_number "${cleanDest}"`,
-      `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/number "${effectiveCidNum}"`,
+      `database put extension_cid ${(effectiveAgentExten && effectiveAgentExten !== 'ringall') ? effectiveAgentExten.split('&')[0] : '1001'}/number "${effectiveCidNum}"`,
       `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/name "${effectiveCidName}"`,
       `database put ivr_vars default_action "${targetContext}"`,
     ];
@@ -4051,7 +4070,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
-      IVR_AGENT_EXTEN: agentExten || 'ringall',
+      IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       IVR_MODE: mode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -6174,7 +6193,8 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
   res.json({ success: true });
 });
 
-// Endpoint to handle automatic redial when an automated operator or recording (AMD) is detected
+// Endpoint to handle automatic redial when client does not answer or recording (AMD) is detected
+// STRICT LIMIT: The system will dial a maximum of 2 times in total (1 initial dial + 1 retry). No more!
 app.all('/api/asterisk/call/retry', async (req, res) => {
   try {
     const number = String(req.query.number || req.body?.number || '').trim().replace(/[^0-9]/g, '');
@@ -6185,12 +6205,14 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
 
     const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
     const formattedDest = clean10.length === 10 ? `1${clean10}` : clean10;
-    const currentAttempts = (callRetryAttempts.get(clean10) || 0) + 1;
+    
+    // An initial dial counts as attempt 1. A retry brings total dials to 2.
+    const currentAttempts = (callRetryAttempts.get(clean10) || 1) + 1;
     callRetryAttempts.set(clean10, currentAttempts);
     callRetryAttempts.set(number, currentAttempts);
     callRetryAttempts.set(formattedDest, currentAttempts);
 
-    const maxRetries = 3;
+    const MAX_ALLOWED_DIALS = 2; // Strict limit requested: "solo debe de marcarla 2 veces no mas de ahi"
     const payload = lastOriginatePayloads.get(clean10) || lastOriginatePayloads.get(formattedDest) || lastOriginatePayloads.get(number) || {
       destination: number,
       carrier: 'auto',
@@ -6198,14 +6220,18 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
       agentExten: '1001',
     };
 
-    if (currentAttempts <= maxRetries) {
-      console.log(`[AMD REDIAL SYSTEM] Destino ${number}: Operadora automática o contestador detectado (${cause}). Intento ${currentAttempts} de ${maxRetries}. Reintentando automáticamente en 6 segundos...`);
+    if (currentAttempts <= MAX_ALLOWED_DIALS) {
+      console.log(`[RETRY SYSTEM] Destino ${number}: No contestó o contestador detectado (${cause}). Marcación #${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidas. Reintentando en 5 segundos...`);
+
+      const causeDescription = (cause === 'AMD_MACHINE' || cause === 'MAX_WORDS' || cause === 'LONG_GREETING')
+        ? `Grabadora/Contestador detectado (${cause})`
+        : `Cliente no contestó (${cause})`;
 
       const retryState: CallState = {
         number: clean10,
         channel: '',
         status: 'retrying' as any,
-        cause: `Operadora automática / grabadora (${cause}) - Colgando y reintentando (Intento ${currentAttempts} de ${maxRetries})`,
+        cause: `${causeDescription} - Reintentando por última vez (Llamada ${currentAttempts} de ${MAX_ALLOWED_DIALS} máximas)`,
         agent: payload.agentExten || '1001',
         agentName: (payload.agentExten === 'ringall' || payload.agentExten === 'all')
           ? '⚡ Todas las Extensiones (Ring-All)'
@@ -6219,10 +6245,10 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
       callStatusStore.set(clean10, retryState);
       callStatusStore.set(formattedDest, retryState);
 
-      // Programar reintento automático tras 6 segundos de enfriamiento
+      // Programar reintento automático tras 5 segundos de enfriamiento
       setTimeout(async () => {
         try {
-          console.log(`[AMD REDIAL EXECUTE] Lanzando reintento automático #${currentAttempts} para ${clean10}...`);
+          console.log(`[RETRY EXECUTE] Lanzando llamada final #${currentAttempts} (máximo ${MAX_ALLOWED_DIALS}) para ${clean10}...`);
           const channel = `Local/${formattedDest}@from-internal/n`;
           const targetContext = (payload.mode === 'otp') ? 'ivr-otp' : (payload.mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
           const effectiveCidNum = (payload.callerIdNum || payload.callerId || '+18005550199').trim();
@@ -6242,26 +6268,28 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
             fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
           }
         } catch (err: any) {
-          console.warn(`[AMD REDIAL EXCEPTION] Error al originar reintento a ${number}:`, err.message);
+          console.warn(`[RETRY EXCEPTION] Error al originar reintento a ${number}:`, err.message);
         }
-      }, 6000);
+      }, 5000);
 
       return res.json({
         success: true,
-        message: `Operadora automática detectada (${cause}). Llamada colgada. Se programó el reintento ${currentAttempts} de ${maxRetries} en 6 segundos.`,
+        message: `${causeDescription}. Se programó la llamada final (intento ${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidos) en 5 segundos.`,
         retrying: true,
         attempt: currentAttempts,
-        maxRetries,
+        maxRetries: MAX_ALLOWED_DIALS,
       });
     } else {
-      console.log(`[AMD REDIAL LIMIT] Destino ${number}: Se agotaron los ${maxRetries} reintentos máximos tras grabadora.`);
+      console.log(`[STRICT 2-DIALS LIMIT] Destino ${number}: Se alcanzó el límite estricto de ${MAX_ALLOWED_DIALS} marcaciones sin contestar. No se volverá a marcar.`);
       callRetryAttempts.delete(clean10);
       callRetryAttempts.delete(formattedDest);
+      callRetryAttempts.delete(number);
+      
       const endedState: CallState = {
         number: clean10,
         channel: '',
         status: 'ended',
-        cause: `Operadora automática o grabadora detectada - Se agotaron los ${maxRetries} intentos`,
+        cause: `Cliente no contestó tras ${MAX_ALLOWED_DIALS} llamadas realizadas (${cause}). Marcación detenida.`,
         timestamp: Date.now(),
       };
       callStatusStore.set(number, endedState);
@@ -6270,12 +6298,115 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
 
       return res.json({
         success: true,
-        message: `Se alcanzó el límite de ${maxRetries} reintentos para ${number}.`,
+        message: `Límite estricto de ${MAX_ALLOWED_DIALS} marcaciones alcanzado para ${number}. No se volverá a marcar.`,
         retrying: false,
+        totalDials: MAX_ALLOWED_DIALS,
+        maxDials: MAX_ALLOWED_DIALS,
       });
     }
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to get AMD status
+app.get('/api/asterisk/amd/status', async (req, res) => {
+  try {
+    const raw = await executeAsteriskCommand('database get ivr_vars amd_enabled').catch(() => '');
+    if (raw && raw.includes('Value:')) {
+      const val = raw.split('Value:')[1].split('\n')[0].replace(/\r/g, '').trim();
+      isAmdEnabled = val === '1' || val === 'true' || val === 'yes';
+    }
+    res.json({ success: true, enabled: isAmdEnabled });
+  } catch (err: any) {
+    res.json({ success: true, enabled: isAmdEnabled });
+  }
+});
+
+// Endpoint to toggle AMD detection on or off
+app.post('/api/asterisk/amd/toggle', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    isAmdEnabled = enabled !== undefined ? !!enabled : !isAmdEnabled;
+    const dbVal = isAmdEnabled ? '1' : '0';
+    await executeAsteriskCommand(`database put ivr_vars amd_enabled "${dbVal}"`).catch(() => {});
+    console.log(`[AMD TOGGLE] Detección de contestador/grabadora (AMD) -> ${isAmdEnabled ? 'ACTIVADA (1)' : 'DESACTIVADA (0)'}`);
+    res.json({
+      success: true,
+      enabled: isAmdEnabled,
+      message: isAmdEnabled
+        ? 'Detección de grabadora (AMD) ACTIVADA: Si contesta un contestador o correo de voz, colgará y reintentará.'
+        : 'Detección de grabadora (AMD) DESACTIVADA: La llamada se conectará de inmediato sin filtrar contestadores.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to get Press 1 destination settings
+app.get('/api/asterisk/press1-destination', async (req, res) => {
+  try {
+    const raw = await executeAsteriskCommand('database get ivr_vars global_agent_exten').catch(() => '');
+    if (raw && raw.includes('Value:')) {
+      const val = raw.split('Value:')[1].split('\n')[0].replace(/\r/g, '').trim();
+      if (val === 'ringall' || val === 'all') {
+        press1DestinationMode = 'ringall';
+      } else if (val) {
+        press1DestinationMode = 'specific';
+        press1SelectedExtensions = val.split('&').map(e => e.trim().replace(/[^0-9]/g, '')).filter(Boolean);
+        if (press1SelectedExtensions.length === 0) press1SelectedExtensions = ['1001'];
+      }
+    }
+    const effectiveAgent = press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&');
+    res.json({
+      success: true,
+      mode: press1DestinationMode,
+      extensions: press1SelectedExtensions,
+      effectiveAgent,
+    });
+  } catch (err: any) {
+    res.json({
+      success: true,
+      mode: press1DestinationMode,
+      extensions: press1SelectedExtensions,
+      effectiveAgent: press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'),
+    });
+  }
+});
+
+// Endpoint to save Press 1 destination settings persistently to AstDB and server memory
+app.post('/api/asterisk/press1-destination/save', async (req, res) => {
+  try {
+    const { mode, extensions } = req.body;
+    if (mode === 'specific') {
+      press1DestinationMode = 'specific';
+      const cleanExts = Array.isArray(extensions)
+        ? extensions.map((e: any) => String(e).trim().replace(/[^0-9]/g, '')).filter(Boolean)
+        : [];
+      press1SelectedExtensions = cleanExts.length > 0 ? cleanExts : ['1001'];
+    } else {
+      press1DestinationMode = 'ringall';
+    }
+
+    const effectiveAgent = press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&');
+
+    await executeAsteriskCommand(`database put ivr_vars global_agent_exten "${effectiveAgent}"`).catch(() => {});
+    await executeAsteriskCommand(`database put ivr_vars 8888_agent_exten "${effectiveAgent}"`).catch(() => {});
+    await executeAsteriskCommand(`database put ivr_vars default_agent_exten "${effectiveAgent}"`).catch(() => {});
+
+    console.log(`[PRESS-1 DESTINATION PERSISTED] Modo: ${press1DestinationMode} -> Agentes: ${effectiveAgent}`);
+
+    res.json({
+      success: true,
+      mode: press1DestinationMode,
+      extensions: press1SelectedExtensions,
+      effectiveAgent,
+      message: press1DestinationMode === 'ringall'
+        ? 'Configuración guardada: Al presionar 1 sonarán TODAS las extensiones registradas (Ring-All).'
+        : `Configuración guardada: Al presionar 1 sonarán las extensiones específicas: ${press1SelectedExtensions.join(', ')}.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
