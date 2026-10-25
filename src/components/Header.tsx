@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Radio,
+  PhoneForwarded,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 import { isTabAllowedForUser, getRoleBadgeInfo } from '../utils/rbac';
@@ -28,6 +29,9 @@ interface HeaderProps {
   currentUser?: SystemUser;
   onQuickSync: () => void;
   onOpenCallSimulator: () => void;
+  onOpenCallerIdModal?: () => void;
+  activeCallerIdNum?: string;
+  activeCallerIdName?: string;
   onOpenMobileMenu?: () => void;
   onLogout?: () => void;
   isSyncing: boolean;
@@ -43,6 +47,9 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onQuickSync,
   onOpenCallSimulator,
+  onOpenCallerIdModal,
+  activeCallerIdNum = '+18005550199',
+  activeCallerIdName = 'BANRESERVAS',
   onOpenMobileMenu,
   onLogout,
   isSyncing,
@@ -213,6 +220,21 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <PhoneCall className="w-3.5 h-3.5" />
               <span>Softphone</span>
+            </button>
+
+            {/* Outgoing Caller ID Button in Menu */}
+            <button
+              id="btn-header-callerid"
+              type="button"
+              onClick={onOpenCallerIdModal}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 shadow-sm transition-all cursor-pointer"
+              title="Cambiar ID de llamada saliente (Caller ID Num y Name)"
+            >
+              <PhoneForwarded className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-bold hidden sm:inline">ID Saliente:</span>
+              <span className="font-mono text-white font-bold truncate max-w-[130px]">
+                {activeCallerIdName ? `${activeCallerIdName} (${activeCallerIdNum})` : activeCallerIdNum || '+18005550199'}
+              </span>
             </button>
 
             {/* Quick Access to Reventa de Minutos (Only if allowed) */}

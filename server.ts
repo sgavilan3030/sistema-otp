@@ -6514,6 +6514,77 @@ app.post('/api/asterisk/press1-destination/save', async (req, res) => {
   }
 });
 
+// Active outgoing Caller ID storage
+let activeCallerIdState = {
+  callerIdNum: '+18005550199',
+  callerIdName: 'Seguridad Bancaria',
+  updatedAt: new Date().toISOString(),
+};
+
+// Endpoint to get active outgoing Caller ID
+app.get('/api/asterisk/callerid', async (req, res) => {
+  try {
+    let num = activeCallerIdState.callerIdNum;
+    let name = activeCallerIdState.callerIdName;
+    try {
+      const rawNum = await executeAsteriskCommand('database get ivr_vars global_callerid_num');
+      if (rawNum && rawNum.includes('Value:')) {
+        const parsed = rawNum.split('Value:')[1].split('\n')[0].trim();
+        if (parsed) num = parsed;
+      }
+      const rawName = await executeAsteriskCommand('database get ivr_vars global_callerid_name');
+      if (rawName && rawName.includes('Value:')) {
+        const parsed = rawName.split('Value:')[1].split('\n')[0].trim();
+        if (parsed) name = parsed;
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      callerIdNum: num,
+      callerIdName: name,
+      updatedAt: activeCallerIdState.updatedAt,
+    });
+  } catch (err: any) {
+    res.json({
+      success: true,
+      callerIdNum: activeCallerIdState.callerIdNum,
+      callerIdName: activeCallerIdState.callerIdName,
+      updatedAt: activeCallerIdState.updatedAt,
+    });
+  }
+});
+
+// Endpoint to set active outgoing Caller ID
+app.post('/api/asterisk/callerid', async (req, res) => {
+  try {
+    const { callerIdNum, callerIdName } = req.body;
+    if (callerIdNum !== undefined && String(callerIdNum).trim()) {
+      activeCallerIdState.callerIdNum = String(callerIdNum).trim();
+    }
+    if (callerIdName !== undefined && String(callerIdName).trim()) {
+      activeCallerIdState.callerIdName = String(callerIdName).trim();
+    }
+    activeCallerIdState.updatedAt = new Date().toISOString();
+
+    await executeAsteriskCommand(`database put ivr_vars global_callerid_num "${activeCallerIdState.callerIdNum}"`).catch(() => {});
+    await executeAsteriskCommand(`database put ivr_vars global_callerid_name "${activeCallerIdState.callerIdName}"`).catch(() => {});
+    await executeAsteriskCommand(`database put ivr_vars default_callerid_num "${activeCallerIdState.callerIdNum}"`).catch(() => {});
+    await executeAsteriskCommand(`database put ivr_vars default_callerid_name "${activeCallerIdState.callerIdName}"`).catch(() => {});
+
+    console.log(`[CALLERID SET] Saliente -> "${activeCallerIdState.callerIdName}" <${activeCallerIdState.callerIdNum}>`);
+
+    res.json({
+      success: true,
+      message: `ID de llamada saliente configurado a "${activeCallerIdState.callerIdName}" <${activeCallerIdState.callerIdNum}>`,
+      callerIdNum: activeCallerIdState.callerIdNum,
+      callerIdName: activeCallerIdState.callerIdName,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to list live calls for LiveCallsTab monitoring in real-time
 app.get('/api/asterisk/live/calls', async (req, res) => {
   try {

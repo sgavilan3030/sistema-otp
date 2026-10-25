@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser } from '../types';
+import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead } from '../types';
 import {
   Rocket,
   PhoneCall,
@@ -53,6 +53,10 @@ import {
   Users,
   Layers,
   ListOrdered,
+  Megaphone,
+  Target,
+  UserPlus,
+  PhoneIncoming,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -77,6 +81,8 @@ export interface CampaignEntity {
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
+  campaignId?: string;       // ID de la campaña de marcación vinculada
+  campaignName?: string;     // Nombre de la campaña de marcación vinculada
 }
 
 export type ServiceCampaignKey = string;
@@ -386,6 +392,118 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     },
   ];
 
+  // Predefined dialing campaigns for agents to select and dial
+  const initialDialingCampaigns: DialingCampaign[] = [
+    {
+      id: 'camp-bank',
+      name: 'Campaña Banreservas - Alerta Fraude',
+      description: 'Notificación de transferencia sospechosa y validación OTP bancaria',
+      entityId: 'bank',
+      callerIdNum: '8099602110',
+      callerIdName: 'BANRESERVAS',
+      status: 'active',
+      leads: [
+        { id: 'lead-1', number: '16104803845', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Alerta $520 USD' },
+        { id: 'lead-2', number: '18099602110', name: 'Carlos Alcántara', status: 'pending', notes: 'Transferencia ACH' },
+        { id: 'lead-3', number: '18295551234', name: 'María Santana', status: 'pending', notes: 'Cuenta de ahorros' },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'camp-card',
+      name: 'Campaña Visa / MasterCard - Tarjetas de Crédito',
+      description: 'Bloqueo preventivo por cargo en comercio internacional no reconocido',
+      entityId: 'card',
+      callerIdNum: '18005550199',
+      callerIdName: 'VISA SEGURIDAD',
+      status: 'active',
+      leads: [
+        { id: 'lead-4', number: '18005550199', name: 'Soporte Tarjetas Prueba', status: 'pending' },
+        { id: 'lead-5', number: '18492003040', name: 'Roberto Díaz', status: 'pending', notes: 'Tarjeta Platinum' },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'camp-whatsapp',
+      name: 'Campaña WhatsApp / Telegram - Verificación',
+      description: 'Solicitud de verificación SMS/OTP por registro en nuevo smartphone',
+      entityId: 'whatsapp',
+      callerIdNum: '18004567890',
+      callerIdName: 'WHATSAPP VERIF',
+      status: 'active',
+      leads: [
+        { id: 'lead-6', number: '18004567890', name: 'Usuario Soporte WA', status: 'pending' },
+        { id: 'lead-7', number: '18294448899', name: 'Elena Morales', status: 'pending' },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'camp-google',
+      name: 'Campaña Google / Apple ID - Acceso Crítico',
+      description: 'Alerta inmediata de sesión iniciada desde ubicación desconocida',
+      entityId: 'google',
+      callerIdNum: '18005550122',
+      callerIdName: 'SECURITY ALERT',
+      status: 'active',
+      leads: [
+        { id: 'lead-8', number: '18005550122', name: 'Cuenta Administrador Google', status: 'pending' },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'camp-amazon',
+      name: 'Campaña Amazon / Envíos - Retención de Pedido',
+      description: 'Autorización urgente de compra de alto valor retenida en despacho',
+      entityId: 'amazon',
+      callerIdNum: '18005550133',
+      callerIdName: 'AMAZON FRAUD',
+      status: 'active',
+      leads: [
+        { id: 'lead-9', number: '18005550133', name: 'Cliente Prime Amazon', status: 'pending' },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'camp-custom',
+      name: 'Campaña Libre / Marcación Personalizada',
+      description: 'Marcación manual abierta a cualquier número objetivo y entidad',
+      entityId: 'custom',
+      callerIdNum: '',
+      callerIdName: 'SERVICIO CLIENTE',
+      status: 'active',
+      leads: [],
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  // Dialing campaigns state persisted in localStorage
+  const [dialingCampaigns, setDialingCampaigns] = useState<DialingCampaign[]>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_dialing_campaigns_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return initialDialingCampaigns;
+  });
+
+  // Selected Campaign ID - Agents have full permission to select and change campaign freely
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_selected_campaign_id');
+      if (saved) return saved;
+    } catch (_) {}
+    return 'camp-bank';
+  });
+
+  // Quick contact addition state for campaigns
+  const [isAddingLeadModalOpen, setIsAddingLeadModalOpen] = useState(false);
+  const [newLeadNumber, setNewLeadNumber] = useState('');
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadNotes, setNewLeadNotes] = useState('');
+  const [campaignFeedback, setCampaignFeedback] = useState<string | null>(null);
+
   // Campaign entities state persisted in localStorage
   const [campaignEntities, setCampaignEntities] = useState<CampaignEntity[]>(() => {
     try {
@@ -403,6 +521,98 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // State to track if the selected entity has been explicitly saved/locked
   const [isEntitySaving, setIsEntitySaving] = useState(false);
   const [isEntitySaved, setIsEntitySaved] = useState(false);
+
+  // Handle campaign selection by agent or admin
+  const handleSelectCampaign = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+    try {
+      localStorage.setItem('ast20_selected_campaign_id', campaignId);
+    } catch (_) {}
+
+    const camp = dialingCampaigns.find((c) => c.id === campaignId);
+    if (camp) {
+      // Synchronize associated Guión / Entity
+      const matchingEntity = campaignEntities.find((e) => e.id === camp.entityId);
+      if (matchingEntity) {
+        handleSelectEntity(matchingEntity);
+      }
+      if (camp.callerIdNum) setCallerIdNum(camp.callerIdNum);
+      if (camp.callerIdName) setCallerIdName(camp.callerIdName);
+
+      // If campaign has leads, load next pending lead into target fields
+      const nextLead = camp.leads.find((l) => l.status === 'pending') || camp.leads[0];
+      if (nextLead) {
+        setTargetNumber(nextLead.number);
+        if (nextLead.name) setTargetName(nextLead.name);
+      }
+
+      setCampaignFeedback(`✓ Campaña activa: "${camp.name}" seleccionada para marcar.`);
+      setTimeout(() => setCampaignFeedback(null), 3500);
+    }
+  };
+
+  // Load a specific lead from campaign into the dialer
+  const handleLoadCampaignLead = (lead: CampaignLead) => {
+    setTargetNumber(lead.number);
+    if (lead.name) setTargetName(lead.name);
+    setCampaignFeedback(`✓ Número cargado al marcador: ${lead.number} (${lead.name || 'Sin nombre'})`);
+    setTimeout(() => setCampaignFeedback(null), 3000);
+  };
+
+  // Quick add contact to active campaign
+  const handleAddLeadToCampaign = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newLeadNumber.trim()) return;
+    const cleanNum = newLeadNumber.replace(/[^0-9]/g, '');
+    const newLead: CampaignLead = {
+      id: 'lead-' + Date.now(),
+      number: cleanNum,
+      name: newLeadName.trim() || undefined,
+      notes: newLeadNotes.trim() || undefined,
+      status: 'pending',
+    };
+
+    setDialingCampaigns((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id === selectedCampaignId) {
+          return { ...c, leads: [...c.leads, newLead] };
+        }
+        return c;
+      });
+      try {
+        localStorage.setItem('ast20_dialing_campaigns_v2', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // Also auto-load this number into the dialer
+    setTargetNumber(cleanNum);
+    if (newLeadName.trim()) setTargetName(newLeadName.trim());
+
+    setNewLeadNumber('');
+    setNewLeadName('');
+    setNewLeadNotes('');
+    setIsAddingLeadModalOpen(false);
+    setCampaignFeedback(`✓ Contacto ${cleanNum} agregado a la campaña y listo para marcar.`);
+    setTimeout(() => setCampaignFeedback(null), 3500);
+  };
+
+  // Remove lead from campaign
+  const handleDeleteLeadFromCampaign = (campaignId: string, leadId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDialingCampaigns((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id === campaignId) {
+          return { ...c, leads: c.leads.filter((l) => l.id !== leadId) };
+        }
+        return c;
+      });
+      try {
+        localStorage.setItem('ast20_dialing_campaigns_v2', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+  };
 
   const handleSaveAndLockCurrentEntity = async () => {
     if (!isAdmin) {
@@ -882,9 +1092,44 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const activeCarrier = selectedCarrierName !== 'auto' ? selectedCarrierName : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
   const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
 
-  // Dynamic CallerID fields directly configurable by agent
-  const [callerIdNum, setCallerIdNum] = useState('+18005550199');
-  const [callerIdName, setCallerIdName] = useState('Seguridad Bancaria');
+  // Dynamic CallerID fields directly configurable by agent and synced with Header/Sidebar Caller ID Modal
+  const [callerIdNum, setCallerIdNum] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ast20_active_caller_id_num') || '+18005550199';
+    } catch (_) {
+      return '+18005550199';
+    }
+  });
+  const [callerIdName, setCallerIdName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ast20_active_caller_id_name') || 'BANRESERVAS';
+    } catch (_) {
+      return 'BANRESERVAS';
+    }
+  });
+
+  // Sync with global caller id modal events & server config
+  useEffect(() => {
+    fetch('/api/asterisk/callerid')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          if (data.callerIdNum) setCallerIdNum(data.callerIdNum);
+          if (data.callerIdName) setCallerIdName(data.callerIdName);
+        }
+      })
+      .catch(() => {});
+
+    const handleCallerIdUpdate = (e: any) => {
+      if (e.detail?.num) setCallerIdNum(e.detail.num);
+      if (e.detail?.name) setCallerIdName(e.detail.name);
+    };
+
+    window.addEventListener('callerid-updated', handleCallerIdUpdate);
+    return () => {
+      window.removeEventListener('callerid-updated', handleCallerIdUpdate);
+    };
+  }, []);
 
   // Auto-sync CallerID values when agentExtension changes
   useEffect(() => {
@@ -2968,9 +3213,172 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 )}
               </div>
 
-              {/* Service Template Selection with Dynamic Entity Management */}
-              <div className="space-y-2.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {/* Service Template Selection with Dynamic Entity Management & Campaign Selection for Agents */}
+              <div className="space-y-3">
+                {/* CAMPAIGN SELECTOR BAR FOR AGENTS */}
+                <div className="p-4 rounded-xl bg-slate-900/95 border border-emerald-500/40 space-y-3 shadow-lg shadow-emerald-500/5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        <Megaphone className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-white uppercase tracking-wider">
+                            Campaña a Marcar
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            <Check className="w-3 h-3" />
+                            <span>Seleccionable por el Agente</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Selecciona la campaña comercial o financiera que vas a marcar. Carga automáticamente su guión IVR, Caller ID y contactos.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                      <select
+                        id="select-active-campaign"
+                        value={selectedCampaignId}
+                        onChange={(e) => handleSelectCampaign(e.target.value)}
+                        className="px-3 py-1.5 bg-slate-950 border border-emerald-500/50 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm min-w-[220px]"
+                      >
+                        {dialingCampaigns.map((camp) => {
+                          const entity = campaignEntities.find((e) => e.id === camp.entityId);
+                          const pendingCount = camp.leads.filter((l) => l.status === 'pending').length;
+                          return (
+                            <option key={camp.id} value={camp.id}>
+                              {camp.name} ({pendingCount} contactos) [Guión: {entity?.name || camp.entityId}]
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingLeadModalOpen(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-slate-950 shadow-md shadow-emerald-600/20 transition-all cursor-pointer shrink-0"
+                        title="Agregar un nuevo número objetivo a la campaña actual"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>+ Agregar Número</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Feedback toast if campaign is selected */}
+                  {campaignFeedback && (
+                    <div className="p-2.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-medium flex items-center gap-2 animate-fadeIn">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>{campaignFeedback}</span>
+                    </div>
+                  )}
+
+                  {/* Quick-Switch Chips for Campaigns */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center gap-1">
+                      <Target className="w-3 h-3 text-emerald-400" />
+                      <span>Campañas Disponibles:</span>
+                    </span>
+                    {dialingCampaigns.map((camp) => {
+                      const isCampActive = selectedCampaignId === camp.id;
+                      const pendingCount = camp.leads.filter((l) => l.status === 'pending').length;
+                      return (
+                        <button
+                          key={camp.id}
+                          type="button"
+                          onClick={() => handleSelectCampaign(camp.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isCampActive
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-md shadow-emerald-500/25 ring-1 ring-emerald-400'
+                              : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <span>{camp.name.replace('Campaña ', '')}</span>
+                          <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                            isCampActive ? 'bg-slate-950/80 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {pendingCount}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Campaign Leads / Contacts Strip */}
+                  {(() => {
+                    const currentCamp = dialingCampaigns.find((c) => c.id === selectedCampaignId);
+                    if (!currentCamp) return null;
+                    return (
+                      <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800/90 space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                          <div className="text-[11px] text-slate-300 flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-white uppercase tracking-wider flex items-center gap-1">
+                              <Users className="w-3 h-3 text-emerald-400" />
+                              <span>Contactos para Marcar ({currentCamp.leads.length}):</span>
+                            </span>
+                            <span className="text-slate-400 text-[10px] hidden md:inline">
+                              {currentCamp.description}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            CID: <strong className="text-emerald-300 font-bold">{currentCamp.callerIdName || 'PRED'}</strong> ({currentCamp.callerIdNum || 'Troncal'})
+                          </span>
+                        </div>
+
+                        {currentCamp.leads.length > 0 ? (
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
+                            {currentCamp.leads.map((lead) => {
+                              const isLoaded = targetNumber.trim() === lead.number;
+                              return (
+                                <div
+                                  key={lead.id}
+                                  onClick={() => handleLoadCampaignLead(lead)}
+                                  className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                                    isLoaded
+                                      ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50 font-bold'
+                                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                                  }`}
+                                  title="Haz clic para cargar este contacto al marcador"
+                                >
+                                  <div className="flex flex-col text-left">
+                                    <span className="font-bold text-emerald-300">{lead.number}</span>
+                                    {lead.name && <span className="text-[10px] text-slate-400 font-sans truncate max-w-[120px]">{lead.name}</span>}
+                                  </div>
+                                  {isLoaded ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500 text-slate-950">
+                                      En Marcador
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-sans text-sky-400 font-semibold hover:underline">
+                                      Cargar
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleDeleteLeadFromCampaign(currentCamp.id, lead.id, e)}
+                                    className="text-slate-500 hover:text-rose-400 p-0.5 transition-colors ml-1"
+                                    title="Quitar de la lista"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-400 italic py-1 flex items-center justify-between">
+                            <span>No hay números guardados en esta campaña. Puedes marcar cualquier teléfono libremente o agregar contactos con el botón verde.</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Sub-header Guión / Entidad a Simular */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
                   <div>
                     <div className="flex items-center gap-2">
                       <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -3316,18 +3724,54 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/70">
-                          <span className="truncate">CID: {ent.defaultCallerName || 'Predeterminado'}</span>
-                          {isSelected ? (
-                            <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 shrink-0">
-                              <Check className="w-3 h-3" /> Seleccionado
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors">
-                              Clic para activar
-                            </span>
-                          )}
-                        </div>
+                        {/* Campaña Asociada y Estado */}
+                        {(() => {
+                          const linkedCamp = dialingCampaigns.find((c) => c.entityId === ent.id);
+                          const isCampSelected = selectedCampaignId === linkedCamp?.id;
+                          return (
+                            <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="flex items-center gap-1 truncate text-slate-300">
+                                  <Target className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                  <strong className="truncate">{linkedCamp ? linkedCamp.name.replace('Campaña ', '') : 'Campaña General'}</strong>
+                                </span>
+                                {isCampSelected && isSelected ? (
+                                  <span className="text-[10px] font-black text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0">
+                                    <Check className="w-2.5 h-2.5" /> Activa
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (linkedCamp) {
+                                        handleSelectCampaign(linkedCamp.id);
+                                      } else {
+                                        handleSelectEntity(ent);
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 transition-all cursor-pointer"
+                                    title="Marcar con esta Campaña y Guión"
+                                  >
+                                    Seleccionar
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                <span className="truncate">CID: {ent.defaultCallerName || 'Predeterminado'}</span>
+                                {isSelected ? (
+                                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 shrink-0">
+                                    <Check className="w-3 h-3" /> Guión Activo
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors">
+                                    Clic para activar
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -5304,6 +5748,33 @@ echo "=========================================================="`;
                   </div>
                 </div>
 
+                {/* Campaña de Marcación Vinculada */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Campaña de Marcación Asociada por Defecto</span>
+                  </label>
+                  <select
+                    value={editingEntity.campaignId || dialingCampaigns.find((c) => c.entityId === editingEntity.id)?.id || 'camp-bank'}
+                    onChange={(e) => {
+                      const selectedCamp = dialingCampaigns.find((c) => c.id === e.target.value);
+                      setEditingEntity({
+                        ...editingEntity,
+                        campaignId: e.target.value,
+                        campaignName: selectedCamp?.name,
+                      });
+                    }}
+                    disabled={!isAdmin}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {dialingCampaigns.map((camp) => (
+                      <option key={camp.id} value={camp.id}>
+                        {camp.name} ({camp.leads.length} contactos)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Bloque de Bloqueo Manual isLocked */}
                 <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-amber-500/30">
                   <div className="flex items-center gap-2.5">
@@ -5706,6 +6177,95 @@ echo "=========================================================="`;
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Agregar Número / Contacto a la Campaña Activa */}
+      {isAddingLeadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 my-8">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Agregar Contacto a la Campaña</h3>
+                  <p className="text-xs text-slate-400">
+                    {dialingCampaigns.find((c) => c.id === selectedCampaignId)?.name || 'Campaña Activa'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddingLeadModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddLeadToCampaign} className="p-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Número de Teléfono a Marcar <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newLeadNumber}
+                  onChange={(e) => setNewLeadNumber(e.target.value)}
+                  placeholder="ej. 16104803845 o 18099602110"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Nombre del Cliente / Titular (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={newLeadName}
+                  onChange={(e) => setNewLeadName(e.target.value)}
+                  placeholder="ej. Juan Pérez (Banreservas)"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Notas / Situación de Fraude
+                </label>
+                <input
+                  type="text"
+                  value={newLeadNotes}
+                  onChange={(e) => setNewLeadNotes(e.target.value)}
+                  placeholder="ej. Alerta cargo $320 USD Amazon"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingLeadModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newLeadNumber.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-md shadow-emerald-500/20 disabled:opacity-40 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Guardar y Cargar al Marcador</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

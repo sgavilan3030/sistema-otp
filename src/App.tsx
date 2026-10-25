@@ -42,6 +42,7 @@ import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
+import { CallerIdModal } from './components/CallerIdModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
@@ -202,6 +203,60 @@ export default function App() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
+  const [isCallerIdModalOpen, setIsCallerIdModalOpen] = useState(false);
+  const [activeCallerIdNum, setActiveCallerIdNum] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ast20_active_caller_id_num') || '+18005550199';
+    } catch (_) {
+      return '+18005550199';
+    }
+  });
+  const [activeCallerIdName, setActiveCallerIdName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ast20_active_caller_id_name') || 'BANRESERVAS';
+    } catch (_) {
+      return 'BANRESERVAS';
+    }
+  });
+
+  useEffect(() => {
+    fetch('/api/asterisk/callerid')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          if (data.callerIdNum) setActiveCallerIdNum(data.callerIdNum);
+          if (data.callerIdName) setActiveCallerIdName(data.callerIdName);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveCallerId = async (num: string, name: string) => {
+    try {
+      setActiveCallerIdNum(num);
+      setActiveCallerIdName(name);
+      localStorage.setItem('ast20_active_caller_id_num', num);
+      localStorage.setItem('ast20_active_caller_id_name', name);
+      window.dispatchEvent(new CustomEvent('callerid-updated', { detail: { num, name } }));
+      await fetch('/api/asterisk/callerid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callerIdNum: num, callerIdName: name }),
+      });
+      setToastMessage({
+        text: `✓ ID de llamada saliente actualizado a "${name}" <${num}>`,
+        type: 'success',
+      });
+      setTimeout(() => setToastMessage(null), 4500);
+    } catch (err: any) {
+      setToastMessage({
+        text: `Error al guardar Caller ID: ${err.message}`,
+        type: 'error',
+      });
+      setTimeout(() => setToastMessage(null), 4500);
+    }
+  };
+
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // Global OTP Alert monitor across all tabs
@@ -1505,6 +1560,9 @@ export default function App() {
         currentUser={currentUser}
         onQuickSync={handleQuickSync}
         onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
+        onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
+        activeCallerIdNum={activeCallerIdNum}
+        activeCallerIdName={activeCallerIdName}
         onLogout={handleLogout}
         isSyncing={isSyncing}
         isOpenMobile={isMobileSidebarOpen}
@@ -1525,6 +1583,9 @@ export default function App() {
           currentUser={currentUser}
           onQuickSync={handleQuickSync}
           onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
+          onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
+          activeCallerIdNum={activeCallerIdNum}
+          activeCallerIdName={activeCallerIdName}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onLogout={handleLogout}
           isSyncing={isSyncing}
@@ -1840,6 +1901,16 @@ export default function App() {
         onSaveAstDbEntry={handleAddAstDbEntry}
         onSaveCdrRecord={handleSaveCdrRecord}
       />
+
+      {/* Outgoing Caller ID Configuration Modal */}
+      <CallerIdModal
+        isOpen={isCallerIdModalOpen}
+        onClose={() => setIsCallerIdModalOpen(false)}
+        callerIdNum={activeCallerIdNum}
+        callerIdName={activeCallerIdName}
+        onSaveCallerId={handleSaveCallerId}
+      />
     </div>
   );
 }
+

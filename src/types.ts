@@ -361,6 +361,29 @@ export interface CampaignEntity {
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
+  campaignId?: string;       // Campaña vinculada por defecto
+  campaignName?: string;     // Nombre de la campaña vinculada
+}
+
+export interface CampaignLead {
+  id: string;
+  number: string;
+  name?: string;
+  status: 'pending' | 'called' | 'connected' | 'otp_captured' | 'failed';
+  notes?: string;
+}
+
+export interface DialingCampaign {
+  id: string;
+  name: string;
+  description: string;
+  entityId: string;          // ID del Guión / Entidad asociada (ej: 'bank', 'card', etc.)
+  callerIdNum?: string;
+  callerIdName?: string;
+  status: 'active' | 'paused' | 'completed';
+  leads: CampaignLead[];
+  assignedAgents?: string[]; // Extensiones asignadas (o vacio para todas)
+  createdAt: string;
 }
 
 export interface LiveCall {
