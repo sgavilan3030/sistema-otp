@@ -1652,15 +1652,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       if (cSecret) {
         pjsipContent += `outbound_auth = auth_${cName}\n`;
       }
-      if (carrier.outboundCallerId) {
-        const cCidName = carrier.outboundCallerIdName || 'Seguridad Bancaria';
-        pjsipContent += `callerid = "${cCidName}" <${carrier.outboundCallerId}>\n`;
-      }
-      // CRITICAL: Do NOT force from_user = username on endpoint. Asterisk PJSIP uses CALLERID(num) for the From URI user.
-      // Hardcoding username here forces non-phone user strings which telecom carriers display as "Restricted / Desconocido".
-      if (carrier.fromuser && carrier.fromuser.trim()) {
-        pjsipContent += `from_user = ${carrier.fromuser.trim()}\n`;
-      }
+      // In PJSIP: Do NOT set from_user on outbound trunk endpoint.
+      // Setting from_user forces the carrier username into the SIP From URI instead of CALLERID(num),
+      // which telecom carriers mark as 'Restricted' / 'Anonymous'. Without from_user, PJSIP dynamically puts CALLERID(num) in From URI.
       if (effectiveFromUser) {
         pjsipContent += `contact_user = ${effectiveFromUser}\n`;
       } else if (carrier.authType === 'registration') {
@@ -1827,13 +1821,30 @@ export function generateCleanDialplanConf(
   dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n`;
   dialplanContent += `GLOBAL_RINGALL_EXTENSIONS=${ringAllDialString}\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para preparacion de Caller ID, headers de privacidad y optimizacion HD en canal saliente real\n`;
+  dialplanContent += `; Subrutina Pre-Dial para preparacion de Caller ID, headers de identidad y optimizacion HD en canal saliente real\n`;
   dialplanContent += `[sub-pjsip-outbound]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Preparando canal saliente: \${CHANNEL} con CID: \${CALLERID(all)} ===)\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_200,target_30)\n`;
   dialplanContent += ` same => n,Set(CALLERPRES()=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Privacy)=none)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(OUT_CID_NUM=\${IF($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "unknown" & "\${CALLERID(num)}" != "restricted" & "\${CALLERID(num)}" != "anonymous"]?\${CALLERID(num)}:\${IF($["\${DB(ivr_vars/global_callerid_num)}" != ""]?\${DB(ivr_vars/global_callerid_num)}:\${GLOBAL_DEFAULT_CID_NUM})})})\n`;
+  dialplanContent += ` same => n,Set(OUT_CID_NAME=\${IF($["\${CALLERID(name)}" != "" & "\${CALLERID(name)}" != "unknown" & "\${CALLERID(name)}" != "restricted"]?\${CALLERID(name)}:\${IF($["\${DB(ivr_vars/global_callerid_name)}" != ""]?\${DB(ivr_vars/global_callerid_name)}:\${GLOBAL_DEFAULT_CID_NAME})})})\n`;
+  dialplanContent += ` same => n,Set(OUT_CID_NUM_CLEAN=\${FILTER(0123456789,\${OUT_CID_NUM})})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${OUT_CID_NUM_CLEAN})} = 10]?Set(OUT_CID_NUM_CLEAN=1\${OUT_CID_NUM_CLEAN}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NUM_CLEAN}" = ""]?Set(OUT_CID_NUM_CLEAN=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NAME}" = ""]?Set(OUT_CID_NAME=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num)=\${OUT_CID_NUM_CLEAN})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name)=\${OUT_CID_NAME})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${OUT_CID_NAME}" <\${OUT_CID_NUM_CLEAN}>)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,Privacy)=)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Asserted-Identity)=)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,Remote-Party-ID)=)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Preferred-Identity)=)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${GLOBAL_CARRIER_HOST}>)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)\n`;
+  dialplanContent += ` same => n,NoOp(=== [OUTBOUND CID FINAL] CallerID num: \${CALLERID(num)} name: \${CALLERID(name)} ===)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[sub-pjsip-headers]\n`;
@@ -3661,28 +3672,28 @@ let lastGeneratedDialplan = '';
 // Serve raw generated configuration files for easy curl / wget update on VPS
 app.get('/api/asterisk/config/extensions.conf', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  if (lastGeneratedDialplan) {
-    return res.send(lastGeneratedDialplan);
-  }
-  const localFile = path.join(process.cwd(), 'extensions.conf');
-  if (fs.existsSync(localFile)) {
-    return res.send(fs.readFileSync(localFile, 'utf8'));
-  }
-  if (fs.existsSync('/etc/asterisk/extensions.conf')) {
-    return res.send(fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8'));
-  }
-  const cleanDialplan = generateCleanDialplanConf();
+  const primaryCarrier = lastSyncedCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || lastSyncedCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
+  const cleanDialplan = generateCleanDialplanConf(lastSyncedCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, defaultExtensionsList);
   lastGeneratedDialplan = cleanDialplan;
+  try {
+    fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
+    if (fs.existsSync('/etc/asterisk')) {
+      fs.writeFileSync('/etc/asterisk/extensions.conf', cleanDialplan, 'utf8');
+    }
+  } catch (_) {}
   return res.send(cleanDialplan);
 });
 
 app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  if (lastGeneratedPjsip) {
-    return res.send(lastGeneratedPjsip);
-  }
-  const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList);
+  const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
   lastGeneratedPjsip = cleanPjsip;
+  try {
+    fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
+    if (fs.existsSync('/etc/asterisk')) {
+      fs.writeFileSync('/etc/asterisk/pjsip.conf', cleanPjsip, 'utf8');
+    }
+  } catch (_) {}
   return res.send(cleanPjsip);
 });
 
@@ -4076,6 +4087,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     const cleanCarrier = (carrier || '').trim();
 
+    activeCallerIdState.callerIdNum = effectiveCidNum;
+    activeCallerIdState.callerIdName = effectiveCidName;
+    activeCallerIdState.updatedAt = new Date().toISOString();
+
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
@@ -4086,6 +4101,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${formattedDest}_agent_exten "${effectiveAgentExten}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
+      `database put ivr_vars global_callerid_num "${effectiveCidNum}"`,
+      `database put ivr_vars global_callerid_name "${effectiveCidName}"`,
+      `database put ivr_vars default_callerid_num "${effectiveCidNum}"`,
+      `database put ivr_vars default_callerid_name "${effectiveCidName}"`,
       `database put test_client_number "${cleanDest}"`,
       `database put extension_cid ${(effectiveAgentExten && effectiveAgentExten !== 'ringall') ? effectiveAgentExten.split('&')[0] : '1001'}/number "${effectiveCidNum}"`,
       `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/name "${effectiveCidName}"`,
@@ -6650,21 +6669,25 @@ app.post('/api/asterisk/callerid', async (req, res) => {
       executeAsteriskCommand(`database put extension_cid ${ext}/name "${activeCallerIdState.callerIdName}"`).catch(() => {});
     }
 
-    // Hot-reload dialplan with new CallerID defaults
+    // Hot-reload dialplan and PJSIP with new CallerID defaults
     try {
-      if (hasLocalAsterisk) {
-        const primaryCarrier = lastSyncedCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || lastSyncedCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
-        const newDialplan = generateCleanDialplanConf(lastSyncedCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, defaultExtensionsList);
+      const primaryCarrier = lastSyncedCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || lastSyncedCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
+      const newDialplan = generateCleanDialplanConf(lastSyncedCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, defaultExtensionsList);
+      const newPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
+      fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), newDialplan, 'utf8');
+      fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), newPjsip, 'utf8');
+      if (fs.existsSync('/etc/asterisk')) {
         fs.writeFileSync('/etc/asterisk/extensions.conf', newDialplan, 'utf8');
-        fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), newDialplan, 'utf8');
-        exec('asterisk -rx "dialplan reload"', () => {});
+        fs.writeFileSync('/etc/asterisk/pjsip.conf', newPjsip, 'utf8');
       }
+      await executeAsteriskCommand('dialplan reload').catch(() => {});
+      await executeAsteriskCommand('pjsip reload').catch(() => {});
     } catch (_) {}
 
     // Forward to remote VPS Asterisk if running in preview
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
-        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/callerid`, {
+        await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/callerid`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
           body: JSON.stringify(req.body),
@@ -6709,23 +6732,29 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         ? Math.max(0, Math.floor((now - answered) / 1000))
         : (call.duration || 0);
 
+      const isRingAll = call.agent === 'ringall' || (!call.agent && (call.status === 'in_ivr' || call.status === 'dialing' || call.status === 'ringing'));
+      const effectiveAgent = isRingAll ? 'ringall' : (call.agent || '1001');
+      const effectiveAgentName = isRingAll
+        ? '⚡ Ring-All (Todas las Extensiones)'
+        : `Ext. ${effectiveAgent}`;
+
       list.push({
         id: call.number ? `call_${call.number}` : `call_${call.timestamp}`,
         number: call.number,
         clientName: call.clientName || 'Cliente',
-        agent: call.agent || '1001',
-        agentName: call.agentName || `Operador ${call.agent || '1001'}`,
+        agent: effectiveAgent,
+        agentName: effectiveAgentName,
         status: call.isOnHold ? 'on_hold' : call.status,
         statusText: call.isOnHold
           ? 'En espera (Hold)'
           : call.status === 'talking'
-          ? 'Hablando'
+          ? `Hablando con Ext. ${effectiveAgent}`
           : call.status === 'transferred'
-          ? 'Conectado con Asesor'
+          ? `Conectado con Ext. ${effectiveAgent}`
           : call.status === 'in_ivr'
           ? 'En menú IVR'
           : call.status === 'ringing'
-          ? 'Timbrando'
+          ? 'Timbrando (Ring-All)'
           : call.status,
         startTime: call.startTime || call.timestamp,
         answeredAt: call.answeredAt,
@@ -6998,10 +7027,10 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
     // 3. Replicate hangup order to remote VPS if running from cloud preview
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
-        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/hangup`, {
+        await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/hangup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
-          body: JSON.stringify(req.body),
+          body: JSON.stringify({ ...req.body, all: true }),
         }).catch(() => {});
       } catch (_) {}
     }
@@ -7035,58 +7064,26 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
     }
 
     // 6. Invalidate cache to ensure 100% fresh channel discovery from Asterisk
+    cliCommandCache.delete('core show channels');
     cliCommandCache.delete('core show channels concise');
     cliCommandCache.delete('pjsip show channels');
 
     const allActiveAsteriskChannels = new Set<string>();
     try {
-      const channelsOutput = await executeAsteriskCommand('core show channels concise');
+      const channelsOutput = await executeAsteriskCommand('core show channels');
       if (channelsOutput) {
-        const rawLines = channelsOutput.split('\n');
-        for (const rawLine of rawLines) {
-          let line = rawLine.trim();
-          if (line.startsWith('Output:')) line = line.substring(7).trim();
-          if (!line || line.startsWith('Response:') || line.startsWith('Privilege:') || line.startsWith('--END COMMAND--') || line.includes('active channel')) continue;
-
-          const parts = line.split('!');
-          if (parts.length >= 7) {
-            const chName = parts[0] || '';
-            const chExten = parts[2] || '';
-            const chData = parts[6] || '';
-            const chCid = parts[7] || '';
-            const chBridged = parts[11] || '';
-
-            if (chName) allActiveAsteriskChannels.add(chName);
-            if (chBridged && chBridged.length > 2) allActiveAsteriskChannels.add(chBridged);
-
-            let isMatch = false;
-            if (all) {
-              isMatch = true;
-            } else if (clean10 && clean10.length >= 3) {
-              if (
-                line.includes(clean10) ||
-                (formattedDest && line.includes(formattedDest)) ||
-                (rawNum && line.includes(rawNum)) ||
-                chName.includes(clean10) ||
-                chExten.includes(clean10) ||
-                chData.includes(clean10) ||
-                chCid.includes(clean10) ||
-                (clean10 === '8888' && (chName.includes('8888') || chExten === '8888')) ||
-                (clean10 === '7777' && (chName.includes('7777') || chExten === '7777'))
-              ) {
-                isMatch = true;
-              }
+        // Robust Asterisk 20 channel regex: matches Local/..., PJSIP/..., SIP/...
+        const matches = channelsOutput.match(/(?:Local|PJSIP|SIP|DAHDI|Async)\/[a-zA-Z0-9_\-@\.;]+/g);
+        if (matches) {
+          matches.forEach((m) => {
+            const cleanM = m.trim();
+            allActiveAsteriskChannels.add(cleanM);
+            if (cleanM.includes(';1')) allActiveAsteriskChannels.add(cleanM.replace(';1', ';2'));
+            if (cleanM.includes(';2')) allActiveAsteriskChannels.add(cleanM.replace(';2', ';1'));
+            if (all || (clean10 && cleanM.includes(clean10)) || (formattedDest && cleanM.includes(formattedDest))) {
+              channelsToHangup.add(cleanM);
             }
-
-            if (isMatch) {
-              channelsToHangup.add(chName);
-              if (chName.includes(';1')) channelsToHangup.add(chName.replace(';1', ';2'));
-              if (chName.includes(';2')) channelsToHangup.add(chName.replace(';2', ';1'));
-              if (chBridged && chBridged.length > 2) {
-                channelsToHangup.add(chBridged);
-              }
-            }
-          }
+          });
         }
       }
     } catch (e: any) {
@@ -7109,8 +7106,7 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
       }
     } catch (_) {}
 
-    // Fallback: If operator clicked COLGAR on an active call and no specific channel leg matched the phone string,
-    // hang up ALL active channels on Asterisk so the trunk/phone unconditionally stops!
+    // Fallback: If operator clicked COLGAR on an active call, hang up all active channels
     if (all || channelsToHangup.size === 0) {
       allActiveAsteriskChannels.forEach((ch) => channelsToHangup.add(ch));
     }
@@ -7122,13 +7118,9 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
     const hangupPromises = Array.from(channelsToHangup).map(async (ch) => {
       try {
         console.log(`[HANGUP EXECUTE] Colgando canal: ${ch}`);
-        // Method 1: Native AMI Action: Hangup directly to Asterisk socket
         await amiHangupChannel(ch);
-        // Method 2: Asterisk CLI channel request hangup
         await executeAsteriskCommand(`channel request hangup ${ch}`);
-        // Method 3: Asterisk CLI hangup request
         await executeAsteriskCommand(`hangup request ${ch}`);
-        // Method 4: Direct local execution if Asterisk is running on host
         if (hasLocalAsterisk) {
           exec(`asterisk -rx "channel request hangup ${ch}"`, () => {});
           exec(`asterisk -rx "hangup request ${ch}"`, () => {});
@@ -7141,13 +7133,12 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
 
     await Promise.allSettled(hangupPromises);
 
-    // If "all" or fallback
-    if (all || channelsToHangup.size === 0) {
-      await executeAsteriskCommand('channel request hangup all').catch(() => {});
-      await executeAsteriskCommand('hangup request all').catch(() => {});
-      if (hasLocalAsterisk) {
-        exec('asterisk -rx "channel request hangup all"', () => {});
-      }
+    // Unconditionally terminate any remaining or stuck channels in Asterisk
+    await executeAsteriskCommand('channel request hangup all').catch(() => {});
+    await executeAsteriskCommand('hangup request all').catch(() => {});
+    if (hasLocalAsterisk) {
+      exec('asterisk -rx "channel request hangup all"', () => {});
+      exec('asterisk -rx "hangup request all"', () => {});
     }
 
     // Invalidate channels cache so subsequent status checks immediately reflect ended state

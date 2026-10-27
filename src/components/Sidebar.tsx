@@ -17,6 +17,7 @@ import {
   Radio,
   Headphones,
   DollarSign,
+  Building2,
   X,
   Sun,
   Moon,
@@ -76,6 +77,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     },
     {
+      id: 'manual-dialer',
+      label: 'Marcación por Lista',
+      subtitle: '1-Clic Operadores & Auditoría',
+      icon: PhoneForwarded,
+      badge: '1-CLIC',
+      badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
+    },
+    {
       id: 'live-calls',
       label: 'Llamadas en Vivo',
       subtitle: 'Clientes, Duración & Agentes',
@@ -117,6 +126,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: DollarSign,
       badge: '★ NUEVO',
       badgeColor: 'bg-emerald-500 text-slate-950 font-black animate-pulse shadow-sm shadow-emerald-500/50',
+    },
+    {
+      id: 'tenants',
+      label: 'Grupos Call Center',
+      subtitle: 'Multi-Tenant, Rangos & Reventa',
+      icon: Building2,
+      badge: 'BPO',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
     },
     {
       id: 'carriers',

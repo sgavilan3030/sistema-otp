@@ -277,6 +277,8 @@ export interface SystemUser {
   costPerMinute?: number; // Tarifa por minuto ($ USD)
   cutoffOnZero?: boolean; // Corte automático en saldo 0
   carrierId?: string; // Troncal asignada para llamadas salientes
+  tenantId?: string; // ID del Grupo de Call Center al que pertenece
+  assignedExtension?: string; // Extensión predeterminada asignada para llamadas 1-clic
 }
 
 export interface AstDbEntry {
@@ -488,3 +490,82 @@ export interface ResellerCdr {
   disposition: 'ANSWERED' | 'NO ANSWER' | 'BUSY' | 'FAILED';
 }
 
+export type ManualDialerDisposition =
+  | 'pending'
+  | 'answered' // Contestada / Interesado
+  | 'sale' // Venta Cerrada / Exitosa
+  | 'no_answer' // No Contesta
+  | 'busy' // Ocupado
+  | 'voicemail' // Buzón de Voz
+  | 'invalid_number' // Número Inválido / No Existe
+  | 'callback'; // Volver a Llamar
+
+export interface ManualDialerLead {
+  id: string;
+  number: string;
+  name: string;
+  company?: string;
+  notes?: string;
+  status: ManualDialerDisposition;
+  lastCalledAt?: string;
+  lastCalledBy?: string;
+  lastOperatorName?: string;
+  lastDurationSec?: number;
+  attemptsCount: number;
+  lastActionNotes?: string;
+}
+
+export interface ManualDialerAuditLog {
+  id: string;
+  timestamp: string;
+  operatorId: string;
+  operatorName: string;
+  operatorRole: string;
+  leadId: string;
+  clientName: string;
+  clientNumber: string;
+  extensionUsed: string;
+  durationSeconds: number;
+  disposition: ManualDialerDisposition;
+  dispositionLabel: string;
+  actionNotes?: string;
+  carrierUsed?: string;
+  uniqueid?: string;
+}
+
+export interface CallCenterTenant {
+  id: string;
+  name: string;
+  code: string; // e.g. "ALPHA", "BPO-MADRID"
+  extensionStart: number; // e.g. 1001
+  extensionEnd: number;   // e.g. 1030
+  maxConcurrentCalls: number;
+  carrierId?: string; // Carrier trunk assigned
+  outboundCallerId: string; // e.g. "+18005550199"
+  outboundCallerName?: string;
+  minuteBalance: number; // Available minutes
+  usedMinutes: number;   // Consumed minutes
+  dollarBalance: number; // Current credit $ USD
+  ratePerMinute: number; // $ USD per minute resale rate
+  status: 'active' | 'suspended' | 'low_balance';
+  cutoffOnZero: boolean;
+  notes?: string;
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  createdAt: string;
+  lastRechargeDate?: string;
+  dialplanContext: string; // e.g. "tenant_alpha"
+}
+
+export interface TenantRechargeHistory {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  amountDollars: number;
+  minutesAdded: number;
+  paymentMethod: 'zelle' | 'cash' | 'usdt_crypto' | 'bank_transfer' | 'credit_card';
+  reference: string;
+  timestamp: string;
+  notes?: string;
+}

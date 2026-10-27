@@ -12,6 +12,7 @@ import {
   SystemUser,
   AstDbEntry,
   SqliteCdrRecord,
+  CallCenterTenant,
 } from './types';
 import {
   initialExtensions,
@@ -23,16 +24,19 @@ import {
   initialUsers,
   initialAstDbEntries,
   initialCdrRecords,
+  initialTenants,
 } from './data/defaultConfig';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { ProductionOperationsTab } from './components/ProductionOperationsTab';
+import { ManualDialerTab } from './components/ManualDialerTab';
 import { LiveCallsTab } from './components/LiveCallsTab';
 import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
 import { MinuteResellerTab } from './components/MinuteResellerTab';
+import { TenantsTab } from './components/TenantsTab';
 import { CarriersTab } from './components/CarriersTab';
 import { IVRStudioTab } from './components/IVRStudioTab';
 import { SqliteTab } from './components/SqliteTab';
@@ -66,6 +70,17 @@ export default function App() {
   const [carriers, setCarriers] = useState<CarrierTrunk[]>(() => {
     const saved = localStorage.getItem('ast20_carriers');
     return saved ? JSON.parse(saved) : initialCarriers;
+  });
+
+  const [tenants, setTenants] = useState<CallCenterTenant[]>(() => {
+    const saved = localStorage.getItem('ast20_tenants');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+    }
+    return initialTenants;
   });
 
   const [press1Config, setPress1Config] = useState<Press1Config>(() => {
@@ -677,6 +692,97 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ast20_cdr', JSON.stringify(cdrRecords));
   }, [cdrRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('ast20_tenants', JSON.stringify(tenants));
+  }, [tenants]);
+
+  // Call Center Tenants Handlers
+  const handleAddTenant = (newTenant: CallCenterTenant) => {
+    setTenants((prev) => [newTenant, ...prev]);
+    addLog(
+      'SYSTEM',
+      `Nuevo Grupo de Call Center creado: "${newTenant.name}" (Rango ${newTenant.extensionStart}-${newTenant.extensionEnd}, Contexto [${newTenant.dialplanContext}])`,
+      `Tenant: ${newTenant.code}\nExtensiones: ${newTenant.extensionStart}-${newTenant.extensionEnd}\nCarrier: ${newTenant.carrierId}\nCallerID: ${newTenant.outboundCallerId}`
+    );
+    showToast(`Call Center "${newTenant.name}" creado con éxito.`);
+  };
+
+  const handleUpdateTenant = (updated: CallCenterTenant) => {
+    setTenants((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    addLog('SYSTEM', `Call Center "${updated.name}" actualizado (Saldo: $${updated.dollarBalance.toFixed(2)} USD).`);
+    showToast(`Call Center "${updated.name}" actualizado.`);
+  };
+
+  const handleDeleteTenant = (id: string) => {
+    const item = tenants.find((t) => t.id === id);
+    setTenants((prev) => prev.filter((t) => t.id !== id));
+    if (item) {
+      addLog('SYSTEM', `Call Center "${item.name}" eliminado del sistema.`);
+      showToast(`Call Center "${item.name}" eliminado.`);
+    }
+  };
+
+  const handleRechargeTenant = (
+    tenantId: string,
+    amountDollars: number,
+    paymentMethod: any,
+    reference: string,
+    notes?: string
+  ) => {
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) return;
+    const rate = tenant.ratePerMinute > 0 ? tenant.ratePerMinute : 0.015;
+    const minutesAdded = Math.floor(amountDollars / rate);
+    addLog(
+      'SYSTEM',
+      `Recarga procesada para "${tenant.name}": +$${amountDollars.toFixed(2)} USD (+${minutesAdded.toLocaleString()} min) vía ${paymentMethod.toUpperCase()}`,
+      `Ref: ${reference}\nNotas: ${notes || 'N/A'}`
+    );
+    showToast(`Recarga de $${amountDollars.toFixed(2)} USD aplicada a "${tenant.name}".`);
+  };
+
+  const handleAutoProvisionExtensions = (tenant: CallCenterTenant) => {
+    const start = tenant.extensionStart;
+    const end = tenant.extensionEnd;
+    const newExts: PjsipExtension[] = [];
+
+    for (let ext = start; ext <= end; ext++) {
+      const extStr = ext.toString();
+      const existing = extensions.find((e) => e.extension === extStr);
+      if (!existing) {
+        newExts.push({
+          id: `ext-${extStr}`,
+          extension: extStr,
+          name: `${tenant.code} Agente ${ext - start + 1}`,
+          secret: `Cc#${tenant.code}${ext}!`,
+          context: tenant.dialplanContext,
+          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          maxContacts: 1,
+          transport: 'transport-udp',
+          port: 5060,
+          status: 'unregistered',
+          callerId: `"${tenant.name}" <${tenant.outboundCallerId}>`,
+          callerIdNum: tenant.outboundCallerId,
+          callerIdName: tenant.outboundCallerName || tenant.name,
+          lastSeen: 'Listo para registrar',
+        });
+      }
+    }
+
+    if (newExts.length > 0) {
+      setExtensions((prev) => [...prev, ...newExts]);
+      addLog(
+        'PJSIP',
+        `Auto-aprovisionadas ${newExts.length} extensiones PJSIP para Grupo "${tenant.name}" (${start}-${end}) en contexto [${tenant.dialplanContext}]`,
+        newExts.map((e) => `Ext ${e.extension}: ${e.name} (Context: ${e.context})`).join('\n')
+      );
+      showToast(`${newExts.length} extensiones generadas para "${tenant.name}".`);
+      handleQuickSync([...extensions, ...newExts]);
+    } else {
+      showToast(`Todas las extensiones del rango ${start}-${end} ya existen en el sistema.`, 'info');
+    }
+  };
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -1631,6 +1737,15 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'manual-dialer' && isTabAllowedForUser('manual-dialer', currentUser) && (
+          <ManualDialerTab
+            extensions={extensions}
+            carriers={carriers}
+            currentUser={currentUser}
+            onNavigateToLiveCalls={() => setActiveTab('live-calls')}
+          />
+        )}
+
         {activeTab === 'live-calls' && isTabAllowedForUser('live-calls', currentUser) && (
           <LiveCallsTab
             extensions={extensions}
@@ -1686,6 +1801,23 @@ export default function App() {
             onAddExtension={handleAddExtension}
             onUpdateExtension={handleUpdateExtension}
             onTriggerSync={() => handleQuickSync(extensions, carriers)}
+          />
+        )}
+
+        {activeTab === 'tenants' && isTabAllowedForUser('tenants', currentUser) && (
+          <TenantsTab
+            tenants={tenants}
+            onAddTenant={handleAddTenant}
+            onUpdateTenant={handleUpdateTenant}
+            onDeleteTenant={handleDeleteTenant}
+            onRechargeTenant={handleRechargeTenant}
+            onAutoProvisionExtensions={handleAutoProvisionExtensions}
+            extensions={extensions}
+            carriers={carriers}
+            users={users}
+            currentUser={currentUser}
+            onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
+            onNavigateToManualDialer={() => setActiveTab('manual-dialer')}
           />
         )}
 

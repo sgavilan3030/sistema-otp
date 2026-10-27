@@ -57,6 +57,8 @@ import {
   Target,
   UserPlus,
   PhoneIncoming,
+  Upload,
+  FileText,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -86,6 +88,22 @@ export interface CampaignEntity {
 }
 
 export type ServiceCampaignKey = string;
+
+export interface MassCallItem {
+  id?: string;
+  number: string;
+  name?: string;
+  status: 'queued' | 'calling' | 'in_line' | 'on_hold' | 'ended' | 'machine_detected' | 'failed' | 'success';
+  time: string;
+  msg: string;
+  duration?: number;
+  channel?: string;
+  cause?: string;
+  agent?: string;       // e.g. '1001', '1002', 'ringall'
+  agentName?: string;   // e.g. 'Ext. 1001 (Juan Pérez)' or '⚡ Ring-All'
+  statusDetail?: string; // e.g. 'Hablando con Asesor', 'En Menú IVR', 'Timbrando'
+  startedAt?: number;
+}
 
 interface ProductionOperationsTabProps {
   extensions: PjsipExtension[];
@@ -179,18 +197,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [massCurrentIndex, setMassCurrentIndex] = useState(0);
   const [massTotalCount, setMassTotalCount] = useState(0);
   const [massActiveNumber, setMassActiveNumber] = useState<string | null>(null);
-  const [massLog, setMassLog] = useState<Array<{
-    number: string;
-    status: 'queued' | 'calling' | 'in_line' | 'on_hold' | 'ended' | 'machine_detected' | 'failed' | 'success';
-    time: string;
-    msg: string;
-    duration?: number;
-    channel?: string;
-    cause?: string;
-  }>>([]);
+  const [massLog, setMassLog] = useState<MassCallItem[]>([]);
   const [massFilter, setMassFilter] = useState<'all' | 'in_line' | 'on_hold' | 'ended' | 'machine'>('all');
   const [isHangingUpAllMass, setIsHangingUpAllMass] = useState(false);
   const massCancelRef = useRef(false);
+
+  // File Upload State for Mass Campaign (.txt / .csv list)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [uploadedFileFeedback, setUploadedFileFeedback] = useState<string | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   // AMD (Answering Machine Detection / Detección de Grabadora) State
   const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
@@ -1119,9 +1135,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Dynamic CallerID fields directly configurable by agent and synced with Header/Sidebar Caller ID Modal
   const [callerIdNum, setCallerIdNum] = useState<string>(() => {
     try {
-      return localStorage.getItem('ast20_active_caller_id_num') || '+18005550199';
+      return localStorage.getItem('ast20_active_caller_id_num') || '+18494386040';
     } catch (_) {
-      return '+18005550199';
+      return '+18494386040';
     }
   });
   const [callerIdName, setCallerIdName] = useState<string>(() => {
@@ -1131,6 +1147,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       return 'BANRESERVAS';
     }
   });
+  const [isSavingCallerId, setIsSavingCallerId] = useState(false);
+  const [callerIdSaveFeedback, setCallerIdSaveFeedback] = useState<string | null>(null);
+
+  // Directly save Caller ID to AstDB, Asterisk PJSIP/Dialplan and local storage
+  const handleSaveCallerIdDirect = async (newNum: string, newName: string) => {
+    setIsSavingCallerId(true);
+    setCallerIdSaveFeedback(null);
+    try {
+      const cleanNum = newNum.trim();
+      const cleanName = newName.trim() || 'Seguridad Bancaria';
+      setCallerIdNum(cleanNum);
+      setCallerIdName(cleanName);
+      try {
+        localStorage.setItem('ast20_active_caller_id_num', cleanNum);
+        localStorage.setItem('ast20_active_caller_id_name', cleanName);
+      } catch (_) {}
+      window.dispatchEvent(new CustomEvent('callerid-updated', { detail: { num: cleanNum, name: cleanName } }));
+      const res = await fetch('/api/asterisk/callerid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callerIdNum: cleanNum, callerIdName: cleanName }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCallerIdSaveFeedback(`✓ Caller ID configurado a "${cleanName}" <${cleanNum}>`);
+      } else {
+        setCallerIdSaveFeedback(`Aviso: ${data.error || 'No se pudo guardar'}`);
+      }
+      setTimeout(() => setCallerIdSaveFeedback(null), 4000);
+    } catch (err: any) {
+      setCallerIdSaveFeedback(`Error al guardar: ${err.message}`);
+      setTimeout(() => setCallerIdSaveFeedback(null), 4000);
+    } finally {
+      setIsSavingCallerId(false);
+    }
+  };
 
   // Sync with global caller id modal events & server config
   useEffect(() => {
@@ -1154,19 +1206,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       window.removeEventListener('callerid-updated', handleCallerIdUpdate);
     };
   }, []);
-
-  // Auto-sync CallerID values when agentExtension changes
-  useEffect(() => {
-    const ext = extensions.find((e) => e.extension === agentExtension);
-    if (ext) {
-      if (ext.callerIdNum) {
-        setCallerIdNum(ext.callerIdNum);
-      }
-      if (ext.callerIdName) {
-        setCallerIdName(ext.callerIdName);
-      }
-    }
-  }, [agentExtension, extensions]);
 
   // Ensure default action is synced to Asterisk on mount
   useEffect(() => {
@@ -1916,19 +1955,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           channel: activeCall?.channel,
           number: cleanNum || numToHangup,
           destination: cleanNum || numToHangup,
+          all: true,
         }),
       });
-      if (cleanNum === '8888' || cleanNum === '7777' || !cleanNum || activeCall?.channel?.includes('Local/')) {
-        await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
-      }
-    } catch (e) {} finally {
+      await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+    } catch (e) {
+    } finally {
       setIsHangingUp(false);
+      setIsLaunching(false);
+      setActiveCall(null);
+      setLaunchFeedback({
+        text: '✓ Llamada colgada y canal Asterisk liberado con éxito.',
+        type: 'success',
+      });
     }
-    setActiveCall((prev) => (prev ? { ...prev, status: 'ended', isActive: false } : null));
-    setLaunchFeedback({
-      text: 'Llamada colgada por el operador.',
-      type: 'success',
-    });
   };
 
   // Transfer call to agent in X-Lite
@@ -1985,7 +2025,80 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  // File upload parser for text/csv lists
+  const handleFileUpload = (file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = (e.target?.result as string) || '';
+      if (!content.trim()) {
+        setUploadedFileFeedback('El archivo de texto seleccionado está vacío.');
+        setTimeout(() => setUploadedFileFeedback(null), 3500);
+        return;
+      }
+      const lines = content.split(/[\r\n]+/);
+      const parsedList: string[] = [];
+      const seen = new Set<string>();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // Support CSV lines (e.g. "18494386040, Juan Perez" or "8095445555; Banco")
+        const tokens = trimmed.split(/[,;\t|]+/);
+        let phoneCandidate = '';
+        for (const token of tokens) {
+          const digits = token.replace(/[^0-9]/g, '');
+          if (digits.length >= 7 && digits.length <= 15) {
+            phoneCandidate = digits;
+            break;
+          }
+        }
+        if (!phoneCandidate) {
+          const directDigits = trimmed.replace(/[^0-9]/g, '');
+          if (directDigits.length >= 7 && directDigits.length <= 15) {
+            phoneCandidate = directDigits;
+          }
+        }
+        if (phoneCandidate && !seen.has(phoneCandidate)) {
+          seen.add(phoneCandidate);
+          parsedList.push(phoneCandidate);
+        }
+      }
+
+      if (parsedList.length === 0) {
+        setUploadedFileFeedback('No se detectaron números telefónicos válidos (7 a 15 dígitos) en el archivo.');
+        setTimeout(() => setUploadedFileFeedback(null), 4000);
+        return;
+      }
+
+      setMassNumbersText(parsedList.join('\n'));
+      setUploadedFileName(file.name);
+      setUploadedFileFeedback(`✓ Archivo "${file.name}" cargado con éxito. Se detectaron ${parsedList.length} números telefónicos listos en la cola.`);
+      setTimeout(() => setUploadedFileFeedback(null), 5000);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
   // Mass campaign execution with Ring-All (All Extensions)
+  // CRITICAL REQUIREMENT: Numbers disappear from the list as they are dialed!
   const handleStartMassCampaign = async () => {
     const rawLines = massNumbersText.split(/[\n,;]+/);
     const cleanNumbers = rawLines
@@ -1994,7 +2107,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     if (cleanNumbers.length === 0) {
       setLaunchFeedback({
-        text: 'Por favor introduce al menos un número telefónico válido para la campaña masiva.',
+        text: 'Por favor introduce o sube un archivo con números telefónicos válidos para la campaña masiva.',
         type: 'error',
       });
       return;
@@ -2005,26 +2118,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setMassTotalCount(cleanNumbers.length);
     setMassCurrentIndex(0);
 
-    const initialQueue = cleanNumbers.map((num) => ({
-      number: num,
-      status: 'queued' as const,
-      time: new Date().toLocaleTimeString(),
-      msg: 'En cola para marcación (Ring-All activo)',
-    }));
-    setMassLog(initialQueue);
-
     for (let i = 0; i < cleanNumbers.length; i++) {
       if (massCancelRef.current) break;
-
       const num = cleanNumbers[i];
       setMassCurrentIndex(i + 1);
       setMassActiveNumber(num);
 
-      setMassLog((prev) =>
-        prev.map((item, idx) =>
-          idx === i ? { ...item, status: 'calling', msg: 'Llamando por troncal... (Destino: Ring-All)' } : item
-        )
-      );
+      // KEY REQUIREMENT: Dialed numbers disappear dynamically from the list/textarea as they are marked!
+      const remainingNumbers = cleanNumbers.slice(i + 1);
+      setMassNumbersText(remainingNumbers.join('\n'));
+
+      const startTime = Date.now();
+      const initialItem: MassCallItem = {
+        number: num,
+        status: 'calling',
+        time: new Date().toLocaleTimeString(),
+        msg: 'Marcando llamada saliente (Ring-All activo a extensiones)...',
+        duration: 0,
+        startedAt: startTime,
+        agent: 'ringall',
+        agentName: '⚡ Ring-All (Todas las Extensiones)',
+        statusDetail: 'Marcando por Troncal SIP',
+      };
+
+      setMassLog((prev) => [initialItem, ...prev.filter((item) => item.number !== num)]);
 
       try {
         const currentAudios = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
@@ -2046,25 +2163,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
           }),
         });
-
         const data = await res.json();
         setMassLog((prev) =>
-          prev.map((item, idx) =>
-            idx === i
+          prev.map((item) =>
+            item.number === num
               ? {
                   ...item,
-                  status: data.success ? 'success' : 'failed',
+                  status: data.success ? 'in_line' : 'failed',
+                  statusDetail: data.success ? 'En menú IVR (Escuchando Guión)' : 'Fallo al conectar',
                   msg: data.success
-                    ? 'Llamada conectada en Asterisk. Si el cliente pulsa 1 timbrarán TODAS las extensiones (Ring-All).'
-                    : (data.error || 'Error al conectar'),
+                    ? 'Llamada conectada en Asterisk. En menú IVR; si el cliente pulsa 1 timbrarán todas las extensiones (Ring-All).'
+                    : (data.error || 'Error al conectar con la troncal'),
                 }
               : item
           )
         );
       } catch (err: any) {
         setMassLog((prev) =>
-          prev.map((item, idx) =>
-            idx === i ? { ...item, status: 'failed', msg: err.message || 'Error de red' } : item
+          prev.map((item) =>
+            item.number === num
+              ? { ...item, status: 'failed', msg: err.message || 'Error de red', statusDetail: 'Error' }
+              : item
           )
         );
       }
@@ -2096,10 +2215,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true }),
       });
+      await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
       setMassLog((prev) =>
         prev.map((item) =>
           item.status === 'calling' || item.status === 'in_line' || item.status === 'on_hold' || item.status === 'queued'
-            ? { ...item, status: 'ended', msg: 'Colgada manualmente por operador' }
+            ? { ...item, status: 'ended', statusDetail: 'Colgada por operador', msg: 'Colgada manualmente por operador desde el panel' }
             : item
         )
       );
@@ -2115,19 +2235,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: num, channel: chan }),
+        body: JSON.stringify({ number: num, channel: chan, all: false }),
       });
       setMassLog((prev) =>
         prev.map((item) =>
           item.number === num
-            ? { ...item, status: 'ended', msg: 'Colgada individualmente por operador' }
+            ? { ...item, status: 'ended', statusDetail: 'Colgada por operador', msg: 'Colgada individualmente por operador' }
             : item
         )
       );
     } catch (_) {}
   };
 
-  // Real-time synchronization of mass campaign calls with Asterisk live status
+  // Live 1-second timer tick for active mass calls
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMassLog((prev) => {
+        let changed = false;
+        const updated = prev.map((m) => {
+          if (m.status === 'calling' || m.status === 'in_line' || m.status === 'on_hold') {
+            changed = true;
+            const now = Date.now();
+            const started = m.startedAt || (now - (m.duration || 0) * 1000);
+            return {
+              ...m,
+              duration: Math.max(1, Math.floor((now - started) / 1000)),
+            };
+          }
+          return m;
+        });
+        return changed ? updated : prev;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Real-time synchronization of mass campaign calls with Asterisk live status and exact answering extension
   useEffect(() => {
     if (massLog.length === 0) return;
     const interval = setInterval(async () => {
@@ -2149,32 +2292,72 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             );
 
             if (live) {
+              const liveAgent = live.agent || item.agent || 'ringall';
+              const isSpecificExt = liveAgent !== 'ringall' && liveAgent !== 'all' && liveAgent !== '';
+              const liveAgentName = isSpecificExt
+                ? (live.agentName || `Ext. ${liveAgent}`)
+                : '⚡ Ring-All (Todas las Extensiones)';
+
               if (live.isOnHold || live.status === 'on_hold') {
                 return {
                   ...item,
                   status: 'on_hold',
-                  duration: live.duration,
+                  duration: live.duration !== undefined ? live.duration : item.duration,
                   channel: live.channel,
-                  msg: 'Cliente en espera con música (Hold MOH)',
+                  agent: liveAgent,
+                  agentName: liveAgentName,
+                  statusDetail: 'En Espera (Hold MOH)',
+                  msg: `Cliente en espera con música (Hold MOH) • Atendido por ${liveAgentName}`,
                 };
               }
-              if (
-                live.status === 'in_ivr' ||
-                live.status === 'talking' ||
-                live.status === 'pressed_1' ||
-                live.status === 'transferred'
-              ) {
+              if (live.status === 'talking') {
                 return {
                   ...item,
                   status: 'in_line',
-                  duration: live.duration,
+                  duration: live.duration !== undefined ? live.duration : item.duration,
                   channel: live.channel,
-                  msg:
-                    live.status === 'pressed_1'
-                      ? '¡Cliente presionó 1! Transfiriendo a asesor'
-                      : live.status === 'transferred'
-                      ? 'Conectado en vivo con asesor'
-                      : 'Cliente en línea escuchando IVR',
+                  agent: liveAgent,
+                  agentName: liveAgentName,
+                  statusDetail: isSpecificExt ? `En Línea (${liveAgentName})` : 'En Línea con Asesor',
+                  msg: isSpecificExt
+                    ? `Llamada contestada. Atendiendo en vivo en ${liveAgentName}`
+                    : 'Llamada contestada por asesor en Ring-All',
+                };
+              }
+              if (live.status === 'transferred') {
+                return {
+                  ...item,
+                  status: 'in_line',
+                  duration: live.duration !== undefined ? live.duration : item.duration,
+                  channel: live.channel,
+                  agent: liveAgent,
+                  agentName: liveAgentName,
+                  statusDetail: `Conectada con ${liveAgentName}`,
+                  msg: `Llamada conectada en ${liveAgentName}`,
+                };
+              }
+              if (live.status === 'pressed_1') {
+                return {
+                  ...item,
+                  status: 'in_line',
+                  duration: live.duration !== undefined ? live.duration : item.duration,
+                  channel: live.channel,
+                  agent: liveAgent,
+                  agentName: liveAgentName,
+                  statusDetail: '¡Presionó 1! Timbrando Extensiones',
+                  msg: '¡Cliente presionó 1! Timbrando en todas las extensiones (Ring-All)',
+                };
+              }
+              if (live.status === 'in_ivr') {
+                return {
+                  ...item,
+                  status: 'in_line',
+                  duration: live.duration !== undefined ? live.duration : item.duration,
+                  channel: live.channel,
+                  agent: 'ringall',
+                  agentName: '⚡ Ring-All',
+                  statusDetail: 'En Menú IVR Interactivo',
+                  msg: 'Cliente en línea escuchando IVR interactivo',
                 };
               }
               if (live.status === 'machine_detected' || live.status === 'retrying') {
@@ -2182,6 +2365,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   ...item,
                   status: 'machine_detected',
                   channel: live.channel,
+                  statusDetail: 'Grabadora Detectada (AMD)',
                   msg: live.cause || 'Grabadora / Operadora detectada - Colgando y reintentando',
                 };
               }
@@ -2189,9 +2373,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 return {
                   ...item,
                   status: 'ended',
-                  duration: live.duration,
+                  duration: live.duration !== undefined ? live.duration : item.duration,
                   cause: live.cause,
-                  msg: `Llamada colgada (${live.cause || 'Finalizada'})`,
+                  agent: liveAgent,
+                  agentName: liveAgentName,
+                  statusDetail: `Finalizada (${live.cause || 'Colgada'})`,
+                  msg: `Llamada finalizada (${live.cause || 'Colgada'})`,
                 };
               }
             }
@@ -2199,7 +2386,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           })
         );
       } catch (_) {}
-    }, 2000);
+    }, 1500);
+
     return () => clearInterval(interval);
   }, [massLog.length]);
 
@@ -3037,6 +3225,103 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     placeholder="Nombre titular (opcional)"
                     className="w-1/3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:border-emerald-500 focus:outline-none hidden sm:block"
                   />
+                </div>
+              </div>
+
+              {/* CALLER ID CONFIGURATOR DIRECT PANEL */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Identificador de Llamada Saliente (Caller ID Dinámico)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-400">Activo en Asterisk:</span>
+                    <span className="px-2 py-0.5 rounded font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      "{callerIdName}" &lt;{callerIdNum}&gt;
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-300">Número de Caller ID (E.164):</label>
+                    <input
+                      id="input-callerid-num"
+                      type="text"
+                      value={callerIdNum}
+                      onChange={(e) => setCallerIdNum(e.target.value)}
+                      placeholder="ej. 18494386040 o 8099602110"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-sky-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-300">Nombre de Caller ID:</label>
+                    <input
+                      id="input-callerid-name"
+                      type="text"
+                      value={callerIdName}
+                      onChange={(e) => setCallerIdName(e.target.value)}
+                      placeholder="ej. BANRESERVAS o VISA SEGURIDAD"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs font-bold uppercase focus:border-sky-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Plantillas Rápidas:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'BANRESERVAS', num: '8099602110' },
+                      { name: 'BANCO POPULAR', num: '8095445555' },
+                      { name: 'BANCO BHD', num: '8092435000' },
+                      { name: 'SCOTIABANK', num: '8095677268' },
+                      { name: 'VISA SEGURIDAD', num: '18005550199' },
+                      { name: 'WHATSAPP VERIF', num: '18004567890' },
+                      { name: 'AMAZON FRAUD', num: '18005550133' },
+                    ].map((p) => {
+                      const isSelected = callerIdNum.replace(/[^0-9]/g, '') === p.num.replace(/[^0-9]/g, '');
+                      return (
+                        <button
+                          key={p.name}
+                          type="button"
+                          onClick={() => {
+                            setCallerIdNum(p.num);
+                            setCallerIdName(p.name);
+                          }}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 font-bold'
+                              : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                          }`}
+                        >
+                          {p.name} ({p.num})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Save and feedback */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                  <button
+                    id="btn-apply-callerid-now"
+                    type="button"
+                    onClick={() => handleSaveCallerIdDirect(callerIdNum, callerIdName)}
+                    disabled={isSavingCallerId || !callerIdNum.trim()}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSavingCallerId ? 'Guardando...' : 'Aplicar y Asumir Caller ID'}</span>
+                  </button>
+                  {callerIdSaveFeedback && (
+                    <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                      {callerIdSaveFeedback}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -3927,9 +4212,107 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </span>
               </div>
 
+              {/* Input de archivo oculto para carga .txt o .csv */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".txt,.csv,.text"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileUpload(e.target.files[0]);
+                  }
+                }}
+              />
+
+              {/* Zona de Arrastrar y Soltar o Cargar Archivo .txt / .csv */}
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => !isMassRunning && fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-3 sm:p-4 text-center transition-all cursor-pointer ${
+                  isDraggingFile
+                    ? 'border-purple-400 bg-purple-950/40 ring-2 ring-purple-500/50'
+                    : 'border-slate-700/80 hover:border-purple-500/70 bg-slate-900/40 hover:bg-slate-900/70'
+                } ${isMassRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Haz clic o arrastra un archivo .txt o .csv con números telefónicos"
+              >
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 text-left">
+                    <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 shrink-0">
+                      <Upload className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>Cargar Lista desde Archivo de Texto</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold">
+                          .TXT / .CSV
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Arrastra tu archivo aquí o haz clic para seleccionarlo. Filtra y desduplica automáticamente.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isMassRunning) fileInputRef.current?.click();
+                    }}
+                    disabled={isMassRunning}
+                    className="shrink-0 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Subir Archivo .txt</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Banner de archivo cargado */}
+              {uploadedFileName && (
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-purple-950/40 border border-purple-500/40 text-xs">
+                  <span className="flex items-center gap-2 text-purple-200">
+                    <FileText className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span>
+                      Archivo cargado: <strong className="text-white font-mono">{uploadedFileName}</strong>
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedFileName(null);
+                      setMassNumbersText('');
+                    }}
+                    className="text-[11px] font-bold text-slate-400 hover:text-rose-400 transition-colors"
+                  >
+                    Quitar archivo
+                  </button>
+                </div>
+              )}
+
+              {/* Feedback de carga de archivo */}
+              {uploadedFileFeedback && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{uploadedFileFeedback}</span>
+                </div>
+              )}
+
+              {/* Recordatorio de cola dinámica: números desaparecen al marcar */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 text-[11px] text-purple-300">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <span>
+                  <strong>Cola dinámica en vivo:</strong> A medida que los números se van marcando,{' '}
+                  <span className="text-white font-semibold">van desapareciendo de esta lista</span> para que siempre sepas cuáles faltan por emitir.
+                </span>
+              </div>
+
               <textarea
                 id="textarea-mass-numbers"
-                rows={8}
+                rows={7}
                 value={massNumbersText}
                 onChange={(e) => setMassNumbersText(e.target.value)}
                 disabled={isMassRunning}
@@ -3941,15 +4324,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setMassNumbersText('16104803845\n18005550199\n18099602110')}
+                    onClick={() => fileInputRef.current?.click()}
                     disabled={isMassRunning}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-lg bg-purple-950/40 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold border border-purple-500/30 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    Cargar Números de Prueba
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Cargar .txt</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMassNumbersText('')}
+                    onClick={() => {
+                      setUploadedFileName(null);
+                      setMassNumbersText('16104803845\n18005550199\n18099602110');
+                    }}
+                    disabled={isMassRunning}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Números de Prueba
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedFileName(null);
+                      setMassNumbersText('');
+                    }}
                     disabled={isMassRunning}
                     className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
                   >
@@ -4214,11 +4612,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       return (
                         <div
                           key={idx}
-                          className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${
+                          className={`p-3.5 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all ${
                             isOnHold
-                              ? 'bg-amber-950/30 border-amber-500/50 text-amber-200'
+                              ? 'bg-amber-950/30 border-amber-500/50 text-amber-200 shadow-sm shadow-amber-500/10'
                               : isInLine
-                              ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200'
+                              ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200 shadow-sm shadow-emerald-500/10'
                               : isMachine
                               ? 'bg-purple-950/40 border-purple-500/50 text-purple-200'
                               : isCalling
@@ -4228,23 +4626,76 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               : 'bg-slate-900/40 border-slate-800 text-slate-400'
                           }`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-[10px] text-slate-500 w-6 shrink-0">#{idx + 1}</span>
-                            <div className="truncate">
-                              <div className="font-bold text-white tracking-wider flex items-center gap-2">
-                                <span>{item.number}</span>
-                                {item.duration !== undefined && item.duration > 0 && !isEnded && (
-                                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40 text-emerald-400 border border-emerald-500/30">
-                                    ⏱ {formatTime(item.duration)}
+                          {/* Columna Izquierda: Índice, Número, Tiempo y Detalle de la Llamada */}
+                          <div className="flex items-start sm:items-center gap-3 min-w-0">
+                            <span className="text-[10px] text-slate-500 w-6 shrink-0 mt-0.5 sm:mt-0 font-mono">
+                              #{idx + 1}
+                            </span>
+
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {/* Número Telefónico */}
+                                <div className="font-bold text-white tracking-wider flex items-center gap-1.5 font-mono text-sm">
+                                  <Phone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                  <span>{item.number}</span>
+                                </div>
+
+                                {/* Cronómetro en Vivo de la Llamada */}
+                                <div
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-xs font-bold ${
+                                    !isEnded
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-inner'
+                                      : 'bg-slate-800/80 text-slate-400 border border-slate-700'
+                                  }`}
+                                  title="Duración de la llamada"
+                                >
+                                  <Clock
+                                    className={`w-3.5 h-3.5 ${
+                                      !isEnded ? 'text-emerald-400 animate-pulse' : 'text-slate-500'
+                                    }`}
+                                  />
+                                  <span>⏱ {formatTime(item.duration || 0)}</span>
+                                </div>
+
+                                {/* Extensión que está atendiendo la llamada */}
+                                {item.agent && item.agent !== 'ringall' && item.agent !== 'all' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-sky-500/20 text-sky-200 border border-sky-500/40 shadow-sm">
+                                    <UserCheck className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                    <span>
+                                      Atendiendo:{' '}
+                                      <strong className="text-white font-mono">Ext. {item.agent}</strong>
+                                      {item.agentName && item.agentName !== item.agent && !item.agentName.includes('Ext.')
+                                        ? ` (${item.agentName})`
+                                        : ''}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                    <Users className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                    <span>
+                                      {isEnded
+                                        ? 'Difusión Ring-All'
+                                        : '⚡ Ring-All (Todas las Extensiones)'}
+                                    </span>
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] opacity-80 truncate">{item.msg}</div>
+
+                              {/* Cómo va la llamada (Detalle y Mensaje de estado) */}
+                              <div className="text-[11px] text-slate-300 truncate max-w-xl flex items-center gap-1.5">
+                                {item.statusDetail && (
+                                  <span className="font-semibold text-white/90">
+                                    {item.statusDetail} —
+                                  </span>
+                                )}
+                                <span className="opacity-80 truncate">{item.msg}</span>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                            <span className="text-[10px] text-slate-500">{item.time}</span>
+                          {/* Columna Derecha: Hora, Badge de Estado y Botón de Colgar */}
+                          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                            <span className="text-[10px] text-slate-500 font-mono">{item.time}</span>
 
                             {/* Badge de Estado Específico */}
                             <span

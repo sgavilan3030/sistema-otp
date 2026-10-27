@@ -272,7 +272,8 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     const isRegistration = c.authType === 'registration';
     let text = ``;
     if (isRegistration && c.secret) {
-      text += `[reg_${slug}]\n` +
+      text += `; --- REGISTRO SIP SALIENTE (USUARIO & CONTRASEÑA) ---\n` +
+              `[reg_${slug}]\n` +
               `type = registration\n` +
               `transport = transport-udp\n` +
               `outbound_auth = auth_${slug}\n` +
@@ -288,6 +289,11 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
               `auth_type = userpass\n` +
               `username = ${c.username || slug}\n` +
               `password = ${c.secret}\n\n`;
+    } else {
+      text += `; ====================================================================\n` +
+              `; CONEXIÓN IP A IP (PEERING DIRECTO POR IP - SIN REGISTRO NI CONTRASEÑA)\n` +
+              `; Asterisk autentica e identifica el tráfico entrante/saliente por IP: ${c.host}\n` +
+              `; ====================================================================\n\n`;
     }
     text += `[${slug}_aor]\n` +
             `type = aor\n` +
@@ -321,8 +327,10 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
 
   const getSipConfSnippet = (c?: CarrierTrunk) => {
     if (!c) return '';
+    const isIpAuth = c.authType === 'ip_auth';
     const carrierName = c.name;
     const carrierHost = c.host;
+    const carrierPort = c.port || 5060;
     const carrierUser = c.username || c.name;
     const carrierSecret = c.secret || '';
     const carrierContext = c.inboundContext || 'trunkinbound';
@@ -330,6 +338,22 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     const carrierSendRpid = c.sendrpid || 'yes';
     const carrierTrustRpid = c.trustrpid || 'yes';
     const carrierInsecure = c.insecure || 'port,invite';
+
+    if (isIpAuth) {
+      return `; === CONEXIÓN IP A IP (chan_sip PEERING DIRECTO SIN REGISTRO) ===
+[${carrierName}]
+host=${carrierHost}
+port=${carrierPort}
+type=peer
+context=${carrierContext}
+insecure=${carrierInsecure}
+qualify=yes
+nat=force_rport,comedia
+directmedia=no
+${carrierFromUser ? `fromuser=${carrierFromUser}` : ''}
+sendrpid=${carrierSendRpid}
+trustrpid=${carrierTrustRpid}`;
+    }
 
     return `[${carrierName}]
 host=${carrierHost}
@@ -693,6 +717,17 @@ insecure=${carrierInsecure}`;
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="font-bold text-white text-sm">[{c.name}]</h4>
+                        {c.authType === 'ip_auth' ? (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-500/30 flex items-center gap-1">
+                            <Globe className="w-2.5 h-2.5" />
+                            <span>IP A IP</span>
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono font-bold border border-purple-500/30 flex items-center gap-1">
+                            <ShieldCheck className="w-2.5 h-2.5" />
+                            <span>SIP REG</span>
+                          </span>
+                        )}
                         {isPrimary && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
                             ★ PRIMARIO
@@ -869,12 +904,93 @@ insecure=${carrierInsecure}`;
             </div>
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
+              {/* Selector de Modo de Conexión: IP a IP vs Registro SIP */}
+              <div className="space-y-2">
+                <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider">
+                  Tipo de Conexión / Autenticación de Troncal *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAuthType('ip_auth')}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      authType === 'ip_auth'
+                        ? 'bg-cyan-950/50 border-cyan-400 text-white shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/50'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${authType === 'ip_auth' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-800 text-slate-400'}`}>
+                          <Globe className="w-4 h-4" />
+                        </div>
+                        <span className={`font-bold text-xs ${authType === 'ip_auth' ? 'text-cyan-300' : 'text-slate-300'}`}>
+                          Conexión IP a IP
+                        </span>
+                      </div>
+                      {authType === 'ip_auth' && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-snug">
+                      Peering Directo por IP (Sin Registro SIP ni contraseña). Asterisk enruta e identifica por IP pública o VPN.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuthType('registration')}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      authType === 'registration'
+                        ? 'bg-emerald-950/50 border-emerald-400 text-white shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/50'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${authType === 'registration' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                          <ShieldCheck className="w-4 h-4" />
+                        </div>
+                        <span className={`font-bold text-xs ${authType === 'registration' ? 'text-emerald-300' : 'text-slate-300'}`}>
+                          Registro SIP
+                        </span>
+                      </div>
+                      {authType === 'registration' && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-snug">
+                      Autenticación Digest estándar con Username y Secret (envía paquetes SIP REGISTER continuos).
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Banner informativo según modo seleccionado */}
+              {authType === 'ip_auth' ? (
+                <div className="p-3 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-xs text-cyan-200 flex items-start gap-2.5">
+                  <Globe className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-cyan-300">Modo Conexión IP a IP Activo</p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Asterisk enviará llamadas directamente al Host/IP sin enviar paquetes <code className="bg-slate-900 text-cyan-300 px-1 py-0.5 rounded">REGISTER</code>. Las llamadas entrantes se aceptarán automáticamente reconociendo la IP de origen mediante <code className="bg-slate-900 text-cyan-300 px-1 py-0.5 rounded">[identify] match = {host || 'IP'}</code>.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-200 flex items-start gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-emerald-300">Modo Registro SIP Activo</p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Asterisk enviará paquetes periódicos <code className="bg-slate-900 text-emerald-300 px-1 py-0.5 rounded">REGISTER</code> utilizando el Username y Secret configurados para autenticarse con el servidor del carrier.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Estado Activo / Deshabilitado */}
               <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                 <div>
                   <span className="block font-semibold text-white">Estado de la Troncal</span>
                   <span className="text-[11px] text-slate-400">
-                    {isEnabled ? 'Habilitado: Asterisk se registrará y enviará llamadas' : 'Deshabilitado: Asterisk no enviará tráfico ni paquetes SIP'}
+                    {isEnabled ? 'Habilitado: Asterisk enrutará llamadas a este carrier' : 'Deshabilitado: Troncal en pausa sin tráfico'}
                   </span>
                 </div>
                 <button
@@ -920,16 +1036,19 @@ insecure=${carrierInsecure}`;
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label className="block text-slate-300 font-medium mb-1">
-                    Host SIP / IP del Carrier *
+                    {authType === 'ip_auth' ? 'IP Pública / Host de Peering *' : 'Host SIP / Dominio del Carrier *'}
                   </label>
                   <input
                     type="text"
                     required
                     value={host}
                     onChange={(e) => setHost(e.target.value)}
-                    placeholder="52.144.46.192"
-                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                    placeholder={authType === 'ip_auth' ? '52.144.46.192' : 'sip.televox.com'}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
                   />
+                  <span className="text-[10px] text-slate-500">
+                    {authType === 'ip_auth' ? 'IP remota desde donde se envían/reciben los paquetes SIP' : 'IP o FQDN del servidor de registro'}
+                  </span>
                 </div>
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Puerto SIP</label>
@@ -939,50 +1058,76 @@ insecure=${carrierInsecure}`;
                     onChange={(e) => setPort(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
+                  <span className="text-[10px] text-slate-500">Defecto: 5060</span>
                 </div>
               </div>
 
               {/* Credenciales y FromUser */}
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Username</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="sgavilan30"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  />
+              <div className={`p-3 rounded-lg border space-y-3 ${
+                authType === 'ip_auth'
+                  ? 'bg-slate-950/40 border-cyan-900/40'
+                  : 'bg-slate-950/60 border-slate-800'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-300">
+                    {authType === 'ip_auth' ? 'Parámetros de Identificación & Cabeceras' : 'Credenciales de Autenticación SIP'}
+                  </span>
+                  {authType === 'ip_auth' && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">
+                      IP Peering (Credenciales Opcionales)
+                    </span>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Secret (Contraseña)</label>
-                  <input
-                    type="text"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    placeholder="Robert2026"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Fromuser</label>
-                  <input
-                    type="text"
-                    value={fromuser}
-                    onChange={(e) => setFromuser(e.target.value)}
-                    placeholder="sgavilan30"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Insecure</label>
-                  <input
-                    type="text"
-                    value={insecure}
-                    onChange={(e) => setInsecure(e.target.value)}
-                    placeholder="port,invite"
-                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      Username {authType === 'ip_auth' ? '(Opcional en IP a IP)' : '*'}
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder={authType === 'ip_auth' ? 'Opcional o slug' : 'sgavilan30'}
+                      className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      Secret / Password {authType === 'ip_auth' ? '(No requerido en IP a IP)' : '*'}
+                    </label>
+                    <input
+                      type="text"
+                      value={secret}
+                      onChange={(e) => setSecret(e.target.value)}
+                      placeholder={authType === 'ip_auth' ? 'Sin contraseña en IP a IP' : 'Robert2026'}
+                      className={`w-full px-3 py-2 rounded-md border text-white font-mono focus:outline-none ${
+                        authType === 'ip_auth'
+                          ? 'bg-slate-900/50 border-slate-800/80 text-slate-400 focus:border-cyan-500'
+                          : 'bg-slate-900 border-slate-800 focus:border-emerald-500'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Fromuser (Cabecera SIP)</label>
+                    <input
+                      type="text"
+                      value={fromuser}
+                      onChange={(e) => setFromuser(e.target.value)}
+                      placeholder="sgavilan30"
+                      className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Insecure</label>
+                    <input
+                      type="text"
+                      value={insecure}
+                      onChange={(e) => setInsecure(e.target.value)}
+                      placeholder="port,invite"
+                      className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
