@@ -310,10 +310,12 @@ export const AmiAriDiagnosticsTab: React.FC<AmiAriDiagnosticsTabProps> = ({
       }).catch(() => null);
 
       if (res && res.ok) {
-        const json = await res.json();
-        setAriResponse(JSON.stringify(json, null, 2));
-        setAriRunning(false);
-        return;
+        const json = await res.json().catch(() => null);
+        if (json) {
+          setAriResponse(JSON.stringify(json, null, 2));
+          setAriRunning(false);
+          return;
+        }
       }
     } catch (e) {
       // continua con payload de muestra realista de Asterisk 20

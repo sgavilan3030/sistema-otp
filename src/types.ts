@@ -531,6 +531,8 @@ export interface ManualDialerAuditLog {
   actionNotes?: string;
   carrierUsed?: string;
   uniqueid?: string;
+  audioUsed?: string;
+  callMode?: string;
 }
 
 export interface CallCenterTenant {

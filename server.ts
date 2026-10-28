@@ -3309,6 +3309,61 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `; CONTEXTO MARCACION 1-CLIC: REPRODUCCION DE AUDIO DIRECTO AL DESCOLGAR\n`;
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `[ivr-direct-playback]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [1-CLICK PLAYBACK] AUDIO AL DESCOLGAR PARA DESTINO \${CALLERID(num)} ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=playing_audio&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/8888_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,NoOp(=== [1-CLICK PLAYBACK] Reproduciendo: \${PLAY_AUDIO} a \${TARGET_DEST} ===)\n`;
+  dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=audio_completed)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=audio_completed&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `; CONTEXTO MARCACION 1-CLIC: AUDIO DE ENTRADA + TRANSFERENCIA INMEDIATA A ASESOR\n`;
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `[ivr-audio-then-agent]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [1-CLICK AUDIO+AGENT] AUDIO INTRO Y LUEGO CONEXION CON ASESOR ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
+  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/8888_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Reproduciendo intro: \${PLAY_AUDIO} ===)\n`;
+  dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Conectando con Asesor PJSIP/\${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=talking_agent)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=talking_agent&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
   return dialplanContent;
 }
 
@@ -3567,7 +3622,7 @@ app.get('/api/asterisk/extensions', async (req, res) => {
 });
 
 // Diagnostic endpoint specifically analyzing extensions 1001, 1002, 1003, 1004
-app.get('/api/asterisk/extensions/diagnostic', async (req, res) => {
+app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], async (req, res) => {
   try {
     const live = await queryAsteriskPjsipEndpoints();
     let currentConfig = '';
@@ -4013,13 +4068,14 @@ let press1SelectedExtensions: string[] = ['1001'];
 
 app.post('/api/asterisk/call/originate', async (req, res) => {
   try {
+    const rawDest = req.body.destination || req.body.exten || req.body.number;
     const {
-      destination,
       carrier = 'auto',
       callerId = '+18005550199',
       callerIdNum,
       callerIdName,
       mode = 'press1',
+      callMode,
       agentExten = 'ringall',
       audioIntro = '',
       audioPrompt = '',
@@ -4028,6 +4084,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       service = 'Banco / Antifraude',
     } = req.body;
 
+    const destination = rawDest;
     if (!destination) {
       return res.status(400).json({ success: false, error: 'El número de destino es requerido' });
     }
@@ -4054,7 +4111,21 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
     const effectiveCidName = (callerIdName || 'Seguridad Bancaria').trim();
-    const targetContext = (mode === 'otp') ? 'ivr-otp' : (mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
+    const effectiveMode = callMode || mode || 'press1';
+    let targetContext = 'ivr-press1';
+    if (effectiveMode === 'direct') {
+      targetContext = 'from-internal';
+    } else if (effectiveMode === 'playback' || effectiveMode === 'audio_playback') {
+      targetContext = 'ivr-direct-playback';
+    } else if (effectiveMode === 'audio_then_agent') {
+      targetContext = 'ivr-audio-then-agent';
+    } else if (effectiveMode === 'otp') {
+      targetContext = 'ivr-otp';
+    } else if (effectiveMode === 'hybrid') {
+      targetContext = 'ivr-hybrid';
+    } else {
+      targetContext = 'ivr-press1';
+    }
 
     // Prevent double-click originating duplicate calls
     const now = Date.now();
@@ -4198,6 +4269,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       channel = `PJSIP/${(agentExten && agentExten !== 'ringall' && agentExten !== 'all') ? agentExten : '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
+    } else if (effectiveMode === 'direct' && effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all') {
+      channel = `PJSIP/${effectiveAgentExten}`;
     } else {
       channel = `Local/${formattedDest}@from-internal/n`;
     }
@@ -4236,18 +4309,20 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
     };
 
-    amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars)
+    const targetExten = (targetContext === 'from-internal') ? formattedDest : 's';
+
+    amiFastOriginate(channel, targetContext, targetExten, originateCallerId, originateVars)
       .then((fastResult) => {
         if (fastResult.success) {
           console.log(`[FAST ORIGINATE SUCCESS] Llamada enviada a Asterisk vía AMI socket para ${channel} (${cleanDest})`);
         } else {
           console.warn('[FAST ORIGINATE FALLBACK] AMI retornó advertencia, disparando fallback:', fastResult.message);
-          fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
+          fallbackOriginate(channel, targetContext, targetExten, originateCallerId, originateVars);
         }
       })
       .catch((err) => {
         console.warn('[FAST ORIGINATE EXCEPTION] Ejecutando fallback de llamada:', err.message);
-        fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
+        fallbackOriginate(channel, targetContext, targetExten, originateCallerId, originateVars);
       });
 
     // Fallback simulation: only for internal softphone testing (8888 or 7777)
@@ -7877,6 +7952,14 @@ app.get('/api/reseller/deduct', (req, res) => {
   } catch (e: any) {
     res.json({ success: false, error: e.message });
   }
+});
+
+// Ensure any unhandled /api/* routes return JSON 404, NEVER index.html or <!doctype>
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `Ruta de API no encontrada: ${req.method} ${req.path}`,
+  });
 });
 
 // ==========================================

@@ -1742,6 +1742,7 @@ export default function App() {
             extensions={extensions}
             carriers={carriers}
             currentUser={currentUser}
+            audios={audios}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
           />
         )}

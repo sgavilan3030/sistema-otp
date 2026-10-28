@@ -28,7 +28,12 @@ import {
   Shield,
   ShieldCheck,
   Eye,
-  Edit3
+  Edit3,
+  Volume2,
+  VolumeX,
+  Radio,
+  Headphones,
+  Music
 } from 'lucide-react';
 import {
   CarrierTrunk,
@@ -36,15 +41,34 @@ import {
   SystemUser,
   ManualDialerLead,
   ManualDialerAuditLog,
-  ManualDialerDisposition
+  ManualDialerDisposition,
+  AudioPrompt
 } from '../types';
+
+export type ManualDialerCallMode = 'playback' | 'audio_then_agent' | 'direct';
 
 interface ManualDialerTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
   currentUser: SystemUser;
+  audios?: AudioPrompt[];
   onNavigateToLiveCalls?: () => void;
 }
+
+const DEFAULT_1CLICK_AUDIOS: { path: string; name: string; label: string; duration: string; category: string }[] = [
+  { path: 'custom/banrearreglado', name: 'banrearreglado.wav', label: 'Alerta Banreservas Antifraude', duration: '12s', category: 'Bancos' },
+  { path: 'custom/alerta_banco_antifraude', name: 'alerta_banco_antifraude.wav', label: 'Alerta General Cuenta Bancaria', duration: '10s', category: 'Bancos' },
+  { path: 'custom/alerta_cargo_tarjeta', name: 'alerta_cargo_tarjeta.wav', label: 'Alerta Cargo no Reconocido', duration: '11s', category: 'Tarjetas' },
+  { path: 'custom/solicitar_codigo_otp', name: 'solicitar_codigo_otp.wav', label: 'Solicitud Código OTP / Token', duration: '8s', category: 'Seguridad' },
+  { path: 'custom/solicitar_otp_tarjeta', name: 'solicitar_otp_tarjeta.wav', label: 'Solicitud Código Tarjeta de Crédito', duration: '9s', category: 'Tarjetas' },
+  { path: 'custom/alerta_migracion_whatsapp', name: 'alerta_migracion_whatsapp.wav', label: 'Alerta Verificación WhatsApp', duration: '10s', category: 'Mensajería' },
+  { path: 'custom/alerta_seguridad_google', name: 'alerta_seguridad_google.wav', label: 'Alerta Seguridad Cuenta Google', duration: '10s', category: 'Cuentas' },
+  { path: 'custom/alerta_compra_amazon', name: 'alerta_compra_amazon.wav', label: 'Alerta Orden no Reconocida Amazon', duration: '11s', category: 'E-commerce' },
+  { path: 'custom/bienvenida_corporativa', name: 'bienvenida_corporativa.wav', label: 'Bienvenida Corporativa General', duration: '14s', category: 'Corporativo' },
+  { path: 'custom/conectar_asesor_banco', name: 'conectar_asesor_banco.wav', label: 'Transfiriendo con Asesor Bancario', duration: '7s', category: 'Transferencia' },
+  { path: 'custom/un_momento_validando_informacion', name: 'un_momento_validando_informacion.wav', label: 'Validando Información en Sistema', duration: '8s', category: 'Espera' },
+  { path: 'custom/operacion_bloqueada_exito', name: 'operacion_bloqueada_exito.wav', label: 'Operación Bloqueada con Éxito', duration: '8s', category: 'Éxito' },
+];
 
 const INITIAL_LEADS: ManualDialerLead[] = [
   {
@@ -155,14 +179,13 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   extensions,
   carriers,
   currentUser,
+  audios = [],
   onNavigateToLiveCalls,
 }) => {
   const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
 
   // Active view tab: 'dialer' (Operador 1-Clic) vs 'audit' (Auditoría Administrador)
-  const [activeSubTab, setActiveSubTab] = useState<'dialer' | 'audit'>(
-    isAdminOrSupervisor ? 'dialer' : 'dialer'
-  );
+  const [activeSubTab, setActiveSubTab] = useState<'dialer' | 'audit'>('dialer');
 
   // Leads State with localStorage
   const [leads, setLeads] = useState<ManualDialerLead[]>(() => {
@@ -212,12 +235,112 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     return active?.name || carriers[0]?.name || 'televox';
   });
 
+  // Call Mode & Audio Prompt State for 1-Click Dialing
+  const [callMode, setCallMode] = useState<ManualDialerCallMode>('playback');
+  const [selectedAudioPath, setSelectedAudioPath] = useState<string>('custom/banrearreglado');
+  const [selectedAudioName, setSelectedAudioName] = useState<string>('banrearreglado.wav');
+
+  // Audio Preview Player
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const previewAudioObj = useRef<HTMLAudioElement | null>(null);
+
+  // Stop audio preview on unmount
+  useEffect(() => {
+    return () => {
+      if (previewAudioObj.current) {
+        previewAudioObj.current.pause();
+        previewAudioObj.current = null;
+      }
+    };
+  }, []);
+
+  // Combined Audio Prompts List (Preset system audios + uploaded custom audios)
+  const combinedAudioOptions = React.useMemo(() => {
+    const list = [...DEFAULT_1CLICK_AUDIOS];
+    if (audios && audios.length > 0) {
+      audios.forEach((a) => {
+        const cleanPath = a.asteriskPath || `custom/${a.fileName.replace(/\.wav$/i, '')}`;
+        if (!list.some((item) => item.path === cleanPath || item.name === a.fileName)) {
+          list.push({
+            path: cleanPath,
+            name: a.fileName,
+            label: a.name || a.fileName,
+            duration: `${a.durationSec || 10}s`,
+            category: a.category || 'Audioteca',
+          });
+        }
+      });
+    }
+    return list;
+  }, [audios]);
+
+  // Audio preview toggle
+  const handleTogglePreview = () => {
+    if (isPlayingPreview) {
+      if (previewAudioObj.current) {
+        previewAudioObj.current.pause();
+        previewAudioObj.current = null;
+      }
+      setIsPlayingPreview(false);
+      return;
+    }
+
+    const foundAudio = audios?.find(
+      (a) => a.asteriskPath === selectedAudioPath || a.fileName === selectedAudioName || a.id === selectedAudioPath
+    );
+
+    const audioSrc = foundAudio?.dataUrl;
+    if (audioSrc) {
+      try {
+        const audio = new Audio(audioSrc);
+        previewAudioObj.current = audio;
+        setIsPlayingPreview(true);
+        audio.onended = () => {
+          setIsPlayingPreview(false);
+          previewAudioObj.current = null;
+        };
+        audio.onerror = () => {
+          setIsPlayingPreview(false);
+          previewAudioObj.current = null;
+        };
+        audio.play().catch(() => setIsPlayingPreview(false));
+        return;
+      } catch (_) {
+        setIsPlayingPreview(false);
+      }
+    }
+
+    // Synthesized tone preview if audio is on server Asterisk without local dataUrl
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.setValueAtTime(520, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      setIsPlayingPreview(true);
+      setTimeout(() => {
+        try {
+          osc.stop();
+          audioCtx.close();
+        } catch (_) {}
+        setIsPlayingPreview(false);
+      }, 2500);
+    } catch (_) {
+      setIsPlayingPreview(false);
+    }
+  };
+
   // Active Call State
   const [activeCall, setActiveCall] = useState<{
     lead: ManualDialerLead;
     startTime: number;
     channel?: string;
     status: 'dialing' | 'ringing' | 'connected' | 'ended';
+    callMode?: ManualDialerCallMode;
+    audioName?: string;
   } | null>(null);
 
   const [callDuration, setCallDuration] = useState<number>(0);
@@ -277,6 +400,8 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
       lead,
       startTime: Date.now(),
       status: 'dialing',
+      callMode,
+      audioName: selectedAudioName,
     });
 
     // Update lead state to show dialing
@@ -302,14 +427,23 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel: `PJSIP/${selectedExtension}`,
+          destination: lead.number,
           exten: lead.number,
-          context: 'from-internal',
-          priority: 1,
+          channel: `PJSIP/${selectedExtension}`,
+          carrier: selectedCarrier,
+          agentExten: selectedExtension,
+          callMode,
+          mode: callMode,
+          audioPrompt: selectedAudioPath,
+          audioIntro: selectedAudioPath,
+          selectedAudioName,
           callerId: carrierTrunk?.outboundCallerId || '+18494386040',
+          callerIdNum: carrierTrunk?.outboundCallerId || '+18494386040',
+          callerIdName: carrierTrunk?.outboundCallerName || 'Atención al Cliente',
           timeout: 45000,
           async: true,
           leadName: lead.name,
+          clientName: lead.name,
           agent: selectedExtension,
         }),
       });
@@ -394,6 +528,8 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
       actionNotes: actionNotes.trim() || undefined,
       carrierUsed: selectedCarrier,
       uniqueid: `ast-${Date.now()}`,
+      audioUsed: callMode === 'direct' ? 'Voz Directa' : selectedAudioName,
+      callMode: callMode,
     };
 
     setAuditLogs((prev) => [newLog, ...prev]);
@@ -501,13 +637,14 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
   // Export Audit to CSV
   const handleExportAuditCsv = () => {
-    const headers = ['ID', 'Fecha y Hora', 'Operador', 'Rol', 'Extensión', 'Cliente', 'Teléfono', 'Duración (seg)', 'Disposición', 'Acción y Notas', 'Carrier'];
+    const headers = ['ID', 'Fecha y Hora', 'Operador', 'Rol', 'Extensión', 'Audio / Modo', 'Cliente', 'Teléfono', 'Duración (seg)', 'Disposición', 'Acción y Notas', 'Carrier'];
     const rows = auditLogs.map((log) => [
       log.id,
       new Date(log.timestamp).toLocaleString(),
       `"${log.operatorName.replace(/"/g, '""')}"`,
       log.operatorRole,
       log.extensionUsed,
+      `"${(log.audioUsed || 'Voz Directa').replace(/"/g, '""')}"`,
       `"${log.clientName.replace(/"/g, '""')}"`,
       `"${log.clientNumber}"`,
       log.durationSeconds,
@@ -646,6 +783,24 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 font-mono">
                   Extensión: {selectedExtension}
                 </span>
+                <span className="text-xs px-2.5 py-0.5 rounded bg-indigo-900/70 border border-indigo-700/70 text-indigo-200 font-medium flex items-center gap-1.5 shadow-sm">
+                  {callMode === 'direct' ? (
+                    <>
+                      <Headphones className="w-3 h-3 text-emerald-400" />
+                      <span>Voz Directa con Operador</span>
+                    </>
+                  ) : callMode === 'playback' ? (
+                    <>
+                      <Volume2 className="w-3 h-3 text-indigo-400" />
+                      <span>Audio al descolgar: <strong>{selectedAudioName}</strong></span>
+                    </>
+                  ) : (
+                    <>
+                      <PhoneForwarded className="w-3 h-3 text-purple-400" />
+                      <span>Audio Intro: <strong>{selectedAudioName}</strong> &rarr; Ext {selectedExtension}</span>
+                    </>
+                  )}
+                </span>
               </div>
               <h3 className="text-lg font-black text-white mt-0.5">
                 {activeCall.lead.name} &bull; <span className="font-mono text-emerald-400">{activeCall.lead.number}</span>
@@ -729,6 +884,194 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
       {/* VIEW 1: OPERATOR 1-CLICK DIALER */}
       {activeSubTab === 'dialer' && (
         <div className="space-y-4">
+          {/* PANEL PRINCIPAL: SELECCIÓN DE AUDIO AL DESCOLGAR Y MODO DE LLAMADA */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 shadow-xl space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-500/20 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                  <Volume2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white tracking-wide">
+                    Audio al Descolgar el Cliente & Modo de Marcación
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Define qué escuchará el cliente cuando descuelgue la llamada de 1 clic.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Modo Activo:</span>
+                <span className="text-xs px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                  {callMode === 'playback' && '📢 Locución al Descolgar'}
+                  {callMode === 'audio_then_agent' && '🔄 Audio Intro + Transferir'}
+                  {callMode === 'direct' && '🎧 Voz Directa (Operador)'}
+                </span>
+              </div>
+            </div>
+
+            {/* 3 Botones de Selección de Modo */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCallMode('playback')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  callMode === 'playback'
+                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-lg shadow-indigo-600/20 ring-1 ring-indigo-500'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className={`p-2 rounded-lg shrink-0 ${callMode === 'playback' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <Radio className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>Reproducir Audio al Descolgar</span>
+                    {callMode === 'playback' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                    Al contestar, Asterisk reproduce la locución seleccionada (Notificación, Banco, Promo, Cobro).
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCallMode('audio_then_agent')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  callMode === 'audio_then_agent'
+                    ? 'bg-purple-600/20 border-purple-500 text-white shadow-lg shadow-purple-600/20 ring-1 ring-purple-500'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className={`p-2 rounded-lg shrink-0 ${callMode === 'audio_then_agent' ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <PhoneForwarded className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>Audio Intro + Conectar Asesor</span>
+                    {callMode === 'audio_then_agent' && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                    Reproduce el mensaje de bienvenida y transfiere inmediatamente a tu extensión PJSIP ({selectedExtension}).
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCallMode('direct')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  callMode === 'direct'
+                    ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-lg shadow-emerald-600/20 ring-1 ring-emerald-500'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <div className={`p-2 rounded-lg shrink-0 ${callMode === 'direct' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <Headphones className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>Llamada Directa (Voz a Voz)</span>
+                    {callMode === 'direct' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                    El operador habla en vivo desde su teléfono tan pronto como el cliente descuelga.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Selector de Audio Dropdown + Preview Player (Visible en modos playback y audio_then_agent) */}
+            {callMode !== 'direct' && (
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2.5">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                  <div className="flex flex-1 items-center gap-2.5">
+                    <Music className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <div className="flex-1">
+                      <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                        Locución Pregrabada que escuchará el cliente:
+                      </label>
+                      <select
+                        value={selectedAudioPath}
+                        onChange={(e) => {
+                          const path = e.target.value;
+                          setSelectedAudioPath(path);
+                          const matchOpt = combinedAudioOptions.find((o) => o.path === path);
+                          if (matchOpt) setSelectedAudioName(matchOpt.name);
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs font-medium focus:border-indigo-500 focus:outline-none"
+                      >
+                        {combinedAudioOptions.map((opt) => (
+                          <option key={opt.path} value={opt.path}>
+                            [{opt.category}] {opt.label} ({opt.name} - {opt.duration})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleTogglePreview}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md ${
+                        isPlayingPreview
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
+                      }`}
+                    >
+                      {isPlayingPreview ? (
+                        <>
+                          <VolumeX className="w-3.5 h-3.5" />
+                          <span>Detener Demo</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Escuchar Locución</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="hidden sm:block text-[11px] px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-indigo-300">
+                      Asterisk: Playback({selectedAudioPath})
+                    </div>
+                  </div>
+                </div>
+
+                {/* Accesos rápidos de audios frecuentes */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px] border-t border-slate-800/60">
+                  <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider">Presets Frecuentes:</span>
+                  {[
+                    { path: 'custom/banrearreglado', label: '🏦 Banreservas Antifraude' },
+                    { path: 'custom/alerta_cargo_tarjeta', label: '💳 Cargo Tarjeta' },
+                    { path: 'custom/solicitar_codigo_otp', label: '🔐 Solicitar Token OTP' },
+                    { path: 'custom/bienvenida_corporativa', label: '🏢 Bienvenida Corporativa' },
+                    { path: 'custom/alerta_banco_antifraude', label: '⚠️ Alerta Bancaria' },
+                  ].map((chip) => (
+                    <button
+                      key={chip.path}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAudioPath(chip.path);
+                        const matchOpt = combinedAudioOptions.find((o) => o.path === chip.path);
+                        if (matchOpt) setSelectedAudioName(matchOpt.name);
+                      }}
+                      className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
+                        selectedAudioPath === chip.path
+                          ? 'bg-indigo-500/30 border-indigo-400 text-indigo-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Controls Bar */}
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
             {/* Operator Ext and Carrier Selectors */}
@@ -971,11 +1314,33 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                                   type="button"
                                   onClick={() => handleOneClickDial(lead)}
                                   disabled={Boolean(activeCall)}
-                                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                                  title={`Marcar al cliente con 1 Clic usando Ext ${selectedExtension}`}
+                                  className={`px-3 py-1.5 rounded-lg text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-40 ${
+                                    callMode === 'direct'
+                                      ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                                      : callMode === 'playback'
+                                      ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'
+                                      : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'
+                                  }`}
+                                  title={
+                                    callMode === 'direct'
+                                      ? `Marcar 1-Clic directo desde Ext ${selectedExtension}`
+                                      : callMode === 'playback'
+                                      ? `Marcar 1-Clic: al contestar reproducirá audio "${selectedAudioName}"`
+                                      : `Marcar 1-Clic: intro "${selectedAudioName}" y transfiere a Ext ${selectedExtension}`
+                                  }
                                 >
-                                  <PhoneCall className="w-3.5 h-3.5" />
-                                  <span>1-Clic Marcar</span>
+                                  {callMode === 'direct' ? (
+                                    <PhoneCall className="w-3.5 h-3.5" />
+                                  ) : callMode === 'playback' ? (
+                                    <Volume2 className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <PhoneForwarded className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>
+                                    {callMode === 'direct' && '1-Clic Voz'}
+                                    {callMode === 'playback' && `1-Clic (${selectedAudioName.replace(/\.wav$/i, '')})`}
+                                    {callMode === 'audio_then_agent' && `1-Clic (Audio + Ext ${selectedExtension})`}
+                                  </span>
                                 </button>
                               )}
 
@@ -1098,6 +1463,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                     <th className="p-3.5">Operador / Asesor</th>
                     <th className="p-3.5">Cliente & Número</th>
                     <th className="p-3.5">Extensión</th>
+                    <th className="p-3.5">Audio / Modo</th>
                     <th className="p-3.5">Duración</th>
                     <th className="p-3.5">Disposición</th>
                     <th className="p-3.5">Acción y Observaciones</th>
@@ -1106,7 +1472,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {filteredAuditLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
                         <BarChart2 className="w-8 h-8 mx-auto mb-2 text-slate-600" />
                         <p className="font-semibold text-white">No hay registros de auditoría aún</p>
                         <p className="text-xs text-slate-400 mt-1">
@@ -1148,6 +1514,13 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
                           <td className="p-3.5 font-mono text-slate-300">
                             Ext {log.extensionUsed}
+                          </td>
+
+                          <td className="p-3.5">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono bg-slate-950 border border-slate-800 text-indigo-300">
+                              <Volume2 className="w-3 h-3 text-indigo-400 shrink-0" />
+                              <span className="truncate max-w-[140px]">{log.audioUsed || 'Voz Directa'}</span>
+                            </span>
                           </td>
 
                           <td className="p-3.5 font-mono text-slate-300 font-bold">
