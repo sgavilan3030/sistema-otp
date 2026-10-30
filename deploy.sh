@@ -40,7 +40,11 @@ else
   echo "✓ Si no usas PM2 ni systemd, reinicia tu proceso actual con 'npm start'."
 fi
 
-# Copiar dialplan actualizado a /etc/asterisk/extensions.conf
+# Copiar configuraciones de Asterisk (pjsip.conf y extensions.conf)
+if [ -f pjsip.conf ]; then
+  cp -f pjsip.conf /etc/asterisk/pjsip.conf 2>/dev/null || true
+  echo "✓ /etc/asterisk/pjsip.conf actualizado."
+fi
 if [ -f extensions.conf ]; then
   cp -f extensions.conf /etc/asterisk/extensions.conf 2>/dev/null || true
   echo "✓ /etc/asterisk/extensions.conf actualizado."
@@ -76,6 +80,10 @@ if asterisk -rx "core show function PITCH_SHIFT" 2>/dev/null | grep -qi "pitch_s
 else
   echo "⚠️ Aviso: PITCH_SHIFT no cargó. Si tu Asterisk fue compilado manualmente, requiere: make menuselect -> func_pitchshift"
 fi
+
+echo ""
+echo "=== Estado de Troncales SIP (PJSIP) ==="
+asterisk -rx "pjsip show endpoints" 2>/dev/null | grep -E "televox|ghost|trunk_69_197_187_87|Endpoint:" || true
 
 echo ""
 echo "=========================================================="
