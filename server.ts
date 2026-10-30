@@ -2310,6 +2310,13 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
 
+  dialplanContent += `; 2e. Regla de Prueba Directa Forzada para Troncal IP 69.197.187.87 (Marca 77 + número, ej. 771809XXXXXXX)\n`;
+  dialplanContent += `exten => _77X.,1,NoOp(=== [PRUEBA DIRECTA TRONCAL IP 69.197.187.87] Destino: \${EXTEN:2} ===)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${GLOBAL_DEFAULT_CID_NAME}" <\${GLOBAL_DEFAULT_CID_NUM}>)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN:2}@trunk_69_197_187_87,60,Tor)\n`;
+  dialplanContent += ` same => n,NoOp(=== [FIN PRUEBA TRONCAL IP] Status: \${DIALSTATUS} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
   dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 16104803845) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1XXXXXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLING_USER=\${CALLERID(num)})\n`;
