@@ -68,6 +68,21 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isSavingAsterisk, setIsSavingAsterisk] = useState<boolean>(false);
+  const [diagLoading, setDiagLoading] = useState<boolean>(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
+
+  const handleRunDiagnostic = async () => {
+    setDiagLoading(true);
+    try {
+      const res = await fetch('/api/asterisk/voice-changer/diagnostic');
+      const data = await res.json();
+      setDiagResult(data);
+    } catch (err: any) {
+      setDiagResult({ success: false, message: 'Error consultando Asterisk: ' + err.message });
+    } finally {
+      setDiagLoading(false);
+    }
+  };
 
   // Selected extension for Asterisk AstDB pitch shift mapping
   const [selectedExt, setSelectedExt] = useState<string>(
@@ -482,6 +497,16 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleRunDiagnostic}
+            disabled={diagLoading}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-600 hover:bg-purple-500 text-white border border-purple-400/40 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            title="Verificar si el módulo func_pitchshift está activo en Asterisk"
+          >
+            <RefreshCw className={`w-3 h-3 ${diagLoading ? 'animate-spin' : ''}`} />
+            <span>{diagLoading ? 'Comprobando...' : 'Diagnóstico Asterisk'}</span>
+          </button>
           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
             state.enabled
               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
@@ -491,6 +516,39 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
           </span>
         </div>
       </div>
+
+      {/* RESULTADO DE DIAGNÓSTICO EN TIEMPO REAL */}
+      {diagResult && (
+        <div className={`p-4 rounded-xl border text-xs space-y-2 animate-fadeIn ${
+          diagResult.isFunctionRegistered
+            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+            : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="font-bold flex items-center gap-2">
+              <span>{diagResult.isFunctionRegistered ? '✓ Módulo de Asterisk OK' : '⚠️ Atención Asterisk:'}</span>
+              <span className="font-normal">{diagResult.message}</span>
+            </div>
+            <button
+              onClick={() => setDiagResult(null)}
+              className="text-slate-400 hover:text-white text-xs px-2 py-0.5"
+            >
+              Cerrar
+            </button>
+          </div>
+          {diagResult.recommendedCommand && (
+            <div className="p-2.5 rounded-lg bg-black/60 border border-amber-500/30 text-amber-300 font-mono text-[11px] select-all space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase font-bold">Comando para instalar módulo en VPS:</div>
+              <code>{diagResult.recommendedCommand}</code>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-4 text-[11px] text-slate-300 font-mono pt-1">
+            <span>Función PITCH_SHIFT: <strong className={diagResult.isFunctionRegistered ? 'text-emerald-400' : 'text-rose-400'}>{diagResult.isFunctionRegistered ? 'REGISTRADA' : 'NO REGISTRADA'}</strong></span>
+            <span>Módulo cargado: <strong className={diagResult.isModuleLoaded ? 'text-emerald-400' : 'text-amber-400'}>{diagResult.isModuleLoaded ? 'SI (func_pitchshift.so)' : 'NO'}</strong></span>
+            <span>Archivo en disco: <strong className={diagResult.moduleFileFound ? 'text-emerald-400' : 'text-slate-400'}>{diagResult.moduleFileFound ? 'ENCONTRADO' : 'NO LOCALIZADO'}</strong></span>
+          </div>
+        </div>
+      )}
 
       {/* GRID: LEFT (PROFILES & LIVE MIC DSP) | RIGHT (SOUNDBOARD & TTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -7020,6 +7020,72 @@ app.post('/api/asterisk/voice-changer', async (req, res) => {
   }
 });
 
+// Endpoint for comprehensive Asterisk Voice Changer diagnostic & self-repair
+app.get('/api/asterisk/voice-changer/diagnostic', async (req, res) => {
+  try {
+    const results: any = {
+      timestamp: new Date().toISOString(),
+      checkedPaths: [
+        '/usr/lib/asterisk/modules/func_pitchshift.so',
+        '/usr/lib64/asterisk/modules/func_pitchshift.so',
+        '/usr/local/lib/asterisk/modules/func_pitchshift.so',
+      ],
+      moduleFileFound: false,
+      foundPath: null,
+    };
+
+    for (const p of results.checkedPaths) {
+      if (fs.existsSync(p)) {
+        results.moduleFileFound = true;
+        results.foundPath = p;
+        break;
+      }
+    }
+
+    // Attempt to load module if not yet loaded
+    await executeAsteriskCommand('module load func_pitchshift.so').catch(() => {});
+
+    // Check loaded modules
+    const modShow = await executeAsteriskCommand('module show like pitch');
+    results.moduleShow = modShow || '';
+    results.isModuleLoaded = !!(modShow && modShow.includes('func_pitchshift.so'));
+
+    // Check function registration
+    const fnShow = await executeAsteriskCommand('core show function PITCH_SHIFT');
+    results.functionShow = fnShow || '';
+    results.isFunctionRegistered = !!(fnShow && fnShow.includes('PITCH_SHIFT') && !fnShow.includes('No function by that name'));
+
+    // Load active settings
+    const settings = loadVoiceChangerSettings();
+    results.settings = settings;
+
+    // Check AstDB
+    const astdb = await executeAsteriskCommand('database show voice_changer');
+    results.astdb = astdb || '';
+
+    // Check dialplan for 8888
+    const dp8888 = await executeAsteriskCommand('dialplan show 8888@from-internal');
+    results.dialplan8888 = dp8888 || '';
+    results.hasPitchShiftIn8888 = !!(dp8888 && dp8888.includes('PITCH_SHIFT'));
+
+    if (results.isFunctionRegistered) {
+      results.status = 'ready';
+      results.message = '✓ Modulador de Voz 100% operativo en Asterisk 20 (func_pitchshift.so cargado y registrado).';
+    } else if (results.moduleFileFound) {
+      results.status = 'loaded_now';
+      results.message = 'El archivo func_pitchshift.so fue localizado en disco y se envió la orden de carga a Asterisk.';
+    } else {
+      results.status = 'missing_so';
+      results.message = 'El archivo func_pitchshift.so no se encuentra cargado en el Asterisk de tu servidor VPS.';
+      results.recommendedCommand = 'apt-get update && apt-get install -y asterisk-modules libsoundtouch-dev && asterisk -rx "module load func_pitchshift.so"';
+    }
+
+    res.json({ success: true, ...results });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to list live calls for LiveCallsTab monitoring in real-time
 app.get('/api/asterisk/live/calls', async (req, res) => {
   try {

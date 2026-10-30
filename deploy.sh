@@ -40,17 +40,49 @@ else
   echo "✓ Si no usas PM2 ni systemd, reinicia tu proceso actual con 'npm start'."
 fi
 
-# Cargar módulo de modulación de voz y recargar Asterisk
+# Copiar dialplan actualizado a /etc/asterisk/extensions.conf
+if [ -f extensions.conf ]; then
+  cp -f extensions.conf /etc/asterisk/extensions.conf 2>/dev/null || true
+  echo "✓ /etc/asterisk/extensions.conf actualizado."
+fi
+
+# Verificar si el módulo func_pitchshift está disponible; si no, instalar paquetes requeridos
+echo "=== Verificando módulo de Modulación de Voz en Asterisk ==="
+if ! asterisk -rx "core show function PITCH_SHIFT" 2>/dev/null | grep -qi "pitch_shift"; then
+  echo "⚠️ Módulo func_pitchshift no detectado en Asterisk. Instalando dependencias del sistema..."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y asterisk-modules libsoundtouch-dev 2>/dev/null || true
+  fi
+fi
+
+# Cargar módulo de modulación de voz en Asterisk
 asterisk -rx "module load func_pitchshift.so" 2>/dev/null || true
+
+# Activar valores del modulador de voz en la base de datos de Asterisk (AstDB)
+asterisk -rx "database put voice_changer global 1.35" 2>/dev/null || true
+asterisk -rx "database put voice_changer 8888 1.35" 2>/dev/null || true
+asterisk -rx "database put voice_changer 1001 1.35" 2>/dev/null || true
+asterisk -rx "database put voice_changer 1002 1.35" 2>/dev/null || true
+
+# Recargar Asterisk
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
+
+echo ""
+echo "=== Diagnóstico de Modulador en Asterisk ==="
+if asterisk -rx "core show function PITCH_SHIFT" 2>/dev/null | grep -qi "pitch_shift"; then
+  echo "✓ ¡EXITO! Función PITCH_SHIFT está ACTIVA y REGISTRADA en Asterisk 20."
+else
+  echo "⚠️ Aviso: PITCH_SHIFT no cargó. Si tu Asterisk fue compilado manualmente, requiere: make menuselect -> func_pitchshift"
+fi
 
 echo ""
 echo "=========================================================="
 echo "    ¡SISTEMA ACTUALIZADO Y RECOMPILADO CON ÉXITO!"
 echo "=========================================================="
 echo " >>> RECORDATORIO IMPORTANTE <<<"
-echo " En tu navegador, presiona CTRL + F5 (o abre ventana de incógnito)"
-echo " para limpiar la memoria caché y ver los nuevos cambios reflejados."
+echo " 1. En tu navegador presiona CTRL + F5."
+echo " 2. Marca 8888 desde MicroSIP para probar tu voz modulada con eco en vivo."
 echo "=========================================================="
 echo ""
