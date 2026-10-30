@@ -1930,9 +1930,10 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer Optimizado y Limpieza MOH en Canal: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
-  dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
@@ -2167,10 +2168,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
-  dialplanContent += `; 2b. Acceso y Prueba Directa IVR desde Softphone X-Lite (Extension 8888)\n`;
-  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA IVR EXT 8888: Marcando al cliente o simulando IVR ===)\n`;
+  dialplanContent += `; 2b. Acceso y Prueba Directa de Modulador de Voz y/o IVR desde Softphone (Extension 8888, *8888, *43, 8880)\n`;
+  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: MODULADOR DE VOZ FEMENINA & IVR ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=8888)\n`;
@@ -2179,26 +2180,29 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(TEST_PITCH=\${DB(voice_changer/\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/8888)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = "" || "\${TEST_PITCH}" = "0" || "\${TEST_PITCH}" = "1.0"]?Set(TEST_PITCH=1.32))\n`;
+  dialplanContent += ` same => n,NoOp(=== [PRUEBA EXT 8888] Aplicando modulador de voz Pitch Shift: \${TEST_PITCH} ===)\n`;
+  dialplanContent += ` same => n,Set(PITCH_SHIFT(rx)=\${TEST_PITCH})\n`;
+  dialplanContent += ` same => n,Set(PITCH_SHIFT(tx)=\${TEST_PITCH})\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Read(TEST_CHOICE,,1,,1,3)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${TEST_CHOICE}" = "2"]?test_ivr)\n`;
+  dialplanContent += ` same => n(test_echo),NoOp(=== [PRUEBA ECO EXT 8888] Hable ahora para escucharse modulado a voz femenina ===)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Echo()\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(test_ivr),NoOp(=== [PRUEBA IVR EXT 8888] Redirigiendo a IVR simulado ===)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
-
-  dialplanContent += `; 2c. Acceso a Simulador IVR Local en Auricular (*8888 o 8880)\n`;
-  dialplanContent += `exten => *8888,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
-  dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-  dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
-  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n`;
-  dialplanContent += `exten => 8880,1,NoOp(Prueba Directa IVR Local desde Extension \${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=120)\n`;
-  dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
-  dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
-  dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
+  dialplanContent += `; Extensiones de prueba de Eco de voz modulada (*43, *8888, 8880)\n`;
+  dialplanContent += `exten => *43,1,Goto(8888,1)\n`;
+  dialplanContent += `exten => *8888,1,Goto(8888,1)\n`;
+  dialplanContent += `exten => 8880,1,Goto(8888,1)\n\n`;
 
   const generateOutboundDialSteps = (destVar: string, tag: string) => {
     if (enabledCarriers.length === 0) {
@@ -2324,7 +2328,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
@@ -2373,7 +2379,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
@@ -5923,7 +5931,8 @@ read = all
 write = all
 EOF_MGR
 
-echo "Recargando Asterisk PJSIP, Dialplan y Manager..."
+echo "Recargando Asterisk PJSIP, Dialplan y Modulador de Voz..."
+asterisk -rx "module load func_pitchshift.so" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
@@ -6968,7 +6977,10 @@ app.post('/api/asterisk/voice-changer', async (req, res) => {
 
     if (settings.enabled) {
       const effectivePitch = settings.pitchValue || '1.32';
+      await executeAsteriskCommand('module load func_pitchshift.so').catch(() => {});
       await executeAsteriskCommand(`database put voice_changer global "${effectivePitch}"`).catch(() => {});
+      await executeAsteriskCommand(`database put voice_changer 8888 "${effectivePitch}"`).catch(() => {});
+      settings.extensionPitchMap['8888'] = effectivePitch;
       if (cleanExt) {
         settings.extensionPitchMap[cleanExt] = effectivePitch;
         await executeAsteriskCommand(`database put voice_changer ${cleanExt} "${effectivePitch}"`).catch(() => {});
@@ -6981,6 +6993,7 @@ app.post('/api/asterisk/voice-changer', async (req, res) => {
       }
     } else {
       await executeAsteriskCommand('database del voice_changer global').catch(() => {});
+      await executeAsteriskCommand('database del voice_changer 8888').catch(() => {});
       if (cleanExt) {
         delete settings.extensionPitchMap[cleanExt];
         await executeAsteriskCommand(`database del voice_changer ${cleanExt}`).catch(() => {});
@@ -6991,6 +7004,7 @@ app.post('/api/asterisk/voice-changer', async (req, res) => {
     }
 
     saveVoiceChangerSettings(settings);
+    executeAsteriskCommand('dialplan reload').catch(() => {});
 
     console.log(`[VOICE CHANGER] Modulador de voz femenina: ${settings.enabled ? `ACTIVO (Pitch: ${settings.pitchValue}, Idioma: ${settings.language})` : 'DESACTIVADO'}`);
 

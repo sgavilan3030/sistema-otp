@@ -463,6 +463,35 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
         </div>
       </div>
 
+      {/* BANNER DE PRUEBA EN VIVO POR EXTENSIÓN 8888 O *43 EN MICROSIP */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400 shrink-0">
+            <Radio className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-2">
+              <span>Prueba de Voz en tu Softphone / MicroSIP:</span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] font-bold border border-purple-500/40">
+                Marca 8888 o *43
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Al marcar <strong className="text-purple-300 font-mono">8888</strong> desde tu softphone escucharás un tono (beep): habla al micrófono y escucharás tu propia voz reflejada en tiempo real convertida en tono femenino. Si deseas probar el IVR bancario, presiona la tecla <strong className="text-white">2</strong>.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+            state.enabled
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
+              : 'bg-slate-800 text-slate-400 border-slate-700'
+          }`}>
+            {state.enabled ? '✓ Modulador ACTIVO en Asterisk' : 'Modulador OFF'}
+          </span>
+        </div>
+      </div>
+
       {/* GRID: LEFT (PROFILES & LIVE MIC DSP) | RIGHT (SOUNDBOARD & TTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: FEMALE VOICE PRESETS & REAL-TIME MIC DSP (7 COLS) */}

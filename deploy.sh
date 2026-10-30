@@ -40,7 +40,8 @@ else
   echo "✓ Si no usas PM2 ni systemd, reinicia tu proceso actual con 'npm start'."
 fi
 
-# Recargar Asterisk por si hubo cambios en dialplan o extensiones
+# Cargar módulo de modulación de voz y recargar Asterisk
+asterisk -rx "module load func_pitchshift.so" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 
