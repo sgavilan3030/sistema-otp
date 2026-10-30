@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead } from '../types';
+import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead, CallCenterTenant } from '../types';
 import {
   Rocket,
   PhoneCall,
@@ -109,6 +109,7 @@ interface ProductionOperationsTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
   audios?: AudioPrompt[];
+  tenants?: CallCenterTenant[];
   currentUser?: SystemUser;
   onAddAudio?: (audio: AudioPrompt) => void;
   onTriggerSync: () => void;
@@ -121,6 +122,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   extensions,
   carriers,
   audios = [],
+  tenants = [],
   currentUser,
   onAddAudio,
   onTriggerSync,
@@ -1234,10 +1236,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Polling captured OTPs from Asterisk backend with fast real-time response
   const fetchCapturedOtps = async (forceFresh = false) => {
     try {
-      const res = await fetch(forceFresh ? '/api/asterisk/otp/records?fresh=1' : '/api/asterisk/otp/records');
+      const tenantParam = currentUser?.tenantId ? `&tenantId=${encodeURIComponent(currentUser.tenantId)}` : '';
+      const url = forceFresh
+        ? `/api/asterisk/otp/records?fresh=1${tenantParam}`
+        : (tenantParam ? `/api/asterisk/otp/records?${tenantParam.substring(1)}` : '/api/asterisk/otp/records');
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
-        setOtpRecords(data.records);
+        const filtered = currentUser?.tenantId
+          ? data.records.filter((r: any) => !r.tenantId || r.tenantId === currentUser.tenantId)
+          : data.records;
+        setOtpRecords(filtered);
 
         // Detectar si hay un código nuevo para alertar al agente
         if (data.records.length > 0) {
@@ -1985,16 +1994,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Clear history and wipe old test codes from Asterisk AstDB
   const handleClearHistory = async () => {
-    if (!confirm('¿Deseas vaciar todos los registros y códigos de pruebas anteriores tanto de la web como de Asterisk?')) return;
+    if (!confirm('¿Deseas vaciar los registros y códigos de pruebas anteriores tanto de la web como de Asterisk?')) return;
     try {
-      await fetch('/api/asterisk/otp/records?clear=1', { method: 'DELETE' });
+      const tenantParam = currentUser?.tenantId ? `&tenantId=${encodeURIComponent(currentUser.tenantId)}` : '';
+      await fetch(`/api/asterisk/otp/records?clear=1${tenantParam}`, { method: 'DELETE' });
       setOtpRecords([]);
       setLiveCapturedAlert(null);
       validRecordIdsRef.current.clear();
       dismissedAlertKeysRef.current.clear();
       setActiveCall((prev) => (prev ? { ...prev, capturedOtp: undefined, otpStatus: 'pending' } : null));
       setLaunchFeedback({
-        text: 'Historial y registros de pruebas anteriores eliminados con éxito.',
+        text: 'Historial y registros de pruebas eliminados con éxito.',
         type: 'success',
       });
     } catch (e) {}
@@ -5794,15 +5804,27 @@ echo "=========================================================="`;
       <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-emerald-400" />
-              <span>Registro de Códigos OTP Producidos</span>
-              <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                {otpRecords.length}
-              </span>
-            </h3>
-            <p className="text-xs text-slate-400">
-              Almacén en vivo de todos los códigos capturados en llamadas salientes.
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-emerald-400" />
+                <span>Registro de Códigos OTP Producidos</span>
+                <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
+                  {otpRecords.length}
+                </span>
+              </h3>
+              {currentUser?.tenantId ? (
+                <span className="px-2.5 py-0.5 text-[11px] font-mono font-bold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 flex items-center gap-1.5 shadow-sm">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Base Aislada: {tenants.find((t) => t.id === currentUser.tenantId)?.name || currentUser.tenantId}</span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 text-[11px] font-mono font-semibold bg-slate-800 text-slate-300 rounded-full border border-slate-700 flex items-center gap-1.5">
+                  <span>🌐 Base de Datos Global (Todos los Call Centers)</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Almacén en vivo de todos los códigos capturados en llamadas salientes {currentUser?.tenantId ? 'exclusivo para su Call Center' : 'para el sistema general'}.
             </p>
           </div>
 

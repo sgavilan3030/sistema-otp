@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AudioPrompt, AudioRole, ActiveAudioAssignments } from '../types';
+import { AudioPrompt, AudioRole, ActiveAudioAssignments, CallCenterTenant, SystemUser } from '../types';
 import {
   UploadCloud,
   Play,
@@ -33,10 +33,13 @@ import {
   ShieldCheck,
   Layers,
   Music,
+  Building2,
 } from 'lucide-react';
 
 interface AudioLibraryTabProps {
   audios: AudioPrompt[];
+  tenants?: CallCenterTenant[];
+  currentUser?: SystemUser;
   onAddAudio: (audio: AudioPrompt) => void;
   onDeleteAudio: (id: string) => void;
   onAssignToPress1: (audioId: string) => void;
@@ -379,6 +382,8 @@ const SYSTEM_ROLES: RoleConfig[] = [
 
 export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   audios,
+  tenants = [],
+  currentUser,
   onAddAudio,
   onDeleteAudio,
   onAssignToPress1,
@@ -396,6 +401,18 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 }) => {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Call Center isolation and filtering state
+  const userTenant = currentUser?.tenantId ? tenants.find((t) => t.id === currentUser.tenantId) : null;
+  const [tenantFilter, setTenantFilter] = useState<string>(currentUser?.tenantId || 'all');
+  const [uploadTenantId, setUploadTenantId] = useState<string>(currentUser?.tenantId || '');
+
+  useEffect(() => {
+    if (currentUser?.tenantId) {
+      setTenantFilter(currentUser.tenantId);
+      setUploadTenantId(currentUser.tenantId);
+    }
+  }, [currentUser?.tenantId]);
 
   // Manual locks state for individual audio configurations (7777, 6666, 5555, 4444, 3333)
   const [localLocks, setLocalLocks] = useState<Record<string, boolean>>(() => {
@@ -859,6 +876,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         dataUrl: dataUrl,
         asteriskPath: cleanPath,
         createdAt: new Date().toISOString(),
+        tenantId: currentUser?.tenantId || undefined,
       };
 
       onAddAudio(newAudioItem);
@@ -1074,6 +1092,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       .replace(/[^a-z0-9_]/g, '_');
 
     const cleanPath = `custom/${baseName}`;
+    const targetTenantId = currentUser?.tenantId || (uploadTenantId && uploadTenantId !== 'global' ? uploadTenantId : undefined);
 
     const newAudio: AudioPrompt = {
       id: `audio-${Date.now()}`,
@@ -1087,6 +1106,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       dataUrl: stagedFileDataUrl,
       asteriskPath: cleanPath,
       createdAt: new Date().toISOString(),
+      tenantId: targetTenantId,
     };
 
     onAddAudio(newAudio);
@@ -1875,6 +1895,86 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         </div>
       </div>
 
+      {/* Call Center Isolation Banner for Assigned Admins */}
+      {currentUser?.tenantId && (
+        <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/40 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-indigo-300 font-bold uppercase tracking-wider">
+                Audioteca Exclusiva — {userTenant?.name || currentUser.tenantId}
+              </div>
+              <div className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Call Center: {userTenant?.name || currentUser.tenantId}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono">
+                  Exts: {userTenant?.extensionStart}-{userTenant?.extensionEnd}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Base de datos de audios particionada: estás gestionando exclusivamente las locuciones de tu centro.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hidden md:block">
+            🔒 Entorno Desligado
+          </span>
+        </div>
+      )}
+
+      {/* Call Center Filter Selector for Global Admins */}
+      {!currentUser?.tenantId && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold text-slate-200">Filtrar Audios por Call Center:</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setTenantFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                tenantFilter === 'all'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Todos ({audios.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTenantFilter('global')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                tenantFilter === 'global'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              🌐 Sistema Global ({audios.filter((a) => !a.tenantId).length})
+            </button>
+            {tenants.map((t) => {
+              const count = audios.filter((a) => a.tenantId === t.id).length;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTenantFilter(t.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                    tenantFilter === t.id
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>🏢 {t.name}</span>
+                  <span className="text-[10px] opacity-75">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Section Title: Audioteca de Archivos */}
       <div className="flex items-center justify-between pt-2">
         <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -1888,7 +1988,16 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
       {/* Audio Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {audios.map((audio) => {
+        {audios
+          .filter((audio) => {
+            if (currentUser?.tenantId) {
+              return audio.tenantId === currentUser.tenantId || !audio.tenantId;
+            }
+            if (tenantFilter === 'all') return true;
+            if (tenantFilter === 'global') return !audio.tenantId;
+            return audio.tenantId === tenantFilter;
+          })
+          .map((audio) => {
           const isPlaying = playingAudioId === audio.id;
           const cat = categoryLabels[audio.category] || categoryLabels.custom;
 
@@ -1923,6 +2032,23 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
                 <h3 className="font-semibold text-white text-sm leading-snug">{audio.name}</h3>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">{audio.fileName}</p>
+
+                {/* Call Center Ownership Badge */}
+                <div className="mt-1 flex items-center justify-between text-[11px] py-1 px-2 rounded bg-slate-950/70 border border-slate-800">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-indigo-400" />
+                    <span>Call Center:</span>
+                  </span>
+                  {audio.tenantId ? (
+                    <span className="font-mono font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-500/30 text-[10px]">
+                      🏢 {tenants.find((t) => t.id === audio.tenantId)?.name || audio.tenantId}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-medium text-[10px]">
+                      🌐 Sistema Global
+                    </span>
+                  )}
+                </div>
 
                 {/* Active in Roles Badge */}
                 {assignedRoles.length > 0 && (
@@ -2214,6 +2340,40 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 />
               </div>
+
+              {/* Call Center Ownership Selector */}
+              {currentUser?.tenantId ? (
+                <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-indigo-400" />
+                    <span>Call Center Propietario:</span>
+                  </span>
+                  <span className="font-mono font-bold text-indigo-300 bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-500/40 text-[11px]">
+                    🏢 {userTenant?.name || currentUser.tenantId}
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Call Center Propietario (Aislamiento de Audios)
+                  </label>
+                  <select
+                    value={uploadTenantId}
+                    onChange={(e) => setUploadTenantId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-indigo-500/30 text-white focus:border-indigo-400 focus:outline-none text-xs font-mono"
+                  >
+                    <option value="">🌐 Sistema Global / Predeterminado (Disponible para todos)</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        🏢 {t.name} [{t.code}] (Exclusivo para este Call Center)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Los audios asignados a un Call Center son privados y aislados de los demás centros.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-300 font-medium mb-1">

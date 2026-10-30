@@ -11,6 +11,7 @@ interface ExtensionsTabProps {
   onSyncAsterisk?: () => void;
   onResetDefaultExtensions?: () => void;
   onNavigateToReseller?: () => void;
+  onOpenCallerIdModal?: () => void;
   isSyncing?: boolean;
 }
 
@@ -23,6 +24,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onSyncAsterisk,
   onResetDefaultExtensions,
   onNavigateToReseller,
+  onOpenCallerIdModal,
   isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -55,13 +57,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
       setIsRestarting(false);
     }
   };
-
-  // Quick Direct CallerID Modal state for agent
-  const [quickCidExt, setQuickCidExt] = useState<PjsipExtension | null>(null);
-  const [quickCidNum, setQuickCidNum] = useState('+18005550199');
-  const [quickCidName, setQuickCidName] = useState('Seguridad Bancaria');
-  const [quickCidSaving, setQuickCidSaving] = useState(false);
-  const [quickCidFeedback, setQuickCidFeedback] = useState<string | null>(null);
 
   // Diagnostic and Repair states
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
@@ -244,53 +239,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtMaxContacts(ext.maxContacts);
     setSelectedCodecs(ext.codecs);
     setIsModalOpen(true);
-  };
-
-  const handleOpenQuickCid = (ext: PjsipExtension) => {
-    setQuickCidExt(ext);
-    setQuickCidNum(ext.callerIdNum || '+18005550199');
-    setQuickCidName(ext.callerIdName || ext.name || 'Seguridad Bancaria');
-    setQuickCidFeedback(null);
-  };
-
-  const handleSaveQuickCid = async () => {
-    if (!quickCidExt) return;
-    setQuickCidSaving(true);
-    setQuickCidFeedback(null);
-
-    const cleanNum = (quickCidNum || quickCidExt.extension).trim();
-    const cleanName = (quickCidName || 'Seguridad Bancaria').trim();
-
-    try {
-      // 1. Guardar en Asterisk DB al instante
-      await fetch('/api/asterisk/extension/callerid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          extension: quickCidExt.extension,
-          callerIdNum: cleanNum,
-          callerIdName: cleanName,
-        }),
-      });
-
-      // 2. Actualizar estado en frontend
-      onUpdateExtension({
-        ...quickCidExt,
-        callerIdNum: cleanNum,
-        callerIdName: cleanName,
-        callerId: `"${cleanName}" <${cleanNum}>`,
-      });
-
-      setQuickCidFeedback('¡CallerID aplicado en Asterisk AstDB!');
-      setTimeout(() => {
-        setQuickCidExt(null);
-        setQuickCidFeedback(null);
-      }, 1200);
-    } catch (e: any) {
-      setQuickCidFeedback('Error al sincronizar con Asterisk: ' + e.message);
-    } finally {
-      setQuickCidSaving(false);
-    }
   };
 
   const handleGeneratePassword = () => {
@@ -836,32 +784,27 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </div>
               </div>
 
-              {/* CallerID Saliente configurado para esta extensión (Directo y Visible para el Agente) */}
-              <div className="mt-2.5 p-3 rounded-xl bg-gradient-to-br from-sky-950/40 via-slate-950 to-slate-900 border-2 border-sky-500/50 shadow-md shadow-sky-500/10 text-xs space-y-2">
+              {/* Información de CallerID Centralizado */}
+              <div className="mt-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs font-black text-sky-300 uppercase tracking-wide">
-                    <Phone className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-                    <span>CallerID Saliente Asterisk</span>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <Phone className="w-3.5 h-3.5 text-sky-400" />
+                    <span>CallerID Saliente (Menú Principal)</span>
                   </span>
-                  <button
-                    onClick={() => handleOpenQuickCid(ext)}
-                    className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 transition-all shadow-sm hover:shadow-sky-500/30"
-                    title="Editar CallerID num y name de inmediato sin recargar toda la extensión"
-                  >
-                    <Zap className="w-3 h-3 fill-current" />
-                    <span>Cambiar Ya</span>
-                  </button>
+                  {onOpenCallerIdModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenCallerIdModal}
+                      className="px-2 py-0.5 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all"
+                      title="Configurar el CallerID desde el panel central en el menú principal"
+                    >
+                      Configurar en Panel Central
+                    </button>
+                  )}
                 </div>
-                <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1 font-mono text-[11px]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-sans text-[11px]">Número (num):</span>
-                    <span className="text-white font-bold tracking-wider">{ext.callerIdNum || '+18005550199'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-sans text-[11px]">Nombre (name):</span>
-                    <span className="text-emerald-400 font-bold truncate max-w-[150px]">{ext.callerIdName || ext.name || 'Seguridad Bancaria'}</span>
-                  </div>
-                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Las llamadas salientes de esta extensión utilizan el identificador configurado centralmente en el menú principal.
+                </p>
               </div>
             </div>
 
@@ -877,14 +820,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               </button>
 
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleOpenQuickCid(ext)}
-                  className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/50 text-[11px] font-bold flex items-center gap-1.5 transition-all"
-                  title="Cambiar CALLERID(num) y CALLERID(name) de esta extensión en tiempo real"
-                >
-                  <Phone className="w-3.5 h-3.5 text-sky-400" />
-                  <span>CallerID</span>
-                </button>
                 <button
                   onClick={() => setPreviewExt(ext)}
                   className="p-1.5 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
@@ -968,73 +903,15 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </div>
               </div>
 
-              {/* SECCIÓN DESTACADA: IDENTIFICADOR DE LLAMADA SALIENTE (CALLERID) */}
-              <div className="p-4 rounded-xl bg-slate-900 border-2 border-sky-500/50 shadow-lg shadow-sky-950/40 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-sky-400" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">Identidad de Llamada Saliente (CallerID)</span>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">CALLERID(num) & (name)</span>
+              {/* Nota: Identidad de Llamada Saliente centralizada */}
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-sky-400" />
+                  <span className="text-slate-300 font-medium">CallerID Saliente (Número y Nombre)</span>
                 </div>
-                <p className="text-[11px] text-slate-300">
-                  Configura qué número y qué nombre verá la persona o cliente en la pantalla de su móvil cuando este agente realice llamadas.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-sky-300 mb-1">
-                      CALLERID(num) - Número Saliente *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={extCallerIdNum}
-                      onChange={(e) => setExtCallerIdNum(e.target.value)}
-                      placeholder="+18005550199"
-                      className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none"
-                    />
-                    <span className="text-[10px] text-slate-400">Reemplaza el "+18005550199" en Asterisk</span>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-sky-300 mb-1">
-                      CALLERID(name) - Nombre Saliente *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={extCallerIdName}
-                      onChange={(e) => setExtCallerIdName(e.target.value)}
-                      placeholder="Seguridad Bancaria"
-                      className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:border-sky-500 focus:outline-none"
-                    />
-                    <span className="text-[10px] text-slate-400">Nombre público que se transmitirá al cliente en pantalla</span>
-                  </div>
-                </div>
-                {/* Plantillas rápidas */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[10px] text-slate-400 font-semibold">Presets rápidos:</span>
-                  <button
-                    type="button"
-                    onClick={() => { setExtCallerIdName('Banco Central Antifraude'); setExtCallerIdNum('+18005550199'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
-                  >
-                    Banco Antifraude
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setExtCallerIdName('Verificación Seguridad'); setExtCallerIdNum('+18884561234'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors"
-                  >
-                    Seguridad OTP
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setExtCallerIdName('Servicio al Cliente'); setExtCallerIdNum('+18005550199'); }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                  >
-                    Servicio Cliente
-                  </button>
-                </div>
+                <span className="text-[11px] font-semibold text-sky-400 bg-sky-500/10 px-2.5 py-0.5 rounded border border-sky-500/20">
+                  Gestionado en Menú Principal
+                </span>
               </div>
 
               <div>
@@ -1251,176 +1128,6 @@ qualify_frequency=60`}
         </div>
       )}
 
-      {/* Modal: Cambio Rápido y Visible de CallerID para la Extensión del Agente */}
-      {quickCidExt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border-2 border-sky-500/60 p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center">
-                  <Phone className="w-4 h-4 text-sky-400" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <span>Cambiar CallerID de Extensión</span>
-                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                      {quickCidExt.extension}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Se inyecta al instante en Asterisk AstDB y cabeceras P-Asserted-Identity
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setQuickCidExt(null)}
-                className="text-slate-400 hover:text-white text-xl font-mono leading-none"
-              >
-                &times;
-              </button>
-            </div>
-
-            {quickCidFeedback && (
-              <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-                quickCidFeedback.includes('¡')
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-              }`}>
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{quickCidFeedback}</span>
-              </div>
-            )}
-
-            <div className="space-y-3.5">
-              {/* CallerID Num */}
-              <div>
-                <label className="block text-xs font-bold text-sky-300 uppercase tracking-wide mb-1">
-                  CALLERID(num) - Número que verá el receptor *
-                </label>
-                <input
-                  type="text"
-                  value={quickCidNum}
-                  onChange={(e) => setQuickCidNum(e.target.value)}
-                  placeholder="+18005550199"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-base font-bold focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
-                />
-                <span className="text-[10px] text-slate-400">
-                  Formato E.164 (ej. +18005550199, 16104803845)
-                </span>
-              </div>
-
-              {/* CallerID Name */}
-              <div>
-                <label className="block text-xs font-bold text-sky-300 uppercase tracking-wide mb-1">
-                  CALLERID(name) - Nombre de pantalla *
-                </label>
-                <input
-                  type="text"
-                  value={quickCidName}
-                  onChange={(e) => setQuickCidName(e.target.value)}
-                  placeholder="Seguridad Bancaria"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm font-bold focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
-                />
-                <span className="text-[10px] text-slate-400">
-                  Nombre que emite la PBX (ej. Banco Antifraude, Soporte Técnico)
-                </span>
-              </div>
-
-              {/* Presets Rápidos */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Presets Rápidos de Identidad
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickCidName('Banco Central Antifraude');
-                      setQuickCidNum('+18005550199');
-                    }}
-                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
-                  >
-                    <div className="font-bold text-sky-300 truncate">Banco Antifraude</div>
-                    <div className="font-mono text-slate-500 text-[10px]">+18005550199</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickCidName('Verificación Seguridad');
-                      setQuickCidNum('+18884561234');
-                    }}
-                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
-                  >
-                    <div className="font-bold text-sky-300 truncate">Seguridad OTP</div>
-                    <div className="font-mono text-slate-500 text-[10px]">+18884561234</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickCidName('Soporte WhatsApp');
-                      setQuickCidNum('+18002345678');
-                    }}
-                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-sky-500/50 transition-all text-[11px]"
-                  >
-                    <div className="font-bold text-emerald-300 truncate">WhatsApp Alerta</div>
-                    <div className="font-mono text-slate-500 text-[10px]">+18002345678</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickCidName('Servicio al Cliente');
-                      setQuickCidNum('+18005550199');
-                    }}
-                    className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-left border border-slate-800 hover:border-slate-700 transition-all text-[11px]"
-                  >
-                    <div className="font-bold text-slate-300 truncate">Servicio Cliente</div>
-                    <div className="font-mono text-slate-500 text-[10px]">+18005550199</div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Vista previa en pantalla */}
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Vista previa pantalla cliente:</span>
-                <span className="font-mono font-bold text-emerald-400 truncate max-w-[200px]">
-                  "{quickCidName}" &lt;{quickCidNum}&gt;
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setQuickCidExt(null)}
-                className="px-4 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-semibold transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveQuickCid}
-                disabled={quickCidSaving}
-                className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-sky-500/25 transition-all disabled:opacity-50"
-              >
-                {quickCidSaving ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Guardando en Asterisk...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Aplicar CallerID Ahora</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Guía y Credenciales Softphone (Zoiper / MicroSIP / X-Lite) */}
       {softphoneModalExt && (

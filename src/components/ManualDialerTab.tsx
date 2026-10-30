@@ -53,6 +53,7 @@ interface ManualDialerTabProps {
   currentUser: SystemUser;
   audios?: AudioPrompt[];
   onNavigateToLiveCalls?: () => void;
+  onNavigateToVoiceChanger?: () => void;
 }
 
 const DEFAULT_1CLICK_AUDIOS: { path: string; name: string; label: string; duration: string; category: string }[] = [
@@ -181,6 +182,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   currentUser,
   audios = [],
   onNavigateToLiveCalls,
+  onNavigateToVoiceChanger,
 }) => {
   const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
 
@@ -762,6 +764,18 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
             >
               <BarChart2 className="w-3.5 h-3.5" />
               <span>Auditoría de Administrador ({auditLogs.length})</span>
+            </button>
+          )}
+
+          {onNavigateToVoiceChanger && (
+            <button
+              type="button"
+              onClick={onNavigateToVoiceChanger}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 shadow-sm"
+              title="Abrir Cambiador de Voz Femenina (ES/EN)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              <span>Cambiador de Voz</span>
             </button>
           )}
         </div>

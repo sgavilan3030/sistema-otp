@@ -22,6 +22,7 @@ import {
   Sun,
   Moon,
   PhoneForwarded,
+  Sparkles,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 import { isTabAllowedForUser, getRoleBadgeInfo } from '../utils/rbac';
@@ -83,6 +84,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: PhoneForwarded,
       badge: '1-CLIC',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
+    },
+    {
+      id: 'voice-changer',
+      label: 'Cambiador de Voz',
+      subtitle: 'Voz de Mujer ES / EN',
+      icon: Sparkles,
+      badge: 'FX VOZ',
+      badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/40',
     },
     {
       id: 'live-calls',

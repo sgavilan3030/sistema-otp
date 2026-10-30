@@ -31,6 +31,7 @@ import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { ProductionOperationsTab } from './components/ProductionOperationsTab';
 import { ManualDialerTab } from './components/ManualDialerTab';
+import { VoiceChangerTab } from './components/VoiceChangerTab';
 import { LiveCallsTab } from './components/LiveCallsTab';
 import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
@@ -1729,6 +1730,7 @@ export default function App() {
             carriers={carriers}
             audios={audios}
             currentUser={currentUser}
+            tenants={tenants}
             onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
@@ -1744,6 +1746,15 @@ export default function App() {
             currentUser={currentUser}
             audios={audios}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
+            onNavigateToVoiceChanger={() => setActiveTab('voice-changer')}
+          />
+        )}
+
+        {activeTab === 'voice-changer' && isTabAllowedForUser('voice-changer', currentUser) && (
+          <VoiceChangerTab
+            currentUser={currentUser}
+            extensions={extensions}
+            onTriggerSync={handleQuickSync}
           />
         )}
 
@@ -1791,6 +1802,7 @@ export default function App() {
             onSyncAsterisk={() => handleQuickSync(extensions)}
             onResetDefaultExtensions={handleResetDefaultExtensions}
             onNavigateToReseller={() => setActiveTab('reseller')}
+            onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
             isSyncing={isSyncing}
           />
         )}
@@ -1866,6 +1878,8 @@ export default function App() {
         {activeTab === 'audios' && isTabAllowedForUser('audios', currentUser) && (
           <AudioLibraryTab
             audios={audios}
+            tenants={tenants}
+            currentUser={currentUser}
             onAddAudio={handleAddAudio}
             onDeleteAudio={handleDeleteAudio}
             onAssignToPress1={handleAssignToPress1}
@@ -1888,6 +1902,7 @@ export default function App() {
             users={users}
             extensions={extensions}
             carriers={carriers}
+            tenants={tenants}
             currentUserId={currentUserId}
             currentUser={currentUser}
             onSwitchUser={handleSwitchUser}

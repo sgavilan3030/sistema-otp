@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk } from '../types';
+import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk, CallCenterTenant } from '../types';
 import {
   Users,
   UserPlus,
@@ -26,12 +26,14 @@ import {
   Smartphone,
   ChevronRight,
   Network,
+  Building2,
 } from 'lucide-react';
 
 interface UsersTabProps {
   users: SystemUser[];
   extensions: PjsipExtension[];
   carriers?: CarrierTrunk[];
+  tenants?: CallCenterTenant[];
   currentUserId: string;
   currentUser?: SystemUser;
   onSwitchUser: (userId: string) => void;
@@ -45,6 +47,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   users,
   extensions,
   carriers = [],
+  tenants = [],
   currentUserId,
   currentUser,
   onSwitchUser,
@@ -68,6 +71,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [formRate, setFormRate] = useState<number>(0.02);
   const [formCutoffOnZero, setFormCutoffOnZero] = useState<boolean>(true);
   const [formCarrierId, setFormCarrierId] = useState<string>('auto');
+  const [formTenantId, setFormTenantId] = useState<string>('');
+  const [filterTenantId, setFilterTenantId] = useState<string>('all');
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
@@ -240,6 +245,7 @@ regInterval=300
     setFormRate(0.02);
     setFormCutoffOnZero(true);
     setFormCarrierId('auto');
+    setFormTenantId('');
     setFormStatus('active');
     // Default assign first available extension >= 1001
     setSelectedExts(availableExtensions.length > 0 ? [availableExtensions[0].extension] : ['1001']);
@@ -260,6 +266,7 @@ regInterval=300
     setFormRate(typeof user.costPerMinute === 'number' ? user.costPerMinute : 0.02);
     setFormCutoffOnZero(user.cutoffOnZero !== false);
     setFormCarrierId(user.carrierId || 'auto');
+    setFormTenantId(user.tenantId || '');
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
     setPermissions(user.permissions);
@@ -314,6 +321,7 @@ regInterval=300
       usedMinutes: editingUser?.usedMinutes || 0,
       cutoffOnZero: formCutoffOnZero,
       carrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
+      tenantId: formTenantId ? formTenantId : undefined,
       assignedExtensions: selectedExts,
       permissions,
       status: formStatus,
@@ -477,9 +485,65 @@ regInterval=300
         </div>
       </div>
 
+      {/* Call Center Filter Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-indigo-400" />
+          <span className="text-xs font-bold text-slate-200">Filtrar Usuarios por Call Center:</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFilterTenantId('all')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              filterTenantId === 'all'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Todos ({users.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTenantId('global')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              filterTenantId === 'global'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            🌐 Globales ({users.filter((u) => !u.tenantId).length})
+          </button>
+          {tenants.map((t) => {
+            const count = users.filter((u) => u.tenantId === t.id).length;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setFilterTenantId(t.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                  filterTenantId === t.id
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>🏢 {t.name}</span>
+                <span className="text-[10px] opacity-75">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Users List / Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {users.map((user) => {
+        {users
+          .filter((user) => {
+            if (filterTenantId === 'all') return true;
+            if (filterTenantId === 'global') return !user.tenantId;
+            return user.tenantId === filterTenantId;
+          })
+          .map((user) => {
           const isCurrentUser = user.id === currentUserId;
           const activePermCount = Object.values(user.permissions).filter(Boolean).length;
 
@@ -644,6 +708,23 @@ regInterval=300
                   ) : (
                     <span className="text-[10px] text-slate-500 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
                       🌐 Pool General
+                    </span>
+                  )}
+                </div>
+
+                {/* Assigned Call Center Badge */}
+                <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Call Center:</span>
+                  </span>
+                  {user.tenantId ? (
+                    <span className="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/40">
+                      🏢 {tenants.find((t) => t.id === user.tenantId)?.name || user.tenantId}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                      🌐 Administrador Global
                     </span>
                   )}
                 </div>
@@ -1058,6 +1139,48 @@ regInterval=300
                 {formCarrierId !== 'auto' && (
                   <p className="text-[10px] text-emerald-400 font-medium">
                     ✓ Asterisk enrutará prioritariamente las llamadas de este usuario por la troncal <strong className="font-mono text-white">{formCarrierId}</strong>.
+                  </p>
+                )}
+              </div>
+
+              {/* Asignación de Call Center para Administrador o Agente (Partición de Audios y Base de Datos OTP) */}
+              <div className="p-3.5 rounded-lg bg-indigo-950/20 border border-indigo-500/40 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-indigo-200 font-semibold flex items-center gap-1.5 text-xs">
+                    <Building2 className="w-4 h-4 text-indigo-400" />
+                    <span>Asignar a un Call Center (Base de Datos y Audios Divididos)</span>
+                  </label>
+                  <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
+                    Aislamiento Multi-Tenant
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Cuando creas o editas este administrador o agente, al asignarle un Call Center su base de datos queda <strong>estrictamente dividida</strong>: solo tendrá acceso a los audios subidos para su centro y solo verá/validará los códigos OTP capturados por sus agentes.
+                </p>
+
+                <select
+                  value={formTenantId}
+                  onChange={(e) => setFormTenantId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-indigo-500/30 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 font-mono"
+                >
+                  <option value="">🌐 Sin asignar (Administrador Global / Sistema - Gestiona todos los centros)</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      🏢 {t.name} [{t.code}] — Rango Ext: {t.extensionStart}-{t.extensionEnd} ({t.dialplanContext})
+                    </option>
+                  ))}
+                </select>
+
+                {formTenantId ? (
+                  <div className="p-2.5 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-200 flex items-start gap-2">
+                    <Shield className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Partición Activa para este Administrador:</span> Perteneciente al Call Center <strong className="text-white font-mono">{tenants.find((t) => t.id === formTenantId)?.name || formTenantId}</strong>. Sus audios y registros OTP no se cruzarán con otros grupos.
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400">
+                    💡 Modo Global: El administrador tendrá visibilidad y acceso a todos los Call Centers registrados.
                   </p>
                 )}
               </div>

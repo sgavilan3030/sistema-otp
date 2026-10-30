@@ -1296,6 +1296,81 @@ function saveStoredUsers(users: any[]) {
 
 const CARRIERS_FILE = path.join(DATA_DIR, 'carriers.json');
 const EXTENSIONS_FILE = path.join(DATA_DIR, 'extensions.json');
+const TENANTS_FILE = path.join(DATA_DIR, 'tenants.json');
+
+function loadStoredTenants(): any[] {
+  try {
+    if (fs.existsSync(TENANTS_FILE)) {
+      const raw = fs.readFileSync(TENANTS_FILE, 'utf8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) return list;
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveStoredTenants(tenants: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(TENANTS_FILE, JSON.stringify(tenants, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+const AUDIOS_META_FILE = path.join(DATA_DIR, 'audios_meta.json');
+
+function loadStoredAudios(): any[] {
+  try {
+    if (fs.existsSync(AUDIOS_META_FILE)) {
+      const raw = fs.readFileSync(AUDIOS_META_FILE, 'utf8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) return list;
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveStoredAudios(audios: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(AUDIOS_META_FILE, JSON.stringify(audios, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+app.get('/api/tenants', (req, res) => {
+  const tenants = loadStoredTenants();
+  res.json({ success: true, tenants });
+});
+
+app.post('/api/tenants', (req, res) => {
+  try {
+    const { tenants } = req.body;
+    if (Array.isArray(tenants)) {
+      saveStoredTenants(tenants);
+      return res.json({ success: true, message: 'Tenants guardados exitosamente.', count: tenants.length });
+    }
+    res.status(400).json({ success: false, error: 'tenants debe ser un array' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/audios/metadata', (req, res) => {
+  const audios = loadStoredAudios();
+  res.json({ success: true, audios });
+});
+
+app.post('/api/audios/metadata', (req, res) => {
+  try {
+    const { audios } = req.body;
+    if (Array.isArray(audios)) {
+      saveStoredAudios(audios);
+      return res.json({ success: true, message: 'Metadata de audios guardada exitosamente.' });
+    }
+    res.status(400).json({ success: false, error: 'audios debe ser un array' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 function loadStoredExtensions(): any[] {
   try {
@@ -1856,6 +1931,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `; Subrutina Pre-Bridge (U) ejecutada en el canal que atiende (Ring-All o Directo) para registrar la extension exacta\n`;
@@ -2244,6 +2322,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
   dialplanContent += `; 4. Regla Saliente USA / Canada / RD 10 digitos (ej. 8494386040) -> Convierte automáticamente a 11 digitos (18494386040) requeridos por el proveedor\n`;
@@ -2289,6 +2371,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
@@ -6026,6 +6112,7 @@ interface CapturedOtpItem {
   service?: string;
   status: 'valid' | 'invalid' | 'pending';
   agent?: string;
+  tenantId?: string; // Call Center / Tenant ID para partición de base de datos
 }
 
 let capturedOtpHistory: CapturedOtpItem[] = [];
@@ -6040,12 +6127,26 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
   const service = req.body?.service || req.query?.service || 'Banco / Antifraude';
   const status = req.body?.status || req.query?.status || 'pending';
   const agent = req.body?.agent || req.query?.agent;
+  let tenantId = req.body?.tenantId || req.query?.tenantId;
+
+  // Auto-resolve tenantId if not provided: match agent extension with tenant ranges
+  if (!tenantId && agent) {
+    const extNum = parseInt(String(agent), 10);
+    if (!isNaN(extNum)) {
+      const storedTenants = loadStoredTenants();
+      const matched = storedTenants.find((t: any) => extNum >= t.extensionStart && extNum <= t.extensionEnd);
+      if (matched) {
+        tenantId = matched.id;
+      }
+    }
+  }
 
   if (otp) {
     const cleanNumber = (number && number !== '<unknown>') ? String(number).trim() : '8888';
     const cleanOtp = String(otp).trim();
     const cleanStatus = (status === 'valid' || status === 'invalid') ? status : 'pending';
     const cleanAgent = (agent && agent !== 'ringall' && agent !== 'all') ? String(agent).trim() : undefined;
+    const cleanTenantId = tenantId ? String(tenantId).trim() : undefined;
 
     // Bring or create to the very top (index 0)
     const existingIndex = capturedOtpHistory.findIndex((r) => r.number === cleanNumber && r.otp === cleanOtp);
@@ -6056,23 +6157,26 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
       record.status = cleanStatus;
       record.channel = channel ? String(channel) : record.channel;
       if (cleanAgent) record.agent = cleanAgent;
+      if (cleanTenantId) record.tenantId = cleanTenantId;
     } else {
       record = {
         id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
         number: cleanNumber,
         otp: cleanOtp,
         timestamp: new Date().toLocaleTimeString(),
+        createdAt: Date.now(),
         channel: channel ? String(channel) : 'PJSIP',
         service: service ? String(service) : 'Banco / Antifraude',
         status: cleanStatus,
         agent: cleanAgent,
+        tenantId: cleanTenantId,
       };
     }
     capturedOtpHistory.unshift(record);
     if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
     lastAstDbSyncTime = 0; // Invalidate cache so polling gets updated immediately
 
-    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${cleanOtp}] - Tel: ${cleanNumber} (Agente asignado: ${record.agent || 'pendiente'})`);
+    console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${cleanOtp}] - Tel: ${cleanNumber} (Agente: ${record.agent || 'pendiente'}, Call Center Tenant: ${record.tenantId || 'Global'})`);
 
     // Synchronize to Asterisk AstDB in background
     executeAsteriskCommand(`database put otp_codes "${cleanNumber}" "${cleanOtp}"`).catch(() => {});
@@ -6168,25 +6272,34 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 app.get('/api/asterisk/otp/records', async (req, res) => {
   const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
   const shouldClear = req.query.clear === '1' || req.query.clear === 'true';
+  const queryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : undefined;
 
   if (shouldClear) {
-    capturedOtpHistory = [];
-    lastAstDbSyncTime = Date.now();
-    try {
-      await executeAsteriskCommand('database deltree otp_codes');
-      await executeAsteriskCommand('database deltree otp_status');
-      await executeAsteriskCommand('database deltree captured_otp');
-      await executeAsteriskCommand('database deltree otp_captures');
-      await executeAsteriskCommand('database deltree otp_decision');
-      await executeAsteriskCommand('database deltree otp_last_status');
-    } catch (_) {}
+    if (queryTenantId && queryTenantId !== 'all') {
+      capturedOtpHistory = capturedOtpHistory.filter((r) => r.tenantId !== queryTenantId);
+    } else {
+      capturedOtpHistory = [];
+      lastAstDbSyncTime = Date.now();
+      try {
+        await executeAsteriskCommand('database deltree otp_codes');
+        await executeAsteriskCommand('database deltree otp_status');
+        await executeAsteriskCommand('database deltree captured_otp');
+        await executeAsteriskCommand('database deltree otp_captures');
+        await executeAsteriskCommand('database deltree otp_decision');
+        await executeAsteriskCommand('database deltree otp_last_status');
+      } catch (_) {}
+    }
     return res.json({ success: true, records: [] });
   }
 
   const now = Date.now();
 
-  // Return real-time memory records immediately (< 1ms) so the web UI never freezes
-  res.json({ success: true, records: capturedOtpHistory });
+  // Return real-time memory records filtered by tenant (if assigned)
+  const filteredRecords = (queryTenantId && queryTenantId !== 'all')
+    ? capturedOtpHistory.filter((r) => r.tenantId === queryTenantId)
+    : capturedOtpHistory;
+
+  res.json({ success: true, records: filteredRecords, totalAllTenants: capturedOtpHistory.length });
 
   // Optional background sync with Asterisk AstDB every 10 seconds without blocking response
   if (!isSyncingAstDb && (forceFresh || now - lastAstDbSyncTime >= 10000)) {
@@ -6777,6 +6890,116 @@ app.post('/api/asterisk/callerid', async (req, res) => {
       message: `ID de llamada saliente configurado a "${activeCallerIdState.callerIdName}" <${activeCallerIdState.callerIdNum}>`,
       callerIdNum: activeCallerIdState.callerIdNum,
       callerIdName: activeCallerIdState.callerIdName,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// MODULADOR DE VOZ (VOICE CHANGER) - PER-EXTENSION Y GLOBAL ASTERISK PJSIP
+// ============================================================================
+const VOICE_CHANGER_FILE = path.join(process.cwd(), 'data', 'voice_changer_settings.json');
+
+interface StoredVoiceChangerSettings {
+  enabled: boolean;
+  activeProfileId: string;
+  language: 'es' | 'en';
+  pitchValue: string; // e.g. "1.32"
+  extensionPitchMap: Record<string, string>;
+  lastUpdated: string;
+}
+
+function loadVoiceChangerSettings(): StoredVoiceChangerSettings {
+  try {
+    if (fs.existsSync(VOICE_CHANGER_FILE)) {
+      const data = fs.readFileSync(VOICE_CHANGER_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (_) {}
+  return {
+    enabled: false,
+    activeProfileId: 'es-female-executive',
+    language: 'es',
+    pitchValue: '1.32',
+    extensionPitchMap: {},
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+function saveVoiceChangerSettings(settings: StoredVoiceChangerSettings) {
+  try {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(VOICE_CHANGER_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+  } catch (err: any) {
+    console.warn('Error saving voice changer settings:', err.message);
+  }
+}
+
+// Endpoint to retrieve active Voice Changer settings and AstDB states
+app.get('/api/asterisk/voice-changer', (req, res) => {
+  try {
+    const settings = loadVoiceChangerSettings();
+    res.json({
+      success: true,
+      settings,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Endpoint to update Voice Changer settings and sync to Asterisk AstDB
+app.post('/api/asterisk/voice-changer', async (req, res) => {
+  try {
+    const { enabled, activeProfileId, language, pitchValue = '1.32', extension } = req.body;
+    const settings = loadVoiceChangerSettings();
+
+    if (enabled !== undefined) settings.enabled = Boolean(enabled);
+    if (activeProfileId) settings.activeProfileId = String(activeProfileId);
+    if (language) settings.language = language === 'en' ? 'en' : 'es';
+    if (pitchValue) settings.pitchValue = String(pitchValue);
+    settings.lastUpdated = new Date().toISOString();
+
+    const cleanExt = extension ? String(extension).trim() : null;
+
+    if (settings.enabled) {
+      const effectivePitch = settings.pitchValue || '1.32';
+      await executeAsteriskCommand(`database put voice_changer global "${effectivePitch}"`).catch(() => {});
+      if (cleanExt) {
+        settings.extensionPitchMap[cleanExt] = effectivePitch;
+        await executeAsteriskCommand(`database put voice_changer ${cleanExt} "${effectivePitch}"`).catch(() => {});
+      } else {
+        const commonExts = ['1001', '1002', '1003', '1004', '1005', '8888'];
+        for (const ext of commonExts) {
+          settings.extensionPitchMap[ext] = effectivePitch;
+          executeAsteriskCommand(`database put voice_changer ${ext} "${effectivePitch}"`).catch(() => {});
+        }
+      }
+    } else {
+      await executeAsteriskCommand('database del voice_changer global').catch(() => {});
+      if (cleanExt) {
+        delete settings.extensionPitchMap[cleanExt];
+        await executeAsteriskCommand(`database del voice_changer ${cleanExt}`).catch(() => {});
+      } else {
+        settings.extensionPitchMap = {};
+        await executeAsteriskCommand('database deltree voice_changer').catch(() => {});
+      }
+    }
+
+    saveVoiceChangerSettings(settings);
+
+    console.log(`[VOICE CHANGER] Modulador de voz femenina: ${settings.enabled ? `ACTIVO (Pitch: ${settings.pitchValue}, Idioma: ${settings.language})` : 'DESACTIVADO'}`);
+
+    res.json({
+      success: true,
+      message: settings.enabled
+        ? `Modulador de voz femenina activado exitosamente (Pitch Asterisk: ${settings.pitchValue}).`
+        : 'Modulador de voz desactivado. Tono natural restaurado.',
+      settings,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
