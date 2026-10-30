@@ -108,6 +108,21 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
       .catch(() => {});
   }, []);
 
+  // Listen for voice-changer-updated custom event from Header or Manual Dialer
+  useEffect(() => {
+    const handleVoiceChangerUpdate = (e: any) => {
+      if (e.detail && typeof e.detail.enabled === 'boolean') {
+        setState((prev) => ({
+          ...prev,
+          enabled: e.detail.enabled,
+          ...(e.detail.activeProfileId ? { activeProfileId: e.detail.activeProfileId } : {}),
+        }));
+      }
+    };
+    window.addEventListener('voice-changer-updated', handleVoiceChangerUpdate);
+    return () => window.removeEventListener('voice-changer-updated', handleVoiceChangerUpdate);
+  }, []);
+
   // Sync state to localStorage
   useEffect(() => {
     try {
@@ -129,6 +144,9 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
     const nextVal = newVal !== undefined ? newVal : !state.enabled;
     const nextState = { ...state, enabled: nextVal };
     setState(nextState);
+
+    // Dispatch custom event to notify Header and Manual Dialer
+    window.dispatchEvent(new CustomEvent('voice-changer-updated', { detail: nextState }));
 
     // If disabling, stop real-time mic DSP if running
     if (!nextVal && isMicRunning) {

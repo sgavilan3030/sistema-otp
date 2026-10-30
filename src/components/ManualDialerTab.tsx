@@ -54,6 +54,8 @@ interface ManualDialerTabProps {
   audios?: AudioPrompt[];
   onNavigateToLiveCalls?: () => void;
   onNavigateToVoiceChanger?: () => void;
+  isVoiceChangerActive?: boolean;
+  onToggleVoiceChanger?: () => void;
 }
 
 const DEFAULT_1CLICK_AUDIOS: { path: string; name: string; label: string; duration: string; category: string }[] = [
@@ -183,6 +185,8 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   audios = [],
   onNavigateToLiveCalls,
   onNavigateToVoiceChanger,
+  isVoiceChangerActive = false,
+  onToggleVoiceChanger,
 }) => {
   const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
 
@@ -767,15 +771,36 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
             </button>
           )}
 
+          {/* Botón de 1-Clic para Activar / Desactivar Modulador de Voz */}
+          {onToggleVoiceChanger && (
+            <button
+              type="button"
+              onClick={onToggleVoiceChanger}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                isVoiceChangerActive
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-purple-600/30 ring-2 ring-purple-400/50 animate-pulse'
+                  : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/40'
+              }`}
+              title={
+                isVoiceChangerActive
+                  ? '🎙️ Modulador de Voz ACTIVO (Voz Femenina) - Clic para DESACTIVAR y volver a voz normal'
+                  : '🎙️ Modulador de Voz DESACTIVADO - Clic para ACTIVAR Voz de Mujer'
+              }
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isVoiceChangerActive ? 'text-amber-300 fill-current' : 'text-purple-400'}`} />
+              <span>Modulador Voz: {isVoiceChangerActive ? 'ACTIVO (ON)' : 'OFF'}</span>
+            </button>
+          )}
+
           {onNavigateToVoiceChanger && (
             <button
               type="button"
               onClick={onNavigateToVoiceChanger}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 shadow-sm"
-              title="Abrir Cambiador de Voz Femenina (ES/EN)"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 shadow-sm"
+              title="Abrir panel completo del Cambiador de Voz Femenina (Presets y Soundboard)"
             >
-              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-              <span>Cambiador de Voz</span>
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Ajustes Voz</span>
             </button>
           )}
         </div>

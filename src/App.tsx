@@ -275,6 +275,97 @@ export default function App() {
 
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
+  // Voice Changer Active State (Operators can toggle ON/OFF with 1 click)
+  const [isVoiceChangerActive, setIsVoiceChangerActive] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('ast20_voice_changer_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return !!parsed.enabled;
+      }
+    } catch (_) {}
+    return false;
+  });
+
+  // Sync Voice Changer state with backend and custom events
+  useEffect(() => {
+    // 1. Initial fetch from server
+    fetch('/api/asterisk/voice-changer')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.settings && typeof data.settings.enabled === 'boolean') {
+          setIsVoiceChangerActive(data.settings.enabled);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Listen for custom window event
+    const handleVoiceChangerUpdate = (e: any) => {
+      if (e.detail && typeof e.detail.enabled === 'boolean') {
+        setIsVoiceChangerActive(e.detail.enabled);
+      }
+    };
+    window.addEventListener('voice-changer-updated', handleVoiceChangerUpdate);
+    return () => window.removeEventListener('voice-changer-updated', handleVoiceChangerUpdate);
+  }, []);
+
+  const handleToggleVoiceChanger = async (explicitState?: boolean) => {
+    const nextState = explicitState !== undefined ? explicitState : !isVoiceChangerActive;
+    setIsVoiceChangerActive(nextState);
+
+    try {
+      let currentPreset = 'es-female-executive';
+      let currentPitch = '1.32';
+      let currentLang = 'es';
+      const saved = localStorage.getItem('ast20_voice_changer_state');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.currentProfileId || parsed.activeProfileId) currentPreset = parsed.currentProfileId || parsed.activeProfileId;
+          if (parsed.customPitch || parsed.pitchValue) currentPitch = String(parsed.customPitch || parsed.pitchValue);
+          if (parsed.language) currentLang = parsed.language;
+        } catch (_) {}
+      }
+
+      const updatedState = {
+        enabled: nextState,
+        currentProfileId: currentPreset,
+        activeProfileId: currentPreset,
+        customPitch: parseFloat(currentPitch) || 1.32,
+        pitchValue: currentPitch,
+        language: currentLang,
+        noiseSuppression: true,
+        highpassFilter: true,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      localStorage.setItem('ast20_voice_changer_state', JSON.stringify(updatedState));
+      window.dispatchEvent(new CustomEvent('voice-changer-updated', { detail: updatedState }));
+
+      // Sincronizar con Asterisk 20 backend AstDB
+      await fetch('/api/asterisk/voice-changer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: nextState,
+          activeProfileId: currentPreset,
+          pitchValue: currentPitch,
+          language: currentLang,
+        }),
+      }).catch(() => {});
+
+      setToastMessage({
+        text: nextState
+          ? '🎙️ Modulador de Voz ACTIVADO: Todas las llamadas salientes se modularán a Voz Femenina'
+          : '🎙️ Modulador de Voz DESACTIVADO: Las llamadas salientes volverán a tu voz normal',
+        type: nextState ? 'success' : 'info',
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      console.error('Error toggling voice changer:', err);
+    }
+  };
+
   // Global OTP Alert monitor across all tabs
   const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string } | null>(null);
   const [dismissedOtpKey, setDismissedOtpKey] = useState<string>('');
@@ -1699,6 +1790,8 @@ export default function App() {
           activeCallCount={activeCallCount}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          isVoiceChangerActive={isVoiceChangerActive}
+          onToggleVoiceChanger={() => handleToggleVoiceChanger()}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -1747,6 +1840,8 @@ export default function App() {
             audios={audios}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
             onNavigateToVoiceChanger={() => setActiveTab('voice-changer')}
+            isVoiceChangerActive={isVoiceChangerActive}
+            onToggleVoiceChanger={() => handleToggleVoiceChanger()}
           />
         )}
 
