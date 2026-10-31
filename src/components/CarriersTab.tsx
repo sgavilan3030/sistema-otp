@@ -318,6 +318,30 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     }
   };
 
+  const trunk69Carrier = carriers.find(
+    (c) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87'
+  );
+  const isTrunk69Active = trunk69Carrier
+    ? trunk69Carrier.enabled !== false && trunk69Carrier.status !== 'disabled'
+    : false;
+  const isTrunk69Primary = trunk69Carrier ? carriers[0]?.id === trunk69Carrier.id : false;
+
+  const handleToggleTrunk69 = () => {
+    if (!trunk69Carrier) {
+      handleInjectTrunk69();
+      return;
+    }
+    handleToggle(trunk69Carrier.id);
+  };
+
+  const handleMakeTrunk69Primary = () => {
+    if (!trunk69Carrier) {
+      handleInjectTrunk69();
+      return;
+    }
+    handleSetPrimary(trunk69Carrier.id);
+  };
+
   // Helper generators for current active carrier
   const getPjsipConfSnippet = (c?: CarrierTrunk) => {
     if (!c) return '';
@@ -533,6 +557,75 @@ insecure=${carrierInsecure}`;
           <button onClick={() => setInjectStatus(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
         </div>
       )}
+
+      {/* CARD DE ACTIVACIÓN RÁPIDA: TRONCAL DIRECTA IP-A-IP 69.197.187.87 */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/40 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+            <Globe className="w-6 h-6 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold text-white font-mono">trunk_69_197_187_87</span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
+                Host: 69.197.187.87:5060
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                type=endpoint
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
+                identify_by=ip
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                auth=none
+              </span>
+              {isTrunk69Primary && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-current" />
+                  <span>Troncal Primaria (#1)</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-300">
+              Conexión directa IP a IP para peering Asterisk 20 sin contraseñas digest.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+          {trunk69Carrier && (
+            <button
+              onClick={() => setSelectedCarrierId(trunk69Carrier.id)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
+            >
+              Ver Configuración
+            </button>
+          )}
+
+          {trunk69Carrier && !isTrunk69Primary && isTrunk69Active && (
+            <button
+              onClick={handleMakeTrunk69Primary}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Colocar como troncal #1 prioritaria para todas las llamadas de salida"
+            >
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-current" />
+              <span>Hacer Primaria (#1)</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleToggleTrunk69}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer ${
+              isTrunk69Active
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30'
+            }`}
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span>{isTrunk69Active ? '✓ Troncal Activa (Desactivar)' : '⚡ Activar Troncal 69.197.187.87'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* Featured Box: Carrier Account Entry & Dialplan Entry exactly as requested */}
       {activeCarrier && (
