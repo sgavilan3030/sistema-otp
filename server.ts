@@ -1257,7 +1257,7 @@ export const defaultCarriersList = [
     outboundCallerId: '+18005550199',
     outboundCallerIdName: 'Seguridad Bancaria',
     codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-    qualifyFreq: 30,
+    qualifyFreq: 0,
     status: 'reachable',
     latencyMs: 15,
     fromuser: '',
@@ -1739,7 +1739,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `[${cName}_aor]\n`;
       pjsipContent += `type = aor\n`;
       pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
-      pjsipContent += `qualify_frequency = ${carrier.qualifyFreq || 60}\n\n`;
+      const qualifyVal = carrier.authType === 'ip_auth' ? (carrier.qualifyFreq ?? 0) : (carrier.qualifyFreq || 60);
+      pjsipContent += `qualify_frequency = ${qualifyVal}\n\n`;
 
       pjsipContent += `[${cName}]\n`;
       pjsipContent += `type = endpoint\n`;
@@ -1747,7 +1748,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `disallow = all\n`;
       pjsipContent += `allow = ${cCodecs}\n`;
       pjsipContent += `aors = ${cName}_aor\n`;
-      if (cSecret) {
+      if (carrier.authType === 'ip_auth' || !cSecret) {
+        pjsipContent += `identify_by = ip\n`;
+      } else if (cSecret && carrier.authType === 'registration') {
         pjsipContent += `outbound_auth = auth_${cName}\n`;
       }
       // In PJSIP: Do NOT set from_user on outbound trunk endpoint.

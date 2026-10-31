@@ -505,7 +505,7 @@ export const initialCarriers: CarrierTrunk[] = [
     outboundCallerId: '+18005550199',
     outboundCallerName: 'Seguridad Bancaria',
     codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-    qualifyFreq: 30,
+    qualifyFreq: 0,
     status: 'reachable',
     latencyMs: 15,
     fromuser: '',
