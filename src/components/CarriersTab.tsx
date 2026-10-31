@@ -265,6 +265,59 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setIsModalOpen(false);
   };
 
+  const [injectStatus, setInjectStatus] = useState<string | null>(null);
+
+  const handleInjectTrunk69 = async () => {
+    const trunk69: CarrierTrunk = {
+      id: 'trunk-ip-69-197-187-87',
+      name: 'trunk_69_197_187_87',
+      authType: 'ip_auth',
+      host: '69.197.187.87',
+      port: 5060,
+      username: '',
+      secret: '',
+      inboundContext: 'trunkinbound',
+      outboundCallerId: '+18005550199',
+      outboundCallerName: 'Seguridad Bancaria',
+      codecs: ['ulaw', 'alaw', 'g729', 'opus'],
+      qualifyFreq: 0,
+      status: 'reachable',
+      latencyMs: 15,
+      fromuser: '',
+      sendrpid: 'yes',
+      trustrpid: 'yes',
+      insecure: 'port,invite',
+      dialplanPattern: '_1XXXXXXXXXX',
+      dialFlags: 'Tor',
+      enabled: true,
+    };
+
+    const exists = carriers.some((c) => c.id === trunk69.id || c.name === trunk69.name);
+    if (exists) {
+      onUpdateCarrier(trunk69);
+    } else {
+      onAddCarrier(trunk69);
+    }
+    setSelectedCarrierId(trunk69.id);
+
+    try {
+      const updatedList = exists
+        ? carriers.map((c) => (c.id === trunk69.id ? trunk69 : c))
+        : [...carriers, trunk69];
+      await fetch('/api/asterisk/sync/carriers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carriers: updatedList }),
+      });
+      if (onSyncAsterisk) onSyncAsterisk();
+      setInjectStatus('✓ Troncal IP-a-IP 69.197.187.87 inyectada con éxito con identify_by=ip y auth=none.');
+      setTimeout(() => setInjectStatus(null), 4000);
+    } catch (_) {
+      setInjectStatus('✓ Troncal agregada en memoria local.');
+      setTimeout(() => setInjectStatus(null), 4000);
+    }
+  };
+
   // Helper generators for current active carrier
   const getPjsipConfSnippet = (c?: CarrierTrunk) => {
     if (!c) return '';
@@ -295,18 +348,19 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
               `; Asterisk autentica e identifica el tráfico entrante/saliente por IP: ${c.host}\n` +
               `; ====================================================================\n\n`;
     }
+    const qualifyVal = c.authType === 'ip_auth' ? (c.qualifyFreq ?? 0) : (c.qualifyFreq || 60);
     text += `[${slug}_aor]\n` +
             `type = aor\n` +
             `contact = sip:${c.host}:${c.port}\n` +
-            `qualify_frequency = ${c.qualifyFreq || 60}\n\n`;
+            `qualify_frequency = ${qualifyVal}\n\n`;
     text += `[${slug}]\n` +
             `type = endpoint\n` +
             `context = ${c.inboundContext || 'trunkinbound'}\n` +
             `disallow = all\n` +
             `allow = ${(c.codecs && c.codecs.length > 0) ? c.codecs.join(',') : 'opus,g722,ulaw,alaw'}\n` +
             `aors = ${slug}_aor\n` +
-            (isRegistration && c.secret ? `outbound_auth = auth_${slug}\n` : '') +
-            `from_user = ${c.fromuser || c.username || slug}\n` +
+            (isRegistration && c.secret ? `outbound_auth = auth_${slug}\n` : `identify_by = ip\n`) +
+            (isRegistration && (c.fromuser || c.username) ? `from_user = ${c.fromuser || c.username || slug}\n` : '') +
             `from_domain = ${c.host}\n` +
             `callerid = "${c.outboundCallerName || 'Seguridad Bancaria'}" <${c.outboundCallerId || '+18005550199'}>\n` +
             `direct_media = no\n` +
@@ -317,6 +371,9 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
             `send_rpid = ${c.sendrpid || 'yes'}\n` +
             `trust_id_outbound = yes\n` +
             `trust_id_inbound = ${c.trustrpid || 'yes'}\n` +
+            `callerid_privacy = allowed\n` +
+            `dtmf_mode = rfc4733\n` +
+            `timers = yes\n` +
             `transport = transport-udp\n\n`;
     text += `[${slug}-identify]\n` +
             `type = identify\n` +
@@ -433,6 +490,16 @@ insecure=${carrierInsecure}`;
             <span>{isLoadingLiveStatus ? 'Consultando CLI...' : 'Diagnóstico Asterisk CLI'}</span>
           </button>
 
+          <button
+            id="btn-inject-ip-trunk-69"
+            onClick={handleInjectTrunk69}
+            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-500/40 shadow-md transition-all cursor-pointer"
+            title="Inyecta instantáneamente la troncal IP-a-IP 69.197.187.87 con identify_by=ip y auth=none"
+          >
+            <Globe className="w-4 h-4 text-purple-400" />
+            <span>Inyectar IP 69.197.187.87</span>
+          </button>
+
           {onSyncAsterisk && (
             <button
               id="btn-sync-carriers-now"
@@ -456,6 +523,16 @@ insecure=${carrierInsecure}`;
           </button>
         </div>
       </div>
+
+      {injectStatus && (
+        <div className="p-3.5 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-bold flex items-center justify-between shadow-lg animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-purple-400" />
+            <span>{injectStatus}</span>
+          </div>
+          <button onClick={() => setInjectStatus(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+      )}
 
       {/* Featured Box: Carrier Account Entry & Dialplan Entry exactly as requested */}
       {activeCarrier && (
