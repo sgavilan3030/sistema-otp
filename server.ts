@@ -1923,7 +1923,6 @@ export function generateCleanDialplanConf(
   dialplanContent += `[sub-pjsip-outbound]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Preparando canal saliente: \${CHANNEL} con CID: \${CALLERID(all)} ===)\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_200,target_30)\n`;
-  dialplanContent += ` same => n,Set(CALLERPRES()=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
@@ -2351,7 +2350,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
-  dialplanContent += ` same => n,Set(CALLERPRES()=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
@@ -2402,7 +2400,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
-  dialplanContent += ` same => n,Set(CALLERPRES()=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;

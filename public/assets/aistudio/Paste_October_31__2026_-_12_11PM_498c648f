@@ -1,0 +1,582 @@
+Connected to Asterisk GIT-20-352e66b114 currently running on vmi3461829 (pid = 846872)
+    -- Remote UNIX connection
+<--- Received SIP request (596 bytes) from UDP:52.144.46.192:5060 --->
+OPTIONS sip:antperez20@169.58.66.206:47923;line=pwqvawq SIP/2.0
+Via: SIP/2.0/UDP 52.144.46.192:5060;branch=z9hG4bK7b5b9e9f;rport
+Max-Forwards: 70
+From: "asterisk" <sip:asterisk@52.144.46.192>;tag=as6b0988af
+To: <sip:antperez20@169.58.66.206:47923;line=pwqvawq>
+Contact: <sip:asterisk@52.144.46.192:5060>
+Call-ID: 2b79c3e04cd29cbd29582b990298c3b8@52.144.46.192:5060
+CSeq: 102 OPTIONS
+User-Agent: Asterisk PBX 13.38.3
+Date: Fri, 30 Oct 2026 21:15:02 GMT
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Content-Length: 0
+
+
+<--- Transmitting SIP response (540 bytes) to UDP:52.144.46.192:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 52.144.46.192:5060;rport=5060;received=52.144.46.192;branch=z9hG4bK7b5b9e9f
+Call-ID: 2b79c3e04cd29cbd29582b990298c3b8@52.144.46.192:5060
+From: "asterisk" <sip:asterisk@52.144.46.192>;tag=as6b0988af
+To: <sip:antperez20@169.58.66.206;line=pwqvawq>;tag=z9hG4bK7b5b9e9f
+CSeq: 102 OPTIONS
+WWW-Authenticate: Digest realm="asterisk",nonce="1793394902/a3c101980743473926251fbc7f04db34",opaque="12c9a6073cf43144",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (990 bytes) from UDP:74.244.193.126:13910 --->
+INVITE sip:7716104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport;branch=z9hG4bKPj769c8602b8e84cce8285662d5f125859
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>
+Contact: <sip:1001@192.168.1.183:50768;ob>
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+CSeq: 11241 INVITE
+Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+Supported: replaces, 100rel, timer, norefersub
+Session-Expires: 1800
+Min-SE: 90
+User-Agent: MicroSIP/3.22.12
+Content-Type: application/sdp
+Content-Length:   343
+
+v=0
+o=- 4002369305 4002369305 IN IP4 192.168.1.183
+s=pjmedia
+b=AS:84
+t=0 0
+a=X-nat:0
+m=audio 4004 RTP/AVP 8 0 101
+c=IN IP4 192.168.1.183
+b=TIAS:64000
+a=rtcp:4005 IN IP4 192.168.1.183
+a=sendrecv
+a=rtpmap:8 PCMA/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ssrc:1637883944 cname:6b91142728f43d55
+
+<--- Transmitting SIP response (574 bytes) to UDP:74.244.193.126:13910 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport=13910;received=74.244.193.126;branch=z9hG4bKPj769c8602b8e84cce8285662d5f125859
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>;tag=z9hG4bKPj769c8602b8e84cce8285662d5f125859
+CSeq: 11241 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1793394905/4820cdd2b12fa77b3953657ffd974140",opaque="1a00ad5310e0c405",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (398 bytes) from UDP:74.244.193.126:13910 --->
+ACK sip:7716104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport;branch=z9hG4bKPj769c8602b8e84cce8285662d5f125859
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>;tag=z9hG4bKPj769c8602b8e84cce8285662d5f125859
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+CSeq: 11241 ACK
+Content-Length:  0
+
+
+<--- Received SIP request (1298 bytes) from UDP:74.244.193.126:13910 --->
+INVITE sip:7716104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport;branch=z9hG4bKPjefab771705df4c5fb23c3f6267579367
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>
+Contact: <sip:1001@192.168.1.183:50768;ob>
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+CSeq: 11242 INVITE
+Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+Supported: replaces, 100rel, timer, norefersub
+Session-Expires: 1800
+Min-SE: 90
+User-Agent: MicroSIP/3.22.12
+Authorization: Digest username="1001", realm="asterisk", nonce="1793394905/4820cdd2b12fa77b3953657ffd974140", uri="sip:7716104803845@169.58.66.206:47923", response="5791f68fa2907121f888a6e05a2f1081", algorithm=MD5, cnonce="d3a1720666944ceaa38daf971b0c1ce6", opaque="1a00ad5310e0c405", qop=auth, nc=00000001
+Content-Type: application/sdp
+Content-Length:   343
+
+v=0
+o=- 4002369305 4002369305 IN IP4 192.168.1.183
+s=pjmedia
+b=AS:84
+t=0 0
+a=X-nat:0
+m=audio 4004 RTP/AVP 8 0 101
+c=IN IP4 192.168.1.183
+b=TIAS:64000
+a=rtcp:4005 IN IP4 192.168.1.183
+a=sendrecv
+a=rtpmap:8 PCMA/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ssrc:1637883944 cname:6b91142728f43d55
+
+<--- Transmitting SIP response (376 bytes) to UDP:74.244.193.126:13910 --->
+SIP/2.0 100 Trying
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport=13910;received=74.244.193.126;branch=z9hG4bKPjefab771705df4c5fb23c3f6267579367
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>
+CSeq: 11242 INVITE
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+    -- Executing [7716104803845@from-internal:1] NoOp("PJSIP/1001-00000019", "Llamada Saliente Universal a 7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:2] Set("PJSIP/1001-00000019", "CALLING_USER=+18005550199") in new stack
+    -- Executing [7716104803845@from-internal:3] ExecIf("PJSIP/1001-00000019", "1?Set(CALLING_USER=1001)") in new stack
+    -- Executing [7716104803845@from-internal:4] Set("PJSIP/1001-00000019", "__CALLING_AGENT=1001") in new stack
+    -- Executing [7716104803845@from-internal:5] Set("PJSIP/1001-00000019", "__CALL_DEST=7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:6] Set("PJSIP/1001-00000019", "CLIENT_BAL=10") in new stack
+    -- Executing [7716104803845@from-internal:7] Set("PJSIP/1001-00000019", "CLIENT_CUT=1") in new stack
+    -- Executing [7716104803845@from-internal:8] GotoIf("PJSIP/1001-00000019", "0?allow_univ") in new stack
+    -- Executing [7716104803845@from-internal:9] GotoIf("PJSIP/1001-00000019", "1?allow_univ") in new stack
+    -- Goto (from-internal,7716104803845,14)
+    -- Executing [7716104803845@from-internal:14] Set("PJSIP/1001-00000019", "DB(last_agent_call/7716104803845)=1001") in new stack
+    -- Executing [7716104803845@from-internal:15] Set("PJSIP/1001-00000019", "DB(last_agent_call/1001)=1001") in new stack
+    -- Executing [7716104803845@from-internal:16] Set("PJSIP/1001-00000019", "TARGET_DEST=7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:17] Set("PJSIP/1001-00000019", "CUSTOM_CID_NUM=") in new stack
+    -- Executing [7716104803845@from-internal:18] Set("PJSIP/1001-00000019", "CUSTOM_CID_NAME=") in new stack
+    -- Executing [7716104803845@from-internal:19] ExecIf("PJSIP/1001-00000019", "1?Set(CUSTOM_CID_NUM=)") in new stack
+    -- Executing [7716104803845@from-internal:20] ExecIf("PJSIP/1001-00000019", "1?Set(CUSTOM_CID_NAME=)") in new stack
+    -- Executing [7716104803845@from-internal:21] ExecIf("PJSIP/1001-00000019", "1?Set(CUSTOM_CID_NUM=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:22] ExecIf("PJSIP/1001-00000019", "1?Set(CUSTOM_CID_NAME=BANRESERVAS)") in new stack
+    -- Executing [7716104803845@from-internal:23] ExecIf("PJSIP/1001-00000019", "0?Set(CUSTOM_CID_NUM=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:24] ExecIf("PJSIP/1001-00000019", "0?Set(CUSTOM_CID_NAME=BANRESERVAS)") in new stack
+    -- Executing [7716104803845@from-internal:25] ExecIf("PJSIP/1001-00000019", "0?Set(CUSTOM_CID_NUM=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:26] ExecIf("PJSIP/1001-00000019", "0?Set(CUSTOM_CID_NAME=BANRESERVAS)") in new stack
+    -- Executing [7716104803845@from-internal:27] Set("PJSIP/1001-00000019", "RAW_CID_NUM=18494386040") in new stack
+    -- Executing [7716104803845@from-internal:28] Set("PJSIP/1001-00000019", "CLEAN_CID_NUM=18494386040") in new stack
+    -- Executing [7716104803845@from-internal:29] ExecIf("PJSIP/1001-00000019", "1?Set(CALLERID(num)=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:30] ExecIf("PJSIP/1001-00000019", "0?Set(CALLERID(num)=118494386040)") in new stack
+    -- Executing [7716104803845@from-internal:31] ExecIf("PJSIP/1001-00000019", "0?Set(CALLERID(num)=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:32] ExecIf("PJSIP/1001-00000019", "1?Set(CALLERID(name)=BANRESERVAS)") in new stack
+    -- Executing [7716104803845@from-internal:33] ExecIf("PJSIP/1001-00000019", "0?Set(CALLERID(name)=Seguridad Bancaria)") in new stack
+    -- Executing [7716104803845@from-internal:34] Set("PJSIP/1001-00000019", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-10-30 17:15:05.650] ERROR[1131753][C-0000000b]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [7716104803845@from-internal:35] Set("PJSIP/1001-00000019", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [7716104803845@from-internal:36] Set("PJSIP/1001-00000019", "CALLERID(all)="BANRESERVAS" <18494386040>") in new stack
+    -- Executing [7716104803845@from-internal:37] Set("PJSIP/1001-00000019", "VOLUME(rx)=1") in new stack
+    -- Executing [7716104803845@from-internal:38] Set("PJSIP/1001-00000019", "VOLUME(tx)=1") in new stack
+    -- Executing [7716104803845@from-internal:39] Set("PJSIP/1001-00000019", "CALLING_USER_CHAN=18494386040") in new stack
+    -- Executing [7716104803845@from-internal:40] ExecIf("PJSIP/1001-00000019", "1?Set(CALLING_USER_CHAN=1001)") in new stack
+    -- Executing [7716104803845@from-internal:41] Set("PJSIP/1001-00000019", "ASSIGNED_CARRIER=") in new stack
+    -- Executing [7716104803845@from-internal:42] ExecIf("PJSIP/1001-00000019", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:43] ExecIf("PJSIP/1001-00000019", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:44] ExecIf("PJSIP/1001-00000019", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:45] ExecIf("PJSIP/1001-00000019", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:46] ExecIf("PJSIP/1001-00000019", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:47] GotoIf("PJSIP/1001-00000019", "1?standard_carriers_univ") in new stack
+    -- Goto (from-internal,7716104803845,60)
+    -- Executing [7716104803845@from-internal:60] NoOp("PJSIP/1001-00000019", "=== [OUTBOUND POOL] Iniciando ruteo por pool de 1 troncal(es) habilitada(s) ===") in new stack
+    -- Executing [7716104803845@from-internal:61] NoOp("PJSIP/1001-00000019", "=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: televoxin (televox.in) a 7716104803845 ===") in new stack
+    -- Executing [7716104803845@from-internal:62] Dial("PJSIP/1001-00000019", "PJSIP/7716104803845@televoxin,40,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-0000001a Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-0000001a", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-0000001a con CID: "" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-0000001a", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-0000001a", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-10-30 17:15:05.657] ERROR[1131753][C-0000000b]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-0000001a", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-0000001a", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-0000001a", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-0000001a", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-0000001a", "OUT_CID_NAME=BANRESERVAS") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-0000001a", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-0000001a", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-0000001a", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-0000001a", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-0000001a", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-0000001a", "CALLERID(name)=BANRESERVAS") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-0000001a", "CALLERID(all)="BANRESERVAS" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-10-30 17:15:05.657] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-10-30 17:15:05.657] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-10-30 17:15:05.657] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-10-30 17:15:05.657] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(add,P-Asserted-Identity)="BANRESERVAS" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-0000001a", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-10-30 17:15:05.657] WARNING[1131753][C-0000000b]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-0000001a", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: BANRESERVAS ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-0000001a", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-0000001a'
+    -- PJSIP/televoxin-0000001a Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+<--- Transmitting SIP request (1323 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPja54ddb2d-cf3f-4e67-aec5-5300917c13db
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>
+Contact: <sip:alberto2026@169.58.66.206:47923>
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15965 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@televox.in>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@televox.in>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   444
+
+v=0
+o=- 64187984 64187984 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 15064 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Called PJSIP/7716104803845@televoxin
+<--- Received SIP response (601 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPja54ddb2d-cf3f-4e67-aec5-5300917c13db;received=169.58.66.206;rport=47923
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>;tag=as20920b2d
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15965 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+WWW-Authenticate: Digest algorithm=MD5, realm="asterisk", nonce="5c74e34f"
+Content-Length: 0
+
+
+<--- Transmitting SIP request (434 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPja54ddb2d-cf3f-4e67-aec5-5300917c13db
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>;tag=as20920b2d
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15965 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1506 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjb626ad15-40d3-417f-a469-29bf790b3619
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>
+Contact: <sip:alberto2026@169.58.66.206:47923>
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15966 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="alberto2026", realm="asterisk", nonce="5c74e34f", uri="sip:7716104803845@televox.in:5060", response="52add1a099403df1f651f17671ec741c", algorithm=MD5
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@televox.in>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@televox.in>;party=calling;privacy=off;screen=no
+Content-Type: application/sdp
+Content-Length:   444
+
+v=0
+o=- 64187984 64187984 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 15064 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP response (522 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 403 Forbidden
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPjb626ad15-40d3-417f-a469-29bf790b3619;received=169.58.66.206;rport=47923
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>;tag=as20920b2d
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15966 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Content-Length: 0
+
+
+<--- Transmitting SIP request (434 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjb626ad15-40d3-417f-a469-29bf790b3619
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=060ae152-25c4-4ff4-8d04-8e82dcb72894
+To: <sip:7716104803845@televox.in>;tag=as20920b2d
+Call-ID: be27dd25-743a-4c20-8812-a3c6ffe6c68e
+CSeq: 15966 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:63] NoOp("PJSIP/1001-00000019", "=== Troncal televoxin finalizo con DIALSTATUS=CHANUNAVAIL HANGUPCAUSE=21 ===") in new stack
+    -- Executing [7716104803845@from-internal:64] GotoIf("PJSIP/1001-00000019", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:65] GotoIf("PJSIP/1001-00000019", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:66] Dial("PJSIP/1001-00000019", "PJSIP/televoxin/sip:7716104803845@televox.in:5060,30,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-0000001b Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-0000001b", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-0000001b con CID: "BANRESERVAS" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-0000001b", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-0000001b", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-10-30 17:15:05.842] ERROR[1131753][C-0000000b]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-0000001b", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-0000001b", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-0000001b", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-0000001b", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-0000001b", "OUT_CID_NAME=BANRESERVAS") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-0000001b", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-0000001b", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-0000001b", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-0000001b", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-0000001b", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-0000001b", "CALLERID(name)=BANRESERVAS") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-0000001b", "CALLERID(all)="BANRESERVAS" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-10-30 17:15:05.843] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-10-30 17:15:05.843] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-10-30 17:15:05.843] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-10-30 17:15:05.843] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(add,P-Asserted-Identity)="BANRESERVAS" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-0000001b", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-10-30 17:15:05.851] WARNING[1131753][C-0000000b]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-0000001b", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: BANRESERVAS ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-0000001b", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-0000001b'
+    -- PJSIP/televoxin-0000001b Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+<--- Transmitting SIP request (1324 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj8bc53514-4597-4785-a4e9-4806d40627c4
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>
+Contact: <sip:alberto2026@169.58.66.206:47923>
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4738 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@televox.in>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@televox.in>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 615225452 615225452 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 15084 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Called PJSIP/televoxin/sip:7716104803845@televox.in:5060
+<--- Received SIP response (600 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj8bc53514-4597-4785-a4e9-4806d40627c4;received=169.58.66.206;rport=47923
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>;tag=as449262e4
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4738 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+WWW-Authenticate: Digest algorithm=MD5, realm="asterisk", nonce="39511b0a"
+Content-Length: 0
+
+
+<--- Transmitting SIP request (433 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj8bc53514-4597-4785-a4e9-4806d40627c4
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>;tag=as449262e4
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4738 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1507 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj82ccc97f-7fea-4587-9109-f8be67ae1ca5
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>
+Contact: <sip:alberto2026@169.58.66.206:47923>
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4739 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="alberto2026", realm="asterisk", nonce="39511b0a", uri="sip:7716104803845@televox.in:5060", response="faf4c99240e68aa31973cd33acd064d5", algorithm=MD5
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@televox.in>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@televox.in>;party=calling;privacy=off;screen=no
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 615225452 615225452 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 15084 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP response (521 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 403 Forbidden
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj82ccc97f-7fea-4587-9109-f8be67ae1ca5;received=169.58.66.206;rport=47923
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>;tag=as449262e4
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4739 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Content-Length: 0
+
+
+<--- Transmitting SIP request (433 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:7716104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj82ccc97f-7fea-4587-9109-f8be67ae1ca5
+From: "BANRESERVAS" <sip:18494386040@televox.in>;tag=91e91b88-6044-49ad-98a6-e8dd069b32b1
+To: <sip:7716104803845@televox.in>;tag=as449262e4
+Call-ID: 630638a4-96ee-4e6c-b58a-1de490e41afd
+CSeq: 4739 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:67] GotoIf("PJSIP/1001-00000019", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:68] GotoIf("PJSIP/1001-00000019", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:69] NoOp("PJSIP/1001-00000019", "=== [CALL END] Destino: 7716104803845 | DIALSTATUS=CHANUNAVAIL | HANGUPCAUSE=21 ===") in new stack
+    -- Executing [7716104803845@from-internal:70] GotoIf("PJSIP/1001-00000019", "1?no_retry_univ") in new stack
+    -- Goto (from-internal,7716104803845,72)
+    -- Executing [7716104803845@from-internal:72] NoOp("PJSIP/1001-00000019", "=== [RETRY OMITIDO] Operador colgo la llamada o llamada ya finalizada ===") in new stack
+    -- Executing [7716104803845@from-internal:73] Hangup("PJSIP/1001-00000019", "") in new stack
+  == Spawn extension (from-internal, 7716104803845, 73) exited non-zero on 'PJSIP/1001-00000019'
+    -- Executing [h@from-internal:1] NoOp("PJSIP/1001-00000019", "=== [FROM-INTERNAL HANGUP] Canal colgado: PJSIP/1001-00000019 | Causa: 21 ===") in new stack
+    -- Executing [h@from-internal:2] Set("PJSIP/1001-00000019", "TARGET_NUM=7716104803845") in new stack
+    -- Executing [h@from-internal:3] Set("PJSIP/1001-00000019", "DB(call_status/7716104803845)=ended") in new stack
+    -- Executing [h@from-internal:4] System("PJSIP/1001-00000019", "curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=7716104803845&status=ended&cause=21&channel=PJSIP/1001-00000019" &") in new stack
+    -- Executing [h@from-internal:5] System("PJSIP/1001-00000019", "curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=1001&secs=0&dest=7716104803845" &") in new stack
+<--- Transmitting SIP response (615 bytes) to UDP:74.244.193.126:13910 --->
+SIP/2.0 403 Forbidden
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport=13910;received=74.244.193.126;branch=z9hG4bKPjefab771705df4c5fb23c3f6267579367
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>;tag=b470005f-2594-4757-821f-4cb95e9447e7
+CSeq: 11242 INVITE
+Server: Asterisk PBX GIT-20-352e66b114
+Reason: Q.850;cause=21
+P-Asserted-Identity: "BANRESERVAS" <sip:7716104803845@169.58.66.206>
+Remote-Party-ID: "BANRESERVAS" <sip:7716104803845@169.58.66.206>;party=called;privacy=off;screen=no
+Content-Length:  0
+
+
+<--- Received SIP request (393 bytes) from UDP:74.244.193.126:13910 --->
+ACK sip:7716104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.1.183:50768;rport;branch=z9hG4bKPjefab771705df4c5fb23c3f6267579367
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=237f4ace10e04e61a17d204318eecb10
+To: <sip:7716104803845@169.58.66.206>;tag=b470005f-2594-4757-821f-4cb95e9447e7
+Call-ID: dfcd665515a64b2da2c0c34699e6b60c
+CSeq: 11242 ACK
+Content-Length:  0
+
+
+<--- Received SIP request (611 bytes) from UDP:185.246.190.211:5060 --->
+OPTIONS sip:sgavilan30@169.58.66.206:47923;line=lwemmcw SIP/2.0
+Via: SIP/2.0/UDP 185.246.190.211:5060;branch=z9hG4bK0c20f227;rport
+Max-Forwards: 70
+From: "asterisk" <sip:asterisk@185.246.190.211>;tag=as4ef0e5a4
+To: <sip:sgavilan30@169.58.66.206:47923;line=lwemmcw>
+Contact: <sip:asterisk@185.246.190.211:5060>
+Call-ID: 51e341bd552e0d683b4db4d96a67ef6a@185.246.190.211:5060
+CSeq: 102 OPTIONS
+User-Agent: Asterisk PBX 13.38.3
+Date: Fri, 30 Oct 2026 21:15:08 GMT
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces, timer
+Content-Length: 0
+
+
+<--- Transmitting SIP response (548 bytes) to UDP:185.246.190.211:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 185.246.190.211:5060;rport=5060;received=185.246.190.211;branch=z9hG4bK0c20f227
+Call-ID: 51e341bd552e0d683b4db4d96a67ef6a@185.246.190.211:5060
+From: "asterisk" <sip:asterisk@185.246.190.211>;tag=as4ef0e5a4
+To: <sip:sgavilan30@169.58.66.206;line=lwemmcw>;tag=z9hG4bK0c20f227
+CSeq: 102 OPTIONS
+WWW-Authenticate: Digest realm="asterisk",nonce="1793394908/3a48f44303f535fb86981c277b19dff0",opaque="1012ee02524db6a3",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
