@@ -14,6 +14,7 @@ echo "=========================================================="
 echo ""
 
 echo "=== [1/4] Descargando cambios más recientes de GitHub ==="
+git checkout -- . 2>/dev/null || true
 git stash 2>/dev/null || true
 git pull origin main || git pull
 
