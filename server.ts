@@ -2263,14 +2263,18 @@ export function generateCleanDialplanConf(
       const cId = c.id;
       const cHost = c.host;
       const cPort = c.port || 5060;
+      const isIpAuth = c.authType === 'ip_auth';
+      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}` : `PJSIP/\${DIAL_NUM}@${cSlug}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/\${DIAL_NUM}@${cSlug}` : `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}`;
+
       block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
       block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
-      block += ` same => n,Dial(PJSIP/\${DIAL_NUM}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      // Direct SIP URI fallback on same trunk
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+      // Fallback
+      block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       block += ` same => n,NoOp(=== [FAILOVER TRONCAL DEDICADA] Troncal ${cSlug} fallo (\${DIALSTATUS}), pasando a pool general ===)\n`;
@@ -2285,6 +2289,9 @@ export function generateCleanDialplanConf(
       const labelNext = `try_carrier_${tag}_${idx + 1}`;
       const cHost = c.host;
       const cPort = c.port || 5060;
+      const isIpAuth = c.authType === 'ip_auth';
+      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}` : `PJSIP/\${DIAL_NUM}@${cSlug}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/\${DIAL_NUM}@${cSlug}` : `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}`;
 
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
@@ -2292,12 +2299,12 @@ export function generateCleanDialplanConf(
         block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
       }
 
-      block += ` same => n,Dial(PJSIP/\${DIAL_NUM}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      // Direct URI attempt
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+      // Fallback
+      block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
