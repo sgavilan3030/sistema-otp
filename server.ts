@@ -1200,6 +1200,32 @@ const defaultExtensionsList = [
 
 export const defaultCarriersList = [
   {
+    id: 'trunk-ip-69-197-187-87',
+    name: 'trunk_69_197_187_87',
+    authType: 'ip_auth',
+    pjsipType: 'endpoint',
+    identify_by: 'ip',
+    auth: 'none',
+    host: '69.197.187.87',
+    port: 5060,
+    username: '',
+    secret: '',
+    inboundContext: 'trunkinbound',
+    outboundCallerId: '+18005550199',
+    outboundCallerIdName: 'Seguridad Bancaria',
+    codecs: ['ulaw', 'alaw', 'g729', 'opus'],
+    qualifyFreq: 0,
+    status: 'reachable',
+    latencyMs: 15,
+    fromuser: '',
+    sendrpid: 'yes',
+    trustrpid: 'yes',
+    insecure: 'port,invite',
+    dialplanPattern: '_1XXXXXXXXXX',
+    dialFlags: 'Tor',
+    enabled: true,
+  },
+  {
     id: 'trunk-televox',
     name: 'televox',
     authType: 'registration',
@@ -1237,32 +1263,6 @@ export const defaultCarriersList = [
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
-    fromuser: '',
-    sendrpid: 'yes',
-    trustrpid: 'yes',
-    insecure: 'port,invite',
-    dialplanPattern: '_1XXXXXXXXXX',
-    dialFlags: 'Tor',
-    enabled: true,
-  },
-  {
-    id: 'trunk-ip-69-197-187-87',
-    name: 'trunk_69_197_187_87',
-    authType: 'ip_auth',
-    pjsipType: 'endpoint',
-    identify_by: 'ip',
-    auth: 'none',
-    host: '69.197.187.87',
-    port: 5060,
-    username: '',
-    secret: '',
-    inboundContext: 'trunkinbound',
-    outboundCallerId: '+18005550199',
-    outboundCallerIdName: 'Seguridad Bancaria',
-    codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-    qualifyFreq: 0,
-    status: 'reachable',
-    latencyMs: 15,
     fromuser: '',
     sendrpid: 'yes',
     trustrpid: 'yes',
@@ -1945,8 +1945,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Asserted-Identity)=)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,Remote-Party-ID)=)\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Preferred-Identity)=)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${GLOBAL_CARRIER_HOST}>)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${GLOBAL_CARRIER_HOST}>;party=calling;screen=yes;privacy=off)\n`;
+  dialplanContent += ` same => n,Set(TARGET_TRUNK_HOST=\${CHANNEL(endpoint)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "trunk_69_197_187_87"]?Set(TARGET_TRUNK_HOST=69.197.187.87):Set(TARGET_TRUNK_HOST=\${GLOBAL_CARRIER_HOST}))\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>;party=calling;screen=yes;privacy=off)\n`;
   dialplanContent += ` same => n,NoOp(=== [OUTBOUND CID FINAL] CallerID num: \${CALLERID(num)} name: \${CALLERID(name)} ===)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
@@ -2242,6 +2244,8 @@ export function generateCleanDialplanConf(
     const labelEnd = `end_carrier_${tag}`;
 
     // 1. Resolve ASSIGNED_CARRIER from channel variable (AMI/Originate), AstDB ivr_vars, or user_carrier
+    block += ` same => n,Set(DIAL_NUM=${destVar})\n`;
+    block += ` same => n,ExecIf($["\${DIAL_NUM:0:2}" = "77"]?Set(DIAL_NUM=\${DIAL_NUM:2}))\n`;
     block += ` same => n,Set(CALLING_USER_CHAN=\${CALLERID(num)})\n`;
     block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER_CHAN=\${CHANNEL(endpoint)}))\n`;
     block += ` same => n,Set(ASSIGNED_CARRIER=\${IF($["\${ASSIGNED_CARRIER}" != ""]?\${ASSIGNED_CARRIER}:\${OUTBOUND_CARRIER})})\n`;
@@ -2251,7 +2255,7 @@ export function generateCleanDialplanConf(
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_USER_CHAN})}))\n`;
     block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = "" || "\${ASSIGNED_CARRIER}" = "auto" || "\${ASSIGNED_CARRIER}" = "pool"]?standard_carriers_${tag})\n`;
-    block += ` same => n,NoOp(=== [CARRIER DEDICADO] Intentando troncal asignada: \${ASSIGNED_CARRIER} para ${destVar} ===)\n`;
+    block += ` same => n,NoOp(=== [CARRIER DEDICADO] Intentando troncal asignada: \${ASSIGNED_CARRIER} para destino \${DIAL_NUM} ===)\n`;
 
     // Dedicated carrier routing
     enabledCarriers.forEach((c) => {
@@ -2260,13 +2264,13 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a ${destVar} ===)\n`;
-      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
+      block += ` same => n,Dial(PJSIP/\${DIAL_NUM}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       // Direct SIP URI fallback on same trunk
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       block += ` same => n,NoOp(=== [FAILOVER TRONCAL DEDICADA] Troncal ${cSlug} fallo (\${DIALSTATUS}), pasando a pool general ===)\n`;
@@ -2285,15 +2289,15 @@ export function generateCleanDialplanConf(
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
       } else {
-        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a ${destVar} ===)\n`;
+        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
       }
 
-      block += ` same => n,Dial(PJSIP/${destVar}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,Dial(PJSIP/\${DIAL_NUM}@${cSlug},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
       // Direct URI attempt
-      block += ` same => n,Dial(PJSIP/${cSlug}/sip:${destVar}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+      block += ` same => n,Dial(PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort},30,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
     });
