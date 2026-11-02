@@ -1598,6 +1598,18 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `local_net = 172.16.0.0/12\n`;
   pjsipContent += `local_net = 192.168.0.0/16\n\n`;
 
+  if (activePort !== 5060) {
+    pjsipContent += `; Transporte dedicado en puerto 5060 para interconexión estándar con Carriers mayoristas\n`;
+    pjsipContent += `[transport-udp-5060]\n`;
+    pjsipContent += `type = transport\n`;
+    pjsipContent += `protocol = udp\n`;
+    pjsipContent += `bind = 0.0.0.0:5060\n`;
+    pjsipContent += `local_net = 127.0.0.0/8\n`;
+    pjsipContent += `local_net = 10.0.0.0/8\n`;
+    pjsipContent += `local_net = 172.16.0.0/12\n`;
+    pjsipContent += `local_net = 192.168.0.0/16\n\n`;
+  }
+
   pjsipContent += `[transport-tcp]\n`;
   pjsipContent += `type = transport\n`;
   pjsipContent += `protocol = tcp\n`;
@@ -1780,7 +1792,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `timers = yes\n`;
       pjsipContent += `language = es\n`;
       pjsipContent += `moh_suggest = default\n`;
-      pjsipContent += `transport = transport-udp\n\n`;
+      const trunkTransport = (carrier.authType === 'ip_auth' && activePort !== 5060) ? 'transport-udp-5060' : 'transport-udp';
+      pjsipContent += `transport = ${trunkTransport}\n\n`;
 
       // Identify section for IP auth or non-registration trunks
       if (carrier.authType === 'ip_auth' || !cSecret) {
