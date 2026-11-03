@@ -1223,6 +1223,7 @@ export const defaultCarriersList = [
     insecure: 'port,invite',
     dialplanPattern: '_1XXXXXXXXXX',
     dialFlags: 'Tor',
+    techPrefix: '018',
     enabled: true,
   },
   {
@@ -2277,11 +2278,13 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}` : `PJSIP/\${DIAL_NUM}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/\${DIAL_NUM}@${cSlug}` : `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}`;
+      const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
+      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/${numWithPrefix}@${cSlug}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a ${numWithPrefix} ===)\n`;
       block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
@@ -2303,13 +2306,15 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}` : `PJSIP/\${DIAL_NUM}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/\${DIAL_NUM}@${cSlug}` : `PJSIP/${cSlug}/sip:\${DIAL_NUM}@${cHost}:${cPort}`;
+      const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
+      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/${numWithPrefix}@${cSlug}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
       } else {
-        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a \${DIAL_NUM} ===)\n`;
+        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a ${numWithPrefix} ===)\n`;
       }
 
       block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;

@@ -456,6 +456,7 @@ export const initialCarriers: CarrierTrunk[] = [
     insecure: 'port,invite',
     dialplanPattern: '_1XXXXXXXXXX',
     dialFlags: 'Tor',
+    techPrefix: '018',
     enabled: true,
   },
   {

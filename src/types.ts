@@ -42,6 +42,7 @@ export interface CarrierTrunk {
   pjsipType?: 'endpoint';
   identify_by?: 'ip' | 'username,ip' | 'username';
   auth?: 'none' | 'userpass';
+  techPrefix?: string;
 }
 
 export interface Press1Config {

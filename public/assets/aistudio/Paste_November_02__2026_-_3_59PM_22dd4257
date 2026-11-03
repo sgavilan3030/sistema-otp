@@ -1,0 +1,972 @@
+Connected to Asterisk GIT-20-352e66b114 currently running on vmi3461829 (pid = 846872)
+    -- Executing [16104803845@from-internal:1] NoOp("PJSIP/1001-0000006e", "=== [SALIDA DIRECTA IP 69.197.187.87:5060] Destino: 16104803845 ===") in new stack
+    -- Executing [16104803845@from-internal:2] Set("PJSIP/1001-0000006e", "CALLERID(num)=18494386040") in new stack
+    -- Executing [16104803845@from-internal:3] Set("PJSIP/1001-0000006e", "CALLERID(name)=BANRESERVAS") in new stack
+    -- Executing [16104803845@from-internal:4] Dial("PJSIP/1001-0000006e", "PJSIP/trunk_69_197_187_87/sip:16104803845@69.197.187.87:5060,40,Tor") in new stack
+    -- Called PJSIP/trunk_69_197_187_87/sip:16104803845@69.197.187.87:5060
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [16104803845@from-internal:5] NoOp("PJSIP/1001-0000006e", "=== Fin llamada Status: CHANUNAVAIL Causa: 18 ===") in new stack
+    -- Executing [16104803845@from-internal:6] Hangup("PJSIP/1001-0000006e", "") in new stack
+  == Spawn extension (from-internal, 16104803845, 6) exited non-zero on 'PJSIP/1001-0000006e'
+    -- Executing [h@from-internal:1] NoOp("PJSIP/1001-0000006e", "=== [FROM-INTERNAL HANGUP] Canal colgado: PJSIP/1001-0000006e | Causa: 18 ===") in new stack
+    -- Executing [h@from-internal:2] Set("PJSIP/1001-0000006e", "TARGET_NUM=18494386040") in new stack
+    -- Executing [h@from-internal:3] Set("PJSIP/1001-0000006e", "DB(call_status/18494386040)=ended") in new stack
+    -- Executing [h@from-internal:4] System("PJSIP/1001-0000006e", "curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=18494386040&status=ended&cause=18&channel=PJSIP/1001-0000006e" &") in new stack
+    -- Executing [h@from-internal:5] System("PJSIP/1001-0000006e", "curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=&secs=0&dest=18494386040" &") in new stack
+vmi3461829*CLI>
+Disconnected from Asterisk server
+Asterisk cleanly ending (0).
+Executing last minute cleanups
+root@vmi3461829:/var/www/sistema-otp# ^C
+root@vmi3461829:/var/www/sistema-otp#  echo "=== 1. Transportes PJSIP Activos en Asterisk ==="
+asterisk -rx "pjsip show transports"
+
+echo ""
+echo "=== 2. ¿Quién está usando el puerto 5060 en el VPS? ==="
+ss -ulnp | grep -E "5060|47923" || netstat -ulnp | grep -E "5060|47923"
+
+echo ""
+echo "=== 3. Estado del Endpoint ==="
+asterisk -rx "pjsip show endpoint trunk_69_197_187_87"
+=== 1. Transportes PJSIP Activos en Asterisk ===
+
+Transport:  <TransportId........>  <Type>  <cos>  <tos>  <BindAddress....................>
+==========================================================================================
+
+Transport:  transport-tcp             tcp      0      0  0.0.0.0:47923
+Transport:  transport-udp             udp      0      0  0.0.0.0:47923
+Transport:  transport-udp-5060        udp      0      0  0.0.0.0:5060
+Transport:  transport-wss             wss      0      0  0.0.0.0:8089
+
+Objects found: 4
+
+
+=== 2. ¿Quién está usando el puerto 5060 en el VPS? ===
+UNCONN 0      0            0.0.0.0:5060       0.0.0.0:*    users:(("asterisk",pid=846872,fd=53))
+UNCONN 0      0            0.0.0.0:47923      0.0.0.0:*    users:(("asterisk",pid=846872,fd=12))
+
+=== 3. Estado del Endpoint ===
+
+ Endpoint:  <Endpoint/CID.....................................>  <State.....>  <Channels.>
+    I/OAuth:  <AuthId/UserName...........................................................>
+        Aor:  <Aor............................................>  <MaxContact>
+      Contact:  <Aor/ContactUri..........................> <Hash....> <Status> <RTT(ms)..>
+  Transport:  <TransportId........>  <Type>  <cos>  <tos>  <BindAddress..................>
+   Identify:  <Identify/Endpoint.........................................................>
+        Match:  <criteria.........................>
+    Channel:  <ChannelId......................................>  <State.....>  <Time.....>
+        Exten: <DialedExten...........>  CLCID: <ConnectedLineCID.......>
+==========================================================================================
+
+ Endpoint:  trunk_69_197_187_87                                  Unavailable   0 of inf
+        Aor:  trunk_69_197_187_87_aor                            0
+      Contact:  trunk_69_197_187_87_aor/sip:69.197.187.87: f010239360 Unavail         nan
+  Transport:  transport-udp-5060        udp      0      0  0.0.0.0:5060
+   Identify:  trunk_69_197_187_87-identify/trunk_69_197_187_87
+        Match: 69.197.187.87/32
+
+
+ ParameterName                      : ParameterValue
+ ===================================================================================================
+ 100rel                             : yes
+ accept_multiple_sdp_answers        : false
+ accountcode                        :
+ acl                                :
+ aggregate_mwi                      : true
+ allow                              : (ulaw|alaw|g729|opus)
+ allow_overlap                      : true
+ allow_subscribe                    : true
+ allow_transfer                     : true
+ allow_unauthenticated_options      : false
+ aors                               : trunk_69_197_187_87_aor
+ asymmetric_rtp_codec               : false
+ auth                               :
+ bind_rtp_to_media_address          : false
+ bundle                             : false
+ call_group                         :
+ callerid                           : <unknown>
+ callerid_privacy                   : allowed
+ callerid_tag                       :
+ codec_prefs_incoming_answer        : prefer:pending, operation:intersect, keep:all, transcode:allow
+ codec_prefs_incoming_offer         : prefer:pending, operation:intersect, keep:all, transcode:allow
+ codec_prefs_outgoing_answer        : prefer:pending, operation:intersect, keep:all, transcode:allow
+ codec_prefs_outgoing_offer         : prefer:pending, operation:union, keep:all, transcode:allow
+ connected_line_method              : invite
+ contact_acl                        :
+ context                            : trunkinbound
+ cos_audio                          : 0
+ cos_video                          : 0
+ device_state_busy_at               : 0
+ direct_media                       : false
+ direct_media_glare_mitigation      : none
+ direct_media_method                : invite
+ disable_direct_media_on_nat        : false
+ dtls_auto_generate_cert            : No
+ dtls_ca_file                       :
+ dtls_ca_path                       :
+ dtls_cert_file                     :
+ dtls_cipher                        :
+ dtls_fingerprint                   : SHA-256
+ dtls_private_key                   :
+ dtls_rekey                         : 0
+ dtls_setup                         : active
+ dtls_verify                        : No
+ dtmf_mode                          : rfc4733
+ fax_detect                         : false
+ fax_detect_timeout                 : 0
+ follow_early_media_fork            : true
+ follow_redirect_methods            :
+ force_avp                          : false
+ force_rport                        : true
+ from_domain                        : 69.197.187.87
+ from_user                          :
+ g726_non_standard                  : false
+ geoloc_incoming_call_profile       :
+ geoloc_outgoing_call_profile       :
+ ice_support                        : false
+ identify_by                        : username,ip
+ ignore_183_without_sdp             : false
+ inband_progress                    : false
+ incoming_call_offer_pref           : local
+ incoming_mwi_mailbox               :
+ language                           : es
+ mailboxes                          :
+ max_audio_streams                  : 1
+ max_video_streams                  : 1
+ media_address                      :
+ media_encryption                   : no
+ media_encryption_optimistic        : false
+ media_use_received_transport       : false
+ message_context                    :
+ moh_passthrough                    : false
+ moh_suggest                        : default
+ mwi_from_user                      :
+ mwi_subscribe_replaces_unsolicited : no
+ named_call_group                   :
+ named_pickup_group                 :
+ notify_early_inuse_ringing         : false
+ one_touch_recording                : false
+ outbound_auth                      :
+ outbound_proxy                     :
+ outgoing_call_offer_pref           : remote_merge
+ overlap_context                    :
+ pickup_group                       :
+ preferred_codec_only               : false
+ record_off_feature                 : automixmon
+ record_on_feature                  : automixmon
+ redirect_method                    : user
+ refer_blind_progress               : true
+ rewrite_contact                    : true
+ rpid_immediate                     : false
+ rtcp_mux                           : false
+ rtp_engine                         : asterisk
+ rtp_ipv6                           : false
+ rtp_keepalive                      : 5
+ rtp_port_end                       : 0
+ rtp_port_start                     : 0
+ rtp_symmetric                      : true
+ rtp_timeout                        : 0
+ rtp_timeout_hold                   : 0
+ sdp_owner                          : -
+ sdp_session                        : Asterisk
+ security_negotiation               : no
+ send_aoc                           : false
+ send_connected_line                : yes
+ send_diversion                     : true
+ send_history_info                  : false
+ send_pai                           : true
+ send_rpid                          : true
+ set_var                            :
+ srtp_tag_32                        : false
+ stir_shaken                        : no
+ stir_shaken_profile                :
+ sub_min_expiry                     : 0
+ subscribe_context                  :
+ suppress_moh_on_sendonly           : false
+ suppress_q850_reason_headers       : false
+ t38_bind_udptl_to_media_address    : false
+ t38_udptl                          : false
+ t38_udptl_ec                       : none
+ t38_udptl_ipv6                     : false
+ t38_udptl_maxdatagram              : 0
+ t38_udptl_nat                      : false
+ tenantid                           :
+ timers                             : yes
+ timers_min_se                      : 90
+ timers_sess_expires                : 1800
+ tone_zone                          :
+ tos_audio                          : 0
+ tos_video                          : 0
+ transport                          : transport-udp-5060
+ trust_connected_line               : yes
+ trust_id_inbound                   : true
+ trust_id_outbound                  : true
+ use_avpf                           : false
+ use_ptime                          : false
+ user_eq_phone                      : false
+ voicemail_extension                :
+ webrtc                             : no
+
+root@vmi3461829:/var/www/sistema-otp# ^C
+root@vmi3461829:/var/www/sistema-otp# ^C
+root@vmi3461829:/var/www/sistema-otp# # 1. Asegurar el logger SIP activo
+asterisk -rx "pjsip set logger on"
+
+# 2. Enviar llamada directa de prueba desde 5060 hacia 69.197.187.87:5060
+asterisk -rx "channel originate PJSIP/trunk_69_197_187_87/sip:16104803845@69.197.187.87:5060 application Playback demo-congrats"
+PJSIP Logging enabled
+root@vmi3461829:/var/www/sistema-otp# asterisk -rvvv
+Asterisk GIT-20-352e66b114, Copyright (C) 1999 - 2025, Sangoma Technologies Corporation and others.
+Created by Mark Spencer <markster@digium.com>
+Asterisk comes with ABSOLUTELY NO WARRANTY; type 'core show warranty' for details.
+This is free software, with components licensed under the GNU General Public
+License version 2 and other licenses; you are welcome to redistribute it under
+certain conditions. Type 'core show license' for details.
+=========================================================================
+Connected to Asterisk GIT-20-352e66b114 currently running on vmi3461829 (pid = 846872)
+<--- Transmitting SIP request (456 bytes) to UDP:69.197.187.87:5060 --->
+OPTIONS sip:69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPj7017e4d2-574f-42a4-8f4c-189791ce3029
+From: <sip:trunk_69_197_187_87@69.197.187.87>;tag=19e126b6-dfff-4e98-b7f4-152ce7558b86
+To: <sip:69.197.187.87>
+Contact: <sip:trunk_69_197_187_87@169.58.66.206:5060>
+Call-ID: 5b4eff40-0d40-4cd0-8b76-f5a961586cdc
+CSeq: 51625 OPTIONS
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (335 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK1520849270
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 1 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK1520849270
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK1520849270
+CSeq: 1 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",opaque="778bd60053f23c06",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK1018588195
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 2 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+Authorization: Digest username="2708",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",response="a5f9d0d5baff1e998db9fb92d9168763",qop=auth,nc=00000001, cnonce="992468382",opaque="778bd60053f23c06"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK1018588195
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK1018588195
+CSeq: 2 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",opaque="0512ce4207d7aa1d",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK156705179
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 3 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+Authorization: Digest username="2708",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",response="dec559aa77208009dc8a97ed05703f48",qop=auth,nc=00000001, cnonce="1683180342",opaque="0512ce4207d7aa1d"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK156705179
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK156705179
+CSeq: 3 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",opaque="079b9c4867aeeae3",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK166772704
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 4 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+Authorization: Digest username="2708",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",response="ec2e904eff5c8861e2bec6fec2f1fc00",qop=auth,nc=00000001, cnonce="1585618274",opaque="079b9c4867aeeae3"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK166772704
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK166772704
+CSeq: 4 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",opaque="0a77135642e3904b",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (593 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK1238020485
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 5 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+Authorization: Digest username="2708",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",response="a3b8cdf44a91a8ece37b65293c657af1",qop=auth,nc=00000001, cnonce="1116581664",opaque="0a77135642e3904b"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK1238020485
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK1238020485
+CSeq: 5 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",opaque="636e389c25283b34",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:60718 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:60718;branch=z9hG4bK646810338
+Max-Forwards: 70
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>
+Call-ID: 464151344-1364895088-2135123400
+CSeq: 6 REGISTER
+Contact: <sip:2708@45.61.186.170:60718>
+Content-Length: 0
+Authorization: Digest username="2708",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649510/d9b32c0f9e2183d92e9afb00dda4336f",response="c2cc5b7e3f2ba3677ffc3b4803207cf6",qop=auth,nc=00000001, cnonce="1152588154",opaque="636e389c25283b34"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:60718 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:60718;rport=60718;received=45.61.186.170;branch=z9hG4bK646810338
+Call-ID: 464151344-1364895088-2135123400
+From: <sip:2708@169.58.66.206>;tag=940911264
+To: <sip:2708@169.58.66.206>;tag=z9hG4bK646810338
+CSeq: 6 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649511/22e0b1587dafa66dfc89a22f3e193048",opaque="6d47de0c29cd7f9d",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (456 bytes) to UDP:69.197.187.87:5060 --->
+OPTIONS sip:69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPj7017e4d2-574f-42a4-8f4c-189791ce3029
+From: <sip:trunk_69_197_187_87@69.197.187.87>;tag=19e126b6-dfff-4e98-b7f4-152ce7558b86
+To: <sip:69.197.187.87>
+Contact: <sip:trunk_69_197_187_87@169.58.66.206:5060>
+Call-ID: 5b4eff40-0d40-4cd0-8b76-f5a961586cdc
+CSeq: 51625 OPTIONS
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+  == Manager 'sammy' logged on from 127.0.0.1
+<--- Transmitting SIP request (445 bytes) to UDP:181.37.227.43:56931 --->
+OPTIONS sip:1001@181.37.227.43:56931;ob SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjbdb9812f-7529-49e9-b61f-76bfe6322c6a
+From: <sip:1001@169.58.66.206>;tag=a10a716e-29c2-4fec-9911-d51329e9c5a5
+To: <sip:1001@181.37.227.43;ob>
+Contact: <sip:1001@169.58.66.206:47923>
+Call-ID: ccc10bae-65d3-434c-9b79-0865b9a8fcd6
+CSeq: 22908 OPTIONS
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP response (841 bytes) from UDP:181.37.227.43:56931 --->
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPjbdb9812f-7529-49e9-b61f-76bfe6322c6a
+Call-ID: ccc10bae-65d3-434c-9b79-0865b9a8fcd6
+From: <sip:1001@169.58.66.206>;tag=a10a716e-29c2-4fec-9911-d51329e9c5a5
+To: <sip:1001@181.37.227.43;ob>;tag=z9hG4bKPjbdb9812f-7529-49e9-b61f-76bfe6322c6a
+CSeq: 22908 OPTIONS
+Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+Accept: application/sdp, application/pidf+xml, application/xpidf+xml, application/dialog-info+xml, application/simple-message-summary, message/sipfrag;version=2.0, application/im-iscomposing+xml, text/plain
+Supported: replaces, 100rel, timer, norefersub, trickle-ice
+Allow-Events: presence, dialog, message-summary, refer
+User-Agent: MicroSIP/3.22.12
+Content-Length:  0
+
+
+  == Manager 'sammy' logged off from 127.0.0.1
+<--- Received SIP request (983 bytes) from UDP:181.37.227.43:56931 --->
+INVITE sip:16104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport;branch=z9hG4bKPj60843342cc5a4a2d9e495c0f730ac25d
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>
+Contact: <sip:1001@192.168.4.121:56931;ob>
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+CSeq: 625 INVITE
+Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+Supported: replaces, 100rel, timer, norefersub
+Session-Expires: 1800
+Min-SE: 90
+User-Agent: MicroSIP/3.22.12
+Content-Type: application/sdp
+Content-Length:   342
+
+v=0
+o=- 4002623912 4002623912 IN IP4 192.168.4.121
+s=pjmedia
+b=AS:84
+t=0 0
+a=X-nat:0
+m=audio 4014 RTP/AVP 8 0 101
+c=IN IP4 192.168.4.121
+b=TIAS:64000
+a=rtcp:4015 IN IP4 192.168.4.121
+a=sendrecv
+a=rtpmap:8 PCMA/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ssrc:293303463 cname:3372059d1a8a32e4
+
+<--- Transmitting SIP response (569 bytes) to UDP:181.37.227.43:56931 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport=56931;received=181.37.227.43;branch=z9hG4bKPj60843342cc5a4a2d9e495c0f730ac25d
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>;tag=z9hG4bKPj60843342cc5a4a2d9e495c0f730ac25d
+CSeq: 625 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649513/18f4f9f4f6331945ff074160b2d66820",opaque="4959e2cb7a44b3da",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (392 bytes) from UDP:181.37.227.43:56931 --->
+ACK sip:16104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport;branch=z9hG4bKPj60843342cc5a4a2d9e495c0f730ac25d
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>;tag=z9hG4bKPj60843342cc5a4a2d9e495c0f730ac25d
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+CSeq: 625 ACK
+Content-Length:  0
+
+
+<--- Received SIP request (1289 bytes) from UDP:181.37.227.43:56931 --->
+INVITE sip:16104803845@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport;branch=z9hG4bKPja1adee1e875f4a0db143f04a1a0402c2
+Max-Forwards: 70
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>
+Contact: <sip:1001@192.168.4.121:56931;ob>
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+CSeq: 626 INVITE
+Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+Supported: replaces, 100rel, timer, norefersub
+Session-Expires: 1800
+Min-SE: 90
+User-Agent: MicroSIP/3.22.12
+Authorization: Digest username="1001", realm="asterisk", nonce="1793649513/18f4f9f4f6331945ff074160b2d66820", uri="sip:16104803845@169.58.66.206:47923", response="ffb84fb7a4b01a412d32ef92c1f50888", algorithm=MD5, cnonce="defb2daec1d04f468206b809181e7556", opaque="4959e2cb7a44b3da", qop=auth, nc=00000001
+Content-Type: application/sdp
+Content-Length:   342
+
+v=0
+o=- 4002623912 4002623912 IN IP4 192.168.4.121
+s=pjmedia
+b=AS:84
+t=0 0
+a=X-nat:0
+m=audio 4014 RTP/AVP 8 0 101
+c=IN IP4 192.168.4.121
+b=TIAS:64000
+a=rtcp:4015 IN IP4 192.168.4.121
+a=sendrecv
+a=rtpmap:8 PCMA/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ssrc:293303463 cname:3372059d1a8a32e4
+
+<--- Transmitting SIP response (371 bytes) to UDP:181.37.227.43:56931 --->
+SIP/2.0 100 Trying
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport=56931;received=181.37.227.43;branch=z9hG4bKPja1adee1e875f4a0db143f04a1a0402c2
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>
+CSeq: 626 INVITE
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+    -- Executing [16104803845@from-internal:1] NoOp("PJSIP/1001-00000071", "=== [SALIDA DIRECTA IP 69.197.187.87:5060] Destino: 16104803845 ===") in new stack
+    -- Executing [16104803845@from-internal:2] Set("PJSIP/1001-00000071", "CALLERID(num)=18494386040") in new stack
+    -- Executing [16104803845@from-internal:3] Set("PJSIP/1001-00000071", "CALLERID(name)=BANRESERVAS") in new stack
+    -- Executing [16104803845@from-internal:4] Dial("PJSIP/1001-00000071", "PJSIP/trunk_69_197_187_87/sip:16104803845@69.197.187.87:5060,40,Tor") in new stack
+<--- Transmitting SIP request (1309 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPjd6b424cb-eb9b-47b2-951c-39906d926716
+From: "BANRESERVAS" <sip:18494386040@69.197.187.87>;tag=fc9ace66-6d09-42c1-9fc3-fc91944e5b48
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: 4bbc41f6-d072-43fa-9758-b61300c4cf0a
+CSeq: 25950 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@69.197.187.87>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@69.197.187.87>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   424
+
+v=0
+o=- 1625476799 1625476799 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11894 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Called PJSIP/trunk_69_197_187_87/sip:16104803845@69.197.187.87:5060
+<--- Transmitting SIP response (566 bytes) to UDP:181.37.227.43:56931 --->
+SIP/2.0 180 Ringing
+Via: SIP/2.0/UDP 192.168.4.121:56931;rport=56931;received=181.37.227.43;branch=z9hG4bKPja1adee1e875f4a0db143f04a1a0402c2
+Call-ID: 9f232ed5ab8c47338aa57186326c7bbd
+From: <sip:1001@169.58.66.206>;tag=64ea99de1fb6428a81f818dbe6d83ce0
+To: <sip:16104803845@169.58.66.206>;tag=cf834808-c7dd-4700-86da-caba8b10814d
+CSeq: 626 INVITE
+Server: Asterisk PBX GIT-20-352e66b114
+Contact: <sip:169.58.66.206:47923>
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1309 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPjd6b424cb-eb9b-47b2-951c-39906d926716
+From: "BANRESERVAS" <sip:18494386040@69.197.187.87>;tag=fc9ace66-6d09-42c1-9fc3-fc91944e5b48
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: 4bbc41f6-d072-43fa-9758-b61300c4cf0a
+CSeq: 25950 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@69.197.187.87>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@69.197.187.87>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   424
+
+v=0
+o=- 1625476799 1625476799 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11894 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Transmitting SIP request (1309 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPjd6b424cb-eb9b-47b2-951c-39906d926716
+From: "BANRESERVAS" <sip:18494386040@69.197.187.87>;tag=fc9ace66-6d09-42c1-9fc3-fc91944e5b48
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: 4bbc41f6-d072-43fa-9758-b61300c4cf0a
+CSeq: 25950 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@69.197.187.87>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@69.197.187.87>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   424
+
+v=0
+o=- 1625476799 1625476799 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11894 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP request (611 bytes) from UDP:185.246.190.211:5060 --->
+OPTIONS sip:sgavilan30@169.58.66.206:47923;line=lwemmcw SIP/2.0
+Via: SIP/2.0/UDP 185.246.190.211:5060;branch=z9hG4bK3189e9b4;rport
+Max-Forwards: 70
+From: "asterisk" <sip:asterisk@185.246.190.211>;tag=as4ca811d6
+To: <sip:sgavilan30@169.58.66.206:47923;line=lwemmcw>
+Contact: <sip:asterisk@185.246.190.211:5060>
+Call-ID: 745276cf1a41c5b878eeea8a545d6abe@185.246.190.211:5060
+CSeq: 102 OPTIONS
+User-Agent: Asterisk PBX 13.38.3
+Date: Mon, 02 Nov 2026 19:58:35 GMT
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces, timer
+Content-Length: 0
+
+
+<--- Transmitting SIP response (548 bytes) to UDP:185.246.190.211:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 185.246.190.211:5060;rport=5060;received=185.246.190.211;branch=z9hG4bK3189e9b4
+Call-ID: 745276cf1a41c5b878eeea8a545d6abe@185.246.190.211:5060
+From: "asterisk" <sip:asterisk@185.246.190.211>;tag=as4ca811d6
+To: <sip:sgavilan30@169.58.66.206;line=lwemmcw>;tag=z9hG4bK3189e9b4
+CSeq: 102 OPTIONS
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649515/5c28b5a9b8943e4698fa4ca95c6b2a80",opaque="745c8a3165a62f73",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1135 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPj39d4a6b9-5a17-42c3-8b8d-0a5250e6f6d3
+From: "Anonymous" <sip:anonymous@69.197.187.87>;tag=9e67f26d-9066-4ef8-9595-2d1e9bf9fef1
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: c0bd2be7-0481-4355-b3ae-0eccc74b9894
+CSeq: 25760 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   422
+
+v=0
+o=- 738798363 738798363 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11298 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP request (334 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK887420519
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 1 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK887420519
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK887420519
+CSeq: 1 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",opaque="7453030024b17410",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1309 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPjd6b424cb-eb9b-47b2-951c-39906d926716
+From: "BANRESERVAS" <sip:18494386040@69.197.187.87>;tag=fc9ace66-6d09-42c1-9fc3-fc91944e5b48
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: 4bbc41f6-d072-43fa-9758-b61300c4cf0a
+CSeq: 25950 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@69.197.187.87>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@69.197.187.87>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   424
+
+v=0
+o=- 1625476799 1625476799 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11894 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP request (593 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK1720640020
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 2 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+Authorization: Digest username="5211",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",response="e0d7c92cbb6532cd019b6717ec05c6ba",qop=auth,nc=00000001, cnonce="1506693758",opaque="7453030024b17410"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK1720640020
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK1720640020
+CSeq: 2 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",opaque="20740f4e2f2b4e9e",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK960529440
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 3 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+Authorization: Digest username="5211",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",response="b5c56b85d62f21fc57cf0054cb1b458c",qop=auth,nc=00000001, cnonce="2042453573",opaque="20740f4e2f2b4e9e"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK960529440
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK960529440
+CSeq: 3 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",opaque="4fb8c55834882bea",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (593 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK1416236999
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 4 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+Authorization: Digest username="5211",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649516/20472f3cc7ee7244697f3e11fe787760",response="84b466794ed6f8c317674f1b68d8aa0f",qop=auth,nc=00000001, cnonce="1014944830",opaque="4fb8c55834882bea"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK1416236999
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK1416236999
+CSeq: 4 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649517/2949c4d9b02444ea0cc85dbfab0396ad",opaque="57b64ed7324552f9",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK672611736
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 5 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+Authorization: Digest username="5211",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649517/2949c4d9b02444ea0cc85dbfab0396ad",response="bb52ff657dd84b87d3fd4956af9c3c9d",qop=auth,nc=00000001, cnonce="1355245568",opaque="57b64ed7324552f9"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (488 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK672611736
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK672611736
+CSeq: 5 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649517/2949c4d9b02444ea0cc85dbfab0396ad",opaque="764148052171a2eb",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP request (592 bytes) from UDP:45.61.186.170:62154 --->
+REGISTER sip:169.58.66.206 SIP/2.0
+Via: SIP/2.0/UDP 45.61.186.170:62154;branch=z9hG4bK1069607926
+Max-Forwards: 70
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>
+Call-ID: 1677007990-1431690348-825476933
+CSeq: 6 REGISTER
+Contact: <sip:5211@45.61.186.170:62154>
+Content-Length: 0
+Authorization: Digest username="5211",uri="sip:169.58.66.206",algorithm=MD5,realm="asterisk",nonce="1793649517/2949c4d9b02444ea0cc85dbfab0396ad",response="3b7be49d1a8a9427e9f06038e20459d8",qop=auth,nc=00000001, cnonce="807344673",opaque="764148052171a2eb"
+User-Agent: pplsip
+
+
+<--- Transmitting SIP response (490 bytes) to UDP:45.61.186.170:62154 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 45.61.186.170:62154;rport=62154;received=45.61.186.170;branch=z9hG4bK1069607926
+Call-ID: 1677007990-1431690348-825476933
+From: <sip:5211@169.58.66.206>;tag=334973886
+To: <sip:5211@169.58.66.206>;tag=z9hG4bK1069607926
+CSeq: 6 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1793649517/2949c4d9b02444ea0cc85dbfab0396ad",opaque="0bcd48650eaee54d",algorithm=MD5,qop="auth"
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1309 bytes) to UDP:69.197.187.87:5060 --->
+INVITE sip:16104803845@69.197.187.87:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:5060;rport;branch=z9hG4bKPjd6b424cb-eb9b-47b2-951c-39906d926716
+From: "BANRESERVAS" <sip:18494386040@69.197.187.87>;tag=fc9ace66-6d09-42c1-9fc3-fc91944e5b48
+To: <sip:16104803845@69.197.187.87>
+Contact: <sip:asterisk@169.58.66.206:5060>
+Call-ID: 4bbc41f6-d072-43fa-9758-b61300c4cf0a
+CSeq: 25950 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+P-Asserted-Identity: "BANRESERVAS" <sip:18494386040@69.197.187.87>
+Remote-Party-ID: "BANRESERVAS" <sip:18494386040@69.197.187.87>;party=calling;privacy=off;screen=no
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   424
+
+v=0
+o=- 1625476799 1625476799 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 11894 RTP/AVP 0 8 18 107 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
