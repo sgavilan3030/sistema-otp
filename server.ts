@@ -2260,6 +2260,7 @@ export function generateCleanDialplanConf(
     // 1. Resolve ASSIGNED_CARRIER from channel variable (AMI/Originate), AstDB ivr_vars, or user_carrier
     block += ` same => n,Set(DIAL_NUM=${destVar})\n`;
     block += ` same => n,ExecIf($["\${DIAL_NUM:0:2}" = "77"]?Set(DIAL_NUM=\${DIAL_NUM:2}))\n`;
+    block += ` same => n,ExecIf($["\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
     block += ` same => n,Set(CALLING_USER_CHAN=\${CALLERID(num)})\n`;
     block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER_CHAN=\${CHANNEL(endpoint)}))\n`;
     block += ` same => n,Set(ASSIGNED_CARRIER=\${IF($["\${ASSIGNED_CARRIER}" != ""]?\${ASSIGNED_CARRIER}:\${OUTBOUND_CARRIER})})\n`;
@@ -2281,7 +2282,7 @@ export function generateCleanDialplanConf(
       const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/${numWithPrefix}@${cSlug}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
       block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a ${numWithPrefix} ===)\n`;
@@ -2289,10 +2290,11 @@ export function generateCleanDialplanConf(
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      // Fallback
-      block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      if (!isIpAuth) {
+        block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      }
       block += ` same => n,NoOp(=== [FAILOVER TRONCAL DEDICADA] Troncal ${cSlug} fallo (\${DIALSTATUS}), pasando a pool general ===)\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
     });
@@ -2309,7 +2311,7 @@ export function generateCleanDialplanConf(
       const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/${numWithPrefix}@${cSlug}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       if (!isFirst) {
         block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
@@ -2321,10 +2323,11 @@ export function generateCleanDialplanConf(
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
-      // Fallback
-      block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      if (!isIpAuth) {
+        block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      }
     });
 
     block += ` same => n(${labelEnd}),NoOp(=== [CALL END] Destino: ${destVar} | DIALSTATUS=\${DIALSTATUS} | HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
@@ -2335,7 +2338,11 @@ export function generateCleanDialplanConf(
     return block;
   };
 
-  // Reglas de normalizacion para llamadas marcadas con +, 00 o 011 desde MicroSIP
+  // Reglas de normalizacion para llamadas marcadas con +, 00, 011 o prefijo 018 desde MicroSIP
+  dialplanContent += `; 2c. Normalización de marcación manual con prefijo de proveedor 018 (ej. 01816104803845)\n`;
+  dialplanContent += `exten => _018X.,1,NoOp(=== [MARCACION MANUAL PREFIJO 018 NORMALIZADA] Destino: \${EXTEN:3} ===)\n`;
+  dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
+
   dialplanContent += `; 2d. Normalización de marcación internacional manual desde MicroSIP (+, 00, 011)\n`;
   dialplanContent += `exten => _+X.,1,NoOp(Marcación saliente con prefijo + normalizada: \${EXTEN:1})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:1},1)\n\n`;
@@ -2344,10 +2351,13 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
 
-  dialplanContent += `; 2e. Regla de Prueba Directa Forzada para Troncal IP 69.197.187.87 (Marca 77 + número, ej. 771809XXXXXXX)\n`;
+  dialplanContent += `; 2e. Regla de Prueba Directa Forzada para Troncal IP 69.197.187.87 (Marca 77 + número, ej. 7716104803845)\n`;
   dialplanContent += `exten => _77X.,1,NoOp(=== [PRUEBA DIRECTA TRONCAL IP 69.197.187.87] Destino: \${EXTEN:2} ===)\n`;
-  dialplanContent += ` same => n,Set(CALLERID(all)="\${GLOBAL_DEFAULT_CID_NAME}" <\${GLOBAL_DEFAULT_CID_NUM}>)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN:2}@trunk_69_197_187_87,60,Tor)\n`;
+  dialplanContent += ` same => n,Set(DIAL_NUM=\${EXTEN:2})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num)=18494386040)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name)=BANRESERVAS)\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/trunk_69_197_187_87/sip:018\${DIAL_NUM}@69.197.187.87:5060,40,Tor)\n`;
   dialplanContent += ` same => n,NoOp(=== [FIN PRUEBA TRONCAL IP] Status: \${DIALSTATUS} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
