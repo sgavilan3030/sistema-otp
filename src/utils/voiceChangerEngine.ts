@@ -3,7 +3,7 @@ import { VoiceChangerProfile, VoiceChangerState } from '../types';
 export const VOICE_PROFILES: VoiceChangerProfile[] = [
   {
     id: 'es-female-executive',
-    name: 'Mujer Ejecutiva Bancaria (Español)',
+    name: 'Mujer Operadora Ejecutiva (Español)',
     gender: 'female',
     language: 'es',
     pitchShiftSemi: 3.8,
@@ -11,8 +11,8 @@ export const VOICE_PROFILES: VoiceChangerProfile[] = [
     eqTrebleGain: 5.5,
     eqBassCut: 190,
     reverbAmount: 15,
-    description: 'Tono seguro, profesional y corporativo. Ideal para confirmación de transacciones y banca en línea.',
-    sampleText: 'Buenas tardes, le contacto del departamento de seguridad y prevención de fraudes.',
+    description: 'Tono seguro, profesional y corporativo. Ideal para confirmación de pedidos, soporte al cliente y atención.',
+    sampleText: 'Buenas tardes, le contacto del departamento de atención y servicio al cliente.',
     asteriskPitchValue: '1.32',
   },
   {
@@ -31,7 +31,7 @@ export const VOICE_PROFILES: VoiceChangerProfile[] = [
   },
   {
     id: 'es-female-security',
-    name: 'Mujer Oficial de Seguridad OTP (Español)',
+    name: 'Mujer Oficial de Validación y Cuentas (Español)',
     gender: 'female',
     language: 'es',
     pitchShiftSemi: 3.0,
@@ -39,8 +39,8 @@ export const VOICE_PROFILES: VoiceChangerProfile[] = [
     eqTrebleGain: 4.0,
     eqBassCut: 175,
     reverbAmount: 10,
-    description: 'Tono institucional, firme y protocolar. Diseñado para captura de códigos OTP y tokens bancarios.',
-    sampleText: 'Por protocolo de seguridad, por favor ingrese su código de verificación de 6 dígitos.',
+    description: 'Tono institucional, firme y protocolar. Diseñado para validación de cuentas y confirmaciones seguras.',
+    sampleText: 'Por protocolo de verificación, por favor confirme su código de 6 dígitos.',
     asteriskPitchValue: '1.26',
   },
   {
@@ -133,7 +133,7 @@ export const INITIAL_VOICE_CHANGER_STATE: VoiceChangerState = {
 
 export interface QuickPhrase {
   id: string;
-  category: 'Bancario' | 'Seguridad OTP' | 'Espera' | 'Éxito' | 'General';
+  category: 'Servicio' | 'Verificación OTP' | 'Espera' | 'Éxito' | 'General';
   language: 'es' | 'en';
   text: string;
   label: string;
@@ -143,72 +143,72 @@ export const QUICK_SOUNDBOARD_PHRASES: QuickPhrase[] = [
   // ESPAÑOL
   {
     id: 'es-1',
-    category: 'Bancario',
+    category: 'Servicio',
     language: 'es',
-    label: 'Saludo Seguridad Bancaria',
-    text: 'Buenas tardes, le contacto del departamento de prevención y seguridad bancaria para validar una transacción reciente.',
+    label: 'Saludo de Atención al Cliente',
+    text: 'Buenas tardes, le contacto del departamento de atención al cliente para validar una consulta reciente sobre su cuenta.',
   },
   {
     id: 'es-2',
-    category: 'Seguridad OTP',
+    category: 'Verificación OTP',
     language: 'es',
-    label: 'Solicitud Código OTP SMS',
+    label: 'Solicitud Código Verificación SMS',
     text: 'Por su seguridad, por favor digite en su teclado o dicte el código de verificación temporal de 6 dígitos que acaba de recibir por mensaje de texto.',
   },
   {
     id: 'es-3',
-    category: 'Seguridad OTP',
+    category: 'Verificación OTP',
     language: 'es',
-    label: 'Aviso No Compartir Código',
-    text: 'Recuerde que este código es estrictamente personal y confidencial. Por favor márquelo directamente en su teléfono para proteger sus fondos.',
+    label: 'Aviso Confidencialidad Código',
+    text: 'Recuerde que este código es estrictamente personal y confidencial. Por favor márquelo directamente en su teléfono para proteger su solicitud.',
   },
   {
     id: 'es-4',
     category: 'Espera',
     language: 'es',
     label: 'Validando en Sistema',
-    text: 'Permítame un momento en línea por favor mientras nuestro sistema central valida los datos de seguridad de su cuenta.',
+    text: 'Permítame un momento en línea por favor mientras nuestro sistema central valida los datos de su cuenta.',
   },
   {
     id: 'es-5',
     category: 'Éxito',
     language: 'es',
-    label: 'Operación Protegida con Éxito',
-    text: 'Excelente, su código ha sido validado correctamente. La transacción no reconocida ha sido cancelada y sus fondos están totalmente asegurados.',
+    label: 'Gestión Finalizada con Éxito',
+    text: 'Excelente, su código ha sido validado correctamente. Su trámite ha quedado registrado y completado satisfactoriamente.',
   },
   {
     id: 'es-6',
-    category: 'Bancario',
+    category: 'Servicio',
     language: 'es',
-    label: 'Pregunta Cargo Desconocido',
-    text: '¿Podría confirmarme si usted reconoce o autorizó una compra con su tarjeta de crédito o débito realizada hace unos minutos?',
+    label: 'Confirmación de Solicitud Reciente',
+    text: '¿Podría confirmarme si usted realizó una solicitud de asistencia o actualización de datos realizada hace unos minutos?',
   },
   {
     id: 'es-7',
     category: 'General',
     language: 'es',
     label: 'Despedida Institucional',
-    text: 'Ha sido un placer asistirle. Su cuenta se encuentra en estado seguro. Que tenga un excelente resto del día.',
+    text: 'Ha sido un placer asistirle. Su cuenta se encuentra en orden. Que tenga un excelente resto del día.',
   },
 
   // ENGLISH
   {
     id: 'en-1',
-    category: 'Bancario',
+    category: 'Servicio',
     language: 'en',
-    label: 'Bank Fraud Alert Greeting',
-    text: 'Good afternoon, I am calling from the bank fraud detection and prevention department regarding a suspicious transaction on your account.',
+    label: 'Customer Support Account Greeting',
+    text: 'Good afternoon, I am calling from customer service regarding recent activity and assistance on your account.',
   },
   {
     id: 'en-2',
-    category: 'Seguridad OTP',
+    category: 'Verificación OTP',
     language: 'en',
     label: 'Request One-Time Passcode (OTP)',
     text: 'For your security and verification, please enter or state the six-digit one-time passcode recently sent to your registered mobile device.',
   },
   {
     id: 'en-3',
-    category: 'Seguridad OTP',
+    category: 'Verificación OTP',
     language: 'en',
     label: 'Confidentiality Warning',
     text: 'Please note that your security passcode should never be shared with third parties. Enter it directly onto your telephone keypad.',
@@ -218,28 +218,28 @@ export const QUICK_SOUNDBOARD_PHRASES: QuickPhrase[] = [
     category: 'Espera',
     language: 'en',
     label: 'Verifying on Database',
-    text: 'Please hold the line for just a few moments while I confirm your security credentials on our secure banking gateway.',
+    text: 'Please hold the line for just a few moments while I confirm your credentials in our secure system.',
   },
   {
     id: 'en-5',
     category: 'Éxito',
     language: 'en',
-    label: 'Account Fully Secured',
-    text: 'Thank you. Your passcode has been verified successfully. The unauthorized transaction has been cancelled and your card is completely protected.',
+    label: 'Account Verified Successfully',
+    text: 'Thank you. Your passcode has been verified successfully. Your request has been processed and your account is updated.',
   },
   {
     id: 'en-6',
-    category: 'Bancario',
+    category: 'Servicio',
     language: 'en',
-    label: 'Confirm Recent Transaction',
-    text: 'Could you please confirm if you authorized any transaction or online charge on your credit card within the last fifteen minutes?',
+    label: 'Confirm Recent Activity',
+    text: 'Could you please confirm if you submitted an update or service request on your account within the last fifteen minutes?',
   },
   {
     id: 'en-7',
     category: 'General',
     language: 'en',
     label: 'Professional Farewell',
-    text: 'Thank you for your cooperation and vigilance. Your account is now fully secured. Have a wonderful rest of your day.',
+    text: 'Thank you for your cooperation and time. Your account is in good standing. Have a wonderful rest of your day.',
   },
 ];
 

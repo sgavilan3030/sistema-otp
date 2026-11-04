@@ -344,7 +344,7 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
     return matchLang && matchCat;
   });
 
-  const categories = ['Todos', 'Bancario', 'Seguridad OTP', 'Espera', 'Éxito', 'General'];
+  const categories = ['Todos', 'Servicio', 'Verificación OTP', 'Espera', 'Éxito', 'General'];
 
   return (
     <div className="space-y-6 animate-fade-in text-slate-100">
@@ -492,7 +492,7 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-300 mt-0.5">
-              Al marcar <strong className="text-purple-300 font-mono">8888</strong> desde tu softphone escucharás un tono (beep): habla al micrófono y escucharás tu propia voz reflejada en tiempo real convertida en tono femenino. Si deseas probar el IVR bancario, presiona la tecla <strong className="text-white">2</strong>.
+              Al marcar <strong className="text-purple-300 font-mono">8888</strong> desde tu softphone escucharás un tono (beep): habla al micrófono y escucharás tu propia voz reflejada en tiempo real convertida en tono femenino. Si deseas probar el menú interactivo, presiona la tecla <strong className="text-white">2</strong>.
             </p>
           </div>
         </div>
@@ -799,7 +799,7 @@ export const VoiceChangerTab: React.FC<VoiceChangerTabProps> = ({
                   <span>Soundboard de Frases con Voz de Mujer</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Haz 1-clic para decir frases bancarias en vivo durante la llamada.
+                  Haz 1-clic para reproducir frases de atención al cliente en vivo durante la llamada.
                 </p>
               </div>
 

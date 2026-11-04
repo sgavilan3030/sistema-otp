@@ -95,16 +95,16 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     } catch (_) {}
     return [
       {
-        id: 'bank',
-        name: 'Banco / Antifraude',
-        subtitle: 'Transf. desconocida',
+        id: 'customer_service',
+        name: 'Servicio al Cliente',
+        subtitle: 'Atención y soporte',
         icon: 'building',
         color: 'emerald',
-        introAudioPath: 'custom/banrearreglado',
+        introAudioPath: 'custom/bienvenida_corporativa',
         promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor_banco',
+        agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_banco_elegante',
+        holdMusicAudioPath: 'custom/moh_corporate_loop',
       },
       {
         id: 'card',
@@ -160,9 +160,9 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
         subtitle: 'Configuración libre',
         icon: 'sliders',
         color: 'purple',
-        introAudioPath: 'custom/banrearreglado',
+        introAudioPath: 'custom/bienvenida_corporativa',
         promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor_banco',
+        agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
         holdMusicAudioPath: 'custom/moh_corporate_loop',
       },
@@ -334,7 +334,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           agentName: extenObj?.name || 'Operador Asignado',
           entityId: randomEntity.id,
           entityName: randomEntity.name,
-          holdMusic: randomEntity.holdMusicAudioPath || 'custom/moh_banco_elegante',
+          holdMusic: randomEntity.holdMusicAudioPath || 'custom/moh_corporate_loop',
           trunk: carriers[0]?.name || 'televox',
         }),
       });
@@ -693,7 +693,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                             {/* Badge de Música de Hold */}
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono text-amber-300">
                               <Music className="w-3 h-3 text-amber-400" />
-                              <span>MOH: {call.holdMusicName || call.holdMusic || 'Bancaria'}</span>
+                              <span>MOH: {call.holdMusicName || call.holdMusic || 'Corporativa'}</span>
                             </span>
 
                             {call.trunk && (
@@ -822,7 +822,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
             </div>
 
             <p className="text-xs text-slate-400">
-              Personaliza qué pista de espera escucha el cliente cuando está en espera según el banco o entidad que estás simulando en el IVR:
+              Personaliza qué pista de espera escucha el cliente cuando está en espera según la campaña o servicio configurado en el IVR:
             </p>
 
             {/* Lista de Entidades y su Música de Hold Asignada */}

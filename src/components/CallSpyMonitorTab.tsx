@@ -346,8 +346,8 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
           clientName: 'Cliente Activo en Línea',
           agent: randomExten,
           agentName: extenObj?.name || 'Operador Asignado',
-          entityId: 'bank',
-          entityName: 'Banreservas / Antifraude',
+          entityId: 'customer_service',
+          entityName: 'Atención y Servicio al Cliente',
           trunk: carriers[0]?.name || 'televox',
         }),
       });

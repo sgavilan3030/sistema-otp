@@ -35,13 +35,15 @@ type=transport
 protocol=wss
 bind=0.0.0.0:8089
 
-; --- PLANTILLA BASE PARA EXTENSIONES ---
+; --- PLANTILLA BASE PARA EXTENSIONES (MicroSIP / Softphones) ---
 [endpoint-basic](!)
 type=endpoint
 context=from-internal
 disallow=all
 direct_media=no
 trust_id_inbound=yes
+trust_id_outbound=yes
+send_connected_line=yes
 send_rpid=yes
 send_pai=yes
 force_rport=yes
@@ -230,6 +232,22 @@ exten => s,1,NoOp(=== [AGENT-ANSWERED] Canal que descolgo la llamada: \${CHANNEL
  same => n,Set(__LAST_AGENT=\${PICKED_EXTEN})
  same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})
  same => n,Set(__CALLING_AGENT=\${PICKED_EXTEN})
+ ; Actualizar la información en vivo de la llamada en MicroSIP del asesor
+ same => n,Set(CONNECTEDLINE(num,i)=\${ARG1})
+ same => n,Set(CONNECTEDLINE(name,i)=Cliente: \${ARG1})
+ same => n,Return()
+
+; Subrutina Pre-Dial (b) para inyectar en pantalla de MicroSIP el número telefónico marcado por el sistema
+[sub-microsip-callerid]
+exten => s,1,NoOp(=== [MICROSIP AGENT DISPLAY] Mostrando numero marcado en softphone del agente: \${ARG1} ===)
+ same => n,Set(TARGET_DISPLAY=\${IF($["\${ARG1}" != ""]?\${ARG1}:\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(CALLERID(num)=\${TARGET_DISPLAY}))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(CALLERID(name)=Cliente: \${TARGET_DISPLAY}))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(CALLERID(all)="Cliente: \${TARGET_DISPLAY}" <\${TARGET_DISPLAY}>))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(CONNECTEDLINE(num,i)=\${TARGET_DISPLAY}))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(CONNECTEDLINE(name,i)=Cliente: \${TARGET_DISPLAY}))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(PJSIP_HEADER(add,P-Asserted-Identity)="Cliente: \${TARGET_DISPLAY}" <sip:\${TARGET_DISPLAY}@127.0.0.1>))
+ same => n,ExecIf($["\${TARGET_DISPLAY}" != ""]?Set(PJSIP_HEADER(add,Remote-Party-ID)="Cliente: \${TARGET_DISPLAY}" <sip:\${TARGET_DISPLAY}@127.0.0.1>;party=calling;screen=yes;privacy=off))
  same => n,Return()
 
 ; ------------------------------------------------------------------------------
@@ -355,12 +373,20 @@ exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion
  same => n,Set(TARGET_AGENT=\${DB(originating_agent/\${CALLERID(num)})})
  same => n,GotoIf($["\${TARGET_AGENT}" != ""]?agent_found:fallback_target)
  same => n(agent_found),NoOp(Retornando llamada al agente que origino el contacto: \${TARGET_AGENT})
- same => n,Dial(PJSIP/\${TARGET_AGENT},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
+ same => n,Set(TARGET_DISPLAY=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})})
+ same => n,Set(CALLERID(num)=\${TARGET_DISPLAY})
+ same => n,Set(CALLERID(name)=Cliente: \${TARGET_DISPLAY})
+ same => n,Set(CALLERID(all)="Cliente: \${TARGET_DISPLAY}" <\${TARGET_DISPLAY}>)
+ same => n,Dial(PJSIP/\${TARGET_AGENT},30,tTkKb(sub-microsip-callerid^s^1^\${TARGET_DISPLAY})U(sub-record-picked-agent^\${TARGET_DISPLAY}))
  same => n,Hangup()
  same => n(fallback_target),NoOp(Destino asignado: ${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? 'Ring-All (Todas las Extensiones)' : press1.digit1Target})
- same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
+ same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKb(sub-microsip-callerid^s^1^\${TARGET_DISPLAY})U(sub-record-picked-agent^\${TARGET_DISPLAY}))
  same => n,Hangup()`
-     : `same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKU(sub-record-picked-agent^\${CALLERID(num)}))
+     : `same => n,Set(TARGET_DISPLAY=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})})
+ same => n,Set(CALLERID(num)=\${TARGET_DISPLAY})
+ same => n,Set(CALLERID(name)=Cliente: \${TARGET_DISPLAY})
+ same => n,Set(CALLERID(all)="Cliente: \${TARGET_DISPLAY}" <\${TARGET_DISPLAY}>)
+ same => n,Dial(${press1.digit1Target === 'ringall' || press1.digit1Action === 'ringall' ? ringAllEndpoints : `PJSIP/${press1.digit1Target}`},30,tTkKb(sub-microsip-callerid^s^1^\${TARGET_DISPLAY})U(sub-record-picked-agent^\${TARGET_DISPLAY}))
  same => n,Hangup()`
  }
 

@@ -38,7 +38,7 @@ export const CallerIdModal: React.FC<CallerIdModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setNumVal(callerIdNum || '+18005550199');
-      setNameVal(callerIdName || 'Seguridad Bancaria');
+      setNameVal(callerIdName || 'SERVICIO AL CLIENTE');
       setSaveSuccess(false);
     }
   }, [isOpen, callerIdNum, callerIdName]);
@@ -47,60 +47,60 @@ export const CallerIdModal: React.FC<CallerIdModalProps> = ({
 
   const presets = [
     {
-      label: 'Banreservas Antifraude',
-      name: 'BANRESERVAS',
-      num: '8099602110',
+      label: 'Atención y Servicio al Cliente',
+      name: 'SERVICIO AL CLIENTE',
+      num: '18005550199',
       icon: Building2,
       color: 'emerald',
     },
     {
-      label: 'Visa Seguridad Internacional',
-      name: 'VISA SEGURIDAD',
-      num: '18005550199',
-      icon: CreditCard,
+      label: 'Soporte Técnico Especializado',
+      name: 'SOPORTE TECNICO',
+      num: '18005550188',
+      icon: Sliders,
       color: 'sky',
     },
     {
-      label: 'Banco Popular Dominicano',
-      name: 'BANCO POPULAR',
-      num: '8095445555',
+      label: 'Centro de Notificaciones Oficial',
+      name: 'NOTIFICACIONES',
+      num: '18005550177',
       icon: Building2,
       color: 'blue',
     },
     {
-      label: 'WhatsApp / Telegram Verif.',
+      label: 'WhatsApp / SMS Verificación',
       name: 'WHATSAPP VERIF',
       num: '18004567890',
       icon: MessageSquare,
       color: 'emerald',
     },
     {
-      label: 'Google / Apple ID Alerta',
+      label: 'Centro de Seguridad de Cuenta',
       name: 'SECURITY ALERT',
       num: '18005550122',
       icon: Lock,
       color: 'amber',
     },
     {
-      label: 'Amazon Fraude / Entregas',
-      name: 'AMAZON FRAUD',
+      label: 'Despacho y Envíos de Pedidos',
+      name: 'LOGISTICA Y ENVIOS',
       num: '18005550133',
       icon: ShoppingBag,
       color: 'orange',
     },
     {
-      label: 'Banco BHD León',
-      name: 'BANCO BHD',
-      num: '8092435000',
+      label: 'Central Telefónica PBX',
+      name: 'CENTRAL TELEFONICA',
+      num: '18005550100',
       icon: Building2,
       color: 'emerald',
     },
     {
-      label: 'Scotiabank República Dominicana',
-      name: 'SCOTIABANK',
-      num: '8095677268',
+      label: 'Recepción y Consultas',
+      name: 'CONSULTAS Y VENTAS',
+      num: '18005550155',
       icon: Building2,
-      color: 'rose',
+      color: 'teal',
     },
     {
       label: 'Número Privado / Desconocido',
@@ -214,7 +214,7 @@ export const CallerIdModal: React.FC<CallerIdModalProps> = ({
                 required
                 value={nameVal}
                 onChange={(e) => setNameVal(e.target.value)}
-                placeholder="ej. BANRESERVAS"
+                placeholder="ej. SERVICIO AL CLIENTE"
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-emerald-500 font-bold uppercase"
               />
             </div>

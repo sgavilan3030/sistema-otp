@@ -194,7 +194,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [extName, setExtName] = useState('');
   const [extSecret, setExtSecret] = useState('');
   const [extCallerIdNum, setExtCallerIdNum] = useState('+18005550199');
-  const [extCallerIdName, setExtCallerIdName] = useState('Seguridad Bancaria');
+  const [extCallerIdName, setExtCallerIdName] = useState('Atención al Cliente');
   const [extContext, setExtContext] = useState('from-internal');
   const [extTransport, setExtTransport] = useState<PjsipExtension['transport']>('transport-udp');
   const [extPort, setExtPort] = useState<number>(47923);
@@ -216,7 +216,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtName(`Usuario ${nextExt}`);
     setExtSecret(`Pass!${Math.random().toString(36).slice(-8)}#2026`);
     setExtCallerIdNum('+18005550199');
-    setExtCallerIdName('Seguridad Bancaria');
+    setExtCallerIdName('Atención al Cliente');
     setExtContext('from-internal');
     setExtTransport('transport-udp');
     setExtPort(47923);
@@ -232,7 +232,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtName(ext.name);
     setExtSecret(ext.secret);
     setExtCallerIdNum(ext.callerIdNum || '+18005550199');
-    setExtCallerIdName(ext.callerIdName || ext.name || 'Seguridad Bancaria');
+    setExtCallerIdName(ext.callerIdName || ext.name || 'Atención al Cliente');
     setExtContext(ext.context);
     setExtTransport(ext.transport);
     setExtPort(ext.port || 47923);

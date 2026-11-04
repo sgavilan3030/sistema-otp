@@ -1337,7 +1337,7 @@ regInterval=300
                 <span>Paquetes de Minutos Preconfigurados</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Ofrece paquetes comerciales listos para que tus clientes recarguen vía Zelle, USDT o Banco.
+                Ofrece paquetes comerciales listos para que tus clientes recarguen vía Zelle, USDT o Transferencia Directa.
               </p>
             </div>
           </div>
@@ -1981,7 +1981,7 @@ regInterval=300
                 >
                   <option value="zelle">Zelle (Transferencia bancaria USA)</option>
                   <option value="usdt_crypto">Cripto USDT (TRC-20 / Binance Pay)</option>
-                  <option value="bank_transfer">Transferencia Bancaria Local (Banreservas / BHD / Popular)</option>
+                  <option value="bank_transfer">Transferencia Bancaria Directa</option>
                   <option value="cash">Efectivo (Cash)</option>
                   <option value="credit_card">Tarjeta de Crédito / Débito</option>
                   <option value="voucher">Voucher / Cupón de Minutos</option>

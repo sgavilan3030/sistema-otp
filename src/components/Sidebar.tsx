@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCallSimulator,
   onOpenCallerIdModal,
   activeCallerIdNum = '+18005550199',
-  activeCallerIdName = 'BANRESERVAS',
+  activeCallerIdName = 'ATENCION AL CLIENTE',
   onLogout,
   isSyncing,
   isOpenMobile,

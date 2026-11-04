@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCallSimulator,
   onOpenCallerIdModal,
   activeCallerIdNum = '+18005550199',
-  activeCallerIdName = 'BANRESERVAS',
+  activeCallerIdName = 'ATENCION AL CLIENTE',
   onOpenMobileMenu,
   onLogout,
   isSyncing,

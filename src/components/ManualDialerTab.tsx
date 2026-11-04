@@ -59,18 +59,17 @@ interface ManualDialerTabProps {
 }
 
 const DEFAULT_1CLICK_AUDIOS: { path: string; name: string; label: string; duration: string; category: string }[] = [
-  { path: 'custom/banrearreglado', name: 'banrearreglado.wav', label: 'Alerta Banreservas Antifraude', duration: '12s', category: 'Bancos' },
-  { path: 'custom/alerta_banco_antifraude', name: 'alerta_banco_antifraude.wav', label: 'Alerta General Cuenta Bancaria', duration: '10s', category: 'Bancos' },
+  { path: 'custom/bienvenida_corporativa', name: 'bienvenida_corporativa.wav', label: 'Bienvenida Corporativa General', duration: '14s', category: 'Corporativo' },
+  { path: 'custom/notificacion_servicio', name: 'notificacion_servicio.wav', label: 'Notificación Importante de Cuenta', duration: '10s', category: 'Servicio' },
   { path: 'custom/alerta_cargo_tarjeta', name: 'alerta_cargo_tarjeta.wav', label: 'Alerta Cargo no Reconocido', duration: '11s', category: 'Tarjetas' },
   { path: 'custom/solicitar_codigo_otp', name: 'solicitar_codigo_otp.wav', label: 'Solicitud Código OTP / Token', duration: '8s', category: 'Seguridad' },
   { path: 'custom/solicitar_otp_tarjeta', name: 'solicitar_otp_tarjeta.wav', label: 'Solicitud Código Tarjeta de Crédito', duration: '9s', category: 'Tarjetas' },
   { path: 'custom/alerta_migracion_whatsapp', name: 'alerta_migracion_whatsapp.wav', label: 'Alerta Verificación WhatsApp', duration: '10s', category: 'Mensajería' },
   { path: 'custom/alerta_seguridad_google', name: 'alerta_seguridad_google.wav', label: 'Alerta Seguridad Cuenta Google', duration: '10s', category: 'Cuentas' },
   { path: 'custom/alerta_compra_amazon', name: 'alerta_compra_amazon.wav', label: 'Alerta Orden no Reconocida Amazon', duration: '11s', category: 'E-commerce' },
-  { path: 'custom/bienvenida_corporativa', name: 'bienvenida_corporativa.wav', label: 'Bienvenida Corporativa General', duration: '14s', category: 'Corporativo' },
-  { path: 'custom/conectar_asesor_banco', name: 'conectar_asesor_banco.wav', label: 'Transfiriendo con Asesor Bancario', duration: '7s', category: 'Transferencia' },
+  { path: 'custom/conectar_asesor', name: 'conectar_asesor.wav', label: 'Transfiriendo con un Asesor Disponible', duration: '7s', category: 'Transferencia' },
   { path: 'custom/un_momento_validando_informacion', name: 'un_momento_validando_informacion.wav', label: 'Validando Información en Sistema', duration: '8s', category: 'Espera' },
-  { path: 'custom/operacion_bloqueada_exito', name: 'operacion_bloqueada_exito.wav', label: 'Operación Bloqueada con Éxito', duration: '8s', category: 'Éxito' },
+  { path: 'custom/operacion_bloqueada_exito', name: 'operacion_bloqueada_exito.wav', label: 'Operación Protegida con Éxito', duration: '8s', category: 'Éxito' },
 ];
 
 const INITIAL_LEADS: ManualDialerLead[] = [
@@ -87,7 +86,7 @@ const INITIAL_LEADS: ManualDialerLead[] = [
     id: 'lead-2',
     number: '+18095550199',
     name: 'Lic. Mariana Fernández',
-    company: 'Financiera Capital Plus',
+    company: 'Corporación Logística Plus',
     notes: 'Revisión de tarifa de terminación internacional',
     status: 'answered',
     lastCalledAt: new Date(Date.now() - 3600000 * 2).toISOString(),
@@ -243,8 +242,8 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
   // Call Mode & Audio Prompt State for 1-Click Dialing
   const [callMode, setCallMode] = useState<ManualDialerCallMode>('playback');
-  const [selectedAudioPath, setSelectedAudioPath] = useState<string>('custom/banrearreglado');
-  const [selectedAudioName, setSelectedAudioName] = useState<string>('banrearreglado.wav');
+  const [selectedAudioPath, setSelectedAudioPath] = useState<string>('custom/bienvenida_corporativa');
+  const [selectedAudioName, setSelectedAudioName] = useState<string>('bienvenida_corporativa.wav');
 
   // Audio Preview Player
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
@@ -969,7 +968,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                     {callMode === 'playback' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Al contestar, Asterisk reproduce la locución seleccionada (Notificación, Banco, Promo, Cobro).
+                    Al contestar, Asterisk reproduce la locución seleccionada (Notificación, Servicio, Promo, Soporte).
                   </p>
                 </div>
               </button>
@@ -1083,11 +1082,11 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                 <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px] border-t border-slate-800/60">
                   <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider">Presets Frecuentes:</span>
                   {[
-                    { path: 'custom/banrearreglado', label: '🏦 Banreservas Antifraude' },
+                    { path: 'custom/bienvenida_corporativa', label: '🏢 Bienvenida Corporativa' },
+                    { path: 'custom/notificacion_servicio', label: '📢 Notificación Servicio' },
                     { path: 'custom/alerta_cargo_tarjeta', label: '💳 Cargo Tarjeta' },
                     { path: 'custom/solicitar_codigo_otp', label: '🔐 Solicitar Token OTP' },
-                    { path: 'custom/bienvenida_corporativa', label: '🏢 Bienvenida Corporativa' },
-                    { path: 'custom/alerta_banco_antifraude', label: '⚠️ Alerta Bancaria' },
+                    { path: 'custom/conectar_asesor', label: '🎧 Conectar Asesor' },
                   ].map((chip) => (
                     <button
                       key={chip.path}
@@ -1733,7 +1732,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                   rows={6}
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
-                  placeholder="8494386040, Carlos Gomez, Distribuidora&#10;8095550199, Mariana Fernandez, Banco"
+                  placeholder="8494386040, Carlos Gomez, Distribuidora&#10;8095550199, Mariana Fernandez, Logística"
                   className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono placeholder-slate-600 focus:border-indigo-500 focus:outline-none"
                 />
               </div>

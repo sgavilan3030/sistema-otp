@@ -112,16 +112,16 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     } catch (_) {}
     return [
       {
-        id: 'bank',
-        name: 'Banco / Antifraude',
-        subtitle: 'Transf. desconocida',
+        id: 'customer_service',
+        name: 'Servicio al Cliente',
+        subtitle: 'Atención y soporte',
         icon: 'building',
         color: 'emerald',
-        introAudioPath: 'custom/banrearreglado',
+        introAudioPath: 'custom/bienvenida_corporativa',
         promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor_banco',
+        agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_banco_elegante',
+        holdMusicAudioPath: 'custom/moh_corporate_loop',
       },
       {
         id: 'card',
@@ -177,9 +177,9 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         subtitle: 'Configuración libre',
         icon: 'sliders',
         color: 'purple',
-        introAudioPath: 'custom/banrearreglado',
+        introAudioPath: 'custom/bienvenida_corporativa',
         promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor_banco',
+        agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
         holdMusicAudioPath: 'custom/moh_corporate_loop',
       },
@@ -1007,7 +1007,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               </div>
               <p className="text-xs text-slate-400">
                 {isAdmin
-                  ? 'Asigna una pista de música de espera única para cada guión o entidad bancaria simulada en el IVR.'
+                  ? 'Asigna una pista de música de espera única para cada guión o campaña configurada en el IVR.'
                   : 'Consulta de pistas de música de espera asignadas por guión. La edición está reservada a administradores.'}
               </p>
             </div>

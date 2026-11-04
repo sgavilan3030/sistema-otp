@@ -278,7 +278,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
       secret: '',
       inboundContext: 'trunkinbound',
       outboundCallerId: '+18005550199',
-      outboundCallerName: 'Seguridad Bancaria',
+      outboundCallerName: 'Atención al Cliente',
       codecs: ['ulaw', 'alaw', 'g729', 'opus'],
       qualifyFreq: 0,
       status: 'reachable',
@@ -387,7 +387,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
             (isRegistration && c.secret ? `outbound_auth = auth_${slug}\n` : `identify_by = ip\n`) +
             (isRegistration && (c.fromuser || c.username) ? `from_user = ${c.fromuser || c.username || slug}\n` : '') +
             `from_domain = ${c.host}\n` +
-            `callerid = "${c.outboundCallerName || 'Seguridad Bancaria'}" <${c.outboundCallerId || '+18005550199'}>\n` +
+            `callerid = "${c.outboundCallerName || 'Atención al Cliente'}" <${c.outboundCallerId || '+18005550199'}>\n` +
             `direct_media = no\n` +
             `rtp_symmetric = yes\n` +
             `force_rport = yes\n` +
@@ -457,7 +457,7 @@ insecure=${carrierInsecure}`;
 
     return `exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP via ${carrierName} ---)
  same => n,Set(CALLERID(num)=${c.outboundCallerId || '+18005550199'})
- same => n,Set(CALLERID(name)=${c.outboundCallerName || 'Seguridad Bancaria'})
+ same => n,Set(CALLERID(name)=${c.outboundCallerName || 'Atención al Cliente'})
  same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
  same => n,Hangup()`;
   };

