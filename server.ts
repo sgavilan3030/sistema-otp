@@ -1956,10 +1956,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(num)=\${OUT_CID_NUM_CLEAN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${OUT_CID_NAME})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${OUT_CID_NAME}" <\${OUT_CID_NUM_CLEAN}>)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,Privacy)=)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Asserted-Identity)=)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,Remote-Party-ID)=)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(remove,P-Preferred-Identity)=)\n`;
   dialplanContent += ` same => n,Set(TARGET_TRUNK_HOST=\${CHANNEL(endpoint)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "trunk_69_197_187_87"]?Set(TARGET_TRUNK_HOST=69.197.187.87):Set(TARGET_TRUNK_HOST=\${GLOBAL_CARRIER_HOST}))\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>)\n`;
