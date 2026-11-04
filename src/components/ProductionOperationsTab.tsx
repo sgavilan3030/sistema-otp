@@ -168,7 +168,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
   const [targetName, setTargetName] = useState('');
-  const [selectedService, setSelectedService] = useState<ServiceCampaignKey>('service');
+  const [selectedService, setSelectedService] = useState<ServiceCampaignKey>(() => {
+    try {
+      const saved = localStorage.getItem('prod_selected_service_v3');
+      if (saved && saved !== 'bank') return saved as ServiceCampaignKey;
+    } catch (_) {}
+    return 'service';
+  });
   const [customServiceName, setCustomServiceName] = useState('Servicio al Cliente');
   const [callFlowMode, setCallFlowModeState] = useState<'otp' | 'press1' | 'hybrid'>(() => {
     try {
@@ -534,9 +540,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('ast20_selected_campaign_id');
-      if (saved) return saved;
+      if (saved && saved !== 'camp-bank') return saved;
     } catch (_) {}
-    return 'camp-bank';
+    return 'camp-service';
   });
 
   // Quick contact addition state for campaigns
@@ -553,7 +559,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.map((ent: any) => {
+            if (ent && (ent.id === 'bank' || !ent.introAudioPath)) {
+              return {
+                ...ent,
+                id: ent.id === 'bank' ? 'service' : ent.id,
+                name: ent.name && !ent.name.toLowerCase().includes('banc') ? ent.name : 'Servicio al Cliente',
+                introAudioPath: ent.introAudioPath || 'custom/bienvenida_corporativa',
+                promptAudioPath: ent.promptAudioPath || 'custom/solicitar_codigo_otp',
+                agentAudioPath: ent.agentAudioPath || 'custom/conectar_asesor',
+                successAudioPath: ent.successAudioPath || 'custom/operacion_bloqueada_exito',
+                holdMusicAudioPath: ent.holdMusicAudioPath || 'custom/moh_corporate_loop',
+              };
+            }
+            return ent;
+          });
         }
       }
     } catch (e) {}
@@ -798,16 +818,43 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setInlineRenamingId(null);
   };
 
+  // Ultra-safe default audio configuration
+  const safeDefaultAudioConfig: CampaignAudioConfig = {
+    introAudioPath: 'custom/bienvenida_corporativa',
+    promptAudioPath: 'custom/solicitar_codigo_otp',
+    agentAudioPath: 'custom/conectar_asesor',
+    successAudioPath: 'custom/operacion_bloqueada_exito',
+  };
+
   // Derived campaign audio configurations for backward compatibility
-  const campaignAudios: Record<string, CampaignAudioConfig> = campaignEntities.reduce((acc, ent) => {
-    acc[ent.id] = {
-      introAudioPath: ent.introAudioPath,
-      promptAudioPath: ent.promptAudioPath,
-      agentAudioPath: ent.agentAudioPath,
-      successAudioPath: ent.successAudioPath,
-    };
+  const campaignAudios: Record<string, CampaignAudioConfig> = (campaignEntities || []).reduce((acc, ent) => {
+    if (ent && ent.id) {
+      acc[ent.id] = {
+        introAudioPath: ent.introAudioPath || 'custom/bienvenida_corporativa',
+        promptAudioPath: ent.promptAudioPath || 'custom/solicitar_codigo_otp',
+        agentAudioPath: ent.agentAudioPath || 'custom/conectar_asesor',
+        successAudioPath: ent.successAudioPath || 'custom/operacion_bloqueada_exito',
+      };
+    }
     return acc;
   }, {} as Record<string, CampaignAudioConfig>);
+
+  // Ensure 'service' and 'bank' aliases always exist to prevent undefined errors
+  if (!campaignAudios['service']) {
+    campaignAudios['service'] = { ...safeDefaultAudioConfig };
+  }
+  if (!campaignAudios['bank']) {
+    campaignAudios['bank'] = campaignAudios['service'];
+  }
+
+  // Safe accessor helper that never returns undefined
+  const getServiceAudios = (key?: string): CampaignAudioConfig => {
+    if (key && campaignAudios[key]) return campaignAudios[key];
+    if (campaignAudios['service']) return campaignAudios['service'];
+    if (campaignAudios['bank']) return campaignAudios['bank'];
+    const first = Object.values(campaignAudios)[0];
+    return first || safeDefaultAudioConfig;
+  };
 
   // Helper to verify if an audio path exists physically in Asterisk
   const verifyAudioOnAsterisk = async (audioPath: string): Promise<boolean> => {
@@ -1829,7 +1876,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsSyncingAudios(true);
     if (!silent) setAudioSyncFeedback(null);
     try {
-      const currentAudios = campaignAudios[selectedService];
+      const currentAudios = getServiceAudios(selectedService);
       // 1. Sync Audios to AstDB
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
@@ -1884,7 +1931,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setLaunchFeedback(null);
 
     try {
-      const currentAudios = campaignAudios[selectedService];
+      const currentAudios = getServiceAudios(selectedService);
       const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
       const effectiveCallerIdName = callerIdName.trim() || 'Atención al Cliente';
 
@@ -4770,8 +4817,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </label>
                   <button
                     type="button"
-                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].introAudioPath, 'intro')}
-                    disabled={!campaignAudios[selectedService].introAudioPath}
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).introAudioPath, 'intro')}
+                    disabled={!getServiceAudios(selectedService).introAudioPath}
                     className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
                     title="Escuchar audio"
                   >
@@ -4792,7 +4839,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
                   <select
-                    value={campaignAudios[selectedService].introAudioPath}
+                    value={getServiceAudios(selectedService).introAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   >
@@ -4810,13 +4857,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
                   <input
                     type="text"
-                    value={campaignAudios[selectedService].introAudioPath}
+                    value={getServiceAudios(selectedService).introAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
                     placeholder="ej: custom/banrearreglado"
                     className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <div className="text-[10px] text-slate-500 font-mono">
-                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].introAudioPath || 'beep'}.wav
+                    Ruta física: /var/lib/asterisk/sounds/{getServiceAudios(selectedService).introAudioPath || 'beep'}.wav
                   </div>
                 </div>
               </div>
@@ -4830,8 +4877,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </label>
                   <button
                     type="button"
-                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].promptAudioPath, 'prompt')}
-                    disabled={!campaignAudios[selectedService].promptAudioPath}
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).promptAudioPath, 'prompt')}
+                    disabled={!getServiceAudios(selectedService).promptAudioPath}
                     className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
                     title="Escuchar audio"
                   >
@@ -4852,7 +4899,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
                   <select
-                    value={campaignAudios[selectedService].promptAudioPath}
+                    value={getServiceAudios(selectedService).promptAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   >
@@ -4873,13 +4920,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
                   <input
                     type="text"
-                    value={campaignAudios[selectedService].promptAudioPath}
+                    value={getServiceAudios(selectedService).promptAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
                     placeholder="ej: custom/solicitar_codigo_otp"
                     className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <div className="text-[10px] text-slate-500 font-mono">
-                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].promptAudioPath || 'beep'}.wav
+                    Ruta física: /var/lib/asterisk/sounds/{getServiceAudios(selectedService).promptAudioPath || 'beep'}.wav
                   </div>
                 </div>
               </div>
@@ -4893,8 +4940,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </label>
                   <button
                     type="button"
-                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].agentAudioPath, 'agent')}
-                    disabled={!campaignAudios[selectedService].agentAudioPath}
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).agentAudioPath, 'agent')}
+                    disabled={!getServiceAudios(selectedService).agentAudioPath}
                     className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
                     title="Escuchar audio"
                   >
@@ -4915,7 +4962,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
                   <select
-                    value={campaignAudios[selectedService].agentAudioPath}
+                    value={getServiceAudios(selectedService).agentAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
                   >
@@ -4934,7 +4981,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
                   <input
                     type="text"
-                    value={campaignAudios[selectedService].agentAudioPath}
+                    value={getServiceAudios(selectedService).agentAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
                     placeholder="ej: custom/conectar_asesor"
                     className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-sky-500 focus:outline-none"
@@ -4954,8 +5001,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </label>
                   <button
                     type="button"
-                    onClick={() => handleTogglePlayAudio(campaignAudios[selectedService].successAudioPath, 'success')}
-                    disabled={!campaignAudios[selectedService].successAudioPath}
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).successAudioPath, 'success')}
+                    disabled={!getServiceAudios(selectedService).successAudioPath}
                     className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
                     title="Escuchar audio"
                   >
@@ -4976,7 +5023,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
                   <select
-                    value={campaignAudios[selectedService].successAudioPath}
+                    value={getServiceAudios(selectedService).successAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
                   >
@@ -4995,13 +5042,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
                   <input
                     type="text"
-                    value={campaignAudios[selectedService].successAudioPath}
+                    value={getServiceAudios(selectedService).successAudioPath}
                     onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
                     placeholder="ej: custom/operacion_bloqueada_exito"
                     className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-purple-500 focus:outline-none"
                   />
                   <div className="text-[10px] text-slate-500 font-mono">
-                    Ruta física: /var/lib/asterisk/sounds/{campaignAudios[selectedService].successAudioPath || 'SayDigits'}.wav
+                    Ruta física: /var/lib/asterisk/sounds/{getServiceAudios(selectedService).successAudioPath || 'SayDigits'}.wav
                   </div>
                 </div>
               </div>
