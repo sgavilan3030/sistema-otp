@@ -2424,6 +2424,8 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${EXTEN:0:2}" = "77"]?Goto(from-internal,\${EXTEN:2},1))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${EXTEN:0:3}" = "018"]?Goto(from-internal,\${EXTEN:3},1))\n`;
   dialplanContent += ` same => n,Set(CALLING_USER=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
@@ -3612,10 +3614,17 @@ async function autoRepairAsteriskPjsipOnStartup() {
       exec('asterisk -rx "hangup request Local/8888" 2>/dev/null', () => {});
     } catch (_) {}
 
-    // Initialize default action in AstDB to ivr-press1
+    // Initialize default action and clean caller ID in AstDB
     try {
       executeAsteriskCommand('database put ivr_vars default_action "ivr-press1"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_mode "press1"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars global_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars default_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
+      executeAsteriskCommand('database put extension_cid 1001/name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put extension_cid 1002/name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put extension_cid 1003/name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put extension_cid 1004/name "ATENCION AL CLIENTE"').catch(() => {});
     } catch (_) {}
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);

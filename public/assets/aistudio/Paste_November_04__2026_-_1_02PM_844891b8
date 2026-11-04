@@ -1,0 +1,245 @@
+  == Manager 'sammy' logged on from 127.0.0.1
+    -- Executing [7716104803845@from-internal:1] NoOp("PJSIP/1001-000000ab", "Llamada Saliente Universal a 7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:2] Set("PJSIP/1001-000000ab", "CALLING_USER=+18005550199") in new stack
+    -- Executing [7716104803845@from-internal:3] ExecIf("PJSIP/1001-000000ab", "1?Set(CALLING_USER=1001)") in new stack
+    -- Executing [7716104803845@from-internal:4] Set("PJSIP/1001-000000ab", "__CALLING_AGENT=1001") in new stack
+    -- Executing [7716104803845@from-internal:5] Set("PJSIP/1001-000000ab", "__CALL_DEST=7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:6] Set("PJSIP/1001-000000ab", "CLIENT_BAL=10") in new stack
+    -- Executing [7716104803845@from-internal:7] Set("PJSIP/1001-000000ab", "CLIENT_CUT=1") in new stack
+    -- Executing [7716104803845@from-internal:8] GotoIf("PJSIP/1001-000000ab", "0?allow_univ") in new stack
+    -- Executing [7716104803845@from-internal:9] GotoIf("PJSIP/1001-000000ab", "1?allow_univ") in new stack
+    -- Goto (from-internal,7716104803845,14)
+    -- Executing [7716104803845@from-internal:14] Set("PJSIP/1001-000000ab", "DB(last_agent_call/7716104803845)=1001") in new stack
+    -- Executing [7716104803845@from-internal:15] Set("PJSIP/1001-000000ab", "DB(last_agent_call/1001)=1001") in new stack
+    -- Executing [7716104803845@from-internal:16] Set("PJSIP/1001-000000ab", "TARGET_DEST=7716104803845") in new stack
+    -- Executing [7716104803845@from-internal:17] Set("PJSIP/1001-000000ab", "CUSTOM_CID_NUM=+18005550199") in new stack
+    -- Executing [7716104803845@from-internal:18] Set("PJSIP/1001-000000ab", "CUSTOM_CID_NAME=Seguridad Bancaria") in new stack
+    -- Executing [7716104803845@from-internal:19] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NUM=+18005550199)") in new stack
+    -- Executing [7716104803845@from-internal:20] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [7716104803845@from-internal:21] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NUM=+18005550199)") in new stack
+    -- Executing [7716104803845@from-internal:22] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NAME=Atención al Cliente)") in new stack
+    -- Executing [7716104803845@from-internal:23] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NUM=+18005550199)") in new stack
+    -- Executing [7716104803845@from-internal:24] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NAME=Atención al Cliente)") in new stack
+    -- Executing [7716104803845@from-internal:25] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NUM=+18005550199)") in new stack
+    -- Executing [7716104803845@from-internal:26] ExecIf("PJSIP/1001-000000ab", "0?Set(CUSTOM_CID_NAME=Atención al Cliente)") in new stack
+    -- Executing [7716104803845@from-internal:27] Set("PJSIP/1001-000000ab", "RAW_CID_NUM=+18005550199") in new stack
+    -- Executing [7716104803845@from-internal:28] Set("PJSIP/1001-000000ab", "CLEAN_CID_NUM=18005550199") in new stack
+    -- Executing [7716104803845@from-internal:29] ExecIf("PJSIP/1001-000000ab", "1?Set(CALLERID(num)=18005550199)") in new stack
+    -- Executing [7716104803845@from-internal:30] ExecIf("PJSIP/1001-000000ab", "0?Set(CALLERID(num)=118005550199)") in new stack
+    -- Executing [7716104803845@from-internal:31] ExecIf("PJSIP/1001-000000ab", "0?Set(CALLERID(num)=18494386040)") in new stack
+    -- Executing [7716104803845@from-internal:32] ExecIf("PJSIP/1001-000000ab", "1?Set(CALLERID(name)=Seguridad Bancaria)") in new stack
+    -- Executing [7716104803845@from-internal:33] ExecIf("PJSIP/1001-000000ab", "0?Set(CALLERID(name)=Seguridad Bancaria)") in new stack
+    -- Executing [7716104803845@from-internal:34] Set("PJSIP/1001-000000ab", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:09.684] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [7716104803845@from-internal:35] Set("PJSIP/1001-000000ab", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [7716104803845@from-internal:36] Set("PJSIP/1001-000000ab", "CALLERID(all)="Seguridad Bancaria" <18005550199>") in new stack
+    -- Executing [7716104803845@from-internal:37] Set("PJSIP/1001-000000ab", "VOLUME(rx)=1") in new stack
+    -- Executing [7716104803845@from-internal:38] Set("PJSIP/1001-000000ab", "VOLUME(tx)=1") in new stack
+    -- Executing [7716104803845@from-internal:39] Set("PJSIP/1001-000000ab", "CALLING_USER_CHAN=18005550199") in new stack
+    -- Executing [7716104803845@from-internal:40] ExecIf("PJSIP/1001-000000ab", "1?Set(CALLING_USER_CHAN=1001)") in new stack
+    -- Executing [7716104803845@from-internal:41] Set("PJSIP/1001-000000ab", "ASSIGNED_CARRIER=") in new stack
+    -- Executing [7716104803845@from-internal:42] ExecIf("PJSIP/1001-000000ab", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:43] ExecIf("PJSIP/1001-000000ab", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:44] ExecIf("PJSIP/1001-000000ab", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [7716104803845@from-internal:45] ExecIf("PJSIP/1001-000000ab", "1?Set(ASSIGNED_CARRIER=televoxin)") in new stack
+    -- Executing [7716104803845@from-internal:46] ExecIf("PJSIP/1001-000000ab", "0?Set(ASSIGNED_CARRIER=televoxin)") in new stack
+    -- Executing [7716104803845@from-internal:47] GotoIf("PJSIP/1001-000000ab", "0?standard_carriers_univ") in new stack
+    -- Executing [7716104803845@from-internal:48] NoOp("PJSIP/1001-000000ab", "=== [CARRIER DEDICADO] Intentando troncal asignada: televoxin para 7716104803845 ===") in new stack
+    -- Executing [7716104803845@from-internal:49] GotoIf("PJSIP/1001-000000ab", "0?skip_dedicated_televoxin_univ") in new stack
+    -- Executing [7716104803845@from-internal:50] NoOp("PJSIP/1001-000000ab", "=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: televoxin (televox.in) a 7716104803845 ===") in new stack
+    -- Executing [7716104803845@from-internal:51] Dial("PJSIP/1001-000000ab", "PJSIP/7716104803845@televoxin,40,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-000000ac Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-000000ac", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-000000ac con CID: "" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-000000ac", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-000000ac", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:09.688] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-000000ac", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-000000ac", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-000000ac", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-000000ac", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-000000ac", "OUT_CID_NAME=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-000000ac", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-000000ac", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-000000ac", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-000000ac", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-000000ac", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-000000ac", "CALLERID(name)=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-000000ac", "CALLERID(all)="Atención al Cliente" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-11-04 13:02:09.690] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-11-04 13:02:09.690] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-11-04 13:02:09.691] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-11-04 13:02:09.691] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(add,P-Asserted-Identity)="Atención al Cliente" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-000000ac", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-11-04 13:02:09.692] WARNING[2154987][C-00000036]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-000000ac", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: Atención al Cliente ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-000000ac", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-000000ac'
+    -- PJSIP/televoxin-000000ac Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+    -- Called PJSIP/7716104803845@televoxin
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:52] NoOp("PJSIP/1001-000000ab", "=== Troncal Asignada televoxin finalizo con DIALSTATUS=CHANUNAVAIL HANGUPCAUSE=21 ===") in new stack
+    -- Executing [7716104803845@from-internal:53] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:54] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:55] Dial("PJSIP/1001-000000ab", "PJSIP/televoxin/sip:7716104803845@televox.in:5060,30,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-000000ad Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-000000ad", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-000000ad con CID: "Atención al Cliente" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-000000ad", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-000000ad", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:09.874] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-000000ad", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-000000ad", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-000000ad", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-000000ad", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-000000ad", "OUT_CID_NAME=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-000000ad", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-000000ad", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-000000ad", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-000000ad", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-000000ad", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-000000ad", "CALLERID(name)=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-000000ad", "CALLERID(all)="Atención al Cliente" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-11-04 13:02:09.875] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-11-04 13:02:09.875] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-11-04 13:02:09.876] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-11-04 13:02:09.876] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(add,P-Asserted-Identity)="Atención al Cliente" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-000000ad", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-11-04 13:02:09.876] WARNING[2154987][C-00000036]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-000000ad", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: Atención al Cliente ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-000000ad", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-000000ad'
+    -- PJSIP/televoxin-000000ad Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+    -- Called PJSIP/televoxin/sip:7716104803845@televox.in:5060
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:56] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:57] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:58] NoOp("PJSIP/1001-000000ab", "=== [FAILOVER TRONCAL DEDICADA] Troncal televoxin fallo (CHANUNAVAIL), pasando a pool general ===") in new stack
+    -- Executing [7716104803845@from-internal:59] NoOp("PJSIP/1001-000000ab", "") in new stack
+    -- Executing [7716104803845@from-internal:60] GotoIf("PJSIP/1001-000000ab", "1?skip_dedicated_trunk_69_197_187_87_univ") in new stack
+    -- Goto (from-internal,7716104803845,70)
+    -- Executing [7716104803845@from-internal:70] NoOp("PJSIP/1001-000000ab", "") in new stack
+    -- Executing [7716104803845@from-internal:71] NoOp("PJSIP/1001-000000ab", "=== [OUTBOUND POOL] Iniciando ruteo por pool de 2 troncal(es) habilitada(s) ===") in new stack
+    -- Executing [7716104803845@from-internal:72] NoOp("PJSIP/1001-000000ab", "=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: televoxin (televox.in) a 7716104803845 ===") in new stack
+    -- Executing [7716104803845@from-internal:73] Dial("PJSIP/1001-000000ab", "PJSIP/7716104803845@televoxin,40,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-000000ae Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-000000ae", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-000000ae con CID: "Atención al Cliente" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-000000ae", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-000000ae", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:10.054] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-000000ae", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-000000ae", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-000000ae", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-000000ae", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-000000ae", "OUT_CID_NAME=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-000000ae", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-000000ae", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-000000ae", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-000000ae", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-000000ae", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-000000ae", "CALLERID(name)=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-000000ae", "CALLERID(all)="Atención al Cliente" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-11-04 13:02:10.056] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-11-04 13:02:10.057] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-11-04 13:02:10.057] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-11-04 13:02:10.057] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(add,P-Asserted-Identity)="Atención al Cliente" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-000000ae", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-11-04 13:02:10.058] WARNING[2154987][C-00000036]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-000000ae", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: Atención al Cliente ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-000000ae", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-000000ae'
+    -- PJSIP/televoxin-000000ae Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+    -- Called PJSIP/7716104803845@televoxin
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:74] NoOp("PJSIP/1001-000000ab", "=== Troncal televoxin finalizo con DIALSTATUS=CHANUNAVAIL HANGUPCAUSE=21 ===") in new stack
+    -- Executing [7716104803845@from-internal:75] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:76] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:77] Dial("PJSIP/1001-000000ab", "PJSIP/televoxin/sip:7716104803845@televox.in:5060,30,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/televoxin-000000af Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-000000af", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/televoxin-000000af con CID: "Atención al Cliente" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-000000af", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-000000af", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:10.238] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-000000af", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-000000af", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/televoxin-000000af", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/televoxin-000000af", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/televoxin-000000af", "OUT_CID_NAME=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/televoxin-000000af", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/televoxin-000000af", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-000000af", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-000000af", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/televoxin-000000af", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/televoxin-000000af", "CALLERID(name)=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/televoxin-000000af", "CALLERID(all)="Atención al Cliente" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-11-04 13:02:10.248] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-11-04 13:02:10.249] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-11-04 13:02:10.256] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-11-04 13:02:10.257] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(add,P-Asserted-Identity)="Atención al Cliente" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/televoxin-000000af", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-11-04 13:02:10.257] WARNING[2154987][C-00000036]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/televoxin-000000af", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: Atención al Cliente ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/televoxin-000000af", "") in new stack
+  == Spawn extension (trunkinbound, 7716104803845, 1) exited non-zero on 'PJSIP/televoxin-000000af'
+    -- PJSIP/televoxin-000000af Internal Gosub(sub-pjsip-outbound,s,1) complete GOSUB_RETVAL=
+    -- Called PJSIP/televoxin/sip:7716104803845@televox.in:5060
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:78] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:79] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:80] NoOp("PJSIP/1001-000000ab", "=== [FAILOVER] Conmutando llamada a Troncal 2/2: trunk_69_197_187_87 (69.197.187.87) ===") in new stack
+    -- Executing [7716104803845@from-internal:81] Dial("PJSIP/1001-000000ab", "PJSIP/7716104803845@trunk_69_197_187_87,40,Ttb(sub-pjsip-outbound^s^1)") in new stack
+[2026-11-04 13:02:10.435] ERROR[846948]: res_pjsip.c:991 ast_sip_create_dialog_uac: Endpoint 'trunk_69_197_187_87': Could not create dialog to invalid URI 'trunk_69_197_187_87_aor'.  Is endpoint registered and reachable?
+[2026-11-04 13:02:10.435] ERROR[846948]: chan_pjsip.c:2843 request: Failed to create outgoing session to endpoint 'trunk_69_197_187_87'
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [7716104803845@from-internal:82] NoOp("PJSIP/1001-000000ab", "=== Troncal trunk_69_197_187_87 finalizo con DIALSTATUS=CHANUNAVAIL HANGUPCAUSE=3 ===") in new stack
+    -- Executing [7716104803845@from-internal:83] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:84] GotoIf("PJSIP/1001-000000ab", "0?end_carrier_univ") in new stack
+    -- Executing [7716104803845@from-internal:85] Dial("PJSIP/1001-000000ab", "PJSIP/trunk_69_197_187_87/sip:7716104803845@69.197.187.87:5060,30,Ttb(sub-pjsip-outbound^s^1)") in new stack
+    -- PJSIP/trunk_69_197_187_87-000000b0 Internal Gosub(sub-pjsip-outbound,s,1) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/trunk_69_197_187_87-000000b0", "=== [OUTBOUND PRE-DIAL] Preparando canal saliente: PJSIP/trunk_69_197_187_87-000000b0 con CID: "Atención al Cliente" <7716104803845> ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/trunk_69_197_187_87-000000b0", "JITTERBUFFER(adaptive)=max_200,target_30") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERPRES()=allowed_not_screened") in new stack
+[2026-11-04 13:02:10.435] ERROR[2154987][C-00000036]: pbx_functions.c:739 ast_func_write: Function CALLERPRES not registered
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:7] Set("PJSIP/trunk_69_197_187_87-000000b0", "OUT_CID_NUM=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:8] Set("PJSIP/trunk_69_197_187_87-000000b0", "OUT_CID_NAME=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:9] Set("PJSIP/trunk_69_197_187_87-000000b0", "OUT_CID_NUM_CLEAN=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:10] ExecIf("PJSIP/trunk_69_197_187_87-000000b0", "0?Set(OUT_CID_NUM_CLEAN=17716104803845)") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/trunk_69_197_187_87-000000b0", "0?Set(OUT_CID_NUM_CLEAN=18494386040)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/trunk_69_197_187_87-000000b0", "0?Set(OUT_CID_NAME=Seguridad Bancaria)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(num)=7716104803845") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(name)=Atención al Cliente") in new stack
+    -- Executing [s@sub-pjsip-outbound:15] Set("PJSIP/trunk_69_197_187_87-000000b0", "CALLERID(all)="Atención al Cliente" <7716104803845>") in new stack
+    -- Executing [s@sub-pjsip-outbound:16] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(remove,Privacy)=") in new stack
+[2026-11-04 13:02:10.443] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:17] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(remove,P-Asserted-Identity)=") in new stack
+[2026-11-04 13:02:10.443] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:18] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(remove,Remote-Party-ID)=") in new stack
+[2026-11-04 13:02:10.443] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:19] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(remove,P-Preferred-Identity)=") in new stack
+[2026-11-04 13:02:10.443] ERROR[846948]: res_pjsip_header_funcs.c:1030 remove_header: No headers had been previously added to this session.
+    -- Executing [s@sub-pjsip-outbound:20] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(add,P-Asserted-Identity)="Atención al Cliente" <sip:7716104803845@televox.in>") in new stack
+    -- Executing [s@sub-pjsip-outbound:21] Set("PJSIP/trunk_69_197_187_87-000000b0", "PJSIP_HEADER(add,Remote-Party-ID") in new stack
+[2026-11-04 13:02:10.444] WARNING[2154987][C-00000036]: pbx_variables.c:1304 pbx_builtin_setvar: Set requires an '=' to be a valid assignment.
+    -- Executing [s@sub-pjsip-outbound:22] NoOp("PJSIP/trunk_69_197_187_87-000000b0", "=== [OUTBOUND CID FINAL] CallerID num: 7716104803845 name: Atención al Cliente ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:23] Return("PJSIP/trunk_69_197_187_87-000000b0", "") in new stack
