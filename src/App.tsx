@@ -74,8 +74,24 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasTelevox = parsed.some((c: CarrierTrunk) => c.name === 'televox' || c.id === 'trunk-televox');
           const hasTrunk69 = parsed.some((c: CarrierTrunk) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
           let list: CarrierTrunk[] = parsed.map((c: CarrierTrunk): CarrierTrunk => {
+            if (c.name === 'televox' || c.id === 'trunk-televox') {
+              return {
+                ...c,
+                id: 'trunk-televox',
+                name: 'televox',
+                authType: 'registration',
+                host: c.host || 'voip.ghostcall.online',
+                port: Number(c.port) || 5060,
+                username: c.username || 'sgavilan30',
+                secret: c.secret || 'Robert2026',
+                enabled: true,
+                status: (c.status === 'disabled' ? 'reachable' : c.status) as any,
+                outboundCallerName: 'Atención al Cliente',
+              };
+            }
             if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
               return {
                 ...c,
@@ -95,8 +111,17 @@ export default function App() {
               outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? 'Atención al Cliente' : c.outboundCallerName,
             };
           });
-          if (!hasTrunk69 && initialCarriers[0]) {
+          if (!hasTelevox && initialCarriers[0]) {
             list = [initialCarriers[0], ...list];
+          }
+          if (!hasTrunk69 && initialCarriers[1]) {
+            list = [...list, initialCarriers[1]];
+          }
+          // Ensure televox is at index 0 (primary #1)
+          const tvoxIdx = list.findIndex((c) => c.name === 'televox' || c.id === 'trunk-televox');
+          if (tvoxIdx > 0) {
+            const [tvox] = list.splice(tvoxIdx, 1);
+            list.unshift(tvox);
           }
           return list;
         }

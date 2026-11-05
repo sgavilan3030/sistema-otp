@@ -324,6 +324,24 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     }
   };
 
+  const televoxCarrier = carriers.find(
+    (c) => c.name === 'televox' || c.id === 'trunk-televox'
+  );
+  const isTelevoxActive = televoxCarrier
+    ? televoxCarrier.enabled !== false && televoxCarrier.status !== 'disabled'
+    : false;
+  const isTelevoxPrimary = televoxCarrier ? carriers[0]?.id === televoxCarrier.id : false;
+
+  const handleMakeTelevoxPrimary = () => {
+    if (!televoxCarrier) return;
+    handleSetPrimary(televoxCarrier.id);
+  };
+
+  const handleToggleTelevox = () => {
+    if (!televoxCarrier) return;
+    handleToggle(televoxCarrier.id);
+  };
+
   const trunk69Carrier = carriers.find(
     (c) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87'
   );
@@ -564,7 +582,93 @@ insecure=${carrierInsecure}`;
         </div>
       )}
 
-      {/* CARD DE ACTIVACIÓN RÁPIDA: PROVEEDOR NUEVO IP-A-IP 69.197.187.87 (INDEPENDIENTE DE TELEVOX) */}
+      {/* CARD DE TELEVOX: TRONCAL PRIMARIA SIP ACTIVA CON REGISTRO */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-300 shrink-0">
+            <Server className="w-6 h-6 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold text-white font-mono">televox</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-200 border border-emerald-400/50 uppercase tracking-wide">
+                Conexión SIP Saliente
+              </span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
+                Host: {televoxCarrier?.host || 'voip.ghostcall.online'}:{televoxCarrier?.port || 5060}
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
+                User: {televoxCarrier?.username || 'sgavilan30'}
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold">
+                Auth: Registro SIP
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                CID: {televoxCarrier?.outboundCallerId || '+18494386040'}
+              </span>
+              {isTelevoxPrimary ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">
+                  <Star className="w-3 h-3 fill-current text-amber-400" />
+                  <span>Troncal Primaria (#1 en Asterisk)</span>
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  Secundaria
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-300">
+              Ruteo saliente principal activado a través de <b>Televox por conexión SIP</b> con registro PJSIP. Enrutamiento prioritario para todas las llamadas con failover automático.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+          {televoxCarrier && (
+            <button
+              onClick={() => setSelectedCarrierId(televoxCarrier.id)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
+            >
+              Ver Configuración
+            </button>
+          )}
+
+          {televoxCarrier && (
+            <button
+              onClick={() => handleOpenEditModal(televoxCarrier)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 transition-all cursor-pointer flex items-center gap-1"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Editar Parámetros</span>
+            </button>
+          )}
+
+          {televoxCarrier && !isTelevoxPrimary && isTelevoxActive && (
+            <button
+              onClick={handleMakeTelevoxPrimary}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Colocar Televox como troncal #1 prioritaria para todas las llamadas de salida"
+            >
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-current" />
+              <span>Hacer Primaria (#1)</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleToggleTelevox}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer ${
+              isTelevoxActive
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                : 'bg-slate-700 hover:bg-slate-600 text-white'
+            }`}
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span>{isTelevoxActive ? '✓ Troncal Activa' : '⚡ Activar Televox'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* CARD DE ACTIVACIÓN: PROVEEDOR NUEVO IP-A-IP 69.197.187.87 (INDEPENDIENTE DE TELEVOX) */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border border-purple-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/50 flex items-center justify-center text-purple-300 shrink-0">
@@ -574,7 +678,7 @@ insecure=${carrierInsecure}`;
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-bold text-white font-mono">trunk_69_197_187_87</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-400/50 uppercase tracking-wide">
-                Proveedor Nuevo (No Televox)
+                Proveedor IP (Failover Backup)
               </span>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
                 Host: 69.197.187.87:5060
@@ -588,10 +692,14 @@ insecure=${carrierInsecure}`;
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
                 Tech Prefix: {trunk69Carrier?.techPrefix !== undefined && trunk69Carrier?.techPrefix !== '' ? trunk69Carrier.techPrefix : (trunk69Carrier?.techPrefix === '' ? 'Directo (Sin prefijo)' : '018')}
               </span>
-              {isTrunk69Primary && (
+              {isTrunk69Primary ? (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">
                   <Star className="w-3 h-3 fill-current text-amber-400" />
                   <span>Troncal Primaria (#1 en Asterisk)</span>
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                  Troncal Secundaria (#2 en Asterisk)
                 </span>
               )}
             </div>

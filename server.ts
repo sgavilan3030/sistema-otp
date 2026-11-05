@@ -1200,6 +1200,29 @@ const defaultExtensionsList = [
 
 export const defaultCarriersList = [
   {
+    id: 'trunk-televox',
+    name: 'televox',
+    authType: 'registration',
+    host: 'voip.ghostcall.online',
+    port: 5060,
+    username: 'sgavilan30',
+    secret: 'Robert2026',
+    inboundContext: 'trunkinbound',
+    outboundCallerId: '+18494386040',
+    outboundCallerIdName: 'Atención al Cliente',
+    codecs: ['ulaw', 'alaw', 'g729'],
+    qualifyFreq: 60,
+    status: 'reachable',
+    latencyMs: 18,
+    fromuser: '',
+    sendrpid: 'yes',
+    trustrpid: 'yes',
+    insecure: 'port,invite',
+    dialplanPattern: '_1XXXXXXXXXX',
+    dialFlags: 'Tor',
+    enabled: true,
+  },
+  {
     id: 'trunk-ip-69-197-187-87',
     name: 'trunk_69_197_187_87',
     authType: 'ip_auth',
@@ -1224,29 +1247,6 @@ export const defaultCarriersList = [
     dialplanPattern: '_1XXXXXXXXXX',
     dialFlags: 'Tor',
     techPrefix: '018',
-    enabled: true,
-  },
-  {
-    id: 'trunk-televox',
-    name: 'televox',
-    authType: 'registration',
-    host: 'voip.ghostcall.online',
-    port: 5060,
-    username: 'sgavilan30',
-    secret: 'Robert2026',
-    inboundContext: 'trunkinbound',
-    outboundCallerId: '+18494386040',
-    outboundCallerIdName: 'Atención al Cliente',
-    codecs: ['ulaw', 'alaw', 'g729'],
-    qualifyFreq: 60,
-    status: 'reachable',
-    latencyMs: 18,
-    fromuser: '',
-    sendrpid: 'yes',
-    trustrpid: 'yes',
-    insecure: 'port,invite',
-    dialplanPattern: '_1XXXXXXXXXX',
-    dialFlags: 'Tor',
     enabled: true,
   },
   {
@@ -1455,37 +1455,30 @@ function loadStoredCarriers(): any[] {
     list = defaultCarriersList;
   }
 
-  // CRITICAL: Guarantee trunk_69_197_187_87 is always present, enabled, and positioned as #1 (primary)
+  // CRITICAL: Guarantee televox is always present, enabled, and positioned as #1 (primary outbound carrier via SIP connection)
+  const televoxDefault = defaultCarriersList[0];
+  const trunk69Default = defaultCarriersList[1];
+
+  const hasTelevox = list.some((c: any) => c.name === 'televox' || c.id === 'trunk-televox');
   const hasTrunk69 = list.some((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
-  const trunk69Default = defaultCarriersList[0] || {
-    id: 'trunk-ip-69-197-187-87',
-    name: 'trunk_69_197_187_87',
-    authType: 'ip_auth',
-    pjsipType: 'endpoint',
-    identify_by: 'ip',
-    auth: 'none',
-    host: '69.197.187.87',
-    port: 5060,
-    username: '',
-    secret: '',
-    inboundContext: 'trunkinbound',
-    outboundCallerId: '+18005550199',
-    outboundCallerName: 'Atención al Cliente',
-    codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-    qualifyFreq: 0,
-    status: 'reachable',
-    latencyMs: 15,
-    fromuser: '',
-    sendrpid: 'yes',
-    trustrpid: 'yes',
-    insecure: 'port,invite',
-    dialplanPattern: '_1XXXXXXXXXX',
-    dialFlags: 'Tor',
-    techPrefix: '018',
-    enabled: true,
-  };
 
   list = list.map((c: any) => {
+    if (c.name === 'televox' || c.id === 'trunk-televox') {
+      return {
+        ...c,
+        id: 'trunk-televox',
+        name: 'televox',
+        authType: 'registration',
+        host: c.host || 'voip.ghostcall.online',
+        port: Number(c.port) || 5060,
+        username: c.username || 'sgavilan30',
+        secret: c.secret || 'Robert2026',
+        enabled: true,
+        status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
+        outboundCallerName: 'Atención al Cliente',
+        outboundCallerIdName: 'Atención al Cliente',
+      };
+    }
     if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
       return {
         ...c,
@@ -1511,15 +1504,23 @@ function loadStoredCarriers(): any[] {
     return c;
   });
 
+  if (!hasTelevox) {
+    list.unshift(televoxDefault);
+  }
   if (!hasTrunk69) {
-    list = [trunk69Default, ...list];
-  } else {
-    // Ensure trunk_69_197_187_87 is positioned at index 0 (primary #1)
-    const idx = list.findIndex((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
-    if (idx > 0) {
-      const [t69] = list.splice(idx, 1);
-      list.unshift(t69);
-    }
+    list.push(trunk69Default);
+  }
+
+  // Ensure televox is positioned at index 0 (primary #1 for outbound calls)
+  const televoxIdx = list.findIndex((c: any) => c.name === 'televox' || c.id === 'trunk-televox');
+  if (televoxIdx > 0) {
+    const [tVox] = list.splice(televoxIdx, 1);
+    list.unshift(tVox);
+  }
+  // Ensure televox is enabled
+  if (list[0]) {
+    list[0].enabled = true;
+    if (list[0].status === 'disabled') list[0].status = 'reachable';
   }
 
   return list;
