@@ -1434,21 +1434,95 @@ function saveStoredExtensions(extensions: any[]) {
 }
 
 function loadStoredCarriers(): any[] {
+  let list: any[] = [];
   try {
     if (fs.existsSync(CARRIERS_FILE)) {
       const raw = fs.readFileSync(CARRIERS_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
     }
   } catch (_) {}
-  try {
-    if (fs.existsSync(APP_STATE_FILE)) {
-      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.carriers) && parsed.carriers.length > 0) return parsed.carriers;
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(APP_STATE_FILE)) {
+        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.carriers) && parsed.carriers.length > 0) list = parsed.carriers;
+      }
+    } catch (_) {}
+  }
+  if (list.length === 0) {
+    list = defaultCarriersList;
+  }
+
+  // CRITICAL: Guarantee trunk_69_197_187_87 is always present, enabled, and positioned as #1 (primary)
+  const hasTrunk69 = list.some((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
+  const trunk69Default = defaultCarriersList[0] || {
+    id: 'trunk-ip-69-197-187-87',
+    name: 'trunk_69_197_187_87',
+    authType: 'ip_auth',
+    pjsipType: 'endpoint',
+    identify_by: 'ip',
+    auth: 'none',
+    host: '69.197.187.87',
+    port: 5060,
+    username: '',
+    secret: '',
+    inboundContext: 'trunkinbound',
+    outboundCallerId: '+18005550199',
+    outboundCallerName: 'Atención al Cliente',
+    codecs: ['ulaw', 'alaw', 'g729', 'opus'],
+    qualifyFreq: 0,
+    status: 'reachable',
+    latencyMs: 15,
+    fromuser: '',
+    sendrpid: 'yes',
+    trustrpid: 'yes',
+    insecure: 'port,invite',
+    dialplanPattern: '_1XXXXXXXXXX',
+    dialFlags: 'Tor',
+    techPrefix: '018',
+    enabled: true,
+  };
+
+  list = list.map((c: any) => {
+    if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
+      return {
+        ...c,
+        id: 'trunk-ip-69-197-187-87',
+        name: 'trunk_69_197_187_87',
+        authType: 'ip_auth',
+        host: '69.197.187.87',
+        port: 5060,
+        enabled: true,
+        status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
+        outboundCallerName: 'Atención al Cliente',
+        techPrefix: (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '018',
+      };
     }
-  } catch (_) {}
-  return defaultCarriersList;
+    // Cleanse any old BANRESERVAS or Seguridad Bancaria
+    if (c.outboundCallerName === 'BANRESERVAS' || c.outboundCallerName === 'Seguridad Bancaria' || c.outboundCallerIdName === 'BANRESERVAS' || c.outboundCallerIdName === 'Seguridad Bancaria') {
+      return {
+        ...c,
+        outboundCallerName: 'Atención al Cliente',
+        outboundCallerIdName: 'Atención al Cliente',
+      };
+    }
+    return c;
+  });
+
+  if (!hasTrunk69) {
+    list = [trunk69Default, ...list];
+  } else {
+    // Ensure trunk_69_197_187_87 is positioned at index 0 (primary #1)
+    const idx = list.findIndex((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
+    if (idx > 0) {
+      const [t69] = list.splice(idx, 1);
+      list.unshift(t69);
+    }
+  }
+
+  return list;
 }
 
 function saveStoredCarriers(carriers: any[]) {
@@ -1953,6 +2027,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${OUT_CID_NUM_CLEAN})} = 10]?Set(OUT_CID_NUM_CLEAN=1\${OUT_CID_NUM_CLEAN}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NUM_CLEAN}" = ""]?Set(OUT_CID_NUM_CLEAN=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NAME}" = ""]?Set(OUT_CID_NAME=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NAME}" = "BANRESERVAS" || "\${OUT_CID_NAME}" = "Seguridad Bancaria"]?Set(OUT_CID_NAME=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${OUT_CID_NUM_CLEAN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${OUT_CID_NAME})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${OUT_CID_NAME}" <\${OUT_CID_NUM_CLEAN}>)\n`;
@@ -2405,7 +2480,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = "" || "\${CALLERID(name)}" = "BANRESERVAS" || "\${CALLERID(name)}" = "Seguridad Bancaria"]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
@@ -2457,7 +2532,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = "" || "\${CALLERID(name)}" = "BANRESERVAS" || "\${CALLERID(name)}" = "Seguridad Bancaria"]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
@@ -3571,8 +3646,8 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('[1002]\ntype = auth') ||
         content.includes('mohsuggest') ||
         content.includes('moh_interpret') ||
-        !content.includes('[televox]') ||
-        !content.includes('[televox_aor]')
+        !content.includes('[trunk_69_197_187_87]') ||
+        !content.includes('[trunk_69_197_187_87_aor]')
       ) {
         console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
@@ -3620,6 +3695,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
       executeAsteriskCommand('database put ivr_vars default_mode "press1"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars global_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars 16104803845_cid_name "ATENCION AL CLIENTE"').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars 16104803845_carrier ""').catch(() => {});
+      executeAsteriskCommand('database put ivr_vars 16104803845_cid_num "18005550199"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
       executeAsteriskCommand('database put extension_cid 1001/name "ATENCION AL CLIENTE"').catch(() => {});
       executeAsteriskCommand('database put extension_cid 1002/name "ATENCION AL CLIENTE"').catch(() => {});
@@ -4296,7 +4374,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
-    const effectiveCidName = (callerIdName || 'Atención al Cliente').trim();
+    let effectiveCidName = (callerIdName || 'Atención al Cliente').trim();
+    if (!effectiveCidName || effectiveCidName === 'BANRESERVAS' || effectiveCidName === 'Seguridad Bancaria') {
+      effectiveCidName = 'Atención al Cliente';
+    }
     const effectiveMode = callMode || mode || 'press1';
     let targetContext = 'ivr-press1';
     if (effectiveMode === 'direct') {
@@ -4375,8 +4456,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         astDbCommands.push(`database put user_carrier ${agentExten} "${cleanCarrier}"`);
       }
     } else {
-      astDbCommands.push(`database del ivr_vars ${cleanDest}_carrier`);
-      astDbCommands.push(`database del ivr_vars ${formattedDest}_carrier`);
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_carrier ""`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_carrier ""`);
     }
 
     const cleanIntro = (audioIntro || '').trim().replace(/\.wav$/i, '');
