@@ -2290,7 +2290,7 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
       const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
@@ -2319,7 +2319,7 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = c.techPrefix || (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
       const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;

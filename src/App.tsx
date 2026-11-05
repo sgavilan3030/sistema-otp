@@ -69,8 +69,40 @@ export default function App() {
   });
 
   const [carriers, setCarriers] = useState<CarrierTrunk[]>(() => {
-    const saved = localStorage.getItem('ast20_carriers');
-    return saved ? JSON.parse(saved) : initialCarriers;
+    try {
+      const saved = localStorage.getItem('ast20_carriers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasTrunk69 = parsed.some((c: CarrierTrunk) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
+          let list: CarrierTrunk[] = parsed.map((c: CarrierTrunk): CarrierTrunk => {
+            if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
+              return {
+                ...c,
+                id: 'trunk-ip-69-197-187-87',
+                name: 'trunk_69_197_187_87',
+                authType: 'ip_auth',
+                host: '69.197.187.87',
+                port: 5060,
+                enabled: true,
+                status: (c.status === 'disabled' ? 'reachable' : c.status) as any,
+                outboundCallerName: 'Atención al Cliente',
+                techPrefix: c.techPrefix !== undefined ? c.techPrefix : '018',
+              };
+            }
+            return {
+              ...c,
+              outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? 'Atención al Cliente' : c.outboundCallerName,
+            };
+          });
+          if (!hasTrunk69 && initialCarriers[0]) {
+            list = [initialCarriers[0], ...list];
+          }
+          return list;
+        }
+      }
+    } catch (_) {}
+    return initialCarriers;
   });
 
   const [tenants, setTenants] = useState<CallCenterTenant[]>(() => {

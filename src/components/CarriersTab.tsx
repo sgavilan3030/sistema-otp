@@ -106,6 +106,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   const [insecure, setInsecure] = useState('port,invite');
   const [dialplanPattern, setDialplanPattern] = useState('_1XXXXXXXXXX');
   const [dialFlags, setDialFlags] = useState('Tor');
+  const [techPrefix, setTechPrefix] = useState('');
 
   const availableCodecs = ['ulaw', 'alaw', 'g729', 'g722', 'opus'];
 
@@ -171,6 +172,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setInsecure('port,invite');
     setDialplanPattern('_1XXXXXXXXXX');
     setDialFlags('Tor');
+    setTechPrefix('');
     setIsModalOpen(true);
   };
 
@@ -193,6 +195,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setInsecure(c.insecure || 'port,invite');
     setDialplanPattern(c.dialplanPattern || '_1XXXXXXXXXX');
     setDialFlags(c.dialFlags || 'Tor');
+    setTechPrefix(c.techPrefix || '');
     setIsModalOpen(true);
   };
 
@@ -235,6 +238,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         insecure,
         dialplanPattern,
         dialFlags,
+        techPrefix: techPrefix.trim(),
       });
     } else {
       const newCarrier: CarrierTrunk = {
@@ -258,6 +262,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         insecure,
         dialplanPattern,
         dialFlags,
+        techPrefix: techPrefix.trim(),
       };
       onAddCarrier(newCarrier);
       setSelectedCarrierId(newCarrier.id);
@@ -559,20 +564,20 @@ insecure=${carrierInsecure}`;
         </div>
       )}
 
-      {/* CARD DE ACTIVACIÓN RÁPIDA: TRONCAL DIRECTA IP-A-IP 69.197.187.87 */}
-      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/40 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* CARD DE ACTIVACIÓN RÁPIDA: PROVEEDOR NUEVO IP-A-IP 69.197.187.87 (INDEPENDIENTE DE TELEVOX) */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border border-purple-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/50 flex items-center justify-center text-purple-300 shrink-0">
             <Globe className="w-6 h-6 animate-pulse" />
           </div>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-bold text-white font-mono">trunk_69_197_187_87</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-400/50 uppercase tracking-wide">
+                Proveedor Nuevo (No Televox)
+              </span>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
                 Host: 69.197.187.87:5060
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
-                type=endpoint
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
                 identify_by=ip
@@ -581,17 +586,17 @@ insecure=${carrierInsecure}`;
                 auth=none
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                Tech Prefix: 018
+                Tech Prefix: {trunk69Carrier?.techPrefix !== undefined && trunk69Carrier?.techPrefix !== '' ? trunk69Carrier.techPrefix : (trunk69Carrier?.techPrefix === '' ? 'Directo (Sin prefijo)' : '018')}
               </span>
               {isTrunk69Primary && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-                  <Star className="w-3 h-3 fill-current" />
-                  <span>Troncal Primaria (#1)</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">
+                  <Star className="w-3 h-3 fill-current text-amber-400" />
+                  <span>Troncal Primaria (#1 en Asterisk)</span>
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-300">
-              Conexión directa IP a IP para peering Asterisk 20 sin contraseñas digest.
+              Conexión directa por Peering IP a IP con <code className="text-purple-300 font-mono font-bold">69.197.187.87:5060</code> sin contraseñas ni digest SIP. <b>Proveedor nuevo independiente y desacoplado de Televox.</b>
             </p>
           </div>
         </div>
@@ -603,6 +608,16 @@ insecure=${carrierInsecure}`;
               className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
             >
               Ver Configuración
+            </button>
+          )}
+
+          {trunk69Carrier && (
+            <button
+              onClick={() => handleOpenEditModal(trunk69Carrier)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 transition-all cursor-pointer flex items-center gap-1"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Editar Prefijo / Parámetros</span>
             </button>
           )}
 
@@ -900,6 +915,16 @@ insecure=${carrierInsecure}`;
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono font-bold border border-purple-500/30 flex items-center gap-1">
                             <ShieldCheck className="w-2.5 h-2.5" />
                             <span>SIP REG</span>
+                          </span>
+                        )}
+                        {(c.host === '69.197.187.87' || c.name === 'trunk_69_197_187_87') && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/25 text-purple-200 font-mono font-bold border border-purple-500/40">
+                            PROVEEDOR NUEVO (NO TELEVOX)
+                          </span>
+                        )}
+                        {c.techPrefix !== undefined && c.techPrefix !== '' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/40">
+                            Prefix: {c.techPrefix}
                           </span>
                         )}
                         {isPrimary && (
@@ -1331,8 +1356,8 @@ insecure=${carrierInsecure}`;
                 </div>
               </div>
 
-              {/* Dialplan pattern & flags */}
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+              {/* Dialplan pattern, Tech Prefix & flags */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Dialplan Pattern</label>
                   <input
@@ -1343,6 +1368,17 @@ insecure=${carrierInsecure}`;
                     className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-500">Ej: _1XXXXXXXXXX o _9X.</span>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Prefijo Técnico (Tech Prefix)</label>
+                  <input
+                    type="text"
+                    value={techPrefix}
+                    onChange={(e) => setTechPrefix(e.target.value)}
+                    placeholder="018 o vacío"
+                    className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500">Ej: 018 (o vacío si directo)</span>
                 </div>
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">Dial Flags</label>
