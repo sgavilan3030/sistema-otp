@@ -6904,6 +6904,18 @@ app.post('/api/asterisk/amd/toggle', async (req, res) => {
     const dbVal = isAmdEnabled ? '1' : '0';
     await executeAsteriskCommand(`database put ivr_vars amd_enabled "${dbVal}"`).catch(() => {});
     console.log(`[AMD TOGGLE] Detección de contestador/grabadora (AMD) -> ${isAmdEnabled ? 'ACTIVADA (1)' : 'DESACTIVADA (0)'}`);
+
+    // Replicate AMD toggle to remote VPS if available
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/amd/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          body: JSON.stringify({ enabled: isAmdEnabled }),
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
     res.json({
       success: true,
       enabled: isAmdEnabled,
@@ -6968,6 +6980,17 @@ app.post('/api/asterisk/press1-destination/save', async (req, res) => {
     await executeAsteriskCommand(`database put ivr_vars default_agent_exten "${effectiveAgent}"`).catch(() => {});
 
     console.log(`[PRESS-1 DESTINATION PERSISTED] Modo: ${press1DestinationMode} -> Agentes: ${effectiveAgent}`);
+
+    // Replicate Press 1 destination to remote VPS if available
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/press1-destination/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          body: JSON.stringify(req.body),
+        }).catch(() => {});
+      } catch (_) {}
+    }
 
     res.json({
       success: true,

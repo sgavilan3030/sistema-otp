@@ -52,6 +52,12 @@ if [ -f extensions.conf ]; then
   echo "✓ /etc/asterisk/extensions.conf actualizado."
 fi
 
+if [ -f amd.conf ]; then
+  cp -f amd.conf /etc/asterisk/amd.conf 2>/dev/null || true
+  echo "✓ /etc/asterisk/amd.conf actualizado."
+fi
+asterisk -rx "module load app_amd.so" 2>/dev/null || true
+
 # Verificar si el módulo func_pitchshift está disponible; si no, instalar paquetes requeridos
 echo "=== Verificando módulo de Modulación de Voz en Asterisk ==="
 if ! asterisk -rx "core show function PITCH_SHIFT" 2>/dev/null | grep -qi "pitch_shift"; then
