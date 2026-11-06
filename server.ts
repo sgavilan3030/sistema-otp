@@ -1201,20 +1201,20 @@ const defaultExtensionsList = [
 export const defaultCarriersList = [
   {
     id: 'trunk-televox',
-    name: 'televox',
+    name: 'televoxin',
     authType: 'registration',
-    host: 'voip.ghostcall.online',
+    host: 'televox.in',
     port: 5060,
-    username: 'sgavilan30',
-    secret: 'Robert2026',
+    username: 'alberto2026',
+    secret: 'Robert2026@',
     inboundContext: 'trunkinbound',
-    outboundCallerId: '+18494386040',
+    outboundCallerId: '+18005550199',
     outboundCallerIdName: 'Atención al Cliente',
-    codecs: ['ulaw', 'alaw', 'g729'],
+    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
-    fromuser: '',
+    fromuser: 'alberto2026',
     sendrpid: 'yes',
     trustrpid: 'yes',
     insecure: 'port,invite',
@@ -1459,20 +1459,21 @@ function loadStoredCarriers(): any[] {
   const televoxDefault = defaultCarriersList[0];
   const trunk69Default = defaultCarriersList[1];
 
-  const hasTelevox = list.some((c: any) => c.name === 'televox' || c.id === 'trunk-televox');
+  const hasTelevox = list.some((c: any) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
   const hasTrunk69 = list.some((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
 
   list = list.map((c: any) => {
-    if (c.name === 'televox' || c.id === 'trunk-televox') {
+    if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
       return {
         ...c,
         id: 'trunk-televox',
-        name: 'televox',
+        name: 'televoxin',
         authType: 'registration',
-        host: c.host || 'voip.ghostcall.online',
+        host: 'televox.in',
         port: Number(c.port) || 5060,
-        username: c.username || 'sgavilan30',
-        secret: c.secret || 'Robert2026',
+        username: 'alberto2026',
+        secret: 'Robert2026@',
+        fromuser: 'alberto2026',
         enabled: true,
         status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
         outboundCallerName: 'Atención al Cliente',
@@ -1512,7 +1513,7 @@ function loadStoredCarriers(): any[] {
   }
 
   // Ensure televox is positioned at index 0 (primary #1 for outbound calls)
-  const televoxIdx = list.findIndex((c: any) => c.name === 'televox' || c.id === 'trunk-televox');
+  const televoxIdx = list.findIndex((c: any) => c.name === 'televoxin' || c.name === 'televox' || c.id === 'trunk-televox');
   if (televoxIdx > 0) {
     const [tVox] = list.splice(televoxIdx, 1);
     list.unshift(tVox);
@@ -1814,6 +1815,10 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `client_uri = sip:${cUser}@${cHost}:${cPort}\n`;
         pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `retry_interval = 30\n`;
+        pjsipContent += `forbidden_retry_interval = 30\n`;
+        pjsipContent += `fatal_retry_interval = 30\n`;
+        pjsipContent += `auth_rejection_permanent = false\n`;
+        pjsipContent += `max_retries = 100\n`;
         pjsipContent += `expiration = 3600\n`;
         pjsipContent += `line = yes\n`;
         pjsipContent += `endpoint = ${cName}\n`;
@@ -1825,7 +1830,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `type = auth\n`;
         pjsipContent += `auth_type = userpass\n`;
         pjsipContent += `username = ${cUser}\n`;
-        pjsipContent += `password = ${cSecret}\n\n`;
+        pjsipContent += `password = ${cSecret}\n`;
+        pjsipContent += `realm = asterisk\n\n`;
       }
 
       pjsipContent += `[${cName}_aor]\n`;
@@ -1845,12 +1851,11 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       } else if (cSecret && carrier.authType === 'registration') {
         pjsipContent += `outbound_auth = auth_${cName}\n`;
       }
-      // In PJSIP: Do NOT set from_user on outbound trunk endpoint.
-      // Setting from_user forces the carrier username into the SIP From URI instead of CALLERID(num),
-      // which telecom carriers mark as 'Restricted' / 'Anonymous'. Without from_user, PJSIP dynamically puts CALLERID(num) in From URI.
       if (effectiveFromUser) {
+        pjsipContent += `from_user = ${effectiveFromUser}\n`;
         pjsipContent += `contact_user = ${effectiveFromUser}\n`;
       } else if (carrier.authType === 'registration') {
+        pjsipContent += `from_user = ${cUser}\n`;
         pjsipContent += `contact_user = ${cUser}\n`;
       }
       pjsipContent += `from_domain = ${cHost}\n`;
@@ -1871,6 +1876,61 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `moh_suggest = default\n`;
       const trunkTransport = (carrier.authType === 'ip_auth' && activePort !== 5060) ? 'transport-udp-5060' : 'transport-udp';
       pjsipContent += `transport = ${trunkTransport}\n\n`;
+
+      // Alias de compatibilidad bidireccional televox <-> televoxin
+      if (cName === 'televoxin') {
+        pjsipContent += `; Alias de compatibilidad televox -> televoxin\n`;
+        pjsipContent += `[televox]\n`;
+        pjsipContent += `type = endpoint\n`;
+        pjsipContent += `context = ${cContext}\n`;
+        pjsipContent += `disallow = all\n`;
+        pjsipContent += `allow = ${cCodecs}\n`;
+        pjsipContent += `aors = televoxin_aor\n`;
+        pjsipContent += `outbound_auth = auth_televoxin\n`;
+        pjsipContent += `from_user = ${cUser}\n`;
+        pjsipContent += `from_domain = ${cHost}\n`;
+        pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
+        pjsipContent += `direct_media = no\n`;
+        pjsipContent += `rtp_symmetric = yes\n`;
+        pjsipContent += `force_rport = yes\n`;
+        pjsipContent += `rewrite_contact = yes\n`;
+        pjsipContent += `send_pai = yes\n`;
+        pjsipContent += `send_rpid = yes\n`;
+        pjsipContent += `trust_id_outbound = yes\n`;
+        pjsipContent += `trust_id_inbound = yes\n`;
+        pjsipContent += `callerid_privacy = allowed\n`;
+        pjsipContent += `dtmf_mode = rfc4733\n`;
+        pjsipContent += `rtp_keepalive = 5\n`;
+        pjsipContent += `timers = yes\n`;
+        pjsipContent += `language = es\n`;
+        pjsipContent += `transport = transport-udp\n\n`;
+      } else if (cName === 'televox') {
+        pjsipContent += `; Alias de compatibilidad televoxin -> televox\n`;
+        pjsipContent += `[televoxin]\n`;
+        pjsipContent += `type = endpoint\n`;
+        pjsipContent += `context = ${cContext}\n`;
+        pjsipContent += `disallow = all\n`;
+        pjsipContent += `allow = ${cCodecs}\n`;
+        pjsipContent += `aors = televox_aor\n`;
+        pjsipContent += `outbound_auth = auth_televox\n`;
+        pjsipContent += `from_user = ${cUser}\n`;
+        pjsipContent += `from_domain = ${cHost}\n`;
+        pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
+        pjsipContent += `direct_media = no\n`;
+        pjsipContent += `rtp_symmetric = yes\n`;
+        pjsipContent += `force_rport = yes\n`;
+        pjsipContent += `rewrite_contact = yes\n`;
+        pjsipContent += `send_pai = yes\n`;
+        pjsipContent += `send_rpid = yes\n`;
+        pjsipContent += `trust_id_outbound = yes\n`;
+        pjsipContent += `trust_id_inbound = yes\n`;
+        pjsipContent += `callerid_privacy = allowed\n`;
+        pjsipContent += `dtmf_mode = rfc4733\n`;
+        pjsipContent += `rtp_keepalive = 5\n`;
+        pjsipContent += `timers = yes\n`;
+        pjsipContent += `language = es\n`;
+        pjsipContent += `transport = transport-udp\n\n`;
+      }
 
       // Identify section for IP auth or non-registration trunks
       if (carrier.authType === 'ip_auth' || !cSecret) {
@@ -2034,8 +2094,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(all)="\${OUT_CID_NAME}" <\${OUT_CID_NUM_CLEAN}>)\n`;
   dialplanContent += ` same => n,Set(TARGET_TRUNK_HOST=\${CHANNEL(endpoint)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "trunk_69_197_187_87"]?Set(TARGET_TRUNK_HOST=69.197.187.87):Set(TARGET_TRUNK_HOST=\${GLOBAL_CARRIER_HOST}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "televoxin" || "\${TARGET_TRUNK_HOST}" = "televox"]?Set(TARGET_TRUNK_HOST=televox.in))\n`;
   dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>;party=calling;screen=yes;privacy=off)\n`;
+  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
   dialplanContent += ` same => n,NoOp(=== [OUTBOUND CID FINAL] CallerID num: \${CALLERID(num)} name: \${CALLERID(name)} ===)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
@@ -2057,7 +2118,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${TARGET_DISPLAY}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(name,i)=Cliente: \${TARGET_DISPLAY}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>;party=calling;screen=yes;privacy=off))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>\\;party=calling\\;screen=yes\\;privacy=off))\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;

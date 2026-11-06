@@ -325,7 +325,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   };
 
   const televoxCarrier = carriers.find(
-    (c) => c.name === 'televox' || c.id === 'trunk-televox'
+    (c) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox'
   );
   const isTelevoxActive = televoxCarrier
     ? televoxCarrier.enabled !== false && televoxCarrier.status !== 'disabled'
@@ -590,21 +590,21 @@ insecure=${carrierInsecure}`;
           </div>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold text-white font-mono">televox</span>
+              <span className="text-sm font-bold text-white font-mono">{televoxCarrier?.name || 'televoxin'}</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-200 border border-emerald-400/50 uppercase tracking-wide">
                 Conexión SIP Saliente
               </span>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
-                Host: {televoxCarrier?.host || 'voip.ghostcall.online'}:{televoxCarrier?.port || 5060}
+                Host: {televoxCarrier?.host || 'televox.in'}:{televoxCarrier?.port || 5060}
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
-                User: {televoxCarrier?.username || 'sgavilan30'}
+                User: {televoxCarrier?.username || 'alberto2026'}
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold">
                 Auth: Registro SIP
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                CID: {televoxCarrier?.outboundCallerId || '+18494386040'}
+                CID: {televoxCarrier?.outboundCallerId || '+18005550199'}
               </span>
               {isTelevoxPrimary ? (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">

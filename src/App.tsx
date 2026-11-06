@@ -74,19 +74,20 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasTelevox = parsed.some((c: CarrierTrunk) => c.name === 'televox' || c.id === 'trunk-televox');
+          const hasTelevox = parsed.some((c: CarrierTrunk) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
           const hasTrunk69 = parsed.some((c: CarrierTrunk) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
           let list: CarrierTrunk[] = parsed.map((c: CarrierTrunk): CarrierTrunk => {
-            if (c.name === 'televox' || c.id === 'trunk-televox') {
+            if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
               return {
                 ...c,
                 id: 'trunk-televox',
-                name: 'televox',
+                name: 'televoxin',
                 authType: 'registration',
-                host: c.host || 'voip.ghostcall.online',
+                host: 'televox.in',
                 port: Number(c.port) || 5060,
-                username: c.username || 'sgavilan30',
-                secret: c.secret || 'Robert2026',
+                username: 'alberto2026',
+                secret: 'Robert2026@',
+                fromuser: 'alberto2026',
                 enabled: true,
                 status: (c.status === 'disabled' ? 'reachable' : c.status) as any,
                 outboundCallerName: 'Atención al Cliente',
@@ -118,7 +119,7 @@ export default function App() {
             list = [...list, initialCarriers[1]];
           }
           // Ensure televox is at index 0 (primary #1)
-          const tvoxIdx = list.findIndex((c) => c.name === 'televox' || c.id === 'trunk-televox');
+          const tvoxIdx = list.findIndex((c) => c.name === 'televoxin' || c.name === 'televox' || c.id === 'trunk-televox');
           if (tvoxIdx > 0) {
             const [tvox] = list.splice(tvoxIdx, 1);
             list.unshift(tvox);
