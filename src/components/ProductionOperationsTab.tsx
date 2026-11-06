@@ -2213,6 +2213,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             callerIdName: callerIdName,
             mode: callFlowMode,
             agentExten: 'ringall', // IN MASS CAMPAIGN, ALWAYS RINGALL!
+            autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
             audioIntro: currentAudios.introAudioPath,
             audioPrompt: currentAudios.promptAudioPath,
             audioAgent: currentAudios.agentAudioPath,
@@ -2258,6 +2259,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     massCancelRef.current = true;
     setIsMassRunning(false);
     setMassActiveNumber(null);
+    // Immediately cancel and hangup all calls and pending retries
+    fetch('/api/asterisk/call/hangup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    }).catch(() => {});
+    fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
   };
 
   // Hangup all active mass campaign calls in Asterisk
