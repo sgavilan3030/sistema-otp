@@ -577,35 +577,4 @@ export interface TenantRechargeHistory {
   notes?: string;
 }
 
-export interface VoiceChangerProfile {
-  id: string;
-  name: string;
-  gender: 'female' | 'male' | 'neutral';
-  language: 'es' | 'en';
-  pitchShiftSemi: number; // e.g. +3.5 to +6.0 semitones for natural female voice
-  formantShift: number; // Formant resonance multiplier (1.0 to 1.5)
-  eqTrebleGain: number; // High clarity boost (+dB)
-  eqBassCut: number; // Low-cut frequency to remove deep chest tones (Hz)
-  reverbAmount: number; // Studio room presence (0 to 100)
-  description: string;
-  sampleText: string;
-  asteriskPitchValue: string; // Value for Set(PITCH_SHIFT(tx)=X) e.g. "1.35"
-}
-
-export interface VoiceChangerState {
-  enabled: boolean;
-  activeProfileId: string;
-  language: 'es' | 'en';
-  customPitch: number; // Semitones (-6 to +10, default +4 for female)
-  customClarity: number; // 0 to 100
-  customBassCut: number; // 80Hz to 300Hz
-  customReverb: number; // 0 to 100
-  micActive: boolean;
-  micVolume: number; // 0 to 150%
-  asteriskPjsipModulation: boolean; // Sync pitch shift to Asterisk channel
-  selectedExtension?: string;
-  ttsRate: number; // 0.8 to 1.3
-  ttsPitch: number; // 1.0 to 1.8
-  selectedTtsVoice: string;
-}
 

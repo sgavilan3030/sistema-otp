@@ -31,17 +31,12 @@ interface HeaderProps {
   currentUser?: SystemUser;
   onQuickSync: () => void;
   onOpenCallSimulator: () => void;
-  onOpenCallerIdModal?: () => void;
-  activeCallerIdNum?: string;
-  activeCallerIdName?: string;
   onOpenMobileMenu?: () => void;
   onLogout?: () => void;
   isSyncing: boolean;
   activeCallCount?: number;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
-  isVoiceChangerActive?: boolean;
-  onToggleVoiceChanger?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,17 +46,12 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onQuickSync,
   onOpenCallSimulator,
-  onOpenCallerIdModal,
-  activeCallerIdNum = '+18005550199',
-  activeCallerIdName = 'ATENCION AL CLIENTE',
   onOpenMobileMenu,
   onLogout,
   isSyncing,
   activeCallCount = 0,
   theme = 'light',
   onToggleTheme,
-  isVoiceChangerActive = false,
-  onToggleVoiceChanger,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
     production: {
@@ -128,11 +118,6 @@ export const Header: React.FC<HeaderProps> = ({
       title: 'Archivos .conf & Scripts',
       subtitle: 'Exportador descargable para despliegue en servidores Linux Debian / Rocky',
       icon: RefreshCw,
-    },
-    'voice-changer': {
-      title: 'Cambiador de Voz (Voice Changer)',
-      subtitle: 'Modulador de voz femenina en vivo (ES/EN) para operadores y llamadas PJSIP',
-      icon: Sparkles,
     },
   };
 
@@ -233,56 +218,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Softphone</span>
             </button>
 
-            {/* Quick Voice Changer Toggle for Operators */}
-            {onToggleVoiceChanger && (
-              <div className="flex items-center gap-1">
-                <button
-                  id="btn-header-toggle-voice-changer"
-                  type="button"
-                  onClick={onToggleVoiceChanger}
-                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                    isVoiceChangerActive
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-purple-600/30 ring-2 ring-purple-400/60 animate-pulse'
-                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-purple-500/50'
-                  }`}
-                  title={
-                    isVoiceChangerActive
-                      ? '🎙️ Modulador de Voz de Mujer ACTIVO. Clic para desactivar y volver a tu voz normal.'
-                      : '🎙️ Modulador de Voz INACTIVO. Clic para activar Voz de Mujer instantáneamente.'
-                  }
-                >
-                  <Sparkles className={`w-3.5 h-3.5 ${isVoiceChangerActive ? 'text-amber-300 fill-current' : 'text-purple-400'}`} />
-                  <span className="hidden md:inline">Voz Mujer:</span>
-                  <span className={`font-black ${isVoiceChangerActive ? 'text-emerald-300' : 'text-slate-400'}`}>
-                    {isVoiceChangerActive ? 'ON' : 'OFF'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('voice-changer')}
-                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-purple-400 hover:text-purple-300 border border-slate-800 transition-colors hidden sm:flex items-center justify-center cursor-pointer"
-                  title="Abrir panel completo del Cambiador de Voz (Presets, Soundboard y Micrófono)"
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Outgoing Caller ID Button in Menu */}
-            <button
-              id="btn-header-callerid"
-              type="button"
-              onClick={onOpenCallerIdModal}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 shadow-sm transition-all cursor-pointer"
-              title="Cambiar ID de llamada saliente (Caller ID Num y Name)"
-            >
-              <PhoneForwarded className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="font-bold hidden sm:inline">ID Saliente:</span>
-              <span className="font-mono text-white font-bold truncate max-w-[130px]">
-                {activeCallerIdName ? `${activeCallerIdName} (${activeCallerIdNum})` : activeCallerIdNum || '+18005550199'}
-              </span>
-            </button>
 
             {/* Quick Access to Reventa de Minutos (Only if allowed) */}
             {isTabAllowedForUser('reseller', currentUser) && (

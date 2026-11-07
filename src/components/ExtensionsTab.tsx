@@ -11,7 +11,6 @@ interface ExtensionsTabProps {
   onSyncAsterisk?: () => void;
   onResetDefaultExtensions?: () => void;
   onNavigateToReseller?: () => void;
-  onOpenCallerIdModal?: () => void;
   isSyncing?: boolean;
 }
 
@@ -24,7 +23,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onSyncAsterisk,
   onResetDefaultExtensions,
   onNavigateToReseller,
-  onOpenCallerIdModal,
   isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -784,26 +782,19 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </div>
               </div>
 
-              {/* Información de CallerID Centralizado */}
+              {/* Información de Identificador de Llamada */}
               <div className="mt-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                    <Phone className="w-3.5 h-3.5 text-sky-400" />
-                    <span>CallerID Saliente (Menú Principal)</span>
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>CallerID Asignado por Carrier</span>
                   </span>
-                  {onOpenCallerIdModal && (
-                    <button
-                      type="button"
-                      onClick={onOpenCallerIdModal}
-                      className="px-2 py-0.5 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold transition-all"
-                      title="Configurar el CallerID desde el panel central en el menú principal"
-                    >
-                      Configurar en Panel Central
-                    </button>
-                  )}
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                    Troncal SIP
+                  </span>
                 </div>
                 <p className="text-[10px] text-slate-400 leading-tight">
-                  Las llamadas salientes de esta extensión utilizan el identificador configurado centralmente en el menú principal.
+                  El identificador y número de llamada saliente es asignado automáticamente por el carrier/troncal. Al transferirse llamadas a esta extensión en MicroSIP, se visualiza el número exacto del cliente.
                 </p>
               </div>
             </div>

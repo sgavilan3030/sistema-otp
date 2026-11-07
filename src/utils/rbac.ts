@@ -3,7 +3,6 @@ import { SystemUser } from '../types';
 export type AppModuleId =
   | 'production'
   | 'manual-dialer'
-  | 'voice-changer'
   | 'tenants'
   | 'live-calls'
   | 'call-spy'
@@ -43,22 +42,22 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
   };
 
   // 2. Agent (Operador / Asesor telefónico):
-  // Allowed to make/receive calls, handle live calls on their extension, use 1-click manual dialer, use voice changer, and use the softphone.
+  // Allowed to make/receive calls, handle live calls on their extension, use 1-click manual dialer, and use the softphone.
   if (user.role === 'agent') {
-    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls' || tabId === 'voice-changer';
+    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls';
   }
 
   // 3. Reseller Client (Cliente VoIP prepago):
-  // Allowed to use dialer, voice changer, and check their own minute balance / billing
+  // Allowed to use dialer, and check their own minute balance / billing
   if (user.role === 'reseller_client') {
-    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'reseller' || tabId === 'voice-changer';
+    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'reseller';
   }
 
   // 4. Supervisor:
-  // Operational supervision: production calls, manual list dialer, voice changer, live calls, live spy (ChanSpy/Whisper), diagnostics,
+  // Operational supervision: production calls, manual list dialer, live calls, live spy (ChanSpy/Whisper), diagnostics,
   // and IVR/extensions/audios/configs ONLY if explicitly permitted.
   if (user.role === 'supervisor') {
-    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'voice-changer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy' || tabId === 'diagnostics') {
+    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy' || tabId === 'diagnostics') {
       return true;
     }
     if (tabId === 'extensions') return Boolean(perms.canManageExtensions);
@@ -69,7 +68,7 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
   }
 
   // 5. Custom role: verify granular permissions
-  if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls' || tabId === 'voice-changer') return true;
+  if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls') return true;
   if (tabId === 'extensions') return Boolean(perms.canManageExtensions);
   if (tabId === 'carriers') return Boolean(perms.canManageCarriers);
   if (tabId === 'ivr') return Boolean(perms.canManageIVR);

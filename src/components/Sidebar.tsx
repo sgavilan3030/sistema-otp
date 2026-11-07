@@ -34,9 +34,6 @@ interface SidebarProps {
   currentUser?: SystemUser;
   onQuickSync: () => void;
   onOpenCallSimulator: () => void;
-  onOpenCallerIdModal?: () => void;
-  activeCallerIdNum?: string;
-  activeCallerIdName?: string;
   onLogout: () => void;
   isSyncing: boolean;
   isOpenMobile?: boolean;
@@ -55,9 +52,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onQuickSync,
   onOpenCallSimulator,
-  onOpenCallerIdModal,
-  activeCallerIdNum = '+18005550199',
-  activeCallerIdName = 'ATENCION AL CLIENTE',
   onLogout,
   isSyncing,
   isOpenMobile,
@@ -84,14 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: PhoneForwarded,
       badge: '1-CLIC',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
-    },
-    {
-      id: 'voice-changer',
-      label: 'Cambiador de Voz',
-      subtitle: 'Voz de Mujer ES / EN',
-      icon: Sparkles,
-      badge: 'FX VOZ',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/40',
     },
     {
       id: 'live-calls',
@@ -307,34 +293,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items (Filtered by RBAC Role and Permissions) */}
         <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1 scrollbar-thin scrollbar-thumb-slate-800">
-          {/* Botón en el Menú: Cambiar ID de Llamada Saliente */}
-          <div className="px-1 pt-1 pb-2">
-            <button
-              type="button"
-              id="sidebar-btn-callerid"
-              onClick={() => {
-                if (onOpenCallerIdModal) onOpenCallerIdModal();
-                if (onCloseMobile) onCloseMobile();
-              }}
-              className="w-full flex items-center justify-between p-2 rounded-xl bg-gradient-to-r from-emerald-950/80 to-slate-900 border border-emerald-500/40 hover:border-emerald-400 text-left transition-all group cursor-pointer shadow-sm hover:shadow-emerald-500/10"
-              title="Cambiar ID de llamada saliente (Caller ID Num y Name)"
-            >
-              <div className="flex items-center space-x-2 min-w-0">
-                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/30 transition-colors shrink-0">
-                  <PhoneForwarded className="w-3.5 h-3.5" />
-                </div>
-                <div className="truncate">
-                  <span className="block text-[11px] font-bold text-white truncate">ID Saliente (Caller ID)</span>
-                  <span className="block text-[10px] text-emerald-300 font-mono truncate">
-                    {activeCallerIdName ? `${activeCallerIdName} (${activeCallerIdNum})` : activeCallerIdNum || '+18005550199'}
-                  </span>
-                </div>
-              </div>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500 text-slate-950 shrink-0">
-                CAMBIAR
-              </span>
-            </button>
-          </div>
 
           <div className="px-2 pt-1 pb-1 flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">

@@ -2524,8 +2524,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
 
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-              <div className="text-[10px] text-slate-500 uppercase font-mono">Caller ID Saliente</div>
-              <div className="font-bold text-sky-400 font-mono">{outboundCid}</div>
+              <div className="text-[10px] text-slate-500 uppercase font-mono">ID de Llamada Saliente</div>
+              <div className="font-bold text-emerald-400 font-mono">Asignado por Carrier (SIP Trunk)</div>
             </div>
 
             {onNavigateToReseller && isAdmin && (
@@ -2871,9 +2871,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-0.5">
                   <span>Servicio: <strong className="text-emerald-300">{activeCall.service}</strong></span>
                   <span>•</span>
-                  <span>Troncal: <strong className="text-sky-300">{activeCarrier}</strong></span>
-                  <span>•</span>
-                  <span>CallerID: <strong className="text-slate-200">"{callerIdName}" &lt;{callerIdNum}&gt;</strong></span>
+                  <span>ID Saliente: <strong className="text-emerald-300">Carrier Automático</strong></span>
                 </div>
               </div>
             </div>
@@ -3091,8 +3089,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <span>Dígitos DTMF Capturados en Vivo (Tiempo Real)</span>
               </div>
               <div className="text-xs font-mono text-slate-400 flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-sky-400" />
-                <span>Presentando: <strong className="text-sky-300 font-bold font-mono">"{callerIdName}" &lt;{callerIdNum}&gt;</strong></span>
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ID Saliente: <strong className="text-emerald-300 font-bold font-mono">Carrier (Automático)</strong></span>
               </div>
             </div>
 

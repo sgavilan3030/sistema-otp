@@ -31,7 +31,6 @@ import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { ProductionOperationsTab } from './components/ProductionOperationsTab';
 import { ManualDialerTab } from './components/ManualDialerTab';
-import { VoiceChangerTab } from './components/VoiceChangerTab';
 import { LiveCallsTab } from './components/LiveCallsTab';
 import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
 import { PromptMaestroTab } from './components/PromptMaestroTab';
@@ -47,7 +46,6 @@ import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
-import { CallerIdModal } from './components/CallerIdModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
@@ -277,152 +275,7 @@ export default function App() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
-  const [isCallerIdModalOpen, setIsCallerIdModalOpen] = useState(false);
-  const [activeCallerIdNum, setActiveCallerIdNum] = useState<string>(() => {
-    try {
-      return localStorage.getItem('ast20_active_caller_id_num') || '+18005550199';
-    } catch (_) {
-      return '+18005550199';
-    }
-  });
-  const [activeCallerIdName, setActiveCallerIdName] = useState<string>(() => {
-    try {
-      return localStorage.getItem('ast20_active_caller_id_name') || 'ATENCION AL CLIENTE';
-    } catch (_) {
-      return 'ATENCION AL CLIENTE';
-    }
-  });
-
-  useEffect(() => {
-    fetch('/api/asterisk/callerid')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success) {
-          if (data.callerIdNum) setActiveCallerIdNum(data.callerIdNum);
-          if (data.callerIdName) setActiveCallerIdName(data.callerIdName);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleSaveCallerId = async (num: string, name: string) => {
-    try {
-      setActiveCallerIdNum(num);
-      setActiveCallerIdName(name);
-      localStorage.setItem('ast20_active_caller_id_num', num);
-      localStorage.setItem('ast20_active_caller_id_name', name);
-      window.dispatchEvent(new CustomEvent('callerid-updated', { detail: { num, name } }));
-      await fetch('/api/asterisk/callerid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callerIdNum: num, callerIdName: name }),
-      });
-      setToastMessage({
-        text: `✓ ID de llamada saliente actualizado a "${name}" <${num}>`,
-        type: 'success',
-      });
-      setTimeout(() => setToastMessage(null), 4500);
-    } catch (err: any) {
-      setToastMessage({
-        text: `Error al guardar Caller ID: ${err.message}`,
-        type: 'error',
-      });
-      setTimeout(() => setToastMessage(null), 4500);
-    }
-  };
-
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
-
-  // Voice Changer Active State (Operators can toggle ON/OFF with 1 click)
-  const [isVoiceChangerActive, setIsVoiceChangerActive] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('ast20_voice_changer_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return !!parsed.enabled;
-      }
-    } catch (_) {}
-    return false;
-  });
-
-  // Sync Voice Changer state with backend and custom events
-  useEffect(() => {
-    // 1. Initial fetch from server
-    fetch('/api/asterisk/voice-changer')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && data.settings && typeof data.settings.enabled === 'boolean') {
-          setIsVoiceChangerActive(data.settings.enabled);
-        }
-      })
-      .catch(() => {});
-
-    // 2. Listen for custom window event
-    const handleVoiceChangerUpdate = (e: any) => {
-      if (e.detail && typeof e.detail.enabled === 'boolean') {
-        setIsVoiceChangerActive(e.detail.enabled);
-      }
-    };
-    window.addEventListener('voice-changer-updated', handleVoiceChangerUpdate);
-    return () => window.removeEventListener('voice-changer-updated', handleVoiceChangerUpdate);
-  }, []);
-
-  const handleToggleVoiceChanger = async (explicitState?: boolean) => {
-    const nextState = explicitState !== undefined ? explicitState : !isVoiceChangerActive;
-    setIsVoiceChangerActive(nextState);
-
-    try {
-      let currentPreset = 'es-female-executive';
-      let currentPitch = '1.32';
-      let currentLang = 'es';
-      const saved = localStorage.getItem('ast20_voice_changer_state');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.currentProfileId || parsed.activeProfileId) currentPreset = parsed.currentProfileId || parsed.activeProfileId;
-          if (parsed.customPitch || parsed.pitchValue) currentPitch = String(parsed.customPitch || parsed.pitchValue);
-          if (parsed.language) currentLang = parsed.language;
-        } catch (_) {}
-      }
-
-      const updatedState = {
-        enabled: nextState,
-        currentProfileId: currentPreset,
-        activeProfileId: currentPreset,
-        customPitch: parseFloat(currentPitch) || 1.32,
-        pitchValue: currentPitch,
-        language: currentLang,
-        noiseSuppression: true,
-        highpassFilter: true,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      localStorage.setItem('ast20_voice_changer_state', JSON.stringify(updatedState));
-      window.dispatchEvent(new CustomEvent('voice-changer-updated', { detail: updatedState }));
-
-      // Sincronizar con Asterisk 20 backend AstDB
-      await fetch('/api/asterisk/voice-changer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          enabled: nextState,
-          activeProfileId: currentPreset,
-          pitchValue: currentPitch,
-          language: currentLang,
-        }),
-      }).catch(() => {});
-
-      setToastMessage({
-        text: nextState
-          ? '🎙️ Modulador de Voz ACTIVADO: Todas las llamadas salientes se modularán a Voz Femenina'
-          : '🎙️ Modulador de Voz DESACTIVADO: Las llamadas salientes volverán a tu voz normal',
-        type: nextState ? 'success' : 'info',
-      });
-      setTimeout(() => setToastMessage(null), 4000);
-    } catch (err: any) {
-      console.error('Error toggling voice changer:', err);
-    }
-  };
 
   // Global OTP Alert monitor across all tabs
   const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string } | null>(null);
@@ -1816,9 +1669,6 @@ export default function App() {
         currentUser={currentUser}
         onQuickSync={handleQuickSync}
         onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
-        onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
-        activeCallerIdNum={activeCallerIdNum}
-        activeCallerIdName={activeCallerIdName}
         onLogout={handleLogout}
         isSyncing={isSyncing}
         isOpenMobile={isMobileSidebarOpen}
@@ -1839,17 +1689,12 @@ export default function App() {
           currentUser={currentUser}
           onQuickSync={handleQuickSync}
           onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
-          onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
-          activeCallerIdNum={activeCallerIdNum}
-          activeCallerIdName={activeCallerIdName}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onLogout={handleLogout}
           isSyncing={isSyncing}
           activeCallCount={activeCallCount}
           theme={theme}
           onToggleTheme={handleToggleTheme}
-          isVoiceChangerActive={isVoiceChangerActive}
-          onToggleVoiceChanger={() => handleToggleVoiceChanger()}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -1897,17 +1742,6 @@ export default function App() {
             currentUser={currentUser}
             audios={audios}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
-            onNavigateToVoiceChanger={() => setActiveTab('voice-changer')}
-            isVoiceChangerActive={isVoiceChangerActive}
-            onToggleVoiceChanger={() => handleToggleVoiceChanger()}
-          />
-        )}
-
-        {activeTab === 'voice-changer' && isTabAllowedForUser('voice-changer', currentUser) && (
-          <VoiceChangerTab
-            currentUser={currentUser}
-            extensions={extensions}
-            onTriggerSync={handleQuickSync}
           />
         )}
 
@@ -1955,7 +1789,6 @@ export default function App() {
             onSyncAsterisk={() => handleQuickSync(extensions)}
             onResetDefaultExtensions={handleResetDefaultExtensions}
             onNavigateToReseller={() => setActiveTab('reseller')}
-            onOpenCallerIdModal={() => setIsCallerIdModalOpen(true)}
             isSyncing={isSyncing}
           />
         )}
@@ -2203,14 +2036,6 @@ export default function App() {
         onSaveCdrRecord={handleSaveCdrRecord}
       />
 
-      {/* Outgoing Caller ID Configuration Modal */}
-      <CallerIdModal
-        isOpen={isCallerIdModalOpen}
-        onClose={() => setIsCallerIdModalOpen(false)}
-        callerIdNum={activeCallerIdNum}
-        callerIdName={activeCallerIdName}
-        onSaveCallerId={handleSaveCallerId}
-      />
     </div>
   );
 }

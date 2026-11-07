@@ -2036,12 +2036,11 @@ export function generateCleanDialplanConf(
   const enabledCarriers = carriersList.filter((c) => c && c.name && c.enabled !== false && c.status !== 'disabled');
   const primaryCarrier = enabledCarriers[0] || carriersList[0] || { name: 'carrier_default', host: carrierHostFallback };
   const carrierHost = primaryCarrier.host || carrierHostFallback;
-  const rawGlobalCid = (activeCallerIdState?.callerIdNum || '').trim();
-  const defaultCidNum = (rawGlobalCid && !rawGlobalCid.includes('5550199')
-    ? rawGlobalCid
-    : (primaryCarrier.outboundCallerId && !primaryCarrier.outboundCallerId.includes('5550199') ? primaryCarrier.outboundCallerId : '+18494386040')
+  const defaultCidNum = (primaryCarrier.outboundCallerId && !primaryCarrier.outboundCallerId.includes('5550199')
+    ? primaryCarrier.outboundCallerId
+    : '+18494386040'
   ).replace(/[^0-9]/g, '') || '18494386040';
-  const defaultCidName = (activeCallerIdState?.callerIdName || '').trim() || primaryCarrier.outboundCallerIdName || 'Atención al Cliente';
+  const defaultCidName = primaryCarrier.outboundCallerIdName || 'Carrier Trunk';
 
   // Generación dinámica de la cadena Ring-All para todas las extensiones activas (ej: PJSIP/1001&PJSIP/1002...)
   // Quien descuelga primero gana la llamada y los demás canales dejan de timbrar inmediatamente
@@ -2075,56 +2074,37 @@ export function generateCleanDialplanConf(
   dialplanContent += `GLOBAL_DEFAULT_AGENT=${chosenAgent}\n`;
   dialplanContent += `GLOBAL_RINGALL_EXTENSIONS=${ringAllDialString}\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para preparacion de Caller ID, headers de identidad y optimizacion HD en canal saliente real\n`;
+  dialplanContent += `; Subrutina Pre-Dial para preparacion de audio en canal saliente real (CallerID asignado por el carrier)\n`;
   dialplanContent += `[sub-pjsip-outbound]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Preparando canal saliente: \${CHANNEL} con CID: \${CALLERID(all)} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Preparando canal saliente: \${CHANNEL} (CallerID asignado por Carrier) ===)\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_200,target_30)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(OUT_CID_NUM=\${IF($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "unknown" & "\${CALLERID(num)}" != "restricted" & "\${CALLERID(num)}" != "anonymous"]?\${CALLERID(num)}:\${IF($["\${DB(ivr_vars/global_callerid_num)}" != ""]?\${DB(ivr_vars/global_callerid_num)}:\${GLOBAL_DEFAULT_CID_NUM})})})\n`;
-  dialplanContent += ` same => n,Set(OUT_CID_NAME=\${IF($["\${CALLERID(name)}" != "" & "\${CALLERID(name)}" != "unknown" & "\${CALLERID(name)}" != "restricted"]?\${CALLERID(name)}:\${IF($["\${DB(ivr_vars/global_callerid_name)}" != ""]?\${DB(ivr_vars/global_callerid_name)}:\${GLOBAL_DEFAULT_CID_NAME})})})\n`;
-  dialplanContent += ` same => n,Set(OUT_CID_NUM_CLEAN=\${FILTER(0123456789,\${OUT_CID_NUM})})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${OUT_CID_NUM_CLEAN})} = 10]?Set(OUT_CID_NUM_CLEAN=1\${OUT_CID_NUM_CLEAN}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NUM_CLEAN}" = ""]?Set(OUT_CID_NUM_CLEAN=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NAME}" = ""]?Set(OUT_CID_NAME=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${OUT_CID_NAME}" = "BANRESERVAS" || "\${OUT_CID_NAME}" = "Seguridad Bancaria"]?Set(OUT_CID_NAME=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
-  dialplanContent += ` same => n,Set(CALLERID(num)=\${OUT_CID_NUM_CLEAN})\n`;
-  dialplanContent += ` same => n,Set(CALLERID(name)=\${OUT_CID_NAME})\n`;
-  dialplanContent += ` same => n,Set(CALLERID(all)="\${OUT_CID_NAME}" <\${OUT_CID_NUM_CLEAN}>)\n`;
-  dialplanContent += ` same => n,Set(TARGET_TRUNK_HOST=\${CHANNEL(endpoint)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "trunk_69_197_187_87"]?Set(TARGET_TRUNK_HOST=69.197.187.87):Set(TARGET_TRUNK_HOST=\${GLOBAL_CARRIER_HOST}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TARGET_TRUNK_HOST}" = "televoxin" || "\${TARGET_TRUNK_HOST}" = "televox"]?Set(TARGET_TRUNK_HOST=televox.in))\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>)\n`;
-  dialplanContent += ` same => n,Set(PJSIP_HEADER(add,Remote-Party-ID)="\${OUT_CID_NAME}" <sip:\${OUT_CID_NUM_CLEAN}@\${TARGET_TRUNK_HOST}>\\;party=calling\\;screen=yes\\;privacy=off)\n`;
-  dialplanContent += ` same => n,NoOp(=== [OUTBOUND CID FINAL] CallerID num: \${CALLERID(num)} name: \${CALLERID(name)} ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [OUTBOUND CARRIER] Identificador asignado directamente por el carrier ===)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[sub-pjsip-headers]\n`;
   dialplanContent += `exten => s,1,Goto(sub-pjsip-outbound,s,1)\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para optimizacion de audio bidireccional (HD Voice y corte limpio de MOH) al conectar con asesor\n`;
+  dialplanContent += `; Subrutina Pre-Dial para mostrar el número exacto del cliente en MicroSIP al presionar 1 con audio HD natural (sin modulador)\n`;
   dialplanContent += `[sub-audio-quality]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] JitterBuffer y CallerID Cliente MicroSIP en Canal: \${CHANNEL} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] Mostrando Cliente en Pantalla MicroSIP: \${TARGET_NUM} en Canal: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(TARGET_DISPLAY=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CUSTOMER_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${TARGET_DEST}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALL_DEST}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${DEST_NUM}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(num)=\${TARGET_DISPLAY}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(name)=Cliente: \${TARGET_DISPLAY}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(all)=\"Cliente: \${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(name)=\${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(all)=\"\${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${TARGET_DISPLAY}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(name,i)=Cliente: \${TARGET_DISPLAY}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"Cliente: \${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>\\;party=calling\\;screen=yes\\;privacy=off))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(name,i)=\${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>\\;party=calling\\;screen=yes\\;privacy=off))\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
-  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `; Subrutina Pre-Bridge (U) ejecutada en el canal que atiende (Ring-All o Directo) para registrar la extension exacta\n`;
@@ -2360,8 +2340,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA 777] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Agente: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
-  dialplanContent += `; 2b. Acceso y Prueba Directa de Modulador de Voz y/o IVR desde Softphone (Extension 8888, *8888, *43, 8880)\n`;
-  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: MODULADOR DE VOZ FEMENINA & IVR ===)\n`;
+  dialplanContent += `; 2b. Acceso y Prueba Directa de Audio Natural y/o IVR desde Softphone (Extension 8888, *8888, *43, 8880)\n`;
+  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: AUDIO NATURAL & IVR ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
@@ -2372,26 +2352,18 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(TEST_PITCH=\${DB(voice_changer/\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/\${CHANNEL(endpoint)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/8888)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = ""]?Set(TEST_PITCH=\${DB(voice_changer/global)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${TEST_PITCH}" = "" || "\${TEST_PITCH}" = "0" || "\${TEST_PITCH}" = "1.0"]?Set(TEST_PITCH=1.32))\n`;
-  dialplanContent += ` same => n,NoOp(=== [PRUEBA EXT 8888] Aplicando modulador de voz Pitch Shift: \${TEST_PITCH} ===)\n`;
-  dialplanContent += ` same => n,Set(PITCH_SHIFT(rx)=\${TEST_PITCH})\n`;
-  dialplanContent += ` same => n,Set(PITCH_SHIFT(tx)=\${TEST_PITCH})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Read(TEST_CHOICE,,1,,1,3)\n`;
   dialplanContent += ` same => n,GotoIf($["\${TEST_CHOICE}" = "2"]?test_ivr)\n`;
-  dialplanContent += ` same => n(test_echo),NoOp(=== [PRUEBA ECO EXT 8888] Hable ahora para escucharse modulado a voz femenina ===)\n`;
+  dialplanContent += ` same => n(test_echo),NoOp(=== [PRUEBA ECO EXT 8888] Hable ahora para escucharse con su voz natural ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Echo()\n`;
   dialplanContent += ` same => n,Hangup()\n`;
   dialplanContent += ` same => n(test_ivr),NoOp(=== [PRUEBA IVR EXT 8888] Redirigiendo a IVR simulado ===)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
-  dialplanContent += `; Extensiones de prueba de Eco de voz modulada (*43, *8888, 8880)\n`;
+  dialplanContent += `; Extensiones de prueba de Eco de audio natural (*43, *8888, 8880)\n`;
   dialplanContent += `exten => *43,1,Goto(8888,1)\n`;
   dialplanContent += `exten => *8888,1,Goto(8888,1)\n`;
   dialplanContent += `exten => 8880,1,Goto(8888,1)\n\n`;
@@ -3383,6 +3355,15 @@ export function generateCleanDialplanConf(
   dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: NOTIFICACION INMEDIATA AL PANEL Y TRANSFERENCIA AL ASESOR\n`;
   dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> CLIENTE PRESIONO 1 ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
+  dialplanContent += ` same => n,Set(CONNECTEDLINE(num,i)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
@@ -3581,6 +3562,15 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `exten => 1,1,NoOp(=== [IVR] PRESS 1 DETECTADO -> NOTIFICANDO PANEL Y ASESOR ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
+  dialplanContent += ` same => n,Set(CONNECTEDLINE(num,i)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
@@ -4502,10 +4492,6 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     const cleanCarrier = (carrier || '').trim();
-
-    activeCallerIdState.callerIdNum = effectiveCidNum;
-    activeCallerIdState.callerIdName = effectiveCidName;
-    activeCallerIdState.updatedAt = new Date().toISOString();
 
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
@@ -7106,288 +7092,49 @@ app.post('/api/asterisk/press1-destination/save', async (req, res) => {
 });
 
 // Active outgoing Caller ID storage
-let activeCallerIdState = {
-  callerIdNum: '+18005550199',
-  callerIdName: 'Atención al Cliente',
-  updatedAt: new Date().toISOString(),
-};
-
-// Endpoint to get active outgoing Caller ID
+// Outgoing Caller ID is managed directly by the Carrier
 app.get('/api/asterisk/callerid', async (req, res) => {
-  try {
-    let num = activeCallerIdState.callerIdNum;
-    let name = activeCallerIdState.callerIdName;
-    try {
-      const rawNum = await executeAsteriskCommand('database get ivr_vars global_callerid_num');
-      if (rawNum && rawNum.includes('Value:')) {
-        const parsed = rawNum.split('Value:')[1].split('\n')[0].trim();
-        if (parsed) num = parsed;
-      }
-      const rawName = await executeAsteriskCommand('database get ivr_vars global_callerid_name');
-      if (rawName && rawName.includes('Value:')) {
-        const parsed = rawName.split('Value:')[1].split('\n')[0].trim();
-        if (parsed) name = parsed;
-      }
-    } catch (_) {}
-
-    res.json({
-      success: true,
-      callerIdNum: num,
-      callerIdName: name,
-      updatedAt: activeCallerIdState.updatedAt,
-    });
-  } catch (err: any) {
-    res.json({
-      success: true,
-      callerIdNum: activeCallerIdState.callerIdNum,
-      callerIdName: activeCallerIdState.callerIdName,
-      updatedAt: activeCallerIdState.updatedAt,
-    });
-  }
+  res.json({
+    success: true,
+    callerIdNum: 'Asignado por Carrier',
+    callerIdName: 'Asignado por Carrier',
+    message: 'El identificador de llamada (CallerID y Nombre Visible) es gestionado directamente por el carrier.',
+  });
 });
 
-// Endpoint to set active outgoing Caller ID
 app.post('/api/asterisk/callerid', async (req, res) => {
-  try {
-    const { callerIdNum, callerIdName } = req.body;
-    if (callerIdNum !== undefined && String(callerIdNum).trim()) {
-      activeCallerIdState.callerIdNum = String(callerIdNum).trim();
-    }
-    if (callerIdName !== undefined && String(callerIdName).trim()) {
-      activeCallerIdState.callerIdName = String(callerIdName).trim();
-    }
-    activeCallerIdState.updatedAt = new Date().toISOString();
-
-    await executeAsteriskCommand(`database put ivr_vars global_callerid_num "${activeCallerIdState.callerIdNum}"`).catch(() => {});
-    await executeAsteriskCommand(`database put ivr_vars global_callerid_name "${activeCallerIdState.callerIdName}"`).catch(() => {});
-    await executeAsteriskCommand(`database put ivr_vars default_callerid_num "${activeCallerIdState.callerIdNum}"`).catch(() => {});
-    await executeAsteriskCommand(`database put ivr_vars default_callerid_name "${activeCallerIdState.callerIdName}"`).catch(() => {});
-
-    // Update extension_cid for standard agent extensions so softphone calls also use this Caller ID
-    const defaultAgentExts = ['1001', '1002', '1003', '1004', '1005', '8888', '7777', '6666'];
-    for (const ext of defaultAgentExts) {
-      executeAsteriskCommand(`database put extension_cid ${ext}/number "${activeCallerIdState.callerIdNum}"`).catch(() => {});
-      executeAsteriskCommand(`database put extension_cid ${ext}/name "${activeCallerIdState.callerIdName}"`).catch(() => {});
-    }
-
-    // Hot-reload dialplan and PJSIP with new CallerID defaults
-    try {
-      const primaryCarrier = lastSyncedCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || lastSyncedCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
-      const newDialplan = generateCleanDialplanConf(lastSyncedCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, defaultExtensionsList);
-      const newPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
-      fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), newDialplan, 'utf8');
-      fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), newPjsip, 'utf8');
-      if (fs.existsSync('/etc/asterisk')) {
-        fs.writeFileSync('/etc/asterisk/extensions.conf', newDialplan, 'utf8');
-        fs.writeFileSync('/etc/asterisk/pjsip.conf', newPjsip, 'utf8');
-      }
-      await executeAsteriskCommand('dialplan reload').catch(() => {});
-      await executeAsteriskCommand('pjsip reload').catch(() => {});
-    } catch (_) {}
-
-    // Forward to remote VPS Asterisk if running in preview
-    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
-      try {
-        await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/callerid`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
-          body: JSON.stringify(req.body),
-        }).catch(() => {});
-      } catch (_) {}
-    }
-
-    console.log(`[CALLERID SET] Saliente -> "${activeCallerIdState.callerIdName}" <${activeCallerIdState.callerIdNum}>`);
-
-    res.json({
-      success: true,
-      message: `ID de llamada saliente configurado a "${activeCallerIdState.callerIdName}" <${activeCallerIdState.callerIdNum}>`,
-      callerIdNum: activeCallerIdState.callerIdNum,
-      callerIdName: activeCallerIdState.callerIdName,
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  res.json({
+    success: true,
+    message: 'El identificador de llamada (CallerID y Nombre Visible) es gestionado directamente por el carrier.',
+    callerIdNum: 'Asignado por Carrier',
+    callerIdName: 'Asignado por Carrier',
+  });
 });
 
 // ============================================================================
-// MODULADOR DE VOZ (VOICE CHANGER) - PER-EXTENSION Y GLOBAL ASTERISK PJSIP
+// MODULADOR DE VOZ DESACTIVADO - VOZ NATURAL DEL AGENTE GARANTIZADA
 // ============================================================================
-const VOICE_CHANGER_FILE = path.join(process.cwd(), 'data', 'voice_changer_settings.json');
-
-interface StoredVoiceChangerSettings {
-  enabled: boolean;
-  activeProfileId: string;
-  language: 'es' | 'en';
-  pitchValue: string; // e.g. "1.32"
-  extensionPitchMap: Record<string, string>;
-  lastUpdated: string;
-}
-
-function loadVoiceChangerSettings(): StoredVoiceChangerSettings {
-  try {
-    if (fs.existsSync(VOICE_CHANGER_FILE)) {
-      const data = fs.readFileSync(VOICE_CHANGER_FILE, 'utf-8');
-      return JSON.parse(data);
-    }
-  } catch (_) {}
-  return {
-    enabled: false,
-    activeProfileId: 'es-female-executive',
-    language: 'es',
-    pitchValue: '1.32',
-    extensionPitchMap: {},
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-function saveVoiceChangerSettings(settings: StoredVoiceChangerSettings) {
-  try {
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    fs.writeFileSync(VOICE_CHANGER_FILE, JSON.stringify(settings, null, 2), 'utf-8');
-  } catch (err: any) {
-    console.warn('Error saving voice changer settings:', err.message);
-  }
-}
-
-// Endpoint to retrieve active Voice Changer settings and AstDB states
 app.get('/api/asterisk/voice-changer', (req, res) => {
-  try {
-    const settings = loadVoiceChangerSettings();
-    res.json({
-      success: true,
-      settings,
-    });
-  } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+  res.json({
+    success: true,
+    settings: { enabled: false },
+    message: 'Modulador de voz eliminado: el agente transmite siempre su voz 100% natural.',
+  });
 });
 
-// Endpoint to update Voice Changer settings and sync to Asterisk AstDB
 app.post('/api/asterisk/voice-changer', async (req, res) => {
-  try {
-    const { enabled, activeProfileId, language, pitchValue = '1.32', extension } = req.body;
-    const settings = loadVoiceChangerSettings();
-
-    if (enabled !== undefined) settings.enabled = Boolean(enabled);
-    if (activeProfileId) settings.activeProfileId = String(activeProfileId);
-    if (language) settings.language = language === 'en' ? 'en' : 'es';
-    if (pitchValue) settings.pitchValue = String(pitchValue);
-    settings.lastUpdated = new Date().toISOString();
-
-    const cleanExt = extension ? String(extension).trim() : null;
-
-    if (settings.enabled) {
-      const effectivePitch = settings.pitchValue || '1.32';
-      await executeAsteriskCommand('module load func_pitchshift.so').catch(() => {});
-      await executeAsteriskCommand(`database put voice_changer global "${effectivePitch}"`).catch(() => {});
-      await executeAsteriskCommand(`database put voice_changer 8888 "${effectivePitch}"`).catch(() => {});
-      settings.extensionPitchMap['8888'] = effectivePitch;
-      if (cleanExt) {
-        settings.extensionPitchMap[cleanExt] = effectivePitch;
-        await executeAsteriskCommand(`database put voice_changer ${cleanExt} "${effectivePitch}"`).catch(() => {});
-      } else {
-        const commonExts = ['1001', '1002', '1003', '1004', '1005', '8888'];
-        for (const ext of commonExts) {
-          settings.extensionPitchMap[ext] = effectivePitch;
-          executeAsteriskCommand(`database put voice_changer ${ext} "${effectivePitch}"`).catch(() => {});
-        }
-      }
-    } else {
-      await executeAsteriskCommand('database del voice_changer global').catch(() => {});
-      await executeAsteriskCommand('database del voice_changer 8888').catch(() => {});
-      if (cleanExt) {
-        delete settings.extensionPitchMap[cleanExt];
-        await executeAsteriskCommand(`database del voice_changer ${cleanExt}`).catch(() => {});
-      } else {
-        settings.extensionPitchMap = {};
-        await executeAsteriskCommand('database deltree voice_changer').catch(() => {});
-      }
-    }
-
-    saveVoiceChangerSettings(settings);
-    executeAsteriskCommand('dialplan reload').catch(() => {});
-
-    console.log(`[VOICE CHANGER] Modulador de voz femenina: ${settings.enabled ? `ACTIVO (Pitch: ${settings.pitchValue}, Idioma: ${settings.language})` : 'DESACTIVADO'}`);
-
-    res.json({
-      success: true,
-      message: settings.enabled
-        ? `Modulador de voz femenina activado exitosamente (Pitch Asterisk: ${settings.pitchValue}).`
-        : 'Modulador de voz desactivado. Tono natural restaurado.',
-      settings,
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  await executeAsteriskCommand('database deltree voice_changer').catch(() => {});
+  res.json({
+    success: true,
+    message: 'Modulador de voz desactivado: voz natural del agente activa.',
+  });
 });
 
-// Endpoint for comprehensive Asterisk Voice Changer diagnostic & self-repair
 app.get('/api/asterisk/voice-changer/diagnostic', async (req, res) => {
-  try {
-    const results: any = {
-      timestamp: new Date().toISOString(),
-      checkedPaths: [
-        '/usr/lib/asterisk/modules/func_pitchshift.so',
-        '/usr/lib64/asterisk/modules/func_pitchshift.so',
-        '/usr/local/lib/asterisk/modules/func_pitchshift.so',
-      ],
-      moduleFileFound: false,
-      foundPath: null,
-    };
-
-    for (const p of results.checkedPaths) {
-      if (fs.existsSync(p)) {
-        results.moduleFileFound = true;
-        results.foundPath = p;
-        break;
-      }
-    }
-
-    // Attempt to load module if not yet loaded
-    await executeAsteriskCommand('module load func_pitchshift.so').catch(() => {});
-
-    // Check loaded modules
-    const modShow = await executeAsteriskCommand('module show like pitch');
-    results.moduleShow = modShow || '';
-    results.isModuleLoaded = !!(modShow && modShow.includes('func_pitchshift.so'));
-
-    // Check function registration
-    const fnShow = await executeAsteriskCommand('core show function PITCH_SHIFT');
-    results.functionShow = fnShow || '';
-    results.isFunctionRegistered = !!(fnShow && fnShow.includes('PITCH_SHIFT') && !fnShow.includes('No function by that name'));
-
-    // Load active settings
-    const settings = loadVoiceChangerSettings();
-    results.settings = settings;
-
-    // Check AstDB
-    const astdb = await executeAsteriskCommand('database show voice_changer');
-    results.astdb = astdb || '';
-
-    // Check dialplan for 8888
-    const dp8888 = await executeAsteriskCommand('dialplan show 8888@from-internal');
-    results.dialplan8888 = dp8888 || '';
-    results.hasPitchShiftIn8888 = !!(dp8888 && dp8888.includes('PITCH_SHIFT'));
-
-    if (results.isFunctionRegistered) {
-      results.status = 'ready';
-      results.message = '✓ Modulador de Voz 100% operativo en Asterisk 20 (func_pitchshift.so cargado y registrado).';
-    } else if (results.moduleFileFound) {
-      results.status = 'loaded_now';
-      results.message = 'El archivo func_pitchshift.so fue localizado en disco y se envió la orden de carga a Asterisk.';
-    } else {
-      results.status = 'missing_so';
-      results.message = 'El archivo func_pitchshift.so no se encuentra cargado en el Asterisk de tu servidor VPS.';
-      results.recommendedCommand = 'apt-get update && apt-get install -y asterisk-modules libsoundtouch-dev && asterisk -rx "module load func_pitchshift.so"';
-    }
-
-    res.json({ success: true, ...results });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  res.json({
+    success: true,
+    message: 'Modulador de voz desactivado: voz natural del agente activa.',
+  });
 });
 
 // Endpoint to list live calls for LiveCallsTab monitoring in real-time
