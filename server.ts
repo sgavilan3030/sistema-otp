@@ -1166,8 +1166,8 @@ const defaultExtensionsList = [
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
-    callerIdNum: '+18005550199',
-    callerIdName: 'Atención al Cliente',
+    callerIdNum: '1001',
+    callerIdName: 'Operador Principal',
   },
   {
     extension: '1002',
@@ -1178,8 +1178,8 @@ const defaultExtensionsList = [
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
-    callerIdNum: '+18005550199',
-    callerIdName: 'Atención al Cliente',
+    callerIdNum: '1002',
+    callerIdName: 'Agente Soporte 2',
   },
   {
     extension: '1003',
@@ -1190,8 +1190,8 @@ const defaultExtensionsList = [
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
-    callerIdNum: '+18005550199',
-    callerIdName: 'Atención al Cliente',
+    callerIdNum: '1003',
+    callerIdName: 'Agente Soporte 3',
   },
   {
     extension: '1004',
@@ -1202,8 +1202,8 @@ const defaultExtensionsList = [
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
-    callerIdNum: '+18005550199',
-    callerIdName: 'Atención al Cliente',
+    callerIdNum: '1004',
+    callerIdName: 'Supervisor Turno',
   },
 ];
 
@@ -1717,9 +1717,12 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     // Permitir tanto números (1001) como nombres alfanuméricos para MicroSIP (ej. juan_perez, agente1)
     const num = rawVal.replace(/[^a-zA-Z0-9_\-]/g, '') || '1001';
     const pass = ext.secret || ext.password || 'Secr3tP@ssw0rd!1001';
-    const callerIdNum = ext.callerIdNum || ext.outboundCallerId || num;
-    const callerIdName = ext.callerIdName || ext.name || `Extension ${num}`;
-    const callerId = `"${callerIdName}" <${callerIdNum}>`;
+    let cleanCidName = ext.name || ext.callerIdName || `Extension ${num}`;
+    if (cleanCidName === 'Seguridad Bancaria' || cleanCidName === 'BANRESERVAS' || cleanCidName === 'Atención al Cliente') {
+      cleanCidName = ext.name || `Extension ${num}`;
+    }
+    const cleanCidNum = (ext.callerIdNum && ext.callerIdNum !== '+18005550199') ? ext.callerIdNum : num;
+    const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
     const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
     const extPort = parseInt(ext.port, 10) || activePort;
 
@@ -2104,19 +2107,16 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; Subrutina Pre-Dial para mostrar el número exacto del cliente en MicroSIP al presionar 1 con audio HD natural (sin modulador)\n`;
   dialplanContent += `[sub-audio-quality]\n`;
-  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] Mostrando Cliente en Pantalla MicroSIP: \${TARGET_NUM} en Canal: \${CHANNEL} ===)\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] Mostrando Cliente en Pantalla MicroSIP: \${ARG1} / \${TARGET_NUM} en Canal: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
-  dialplanContent += ` same => n,Set(TARGET_DISPLAY=\${TARGET_NUM})\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CUSTOMER_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${TARGET_DEST}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALL_DEST}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${DEST_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" = \"\"]?Set(TARGET_DISPLAY=\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Set(TARGET_DISPLAY=\${IF($["\${ARG1}" != ""]?\${ARG1}:\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${IF($["\${DEST_NUM}" != ""]?\${DEST_NUM}:\${CALLERID(num)})})})})})})})\n`;
+  dialplanContent += ` same => n,NoOp(=== [SETTING-CLIENT-CID-MICROSIP] Asignando número de cliente a MicroSIP: \${TARGET_DISPLAY} ===)\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(num)=\${TARGET_DISPLAY}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(name)=\${TARGET_DISPLAY}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CALLERID(all)=\"\${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${TARGET_DISPLAY}))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(name,i)=\${TARGET_DISPLAY}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(all,i)=\"\${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>\\;party=calling\\;screen=yes\\;privacy=off))\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
@@ -2144,7 +2144,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG1}_agent_exten)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG2}_agent_exten)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(num,i)=\${ARG1}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(name,i)=Cliente: \${ARG1}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(name,i)=\${ARG1}))\n`;
+  dialplanContent += ` same => n,ExecIf($[\"\${ARG1}\" != \"\"]?Set(CONNECTEDLINE(all,i)=\"\${ARG1}\" <\${ARG1}>))\n`;
   dialplanContent += ` same => n,Set(SHARED(PICKED_AGENT,\${MASTER_CHANNEL})=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})\n`;
@@ -3329,7 +3330,7 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; CUANDO EL CLIENTE PRESIONA 1: NOTIFICACION INMEDIATA AL PANEL Y TRANSFERENCIA AL ASESOR\n`;
   dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1] DIGITO 1 DETECTADO -> CLIENTE PRESIONO 1 ===)\n`;
-  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
@@ -3339,6 +3340,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(num,i)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(CONNECTEDLINE(all,i)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
@@ -3365,10 +3367,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
   dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" =~ "PJSIP/"]?\${FINAL_AGENT}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
-  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1^\${TARGET_NUM})U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Goto(press1_finish)\n`;
   dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
-  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1)U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1^\${TARGET_NUM})U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n(press1_finish),Hangup()\n\n`;
 
   dialplanContent += `exten => i,1,NoOp(=== [IVR-PRESS1] Opcion invalida ===)\n`;
@@ -4499,13 +4501,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       `database put ivr_vars ${formattedDest}_agent_exten "${effectiveAgentExten}"`,
       `database put ivr_vars ${formattedDest}_cid_num "${effectiveCidNum}"`,
       `database put ivr_vars ${formattedDest}_cid_name "${effectiveCidName}"`,
-      `database put ivr_vars global_callerid_num "${effectiveCidNum}"`,
-      `database put ivr_vars global_callerid_name "${effectiveCidName}"`,
-      `database put ivr_vars default_callerid_num "${effectiveCidNum}"`,
-      `database put ivr_vars default_callerid_name "${effectiveCidName}"`,
       `database put test_client_number "${cleanDest}"`,
-      `database put extension_cid ${(effectiveAgentExten && effectiveAgentExten !== 'ringall') ? effectiveAgentExten.split('&')[0] : '1001'}/number "${effectiveCidNum}"`,
-      `database put extension_cid ${(agentExten && agentExten !== 'ringall') ? agentExten : '1001'}/name "${effectiveCidName}"`,
       `database put ivr_vars default_action "${targetContext}"`,
     ];
 
