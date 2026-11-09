@@ -72,9 +72,10 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasTelevox = parsed.some((c: CarrierTrunk) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
-          const hasTrunk69 = parsed.some((c: CarrierTrunk) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
-          let list: CarrierTrunk[] = parsed.map((c: CarrierTrunk): CarrierTrunk => {
+          // Purge IP-to-IP carriers (carrier operates via SIP registration)
+          const filtered = parsed.filter((c: CarrierTrunk) => c && c.authType !== 'ip_auth' && c.host !== '69.197.187.87' && c.name !== 'trunk_69_197_187_87');
+          const hasTelevox = filtered.some((c: CarrierTrunk) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
+          let list: CarrierTrunk[] = filtered.map((c: CarrierTrunk): CarrierTrunk => {
             if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
               return {
                 ...c,
@@ -91,20 +92,6 @@ export default function App() {
                 outboundCallerName: 'Atención al Cliente',
               };
             }
-            if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
-              return {
-                ...c,
-                id: 'trunk-ip-69-197-187-87',
-                name: 'trunk_69_197_187_87',
-                authType: 'ip_auth',
-                host: '69.197.187.87',
-                port: 5060,
-                enabled: true,
-                status: (c.status === 'disabled' ? 'reachable' : c.status) as any,
-                outboundCallerName: 'Atención al Cliente',
-                techPrefix: c.techPrefix !== undefined ? c.techPrefix : '018',
-              };
-            }
             return {
               ...c,
               outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? 'Atención al Cliente' : c.outboundCallerName,
@@ -112,9 +99,6 @@ export default function App() {
           });
           if (!hasTelevox && initialCarriers[0]) {
             list = [initialCarriers[0], ...list];
-          }
-          if (!hasTrunk69 && initialCarriers[1]) {
-            list = [...list, initialCarriers[1]];
           }
           // Ensure televox is at index 0 (primary #1)
           const tvoxIdx = list.findIndex((c) => c.name === 'televoxin' || c.name === 'televox' || c.id === 'trunk-televox');

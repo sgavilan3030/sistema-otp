@@ -270,59 +270,6 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setIsModalOpen(false);
   };
 
-  const [injectStatus, setInjectStatus] = useState<string | null>(null);
-
-  const handleInjectTrunk69 = async () => {
-    const trunk69: CarrierTrunk = {
-      id: 'trunk-ip-69-197-187-87',
-      name: 'trunk_69_197_187_87',
-      authType: 'ip_auth',
-      host: '69.197.187.87',
-      port: 5060,
-      username: '',
-      secret: '',
-      inboundContext: 'trunkinbound',
-      outboundCallerId: '+18005550199',
-      outboundCallerName: 'Atención al Cliente',
-      codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-      qualifyFreq: 0,
-      status: 'reachable',
-      latencyMs: 15,
-      fromuser: '',
-      sendrpid: 'yes',
-      trustrpid: 'yes',
-      insecure: 'port,invite',
-      dialplanPattern: '_1XXXXXXXXXX',
-      dialFlags: 'Tor',
-      techPrefix: '018',
-      enabled: true,
-    };
-
-    const exists = carriers.some((c) => c.id === trunk69.id || c.name === trunk69.name);
-    if (exists) {
-      onUpdateCarrier(trunk69);
-    } else {
-      onAddCarrier(trunk69);
-    }
-    setSelectedCarrierId(trunk69.id);
-
-    try {
-      const updatedList = exists
-        ? carriers.map((c) => (c.id === trunk69.id ? trunk69 : c))
-        : [...carriers, trunk69];
-      await fetch('/api/asterisk/sync/carriers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ carriers: updatedList }),
-      });
-      if (onSyncAsterisk) onSyncAsterisk();
-      setInjectStatus('✓ Troncal IP-a-IP 69.197.187.87 inyectada con éxito con identify_by=ip y auth=none.');
-      setTimeout(() => setInjectStatus(null), 4000);
-    } catch (_) {
-      setInjectStatus('✓ Troncal agregada en memoria local.');
-      setTimeout(() => setInjectStatus(null), 4000);
-    }
-  };
 
   const televoxCarrier = carriers.find(
     (c) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox'
@@ -340,30 +287,6 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   const handleToggleTelevox = () => {
     if (!televoxCarrier) return;
     handleToggle(televoxCarrier.id);
-  };
-
-  const trunk69Carrier = carriers.find(
-    (c) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87'
-  );
-  const isTrunk69Active = trunk69Carrier
-    ? trunk69Carrier.enabled !== false && trunk69Carrier.status !== 'disabled'
-    : false;
-  const isTrunk69Primary = trunk69Carrier ? carriers[0]?.id === trunk69Carrier.id : false;
-
-  const handleToggleTrunk69 = () => {
-    if (!trunk69Carrier) {
-      handleInjectTrunk69();
-      return;
-    }
-    handleToggle(trunk69Carrier.id);
-  };
-
-  const handleMakeTrunk69Primary = () => {
-    if (!trunk69Carrier) {
-      handleInjectTrunk69();
-      return;
-    }
-    handleSetPrimary(trunk69Carrier.id);
   };
 
   // Helper generators for current active carrier
@@ -538,16 +461,6 @@ insecure=${carrierInsecure}`;
             <span>{isLoadingLiveStatus ? 'Consultando CLI...' : 'Diagnóstico Asterisk CLI'}</span>
           </button>
 
-          <button
-            id="btn-inject-ip-trunk-69"
-            onClick={handleInjectTrunk69}
-            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-500/40 shadow-md transition-all cursor-pointer"
-            title="Inyecta instantáneamente la troncal IP-a-IP 69.197.187.87 con identify_by=ip y auth=none"
-          >
-            <Globe className="w-4 h-4 text-purple-400" />
-            <span>Inyectar IP 69.197.187.87</span>
-          </button>
-
           {onSyncAsterisk && (
             <button
               id="btn-sync-carriers-now"
@@ -571,18 +484,6 @@ insecure=${carrierInsecure}`;
           </button>
         </div>
       </div>
-
-      {injectStatus && (
-        <div className="p-3.5 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-bold flex items-center justify-between shadow-lg animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-purple-400" />
-            <span>{injectStatus}</span>
-          </div>
-          <button onClick={() => setInjectStatus(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
-        </div>
-      )}
-
-      {/* CARD DE TELEVOX: TRONCAL PRIMARIA SIP ACTIVA CON REGISTRO */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-300 shrink-0">
@@ -668,91 +569,7 @@ insecure=${carrierInsecure}`;
         </div>
       </div>
 
-      {/* CARD DE ACTIVACIÓN: PROVEEDOR NUEVO IP-A-IP 69.197.187.87 (INDEPENDIENTE DE TELEVOX) */}
-      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border border-purple-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/50 flex items-center justify-center text-purple-300 shrink-0">
-            <Globe className="w-6 h-6 animate-pulse" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold text-white font-mono">trunk_69_197_187_87</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-400/50 uppercase tracking-wide">
-                Proveedor IP (Failover Backup)
-              </span>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">
-                Host: 69.197.187.87:5060
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
-                identify_by=ip
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-                auth=none
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                Tech Prefix: {trunk69Carrier?.techPrefix !== undefined && trunk69Carrier?.techPrefix !== '' ? trunk69Carrier.techPrefix : (trunk69Carrier?.techPrefix === '' ? 'Directo (Sin prefijo)' : '018')}
-              </span>
-              {isTrunk69Primary ? (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">
-                  <Star className="w-3 h-3 fill-current text-amber-400" />
-                  <span>Troncal Primaria (#1 en Asterisk)</span>
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                  Troncal Secundaria (#2 en Asterisk)
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-slate-300">
-              Conexión directa por Peering IP a IP con <code className="text-purple-300 font-mono font-bold">69.197.187.87:5060</code> sin contraseñas ni digest SIP. <b>Proveedor nuevo independiente y desacoplado de Televox.</b>
-            </p>
-          </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-end">
-          {trunk69Carrier && (
-            <button
-              onClick={() => setSelectedCarrierId(trunk69Carrier.id)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
-            >
-              Ver Configuración
-            </button>
-          )}
-
-          {trunk69Carrier && (
-            <button
-              onClick={() => handleOpenEditModal(trunk69Carrier)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 transition-all cursor-pointer flex items-center gap-1"
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Editar Prefijo / Parámetros</span>
-            </button>
-          )}
-
-          {trunk69Carrier && !isTrunk69Primary && isTrunk69Active && (
-            <button
-              onClick={handleMakeTrunk69Primary}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Colocar como troncal #1 prioritaria para todas las llamadas de salida"
-            >
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-current" />
-              <span>Hacer Primaria (#1)</span>
-            </button>
-          )}
-
-          <button
-            onClick={handleToggleTrunk69}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md cursor-pointer ${
-              isTrunk69Active
-                ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
-                : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30'
-            }`}
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span>{isTrunk69Active ? '✓ Troncal Activa (Desactivar)' : '⚡ Activar Troncal 69.197.187.87'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* Featured Box: Carrier Account Entry & Dialplan Entry exactly as requested */}
       {activeCarrier && (
@@ -1025,11 +842,7 @@ insecure=${carrierInsecure}`;
                             <span>SIP REG</span>
                           </span>
                         )}
-                        {(c.host === '69.197.187.87' || c.name === 'trunk_69_197_187_87') && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/25 text-purple-200 font-mono font-bold border border-purple-500/40">
-                            PROVEEDOR NUEVO (NO TELEVOX)
-                          </span>
-                        )}
+
                         {c.techPrefix !== undefined && c.techPrefix !== '' && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/40">
                             Prefix: {c.techPrefix}

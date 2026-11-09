@@ -1232,33 +1232,6 @@ export const defaultCarriersList = [
     enabled: true,
   },
   {
-    id: 'trunk-ip-69-197-187-87',
-    name: 'trunk_69_197_187_87',
-    authType: 'ip_auth',
-    pjsipType: 'endpoint',
-    identify_by: 'ip',
-    auth: 'none',
-    host: '69.197.187.87',
-    port: 5060,
-    username: '',
-    secret: '',
-    inboundContext: 'trunkinbound',
-    outboundCallerId: '+18005550199',
-    outboundCallerIdName: 'Atención al Cliente',
-    codecs: ['ulaw', 'alaw', 'g729', 'opus'],
-    qualifyFreq: 0,
-    status: 'reachable',
-    latencyMs: 15,
-    fromuser: '',
-    sendrpid: 'yes',
-    trustrpid: 'yes',
-    insecure: 'port,invite',
-    dialplanPattern: '_1XXXXXXXXXX',
-    dialFlags: 'Tor',
-    techPrefix: '018',
-    enabled: true,
-  },
-  {
     id: 'trunk-ghost',
     name: 'ghost',
     authType: 'registration',
@@ -1466,14 +1439,15 @@ function loadStoredCarriers(): any[] {
 
   // CRITICAL: Guarantee televox is always present, enabled, and positioned as #1 (primary outbound carrier via SIP connection)
   const televoxDefault = defaultCarriersList[0];
-  const trunk69Default = defaultCarriersList[1];
+
+  // Purge any IP-to-IP carriers (system operates exclusively via SIP registration / authentication)
+  list = list.filter((c: any) => c && c.authType !== 'ip_auth' && c.host !== '69.197.187.87' && c.name !== 'trunk_69_197_187_87' && c.id !== 'trunk-ip-69-197-187-87');
 
   const hasTelevox = list.some((c: any) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
-  const hasTrunk69 = list.some((c: any) => c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87');
 
   list = list.map((c: any) => {
     if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
-      const u = (c.username || 'jdelacruz').trim();
+      const u = (c.username || 'alberto2026').trim();
       const f = (c.fromuser || u).trim();
       return {
         ...c,
@@ -1491,20 +1465,6 @@ function loadStoredCarriers(): any[] {
         outboundCallerIdName: 'Atención al Cliente',
       };
     }
-    if (c.host === '69.197.187.87' || c.id === 'trunk-ip-69-197-187-87' || c.name === 'trunk_69_197_187_87') {
-      return {
-        ...c,
-        id: 'trunk-ip-69-197-187-87',
-        name: 'trunk_69_197_187_87',
-        authType: 'ip_auth',
-        host: '69.197.187.87',
-        port: 5060,
-        enabled: true,
-        status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
-        outboundCallerName: 'Atención al Cliente',
-        techPrefix: (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '018',
-      };
-    }
     // Cleanse any old BANRESERVAS or Seguridad Bancaria
     if (c.outboundCallerName === 'BANRESERVAS' || c.outboundCallerName === 'Seguridad Bancaria' || c.outboundCallerIdName === 'BANRESERVAS' || c.outboundCallerIdName === 'Seguridad Bancaria') {
       return {
@@ -1518,9 +1478,6 @@ function loadStoredCarriers(): any[] {
 
   if (!hasTelevox) {
     list.unshift(televoxDefault);
-  }
-  if (!hasTrunk69) {
-    list.push(trunk69Default);
   }
 
   // Ensure televox is positioned at index 0 (primary #1 for outbound calls)
@@ -2415,7 +2372,7 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '';
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
       const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
@@ -2444,7 +2401,7 @@ export function generateCleanDialplanConf(
       const cHost = c.host;
       const cPort = c.port || 5060;
       const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : (c.id === 'trunk-ip-69-197-187-87' || c.host === '69.197.187.87' ? '018' : '');
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '';
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
       const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
@@ -2475,11 +2432,7 @@ export function generateCleanDialplanConf(
     return block;
   };
 
-  // Reglas de normalizacion para llamadas marcadas con +, 00, 011 o prefijo 018 desde MicroSIP
-  dialplanContent += `; 2c. Normalización de marcación manual con prefijo de proveedor 018 (ej. 01816104803845)\n`;
-  dialplanContent += `exten => _018X.,1,NoOp(=== [MARCACION MANUAL PREFIJO 018 NORMALIZADA] Destino: \${EXTEN:3} ===)\n`;
-  dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
-
+  // Reglas de normalizacion para llamadas marcadas con +, 00 o 011 desde MicroSIP
   dialplanContent += `; 2d. Normalización de marcación internacional manual desde MicroSIP (+, 00, 011)\n`;
   dialplanContent += `exten => _+X.,1,NoOp(Marcación saliente con prefijo + normalizada: \${EXTEN:1})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:1},1)\n\n`;
@@ -2487,16 +2440,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:2},1)\n\n`;
   dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
-
-  dialplanContent += `; 2e. Regla de Prueba Directa Forzada para Troncal IP 69.197.187.87 (Marca 77 + número, ej. 7716104803845)\n`;
-  dialplanContent += `exten => _77X.,1,NoOp(=== [PRUEBA DIRECTA TRONCAL IP 69.197.187.87] Destino: \${EXTEN:2} ===)\n`;
-  dialplanContent += ` same => n,Set(DIAL_NUM=\${EXTEN:2})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
-  dialplanContent += ` same => n,Set(CALLERID(num)=18494386040)\n`;
-  dialplanContent += ` same => n,Set(CALLERID(name)=ATENCION AL CLIENTE)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/trunk_69_197_187_87/sip:018\${DIAL_NUM}@69.197.187.87:5060,40,Tor)\n`;
-  dialplanContent += ` same => n,NoOp(=== [FIN PRUEBA TRONCAL IP] Status: \${DIALSTATUS} | Causa: \${HANGUPCAUSE} ===)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 16104803845) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1XXXXXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
@@ -3682,10 +3625,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
         content.includes('[1001]\ntype=auth') ||
         content.includes('[1001]\r\ntype = auth') ||
         content.includes('[1002]\ntype = auth') ||
-        content.includes('mohsuggest') ||
-        content.includes('moh_interpret') ||
-        !content.includes('[trunk_69_197_187_87]') ||
-        !content.includes('[trunk_69_197_187_87_aor]')
+        content.includes('moh_interpret')
       ) {
         console.log('[PJSIP-REPAIR] Se detectaron secciones desactualizadas o parámetros inválidos en /etc/asterisk/pjsip.conf. Reparando...');
         needsRepair = true;
@@ -4166,10 +4106,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     if (Array.isArray(extensions)) {
       for (const ext of extensions) {
         const extNum = ext.extension;
-        const cidNum = ext.callerIdNum || outboundCid;
-        const cidName = ext.callerIdName || ext.name || 'Atención al Cliente';
-        executeAsteriskCommand(`database put extension_cid ${extNum}/number "${cidNum}"`).catch(() => {});
-        executeAsteriskCommand(`database put extension_cid ${extNum}/name "${cidName}"`).catch(() => {});
+        // CallerID is assigned dynamically or by carrier, delete any stale extension_cid override
+        executeAsteriskCommand(`database deltree extension_cid/${extNum}`).catch(() => {});
         const cId = ext.carrierId || '';
         if (cId && cId !== 'auto') {
           executeAsteriskCommand(`database put user_carrier ${extNum} "${cId}"`).catch(() => {});
