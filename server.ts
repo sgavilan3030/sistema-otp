@@ -667,7 +667,9 @@ icesupport=no
       writeAsteriskConfigFile(mgrPath, mgrContent);
       writeAsteriskConfigFile(path.join(process.cwd(), 'manager.conf'), mgrContent);
       console.log('✓ Configuración /etc/asterisk/manager.conf creada para AMI');
-      exec('asterisk -rx "manager reload"', () => {});
+      if (hasLocalAsterisk) {
+        exec('asterisk -rx "manager reload"', () => {});
+      }
     }
   } catch (_) {}
 }
@@ -777,7 +779,7 @@ function fallbackOriginate(
   // Method A: Asterisk Call Spooler (/var/spool/asterisk/outgoing/)
   const spoolDir = '/var/spool/asterisk/outgoing';
   try {
-    if (fs.existsSync(spoolDir) || fs.existsSync('/var/spool/asterisk')) {
+    if (hasLocalAsterisk && (fs.existsSync(spoolDir) || fs.existsSync('/var/spool/asterisk'))) {
       let varLines = '';
       for (const [k, v] of Object.entries(variables)) {
         if (v !== undefined && v !== null && v !== '') {
@@ -807,15 +809,22 @@ ${varLines}
   } catch (_) {}
 
   // Method B: Asterisk CLI with standard syntax (Asterisk CLI: channel originate <channel> extension <exten>@<context> 1)
-  // Standard Asterisk CLI syntax does not accept callerid token; CallerID is picked up from AstDB or dialed context
-  const cliCmd = `asterisk -rx "channel originate ${channel} extension ${exten}@${context} 1"`;
-  exec(cliCmd, (err, stdout) => {
-    if (err) {
-      console.log(`[CLI ORIGINATE NOTICE] (${channel}): ${err.message.split('\n')[0]}`);
-    } else {
-      console.log('[CLI ORIGINATE SUCCESS]:', stdout.trim());
-    }
-  });
+  const cliCmd = `channel originate ${channel} extension ${exten}@${context} 1`;
+  if (hasLocalAsterisk) {
+    exec(`asterisk -rx "${cliCmd}"`, (err, stdout) => {
+      if (err) {
+        console.log(`[CLI ORIGINATE NOTICE] (${channel}): ${err.message.split('\n')[0]}`);
+      } else {
+        console.log('[CLI ORIGINATE SUCCESS]:', stdout.trim());
+      }
+    });
+  } else {
+    executeAsteriskCommand(cliCmd).then((stdout) => {
+      if (stdout) console.log(`[REMOTE ORIGINATE SUCCESS] (${channel}):`, stdout.trim());
+    }).catch((err) => {
+      console.log(`[REMOTE ORIGINATE NOTICE] (${channel}): ${err.message.split('\n')[0]}`);
+    });
+  }
   return true;
 }
 
@@ -1205,7 +1214,7 @@ export const defaultCarriersList = [
     authType: 'registration',
     host: 'televox.in',
     port: 5060,
-    username: 'alberto2026',
+    username: 'jdelacruz',
     secret: 'Robert2026@',
     inboundContext: 'trunkinbound',
     outboundCallerId: '+18005550199',
@@ -1214,7 +1223,7 @@ export const defaultCarriersList = [
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
-    fromuser: 'alberto2026',
+    fromuser: 'jdelacruz',
     sendrpid: 'yes',
     trustrpid: 'yes',
     insecure: 'port,invite',
@@ -1464,6 +1473,8 @@ function loadStoredCarriers(): any[] {
 
   list = list.map((c: any) => {
     if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
+      const u = (c.username || 'jdelacruz').trim();
+      const f = (c.fromuser || u).trim();
       return {
         ...c,
         id: 'trunk-televox',
@@ -1471,9 +1482,9 @@ function loadStoredCarriers(): any[] {
         authType: 'registration',
         host: 'televox.in',
         port: Number(c.port) || 5060,
-        username: 'alberto2026',
-        secret: 'Robert2026@',
-        fromuser: 'alberto2026',
+        username: u,
+        secret: c.secret || 'Robert2026@',
+        fromuser: f,
         enabled: true,
         status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
         outboundCallerName: 'Atención al Cliente',
@@ -1862,9 +1873,13 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `direct_media = no\n`;
       pjsipContent += `rtp_symmetric = yes\n`;
       pjsipContent += `force_rport = yes\n`;
-      pjsipContent += `rewrite_contact = yes\n`;
-      pjsipContent += `send_pai = yes\n`;
-      pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
+      if (carrier.authType === 'registration') {
+        pjsipContent += `send_pai = no\n`;
+        pjsipContent += `send_rpid = no\n`;
+      } else {
+        pjsipContent += `send_pai = yes\n`;
+        pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
+      }
       pjsipContent += `trust_id_outbound = yes\n`;
       pjsipContent += `trust_id_inbound = ${carrier.trustrpid || 'yes'}\n`;
       pjsipContent += `callerid_privacy = allowed\n`;
@@ -1894,8 +1909,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `rtp_symmetric = yes\n`;
         pjsipContent += `force_rport = yes\n`;
         pjsipContent += `rewrite_contact = yes\n`;
-        pjsipContent += `send_pai = yes\n`;
-        pjsipContent += `send_rpid = yes\n`;
+        pjsipContent += `send_pai = no\n`;
+        pjsipContent += `send_rpid = no\n`;
         pjsipContent += `trust_id_outbound = yes\n`;
         pjsipContent += `trust_id_inbound = yes\n`;
         pjsipContent += `callerid_privacy = allowed\n`;
@@ -1920,8 +1935,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `rtp_symmetric = yes\n`;
         pjsipContent += `force_rport = yes\n`;
         pjsipContent += `rewrite_contact = yes\n`;
-        pjsipContent += `send_pai = yes\n`;
-        pjsipContent += `send_rpid = yes\n`;
+        pjsipContent += `send_pai = no\n`;
+        pjsipContent += `send_rpid = no\n`;
         pjsipContent += `trust_id_outbound = yes\n`;
         pjsipContent += `trust_id_inbound = yes\n`;
         pjsipContent += `callerid_privacy = allowed\n`;
@@ -2499,33 +2514,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(allow_11d),Set(DB(last_agent_call/\${EXTEN})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/global_callerid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/global_callerid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/default_callerid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/default_callerid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_USER}/number)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_USER}/name)}))\n`;
-  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = "" || "\${CALLERID(name)}" = "BANRESERVAS" || "\${CALLERID(name)}" = "Seguridad Bancaria"]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
   dialplanContent += `; 4. Regla Saliente USA / Canada / RD 10 digitos (ej. 8494386040) -> Convierte automáticamente a 11 digitos (18494386040) requeridos por el proveedor\n`;
@@ -2551,33 +2546,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(allow_univ),Set(DB(last_agent_call/\${EXTEN})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${EXTEN}_cid_num)})\n`;
-  dialplanContent += ` same => n,Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${EXTEN}_cid_name)})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/\${TARGET_DEST}_cid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/\${TARGET_DEST}_cid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/global_callerid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/global_callerid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(ivr_vars/default_callerid_num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(ivr_vars/default_callerid_name)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NUM}" = ""]?Set(CUSTOM_CID_NUM=\${DB(extension_cid/\${CALLING_USER}/number)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" = ""]?Set(CUSTOM_CID_NAME=\${DB(extension_cid/\${CALLING_USER}/name)}))\n`;
-  dialplanContent += ` same => n,Set(RAW_CID_NUM=\${IF($["\${CUSTOM_CID_NUM}" != ""]?\${CUSTOM_CID_NUM}:\${CALLERID(num)})})\n`;
-  dialplanContent += ` same => n,Set(CLEAN_CID_NUM=\${FILTER(0123456789,\${RAW_CID_NUM})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CLEAN_CID_NUM}" != ""]?Set(CALLERID(num)=\${CLEAN_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} = 10]?Set(CALLERID(num)=1\${CALLERID(num)}))\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 10]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CUSTOM_CID_NAME}" != ""]?Set(CALLERID(name)=\${CUSTOM_CID_NAME}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(name)}" = "" || "\${CALLERID(name)}" = "BANRESERVAS" || "\${CALLERID(name)}" = "Seguridad Bancaria"]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(CALLERID(all)="\${CALLERID(name)}" <\${CALLERID(num)}>)\n`;
   dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
-  dialplanContent += ` same => n,Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_USER})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLING_AGENT})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" = ""]?Set(AGENT_PITCH=\${DB(voice_changer/global)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(rx)=\${AGENT_PITCH}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${AGENT_PITCH}" != "" && "\${AGENT_PITCH}" != "0" && "\${AGENT_PITCH}" != "1.0"]?Set(PITCH_SHIFT(tx)=\${AGENT_PITCH}))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
@@ -3728,7 +3703,9 @@ async function autoRepairAsteriskPjsipOnStartup() {
     } catch (_) {}
     lastGeneratedPjsip = cleanPjsip;
 
-    exec('asterisk -rx "pjsip reload"', () => {});
+    if (hasLocalAsterisk) {
+      exec('asterisk -rx "pjsip reload"', () => {});
+    }
     try {
       await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
     } catch (_) {}
@@ -3744,26 +3721,23 @@ async function autoRepairAsteriskPjsipOnStartup() {
     try {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
       await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
-      exec('asterisk -rx "dialplan reload"', () => {});
-      // Purge any stuck zombie Local/8888 test channels from previous sessions
-      exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
-      exec('asterisk -rx "hangup request Local/8888" 2>/dev/null', () => {});
+      if (hasLocalAsterisk) {
+        exec('asterisk -rx "dialplan reload"', () => {});
+        // Purge any stuck zombie Local/8888 test channels from previous sessions
+        exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
+        exec('asterisk -rx "hangup request Local/8888" 2>/dev/null', () => {});
+      }
     } catch (_) {}
 
     // Initialize default action and clean caller ID in AstDB
     try {
       executeAsteriskCommand('database put ivr_vars default_action "ivr-press1"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_mode "press1"').catch(() => {});
-      executeAsteriskCommand('database put ivr_vars global_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put ivr_vars default_callerid_name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put ivr_vars 16104803845_cid_name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put ivr_vars 16104803845_carrier ""').catch(() => {});
-      executeAsteriskCommand('database put ivr_vars 16104803845_cid_num "18005550199"').catch(() => {});
+      executeAsteriskCommand('database del ivr_vars global_callerid_name').catch(() => {});
+      executeAsteriskCommand('database del ivr_vars default_callerid_name').catch(() => {});
+      executeAsteriskCommand('database del ivr_vars 16104803845_cid_name').catch(() => {});
+      executeAsteriskCommand('database del ivr_vars 16104803845_cid_num').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
-      executeAsteriskCommand('database put extension_cid 1001/name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put extension_cid 1002/name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put extension_cid 1003/name "ATENCION AL CLIENTE"').catch(() => {});
-      executeAsteriskCommand('database put extension_cid 1004/name "ATENCION AL CLIENTE"').catch(() => {});
     } catch (_) {}
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
@@ -4014,13 +3988,15 @@ app.post('/api/asterisk/extensions/repair', async (req, res) => {
     ensureAudioCodecsAndRtpConfExists();
 
     let cliReload = '';
-    try {
-      cliReload = await new Promise<string>((resolve) => {
-        exec('asterisk -rx "pjsip reload"', { timeout: 3500 }, (err, stdout) => {
-          resolve(stdout ? stdout.trim() : 'PJSIP recargado en Asterisk');
+    if (hasLocalAsterisk) {
+      try {
+        cliReload = await new Promise<string>((resolve) => {
+          exec('asterisk -rx "pjsip reload"', { timeout: 3500 }, (err, stdout) => {
+            resolve(stdout ? stdout.trim() : 'PJSIP recargado en Asterisk');
+          });
         });
-      });
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     let amiReload = '';
     try {
@@ -4273,13 +4249,15 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     }
 
     // 7. Also execute reload via Asterisk CLI child_process
-    const cliOutput = await new Promise<string>((resolve) => {
-      const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2000);
-      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', (err, stdout) => {
-        clearTimeout(timer);
-        resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
-      });
-    });
+    const cliOutput = hasLocalAsterisk
+      ? await new Promise<string>((resolve) => {
+          const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2000);
+          exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', (err, stdout) => {
+            clearTimeout(timer);
+            resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
+          });
+        })
+      : 'Dialplan y PJSIP sincronizados';
 
     // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge without local Asterisk
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
@@ -4304,7 +4282,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     console.log(`[ASTERISK-SYNC] ✓ Sincronización completa: ${extensions.length} extensiones, PJSIP=${pjsipWritten}, Dialplan=${dialplanWritten}`);
 
     // If restart requested or if socket re-bind is required for new transport port
-    if (req.body.restartAsterisk) {
+    if (req.body.restartAsterisk && hasLocalAsterisk) {
       exec('asterisk -rx "core restart now"', (err) => {
         if (err) exec('systemctl restart asterisk', () => {});
       });
@@ -4327,11 +4305,15 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 // Endpoint to cleanly restart Asterisk to bind new ports (e.g. 47923)
 app.post('/api/asterisk/restart', async (req, res) => {
   try {
-    exec('asterisk -rx "core restart now"', (err, stdout, stderr) => {
-      if (err) {
-        exec('systemctl restart asterisk', () => {});
-      }
-    });
+    if (hasLocalAsterisk) {
+      exec('asterisk -rx "core restart now"', (err, stdout, stderr) => {
+        if (err) {
+          exec('systemctl restart asterisk', () => {});
+        }
+      });
+    } else {
+      executeAsteriskCommand('core restart now').catch(() => {});
+    }
     res.json({
       success: true,
       message: 'Comando "core restart now" enviado a Asterisk. El servicio se reiniciará en menos de 1 segundo aplicando el nuevo puerto de transporte.'
@@ -4355,20 +4337,24 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
       } catch (e) {}
     }
     if (!contentToWrite) {
-      const cliOutput = await new Promise<string>((resolve) => {
-        exec('asterisk -rx "dialplan reload"', (err, stdout) => {
-          resolve(stdout ? stdout.trim() : 'Dialplan recargado');
-        });
-      });
+      const cliOutput = hasLocalAsterisk
+        ? await new Promise<string>((resolve) => {
+            exec('asterisk -rx "dialplan reload"', (err, stdout) => {
+              resolve(stdout ? stdout.trim() : 'Dialplan recargado');
+            });
+          })
+        : await executeAsteriskCommand('dialplan reload').catch(() => 'Dialplan recargado');
       return res.json({ success: true, message: 'Dialplan verificado y recargado', cliOutput });
     }
 
     const fileWritten = await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', contentToWrite);
-    const cliOutput = await new Promise<string>((resolve) => {
-      exec('asterisk -rx "dialplan reload"', (err, stdout) => {
-        resolve(stdout ? stdout.trim() : 'Dialplan recargado');
-      });
-    });
+    const cliOutput = hasLocalAsterisk
+      ? await new Promise<string>((resolve) => {
+          exec('asterisk -rx "dialplan reload"', (err, stdout) => {
+            resolve(stdout ? stdout.trim() : 'Dialplan recargado');
+          });
+        })
+      : await executeAsteriskCommand('dialplan reload').catch(() => 'Dialplan recargado');
 
     res.json({
       success: true,
@@ -4426,12 +4412,22 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // Forward to remote Asterisk if on cloud preview without local Asterisk
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
-        fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/originate`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/originate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
           body: JSON.stringify(req.body),
-        }).catch(() => {});
-      } catch (_) {}
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (remoteResp.ok) {
+          const remoteJson = await remoteResp.json();
+          return res.json(remoteJson);
+        }
+      } catch (fwdErr: any) {
+        console.warn('[ORIGINATE FORWARD NOTICE]:', fwdErr.message);
+      }
     }
 
     const effectiveCidNum = (callerIdNum || callerId || '+18005550199').trim();
@@ -4585,7 +4581,9 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
           const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
           fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
           fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');
-          exec('asterisk -rx "pjsip reload"', () => {});
+          if (hasLocalAsterisk) {
+            exec('asterisk -rx "pjsip reload"', () => {});
+          }
         }
       }
     } catch (_) {}
@@ -4741,13 +4739,18 @@ app.post('/api/asterisk/extension/callerid', (req, res) => {
     const putNumCmd = `database put extension_cid ${cleanExt}/number "${cleanNum}"`;
     const putNameCmd = `database put extension_cid ${cleanExt}/name "${cleanName}"`;
 
-    exec(`asterisk -rx '${putNumCmd}' && asterisk -rx '${putNameCmd}'`, (err, stdout) => {
-      if (err) {
-        console.warn(`[AstDB Extension Notice] ${err.message}`);
-      } else {
-        console.log(`[AstDB SUCCESS] Extension ${cleanExt} CallerID actualizado en Asterisk DB: "${cleanName}" <${cleanNum}>`);
-      }
-    });
+    if (hasLocalAsterisk) {
+      exec(`asterisk -rx '${putNumCmd}' && asterisk -rx '${putNameCmd}'`, (err, stdout) => {
+        if (err) {
+          console.warn(`[AstDB Extension Notice] ${err.message}`);
+        } else {
+          console.log(`[AstDB SUCCESS] Extension ${cleanExt} CallerID actualizado en Asterisk DB: "${cleanName}" <${cleanNum}>`);
+        }
+      });
+    } else {
+      executeAsteriskCommand(putNumCmd).catch(() => {});
+      executeAsteriskCommand(putNameCmd).catch(() => {});
+    }
 
     sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
       putNumCmd,
@@ -6176,8 +6179,8 @@ read = all
 write = all
 EOF_MGR
 
-echo "Recargando Asterisk PJSIP, Dialplan y Modulador de Voz..."
-asterisk -rx "module load func_pitchshift.so" 2>/dev/null || true
+echo "Recargando Asterisk PJSIP, Dialplan y Audio Natural..."
+asterisk -rx "database deltree voice_changer" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
@@ -7637,8 +7640,13 @@ app.post('/api/asterisk/call/purge-zombies', async (req, res) => {
       }
     }
     // Also execute generic hangup for Local/8888 pattern
-    exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
-    exec('asterisk -rx "dialplan reload" 2>/dev/null', () => {});
+    if (hasLocalAsterisk) {
+      exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
+      exec('asterisk -rx "dialplan reload" 2>/dev/null', () => {});
+    } else {
+      executeAsteriskCommand('channel request hangup Local/8888').catch(() => {});
+      executeAsteriskCommand('dialplan reload').catch(() => {});
+    }
     cliCommandCache.delete('core show channels concise');
     console.log(`[PURGE ZOMBIES] Canales huérfanos colgados:`, killed);
     res.json({ success: true, message: `Se purgaron ${killed.length} canales huérfanos o en bucle.`, killed });
@@ -7973,7 +7981,9 @@ app.post('/api/reseller/clients', async (req, res) => {
       const updatedDialplan = generateCleanDialplanConf(lastSyncedCarriers);
       await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
       await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
-      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+      if (hasLocalAsterisk) {
+        exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+      }
     } catch (_) {}
 
     // Save in reseller store with granular merge
@@ -8264,7 +8274,9 @@ app.post('/api/users/sync-sip', async (req, res) => {
     await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
 
     // 7. Hot reload Asterisk
-    exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+    if (hasLocalAsterisk) {
+      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+    }
     try {
       await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload', 'dialplan reload']);
     } catch (_) {}
