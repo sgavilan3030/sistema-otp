@@ -1144,6 +1144,29 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   } | null>(null);
 
   const [isTransferringToOtp, setIsTransferringToOtp] = useState(false);
+  const [selectedOtpExten, setSelectedOtpExten] = useState<string>('4001');
+  const [dynamicOtpList, setDynamicOtpList] = useState<Array<{ extension: string; name: string }>>([
+    { extension: '4001', name: 'Captura Primaria (4001)' },
+    { extension: '4002', name: 'Token App (4002)' },
+    { extension: '4003', name: 'Alternativa (4003)' },
+    { extension: '4004', name: 'Validación SMS (4004)' },
+  ]);
+
+  useEffect(() => {
+    fetch('/api/asterisk/otp-extensions')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.extensions) && data.extensions.length > 0) {
+          setDynamicOtpList(
+            data.extensions.map((e: any) => ({
+              extension: String(e.extension),
+              name: e.name || `Ext. ${e.extension}`,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Audio tone generator for Press 1 detection chime
   const playPress1Chime = () => {
@@ -1484,10 +1507,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
-  // Transfer live call to automated OTP capture system (Ext. 3333) with sticky agent tracking
+  // Transfer live call to automated OTP capture system (Ext. 4001+ / Dinámica) with sticky agent tracking
   const handleTransferToOtpSystem = async () => {
     if (!activeCall) return;
     setIsTransferringToOtp(true);
+    const targetOtpExt = selectedOtpExten || '4001';
     try {
       const assignedAgent = activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : undefined) || (agentExtension !== 'ringall' ? agentExtension : '1001');
       const res = await fetch('/api/asterisk/call/transfer-otp', {
@@ -1496,7 +1520,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         body: JSON.stringify({
           channel: activeCall.channel,
           number: activeCall.number,
-          exten: '3333',
+          exten: targetOtpExt,
           agent: assignedAgent,
         }),
       });
@@ -1508,7 +1532,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 ...prev,
                 status: 'in_ivr',
                 agent: assignedAgent,
-                validationNote: `✓ Cliente transferido al Sistema Automático OTP (Ext. 3333). Al validar el código, la llamada retornará a la Extensión ${assignedAgent}.`,
+                validationNote: `✓ Cliente transferido al Sistema Automático OTP (Ext. ${targetOtpExt}). Al validar el código, la llamada retornará a la Extensión ${assignedAgent}.`,
               }
             : null
         );
@@ -2878,17 +2902,32 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
             {/* Actions for Live Call */}
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                id="btn-hud-transfer-otp"
-                type="button"
-                onClick={handleTransferToOtpSystem}
-                disabled={isTransferringToOtp}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all shadow-md shadow-purple-600/30 border border-purple-400/40 cursor-pointer disabled:opacity-50"
-                title="Transferir al cliente al sistema interactivo para que digite su código OTP (Ext. 3333). La llamada regresará a esta misma extensión una vez que el código sea validado."
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>{isTransferringToOtp ? 'Transfiriendo...' : 'Mandar a Sistema OTP (3333)'}</span>
-              </button>
+              <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-purple-500/30">
+                <select
+                  value={selectedOtpExten}
+                  onChange={(e) => setSelectedOtpExten(e.target.value)}
+                  className="bg-transparent text-purple-200 text-xs font-bold px-2 py-1 outline-none cursor-pointer"
+                  title="Seleccionar extensión de destino (>= 4001)"
+                >
+                  {dynamicOtpList.map((o) => (
+                    <option key={o.extension} value={o.extension} className="bg-slate-900 text-white">
+                      Ext. {o.extension}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  id="btn-hud-transfer-otp"
+                  type="button"
+                  onClick={handleTransferToOtpSystem}
+                  disabled={isTransferringToOtp}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all shadow-md shadow-purple-600/30 cursor-pointer disabled:opacity-50"
+                  title={`Transferir al cliente al sistema interactivo para que digite su código (Ext. ${selectedOtpExten}). La llamada regresará a esta misma extensión una vez que el código sea validado.`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{isTransferringToOtp ? 'Transfiriendo...' : `Mandar a OTP (${selectedOtpExten})`}</span>
+                </button>
+              </div>
 
               <button
                 id="btn-hud-transfer-agent"

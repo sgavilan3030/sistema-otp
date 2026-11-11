@@ -90,6 +90,23 @@ export interface OtpCaptureConfig {
   isLocked?: boolean; // Bloqueo manual: previene que la sincronización automática sobrescriba este guión
 }
 
+export interface DynamicOtpExtension {
+  id: string;
+  extension: string; // e.g. "4001", "4002", etc. (>= 4001)
+  name: string; // e.g. "Captura SMS / Clave Dinámica"
+  purpose?: string;
+  badge?: string;
+  colorName?: string;
+  promptAudio?: string; // e.g. "custom/solicitar_codigo_otp"
+  waitAudio?: string;   // e.g. "custom/un_momento_validando_informacion"
+  successAudio?: string;// e.g. "custom/operacion_bloqueada_exito"
+  failureAudio?: string;// e.g. "custom/token_invalido_reintente"
+  targetAgent?: string; // "return_transferer" or specific extension e.g. "1001"
+  isLocked?: boolean;
+  enabled?: boolean;
+  createdAt?: string;
+}
+
 export interface ManualLockConfig {
   welcome_6666?: boolean;
   welcome_7777?: boolean;

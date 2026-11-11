@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AudioPrompt, AudioRole, ActiveAudioAssignments, CallCenterTenant, SystemUser } from '../types';
+import { AudioPrompt, AudioRole, ActiveAudioAssignments, CallCenterTenant, SystemUser, DynamicOtpExtension } from '../types';
 import {
   UploadCloud,
   Play,
@@ -7,6 +7,7 @@ import {
   Trash2,
   CheckCircle,
   Volume2,
+  Plus,
   Mic,
   Square,
   Sparkles,
@@ -518,8 +519,110 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
+  // Extensiones dinámicas configurables (a partir del 4001 en adelante)
+  const [dynamicOtpExtensions, setDynamicOtpExtensions] = useState<DynamicOtpExtension[]>([]);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingExtension, setIsCreatingExtension] = useState(false);
+  const [newExtNum, setNewExtNum] = useState('4005');
+  const [newExtName, setNewExtName] = useState('Captura Código Dinámico');
+  const [newExtPurpose, setNewExtPurpose] = useState('Canal interactivo para solicitud y captura de clave o código.');
+  const [newExtBadge, setNewExtBadge] = useState('Nueva (4005)');
+  const [newExtPrompt, setNewExtPrompt] = useState('custom/solicitar_codigo_otp');
+  const [newExtWait, setNewExtWait] = useState('custom/un_momento_validando_informacion');
+  const [newExtSuccess, setNewExtSuccess] = useState('custom/operacion_bloqueada_exito');
+  const [newExtFailure, setNewExtFailure] = useState('custom/token_invalido_reintente');
+
+  const fetchDynamicOtpExtensions = async () => {
+    try {
+      const res = await fetch('/api/asterisk/otp-extensions');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.extensions)) {
+        setDynamicOtpExtensions(data.extensions);
+        setActiveAssignments((prev) => {
+          const next = { ...prev };
+          data.extensions.forEach((item: DynamicOtpExtension) => {
+            const ext = item.extension;
+            if (item.promptAudio && !next[`welcome_${ext}`]) next[`welcome_${ext}`] = item.promptAudio;
+            if (item.waitAudio && !next[`wait_${ext}`]) next[`wait_${ext}`] = item.waitAudio;
+            if (item.successAudio && !next[`success_${ext}`]) next[`success_${ext}`] = item.successAudio;
+            if (item.failureAudio && !next[`failure_${ext}`]) next[`failure_${ext}`] = item.failureAudio;
+          });
+          return next;
+        });
+      }
+    } catch (e) {
+      console.warn('Error al cargar extensiones dinámicas:', e);
+    }
+  };
+
+  const handleCreateOtpExtension = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const extNumber = parseInt(newExtNum, 10);
+    if (isNaN(extNumber) || extNumber < 4001 || extNumber > 4999) {
+      alert('El número de extensión debe ser mayor o igual a 4001 (rango 4001-4999).');
+      return;
+    }
+    setIsCreatingExtension(true);
+    try {
+      const res = await fetch('/api/asterisk/otp-extensions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extension: String(extNumber),
+          name: newExtName || `Extensión ${extNumber}`,
+          purpose: newExtPurpose,
+          badge: newExtBadge || `Ext. ${extNumber}`,
+          promptAudio: newExtPrompt,
+          waitAudio: newExtWait,
+          successAudio: newExtSuccess,
+          failureAudio: newExtFailure,
+          isLocked: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedbackMsg({
+          text: `✓ Extensión ${extNumber} creada exitosamente en Asterisk con enrutamiento dinámico _4XXX.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedbackMsg(null), 5000);
+        setIsCreateModalOpen(false);
+        await fetchDynamicOtpExtensions();
+        setFeaturedExtTab(String(extNumber));
+      } else {
+        alert(data.error || 'Error al crear la extensión');
+      }
+    } catch (err: any) {
+      alert(`Error al crear extensión: ${err.message}`);
+    } finally {
+      setIsCreatingExtension(false);
+    }
+  };
+
+  const handleDeleteOtpExtension = async (ext: string) => {
+    if (!confirm(`¿Eliminar la extensión ${ext} de Asterisk?`)) return;
+    try {
+      const res = await fetch(`/api/asterisk/otp-extensions/${ext}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedbackMsg({
+          text: `✓ Extensión ${ext} eliminada.`,
+          type: 'info',
+        });
+        setTimeout(() => setFeedbackMsg(null), 4000);
+        await fetchDynamicOtpExtensions();
+        if (featuredExtTab === ext) setFeaturedExtTab('all');
+      }
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message}`);
+    }
+  };
+
   useEffect(() => {
     fetchActiveAssignments();
+    fetchDynamicOtpExtensions();
   }, []);
 
   useEffect(() => {
@@ -769,8 +872,8 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  // Featured Extensions View State (7777, 6666, 5555, 4444, 3333)
-  const [featuredExtTab, setFeaturedExtTab] = useState<'all' | '7777' | '6666' | '5555' | '4444' | '3333'>('all');
+  // Featured Extensions View State (Dynamic 4001+ / 7777 / 6666 / 5555 / 4444 / 3333)
+  const [featuredExtTab, setFeaturedExtTab] = useState<string>('all');
 
   // Upload modal state
   const [isDragging, setIsDragging] = useState(false);
@@ -1400,6 +1503,26 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
           <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto shrink-0">
             <button
+              type="button"
+              onClick={() => {
+                const maxExt = dynamicOtpExtensions.reduce((max, cur) => {
+                  const n = parseInt(cur.extension, 10);
+                  return !isNaN(n) && n > max ? n : max;
+                }, 4000);
+                const nextExt = String(maxExt + 1);
+                setNewExtNum(nextExt);
+                setNewExtBadge(`Ext. ${nextExt}`);
+                setNewExtName(`Captura Código Dinámico ${nextExt}`);
+                setIsCreateModalOpen(true);
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 active:scale-95 cursor-pointer border border-emerald-400/40"
+              title="Crear nueva extensión interactiva a partir de la 4001"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Crear Extensión OTP (desde 4001)</span>
+            </button>
+
+            <button
               onClick={handleSaveOtpExtensions}
               disabled={isSavingOtpExtensions}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer ${
@@ -1440,16 +1563,75 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span>Ver Todas (5)</span>
+              <span>Ver Todas ({dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.length : OTP_EXTENSIONS_CONFIG.length})</span>
             </button>
 
-            {OTP_EXTENSIONS_CONFIG.map((extInfo) => {
+            {(dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.map((d, index) => {
+              const colors: Array<Omit<OtpExtensionInfo, 'id' | 'extension' | 'shortExt' | 'name' | 'purpose' | 'badge'>> = [
+                {
+                  colorName: 'purple',
+                  bgGradient: 'from-purple-950/40 via-slate-900 to-slate-950',
+                  borderColor: 'border-purple-500/40',
+                  textColor: 'text-purple-300',
+                  badgeColor: 'bg-purple-600 text-white',
+                  accentBg: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+                  ringColor: 'focus:border-purple-400',
+                },
+                {
+                  colorName: 'cyan',
+                  bgGradient: 'from-cyan-950/40 via-slate-900 to-slate-950',
+                  borderColor: 'border-cyan-500/40',
+                  textColor: 'text-cyan-300',
+                  badgeColor: 'bg-cyan-600 text-black',
+                  accentBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+                  ringColor: 'focus:border-cyan-400',
+                },
+                {
+                  colorName: 'amber',
+                  bgGradient: 'from-amber-950/40 via-slate-900 to-slate-950',
+                  borderColor: 'border-amber-500/40',
+                  textColor: 'text-amber-300',
+                  badgeColor: 'bg-amber-600 text-black',
+                  accentBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                  ringColor: 'focus:border-amber-400',
+                },
+                {
+                  colorName: 'emerald',
+                  bgGradient: 'from-emerald-950/40 via-slate-900 to-slate-950',
+                  borderColor: 'border-emerald-500/40',
+                  textColor: 'text-emerald-300',
+                  badgeColor: 'bg-emerald-600 text-black',
+                  accentBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+                  ringColor: 'focus:border-emerald-400',
+                },
+                {
+                  colorName: 'pink',
+                  bgGradient: 'from-pink-950/40 via-slate-900 to-slate-950',
+                  borderColor: 'border-pink-500/40',
+                  textColor: 'text-pink-300',
+                  badgeColor: 'bg-pink-600 text-white',
+                  accentBg: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+                  ringColor: 'focus:border-pink-400',
+                },
+              ];
+              const st = colors[index % colors.length];
+              return {
+                id: d.id || d.extension,
+                extension: d.extension,
+                shortExt: d.extension.length > 3 ? d.extension.slice(-3) : d.extension,
+                name: d.name || `Extensión ${d.extension}`,
+                purpose: d.purpose || `Canal interactivo para la extensión ${d.extension}`,
+                badge: d.badge || `Ext. ${d.extension}`,
+                ...st,
+                isDynamic: true,
+              } as OtpExtensionInfo & { isDynamic?: boolean };
+            }) : OTP_EXTENSIONS_CONFIG).map((extInfo) => {
               const active = featuredExtTab === extInfo.extension;
               const locked = isExtLocked(extInfo.extension);
               return (
                 <button
                   key={extInfo.id}
-                  onClick={() => setFeaturedExtTab(extInfo.extension as any)}
+                  onClick={() => setFeaturedExtTab(extInfo.extension)}
                   className={`px-3 py-1.5 rounded-lg transition-all font-bold flex items-center gap-1.5 cursor-pointer ${
                     active
                       ? `${extInfo.badgeColor} shadow-md`
@@ -1470,8 +1652,67 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           </div>
         </div>
 
-        {/* PANELES DE EXTENSIONES OTP (7777, 6666, 5555, 4444, 3333) */}
-        {OTP_EXTENSIONS_CONFIG.filter(
+        {/* PANELES DE EXTENSIONES OTP (Dinamicas >= 4001 / Estándar) */}
+        {(dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.map((d, index) => {
+          const colors: Array<Omit<OtpExtensionInfo, 'id' | 'extension' | 'shortExt' | 'name' | 'purpose' | 'badge'>> = [
+            {
+              colorName: 'purple',
+              bgGradient: 'from-purple-950/40 via-slate-900 to-slate-950',
+              borderColor: 'border-purple-500/40',
+              textColor: 'text-purple-300',
+              badgeColor: 'bg-purple-600 text-white',
+              accentBg: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+              ringColor: 'focus:border-purple-400',
+            },
+            {
+              colorName: 'cyan',
+              bgGradient: 'from-cyan-950/40 via-slate-900 to-slate-950',
+              borderColor: 'border-cyan-500/40',
+              textColor: 'text-cyan-300',
+              badgeColor: 'bg-cyan-600 text-black',
+              accentBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+              ringColor: 'focus:border-cyan-400',
+            },
+            {
+              colorName: 'amber',
+              bgGradient: 'from-amber-950/40 via-slate-900 to-slate-950',
+              borderColor: 'border-amber-500/40',
+              textColor: 'text-amber-300',
+              badgeColor: 'bg-amber-600 text-black',
+              accentBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+              ringColor: 'focus:border-amber-400',
+            },
+            {
+              colorName: 'emerald',
+              bgGradient: 'from-emerald-950/40 via-slate-900 to-slate-950',
+              borderColor: 'border-emerald-500/40',
+              textColor: 'text-emerald-300',
+              badgeColor: 'bg-emerald-600 text-black',
+              accentBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+              ringColor: 'focus:border-emerald-400',
+            },
+            {
+              colorName: 'pink',
+              bgGradient: 'from-pink-950/40 via-slate-900 to-slate-950',
+              borderColor: 'border-pink-500/40',
+              textColor: 'text-pink-300',
+              badgeColor: 'bg-pink-600 text-white',
+              accentBg: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+              ringColor: 'focus:border-pink-400',
+            },
+          ];
+          const st = colors[index % colors.length];
+          return {
+            id: d.id || d.extension,
+            extension: d.extension,
+            shortExt: d.extension.length > 3 ? d.extension.slice(-3) : d.extension,
+            name: d.name || `Extensión ${d.extension}`,
+            purpose: d.purpose || `Canal interactivo para la extensión ${d.extension}`,
+            badge: d.badge || `Ext. ${d.extension}`,
+            ...st,
+            isDynamic: true,
+          } as OtpExtensionInfo & { isDynamic?: boolean };
+        }) : OTP_EXTENSIONS_CONFIG).filter(
           (extInfo) => featuredExtTab === 'all' || featuredExtTab === extInfo.extension
         ).map((extInfo) => {
           const locked = isExtLocked(extInfo.extension);
@@ -1528,6 +1769,18 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                     {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     <span>{isSaving ? 'Guardando en AstDB...' : `Guardar y Blindar Ext. ${extInfo.extension}`}</span>
                   </button>
+
+                  {(extInfo as any).isDynamic && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteOtpExtension(extInfo.extension)}
+                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                      title={`Eliminar extensión ${extInfo.extension}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Eliminar</span>
+                    </button>
+                  )}
 
                   {locked && (
                     <button
@@ -2448,6 +2701,198 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold"
                 >
                   Guardar y Sincronizar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Crear Nueva Extensión OTP (desde 4001) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/80 p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <Headphones className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Nueva Extensión OTP Dinámica
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Crea y enruta una extensión en Asterisk (rango 4001 a 4999)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-slate-400 hover:text-white text-xl font-mono cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateOtpExtension} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Número de Extensión * (desde 4001)
+                  </label>
+                  <input
+                    type="number"
+                    min="4001"
+                    max="4999"
+                    required
+                    value={newExtNum}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewExtNum(val);
+                      if (!newExtBadge || newExtBadge.startsWith('Ext.')) {
+                        setNewExtBadge(`Ext. ${val}`);
+                      }
+                    }}
+                    placeholder="4001"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-bold text-sm focus:border-purple-400 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Marcación Asterisk directa o vía dialplan dinámico _4XXX
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Etiqueta / Badge Corto
+                  </label>
+                  <input
+                    type="text"
+                    value={newExtBadge}
+                    onChange={(e) => setNewExtBadge(e.target.value)}
+                    placeholder="SMS (4001)"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Nombre descriptivo del canal *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newExtName}
+                  onChange={(e) => setNewExtName(e.target.value)}
+                  placeholder="Ej: Captura Token Dinámico / Banca Móvil"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:border-purple-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Propósito / Descripción del guión
+                </label>
+                <textarea
+                  rows={2}
+                  value={newExtPurpose}
+                  onChange={(e) => setNewExtPurpose(e.target.value)}
+                  placeholder="Canal para transferir al cliente a solicitud de código numérico..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:border-purple-400 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Selección de los 4 Audios */}
+              <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider block">
+                  Configuración de Audios de la Extensión
+                </span>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    1. Audio de Solicitud de Código (Prompt / Bienvenida)
+                  </label>
+                  <select
+                    value={newExtPrompt}
+                    onChange={(e) => setNewExtPrompt(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:border-purple-400 focus:outline-none font-mono text-[11px]"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    2. Audio en Espera de Validación
+                  </label>
+                  <select
+                    value={newExtWait}
+                    onChange={(e) => setNewExtWait(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:border-purple-400 focus:outline-none font-mono text-[11px]"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    3. Audio de Código Aprobado / Éxito
+                  </label>
+                  <select
+                    value={newExtSuccess}
+                    onChange={(e) => setNewExtSuccess(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:border-purple-400 focus:outline-none font-mono text-[11px]"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    4. Audio de Código Inválido / Reintento
+                  </label>
+                  <select
+                    value={newExtFailure}
+                    onChange={(e) => setNewExtFailure(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:border-purple-400 focus:outline-none font-mono text-[11px]"
+                  >
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingExtension}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingExtension ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{isCreatingExtension ? 'Creando en Asterisk...' : 'Crear y Guardar Extensión'}</span>
                 </button>
               </div>
             </form>
