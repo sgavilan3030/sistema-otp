@@ -2245,33 +2245,31 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => 777,1,Goto(from-internal,4001,1)\n`;
   dialplanContent += `exten => 7777,1,Goto(from-internal,4001,1)\n\n`;
 
-  dialplanContent += `; 2b. Acceso y Prueba Directa de Audio Natural y/o IVR desde Softphone (Extension 8888, *8888, *43, 8880)\n`;
-  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: AUDIO NATURAL & IVR ===)\n`;
+  dialplanContent += `; 2b. Acceso y Prueba Directa del IVR desde Softphone (Extension 8888)\n`;
+  dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: INICIANDO IVR DIRECTO ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
   dialplanContent += ` same => n,Set(IS_TEST_CALL=1)\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=8888)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=8888)\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLERID(num)})\n`;
-  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=1001)\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:1001)})\n`;
+  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:1001)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(TEST_CHOICE,,1,,1,3)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${TEST_CHOICE}" = "2"]?test_ivr)\n`;
-  dialplanContent += ` same => n(test_echo),NoOp(=== [PRUEBA ECO EXT 8888] Hable ahora para escucharse con su voz natural ===)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Echo()\n`;
-  dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += ` same => n(test_ivr),NoOp(=== [PRUEBA IVR EXT 8888] Redirigiendo a IVR simulado ===)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
-  dialplanContent += `; Extensiones de prueba de Eco de audio natural (*43, *8888, 8880)\n`;
-  dialplanContent += `exten => *43,1,Goto(8888,1)\n`;
-  dialplanContent += `exten => *8888,1,Goto(8888,1)\n`;
-  dialplanContent += `exten => 8880,1,Goto(8888,1)\n\n`;
+
+  dialplanContent += `; Extensiones de prueba de Eco de audio (*43, *8888, 8880)\n`;
+  dialplanContent += `exten => *43,1,NoOp(=== PRUEBA DE ECO *43 ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Playback(beep)\n`;
+  dialplanContent += ` same => n,Echo()\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += `exten => *8888,1,Goto(*43,1)\n`;
+  dialplanContent += `exten => 8880,1,Goto(*43,1)\n\n`;
 
   const generateOutboundDialSteps = (destVar: string, tag: string) => {
     if (enabledCarriers.length === 0) {
@@ -2641,7 +2639,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/banrearreglado))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/press1_welcome)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
