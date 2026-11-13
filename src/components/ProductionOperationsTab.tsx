@@ -5386,7 +5386,9 @@ exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)})
 [ivr-press1]
 exten => s,1,NoOp(=== [IVR-PRESS1] REPRODUCIENDO LOCUCIÓN BIENVENIDA ===)
  same => n,Answer()
- same => n,Wait(1)
+ same => n,Wait(0.15)
+ same => n,AMD(2000,1100,350,2400,100,50,3,384,2000)
+ same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_hangup)
  same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})
  same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})
  same => n,Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)})
@@ -5394,10 +5396,11 @@ exten => s,1,NoOp(=== [IVR-PRESS1] REPRODUCIENDO LOCUCIÓN BIENVENIDA ===)
  same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))
  same => n(menu),Background(\${IVR_INTRO})
  same => n,WaitExten(4)
- same => n,Goto(menu)
+ same => n,Goto(1,1)
+ same => n(amd_hangup),Hangup()
 
-; Cuando el cliente presiona 1
-exten => 1,1,NoOp(=== [IVR-PRESS1] CLIENTE PRESIONÓ 1 -> TRANSFIRIENDO AL ASESOR ===)
+; Cuando el cliente presiona 1 (o cualquier tecla / timeout)
+exten => 1,1,NoOp(=== [IVR-PRESS1] TRANSFIRIENDO AL ASESOR ===)
  same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${CALLERID(num)})})
  same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)
  same => n,Playback(custom/conectar_asesor)
@@ -5410,10 +5413,11 @@ exten => 1,1,NoOp(=== [IVR-PRESS1] CLIENTE PRESIONÓ 1 -> TRANSFIRIENDO AL ASESO
  same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))
  same => n,Hangup()
 
-exten => i,1,Playback(custom/opcion_invalida)
- same => n,Goto(s,menu)
-
-exten => t,1,Goto(s,menu)
+exten => _[02-9],1,Goto(1,1)
+exten => *,1,Goto(1,1)
+exten => #,1,Goto(1,1)
+exten => i,1,Goto(1,1)
+exten => t,1,Goto(1,1)
 
 ; ========================================================
 ; CONTEXTO CAPTURA EN VIVO DE CÓDIGOS (EXT 7777 / 6666)

@@ -340,27 +340,25 @@ exten => _X.,1,NoOp(Llamada entrante trunkinbound: \${CALLERID(all)})
 [ivr-press1]
 exten => s,1,NoOp(=== INICIO IVR PRESS 1 ===)
  same => n,Answer()
- same => n,Wait(1)
- ; Deteccion Inteligente de Operadora Automatica o Grabadora (AMD)
- same => n,AMD()
+ same => n,Wait(0.15)
+ ; Deteccion Inteligente de Operadora Automatica o Grabadora (AMD Rapido <= 2.4s)
+ same => n,AMD(2000,1100,350,2400,100,50,3,384,2000)
  same => n,NoOp(=== [AMD-DETECTION] AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)
  same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)
- same => n,Set(LOOP_COUNT=0)
 
- same => n(menu),Set(LOOP_COUNT=$[\${LOOP_COUNT} + 1])
- same => n,GotoIf($[\${LOOP_COUNT} > ${press1.maxRetries}]?timeout_hangup)
- ; Reproducir mensaje de bienvenida
- same => n,Background(custom/press1_welcome)
+ ; Reproducir mensaje de bienvenida una vez; si no marca tras espera, transferir al operador
+ same => n(menu),Background(custom/press1_welcome)
  same => n,WaitExten(${press1.timeoutSeconds})
+ same => n,Goto(1,1)
 
  same => n(amd_machine_press1),NoOp(=== [AMD OPERADORA/GRABADORA DETECTADA] Colgando e iniciando reintento ===)
  same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${CALLERID(num)}&status=machine_detected&cause=\${AMDCAUSE}" &)
  same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${CALLERID(num)}&cause=\${AMDCAUSE}" &)
  same => n,Hangup()
 
-; Opción 1 presionada
-exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion de transferencia)
- same => n,Wait(${press1.transferDelaySeconds ?? 2})
+; Opción 1 (o transferencia directa desde otra tecla / timeout)
+exten => 1,1,NoOp(Transfiriendo llamada al operador asignado)
+ same => n,Wait(${press1.transferDelaySeconds ?? 1})
  same => n,Playback(custom/transfiriendo_asesor)
  ; Evaluación prioritaria:
  ; 1. Variable heredada de canal (__ORIGINATING_EXTEN)
@@ -390,23 +388,23 @@ exten => 1,1,NoOp(Usuario presiono 1 -> Pausa natural de 2 seg antes de locucion
  same => n,Hangup()`
  }
 
-; Opción 2 o colgar
-exten => 2,1,NoOp(Usuario cancelo)
- same => n,Playback(custom/gracias_hasta_luego)
- same => n,Hangup()
+; Cualquier otra tecla que no sea 1 -> transferir al operador
+exten => _[02-9],1,NoOp(Otra tecla presionada (\${EXTEN}) -> Transfiriendo a operador)
+ same => n,Goto(1,1)
 
-; Entrada invalida
-exten => i,1,NoOp(Digito invalido en Press 1)
- same => n,Playback(custom/opcion_invalida)
- same => n,Goto(s,menu)
+exten => *,1,NoOp(Tecla * presionada -> Transfiriendo a operador)
+ same => n,Goto(1,1)
 
-; Timeout
-exten => t,1,NoOp(Timeout en espera de digito)
- same => n,Goto(s,menu)
+exten => #,1,NoOp(Tecla # presionada -> Transfiriendo a operador)
+ same => n,Goto(1,1)
 
-exten => s,n(timeout_hangup),NoOp(Intentos maximos superados)
- same => n,Playback(custom/intentos_superados)
- same => n,Hangup()
+; Entrada invalida -> transferir al operador
+exten => i,1,NoOp(Entrada alternativa en Press 1 -> Transfiriendo a operador)
+ same => n,Goto(1,1)
+
+; Timeout sin digitos -> transferir al operador sin repetir el IVR
+exten => t,1,NoOp(Timeout en espera de digito -> Transfiriendo a operador sin repetir IVR)
+ same => n,Goto(1,1)
 
 ; ------------------------------------------------------------------------------
 ; 2. MOTOR DE CAPTURA DE OTP POR VOZ (${otp.digitLength} DIGITOS)
