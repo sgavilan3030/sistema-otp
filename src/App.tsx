@@ -273,10 +273,20 @@ export default function App() {
         const res = await fetch('/api/asterisk/otp/records');
         const data = await res.json();
         if (data.success && Array.isArray(data.records) && data.records.length > 0) {
-          const newest = data.records[0];
-          const alertKey = `${newest.id}_${newest.otp}`;
-          if (newest && newest.otp && alertKey !== dismissedOtpKey) {
-            setGlobalOtpAlert(newest);
+          const activeU = users.find((u) => u.id === currentUserId) || users[0];
+          let recs = data.records;
+          if (activeU?.tenantId) {
+            recs = recs.filter((r: any) => !r.tenantId || r.tenantId === activeU.tenantId);
+          }
+          if (activeU?.role !== 'admin' && activeU?.assignedExtensions && activeU.assignedExtensions.length > 0) {
+            recs = recs.filter((r: any) => !r.agent || activeU.assignedExtensions.includes(r.agent) || r.agent === 'ringall' || r.agent === 'all');
+          }
+          if (recs.length > 0) {
+            const newest = recs[0];
+            const alertKey = `${newest.id}_${newest.otp}`;
+            if (newest && newest.otp && alertKey !== dismissedOtpKey) {
+              setGlobalOtpAlert(newest);
+            }
           }
         }
       } catch (err) {}
@@ -285,7 +295,7 @@ export default function App() {
     pollGlobalOtp();
     const interval = setInterval(pollGlobalOtp, 4000);
     return () => clearInterval(interval);
-  }, [dismissedOtpKey]);
+  }, [dismissedOtpKey, users, currentUserId]);
 
   // Live active calls monitor across tabs
   const [activeCallCount, setActiveCallCount] = useState<number>(0);

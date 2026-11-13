@@ -41,6 +41,7 @@ import {
   Sparkles,
   HelpCircle,
   UserCheck,
+  User,
   Terminal,
   Pencil,
   Edit3,
@@ -162,6 +163,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [activeUser]);
 
+  useEffect(() => {
+    if (agentExtension) {
+      try {
+        const savedForAgent = localStorage.getItem('prod_selected_service_' + agentExtension);
+        if (savedForAgent) {
+          setSelectedService(savedForAgent as ServiceCampaignKey);
+        }
+      } catch (_) {}
+    }
+  }, [agentExtension]);
+
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
 
@@ -170,6 +182,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [targetName, setTargetName] = useState('');
   const [selectedService, setSelectedService] = useState<ServiceCampaignKey>(() => {
     try {
+      const initialExt = userAssignedExt || '1001';
+      const savedForAgent = localStorage.getItem('prod_selected_service_' + initialExt);
+      if (savedForAgent) return savedForAgent as ServiceCampaignKey;
       const saved = localStorage.getItem('prod_selected_service_v3');
       if (saved && saved !== 'bank') return saved as ServiceCampaignKey;
     } catch (_) {}
@@ -677,50 +692,54 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   };
 
   const handleSaveAndLockCurrentEntity = async () => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para guardar o modificar la configuración del guión.');
-      setTimeout(() => setAudioSyncFeedback(null), 3500);
-      return;
-    }
     const current = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
     if (!current) return;
     setIsEntitySaving(true);
+    const targetAgent = agentExtension || '1001';
     try {
-      // 1. Mark entity as locked (isLocked: true) and update state
+      // 1. Mark entity as locked (isLocked: true) and update state if admin
       const updatedEntities = campaignEntities.map((ent) =>
         ent.id === current.id ? { ...ent, isLocked: true } : ent
       );
       setCampaignEntities(updatedEntities);
 
-      // 2. Persist in localStorage
+      // 2. Persist in localStorage for this agent and globally
       localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updatedEntities));
       localStorage.setItem('prod_selected_service_v3', current.id);
+      localStorage.setItem('prod_selected_service_' + targetAgent, current.id);
 
-      // 3. Register manual lock in server API
-      fetch('/api/asterisk/audio/toggle-lock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'ivr_entity', isLocked: true }),
-      }).catch(() => {});
+      // 3. Register manual lock in server API if admin
+      if (isAdmin) {
+        fetch('/api/asterisk/audio/toggle-lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'ivr_entity', isLocked: true }),
+        }).catch(() => {});
+      }
 
-      // 4. Sync audios to AstDB for Asterisk with isManualSave = true
+      // 4. Sync audios to AstDB for Asterisk with agentId
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intro: current.introAudioPath,
           prompt: current.promptAudioPath,
-          wait: 'custom/un_momento_validando_informacion',
-          success: current.successAudioPath,
-          agent: current.agentAudioPath,
+          wait: current.waitAudioPath || 'custom/un_momento_validando_informacion',
+          success: current.successAudioPath || 'custom/operacion_bloqueada_exito',
+          agent: current.agentAudioPath || 'custom/conectar_asesor',
           holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
+          agentId: targetAgent,
           isManualSave: true,
+          isAdmin,
         }),
       });
 
       setIsEntitySaved(true);
-      setAudioSyncFeedback(`✓ Guión "${current.name}" guardado y bloqueado manualmente (isLocked: true). Protegido contra sobreescritura.`);
+      const feedbackMsg = isAdmin
+        ? `✓ Guión "${current.name}" guardado y sincronizado (Ext. ${targetAgent} y Sistema). Protegido contra sobreescritura.`
+        : `✓ Guión "${current.name}" guardado y aplicado para tu Extensión ${targetAgent}. Tus llamadas usarán este guión sin interferir con otros operadores.`;
+      setAudioSyncFeedback(feedbackMsg);
       setTimeout(() => {
         setIsEntitySaved(false);
         setAudioSyncFeedback(null);
@@ -974,10 +993,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Select an entity and sync its attributes
   const handleSelectEntity = async (entity: CampaignEntity) => {
     setSelectedService(entity.id);
+    const targetAgent = agentExtension || '1001';
+    try {
+      localStorage.setItem('prod_selected_service_' + targetAgent, entity.id);
+      localStorage.setItem('prod_selected_service_v3', entity.id);
+    } catch (_) {}
     if (entity.defaultCallerName) setCallerIdName(entity.defaultCallerName);
     if (entity.defaultCallerNum) setCallerIdNum(entity.defaultCallerNum);
 
-    // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios
+    // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios for this agent
     try {
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
@@ -985,14 +1009,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         body: JSON.stringify({
           intro: entity.introAudioPath,
           prompt: entity.promptAudioPath,
-          wait: 'custom/un_momento_validando_informacion',
-          success: entity.successAudioPath,
-          agent: entity.agentAudioPath,
+          wait: entity.waitAudioPath || 'custom/un_momento_validando_informacion',
+          success: entity.successAudioPath || 'custom/operacion_bloqueada_exito',
+          agent: entity.agentAudioPath || 'custom/conectar_asesor',
           holdMusic: entity.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
+          agentId: targetAgent,
+          isAdmin,
         }),
       });
-      setAudioSyncFeedback(`✓ Guión activo: "${entity.name}" (MOH: ${entity.holdMusicAudioPath || 'MOH'}) sincronizado con Asterisk.`);
+      setAudioSyncFeedback(`✓ Guión seleccionado: "${entity.name}" para tu Extensión ${targetAgent}.`);
       setTimeout(() => setAudioSyncFeedback(null), 3000);
     } catch {}
   };
@@ -1313,14 +1339,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
-        const filtered = currentUser?.tenantId
+        let filtered = currentUser?.tenantId
           ? data.records.filter((r: any) => !r.tenantId || r.tenantId === currentUser.tenantId)
           : data.records;
+
+        // Si el usuario es operador (no admin) con extensiones asignadas, filtrar solo sus OTPs
+        if (!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) {
+          filtered = filtered.filter(
+            (r: any) =>
+              !r.agent ||
+              activeUser.assignedExtensions.includes(r.agent) ||
+              r.agent === 'ringall' ||
+              r.agent === 'all'
+          );
+        }
+
         setOtpRecords(filtered);
 
-        // Detectar si hay un código nuevo para alertar al agente
-        if (data.records.length > 0) {
-          const newest = data.records[0];
+        // Detectar si hay un código nuevo para alertar exclusivamente a este agente
+        if (filtered.length > 0) {
+          const newest = filtered[0];
           const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
 
           const isDecided =
@@ -3573,34 +3611,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           <span>Administrador</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Solo los usuarios con rol de Administrador pueden editar o crear guiones">
-                          <Lock className="w-3 h-3 text-amber-400" />
-                          <span>Solo Lectura (Admin requerido)</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40" title={`Operador asignado a la extensión ${agentExtension}`}>
+                          <User className="w-3 h-3 text-sky-400" />
+                          <span>Operador Ext. {agentExtension}</span>
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      {isAdmin ? (
-                        <>Selecciona una entidad para la llamada o haz clic en <strong className="text-emerald-400">Editar</strong> para cambiar su nombre, textos y los 4 audios pregrabados.</>
-                      ) : (
-                        <>Selecciona la entidad que se simulará en la llamada activa. La edición y creación de guiones está protegida y reservada a <strong className="text-amber-400">Administradores</strong>.</>
-                      )}
+                      Selecciona la entidad que deseas simular y presiona <strong className="text-emerald-400">"Guardar Guión"</strong> para activarlo en Asterisk de forma aislada para tu extensión {agentExtension} sin interferir con otros operadores.
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
+                    {/* Botón Guardar Guión disponible para TODOS los operadores y administradores */}
+                    <button
+                      type="button"
+                      onClick={handleSaveAndLockCurrentEntity}
+                      disabled={isEntitySaving}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
+                      title={`Guardar y sincronizar este guión en Asterisk para tus llamadas salientes (Ext. ${agentExtension})`}
+                    >
+                      {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{isEntitySaving ? 'Guardando...' : `Guardar Guión (Ext. ${agentExtension})`}</span>
+                    </button>
+
                     {isAdmin ? (
                       <>
-                        <button
-                          type="button"
-                          onClick={handleSaveAndLockCurrentEntity}
-                          disabled={isEntitySaving}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
-                          title="Guardar y bloquear este guión contra sobreescritura automática"
-                        >
-                          {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                          <span>{isEntitySaving ? 'Guardando...' : 'Guardar Configuración'}</span>
-                        </button>
-
                         {campaignEntities.find((e) => e.id === selectedService)?.isLocked && (
                           <button
                             type="button"
@@ -3677,9 +3712,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </button>
                       </>
                     ) : (
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs bg-slate-900/90 border border-amber-500/30 text-amber-300 shadow-sm" title="Solo los usuarios con rol de Administrador pueden modificar este guión">
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Edición de Guiones protegida (Solo Administrador)</span>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-900/90 border border-sky-500/30 text-sky-300 shadow-sm" title={`Tus llamadas aplicarán este guión de forma aislada a la extensión ${agentExtension}`}>
+                        <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Aislamiento Activo (Ext. {agentExtension})</span>
                       </div>
                     )}
                   </div>

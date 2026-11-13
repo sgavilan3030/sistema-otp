@@ -31,6 +31,12 @@ import {
   PhoneOff,
   Building2,
   Headphones,
+  CreditCard,
+  MessageSquare,
+  ShoppingBag,
+  Sliders,
+  Check,
+  User,
   X,
 } from 'lucide-react';
 
@@ -237,6 +243,153 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     audio.onended = () => {
       setPlayingHoldMusicPath(null);
     };
+  };
+
+  // User assigned extension for isolation
+  const userExtension = (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0)
+    ? activeUser.assignedExtensions[0]
+    : '1001';
+
+  // Dedicated independent persistent state for the selected Guion / Entity
+  const [selectedEntityId, setSelectedEntityId] = useState<string>(() => {
+    try {
+      const perAgent = localStorage.getItem(`prod_selected_service_${userExtension}`);
+      if (perAgent) return perAgent;
+      const saved = localStorage.getItem('prod_selected_service_v3');
+      if (saved && saved !== 'bank') return saved;
+    } catch (_) {}
+    return 'customer_service';
+  });
+
+  const [isSavingEntityAstDb, setIsSavingEntityAstDb] = useState(false);
+  const [entitySaveFeedback, setEntitySaveFeedback] = useState<string | null>(null);
+  const [isEntityLocked, setIsEntityLocked] = useState<boolean>(() => {
+    try {
+      const savedLocks = localStorage.getItem('ast20_audio_locks_v1');
+      if (savedLocks) {
+        const parsed = JSON.parse(savedLocks);
+        return !!parsed.ivr_entity;
+      }
+    } catch (_) {}
+    return false;
+  });
+
+  // Keep in sync with userExtension and localStorage changes
+  useEffect(() => {
+    try {
+      const perAgent = localStorage.getItem(`prod_selected_service_${userExtension}`);
+      if (perAgent) {
+        setSelectedEntityId(perAgent);
+      } else {
+        const saved = localStorage.getItem('prod_selected_service_v3');
+        if (saved && saved !== 'bank') setSelectedEntityId(saved);
+      }
+    } catch (_) {}
+  }, [userExtension]);
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'prod_selected_service_v3' || e.key === `prod_selected_service_${userExtension}`) {
+        if (e.newValue) setSelectedEntityId(e.newValue);
+      }
+      if (e.key === 'prod_campaign_entities_v3') {
+        try {
+          if (e.newValue) setEntities(JSON.parse(e.newValue));
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [userExtension]);
+
+  const handleSelectEntity = (entityId: string) => {
+    setSelectedEntityId(entityId);
+    try {
+      localStorage.setItem('prod_selected_service_v3', entityId);
+      if (userExtension) {
+        localStorage.setItem(`prod_selected_service_${userExtension}`, entityId);
+      }
+    } catch (_) {}
+  };
+
+  // EXCLUSIVE AstDB Save: updates AstDB variables directly in Asterisk without touching IVR dialplan reload or press1/otp configurations
+  const handleSaveSelectedEntityToAstDB = async (overrideEntityId?: string) => {
+    const entId = overrideEntityId || selectedEntityId;
+    const current = entities.find((e) => e.id === entId) || entities[0];
+    if (!current) return;
+
+    setIsSavingEntityAstDb(true);
+    try {
+      // 1. Persist selected entity in localStorage independently
+      localStorage.setItem('prod_selected_service_v3', current.id);
+      if (userExtension) {
+        localStorage.setItem(`prod_selected_service_${userExtension}`, current.id);
+      }
+
+      // 2. Synchronize ONLY AstDB in Asterisk (WITHOUT touching dialplan, press1 or otp structures, and WITHOUT reload)
+      await fetch('/api/asterisk/audio/sync-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intro: current.introAudioPath,
+          prompt: current.promptAudioPath,
+          wait: current.waitAudioPath || 'custom/un_momento_validando_informacion',
+          success: current.successAudioPath || 'custom/operacion_bloqueada_exito',
+          agent: current.agentAudioPath || 'custom/conectar_asesor',
+          holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          agentId: userExtension,
+          isManualSave: true,
+          isAdmin,
+        }),
+      });
+
+      setEntitySaveFeedback(`✓ Guión "${current.name}" guardado exitosamente en Asterisk AstDB para Ext. ${userExtension} (en caliente, sin reiniciar el IVR ni afectar otras configuraciones).`);
+      setTimeout(() => setEntitySaveFeedback(null), 5000);
+    } catch (err: any) {
+      setEntitySaveFeedback(`✓ Guión guardado localmente.`);
+      setTimeout(() => setEntitySaveFeedback(null), 3000);
+    } finally {
+      setIsSavingEntityAstDb(false);
+    }
+  };
+
+  const handleToggleEntityLock = async () => {
+    if (!isAdmin) {
+      setEntitySaveFeedback('🔒 Se requieren privilegios de Administrador para bloquear/desbloquear el guión.');
+      setTimeout(() => setEntitySaveFeedback(null), 3500);
+      return;
+    }
+    const nextLocked = !isEntityLocked;
+    setIsEntityLocked(nextLocked);
+    try {
+      await fetch('/api/asterisk/audio/toggle-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'ivr_entity', isLocked: nextLocked }),
+      });
+      setEntitySaveFeedback(nextLocked
+        ? '✓ Guión bloqueado manualmente en AstDB (isLocked: true). Protegido contra sobreescritura automática.'
+        : '🔓 Guión desbloqueado. Permite sincronizaciones automáticas.'
+      );
+      setTimeout(() => setEntitySaveFeedback(null), 4000);
+    } catch (_) {}
+  };
+
+  const renderEntityIcon = (iconName?: string) => {
+    switch (iconName) {
+      case 'building':
+        return <Building2 className="w-4 h-4 text-emerald-400" />;
+      case 'card':
+        return <CreditCard className="w-4 h-4 text-sky-400" />;
+      case 'message':
+        return <MessageSquare className="w-4 h-4 text-emerald-300" />;
+      case 'lock':
+        return <Lock className="w-4 h-4 text-amber-400" />;
+      case 'shopping':
+        return <ShoppingBag className="w-4 h-4 text-orange-400" />;
+      default:
+        return <Sliders className="w-4 h-4 text-purple-400" />;
+    }
   };
 
   const checkAudioExists = async (slotKey: string, audioPath?: string) => {
@@ -460,7 +613,14 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           destination: testPhone.trim(),
           carrier: activeCarrierName,
           callerId: '+18005550199',
-          agentExten: '1001',
+          agentExten: userExtension,
+          entityId: currentSelectedEntity?.id,
+          service: currentSelectedEntity?.name,
+          intro: currentSelectedEntity?.introAudioPath,
+          prompt: currentSelectedEntity?.promptAudioPath,
+          wait: currentSelectedEntity?.waitAudioPath,
+          success: currentSelectedEntity?.successAudioPath,
+          agentAudio: currentSelectedEntity?.agentAudioPath,
         }),
       });
       const data = await res.json();
@@ -562,11 +722,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       fetch('/api/asterisk/audio/toggle-lock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'ivr_entity', isLocked: true }),
+        body: JSON.stringify({ role: 'ivr_structural', isLocked: true }),
       }).catch(() => {});
 
       onTriggerSync();
-      setSavedFeedback('✓ Configuración del Guión de IVR guardada y bloqueada manualmente (isLocked: true). Protegida contra sobreescritura.');
+      setSavedFeedback('✓ Configuración estructural del IVR (Press-1 y OTP) guardada y protegida en Asterisk.');
       setTimeout(() => setSavedFeedback(null), 5000);
     } finally {
       setIsSavingLock(false);
@@ -589,10 +749,10 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     fetch('/api/asterisk/audio/toggle-lock', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'ivr_entity', isLocked: false }),
+      body: JSON.stringify({ role: 'ivr_structural', isLocked: false }),
     }).catch(() => {});
 
-    setSavedFeedback('🔓 Configuración del Guión de IVR desbloqueada. Ahora permite sincronización automática.');
+    setSavedFeedback('🔓 Configuración estructural del IVR desbloqueada.');
     setTimeout(() => setSavedFeedback(null), 4000);
   };
 
@@ -600,9 +760,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     onSavePress1(press1);
     onSaveOtp(otp);
     onTriggerSync();
-    setSavedFeedback('Configuración de IVR & OTP guardada y recargada en Asterisk 20 con soporte para audios pregrabados.');
+    setSavedFeedback('✓ Configuración estructural de IVR & OTP guardada y recargada en Asterisk 20.');
     setTimeout(() => setSavedFeedback(null), 4000);
   };
+
+  const currentSelectedEntity = entities.find((e) => e.id === selectedEntityId) || entities[0];
 
   return (
     <div className="space-y-6">
@@ -617,7 +779,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             {isIvrLocked ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                 <Lock className="w-3 h-3 text-amber-400" />
-                <span>Bloqueo manual (isLocked: true)</span>
+                <span>Bloqueo Estructural manual</span>
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
@@ -644,10 +806,10 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             onClick={handleSaveAndLockIVR}
             disabled={isSavingLock || isSyncing || hasMissingAudio || isCheckingAudio}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
-            title="Guardar y bloquear la configuración del guión contra sobreescritura automática"
+            title="Guardar y proteger la configuración estructural de IVR (Press-1 y OTP)"
           >
             {isSavingLock ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            <span>{isSavingLock ? 'Guardando...' : 'Guardar Configuración'}</span>
+            <span>{isSavingLock ? 'Guardando...' : 'Guardar Estructura IVR'}</span>
           </button>
 
           {isIvrLocked && (
@@ -655,7 +817,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               type="button"
               onClick={handleUnlockIVR}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
-              title="Desbloquear guión de IVR para permitir sincronización automática"
+              title="Desbloquear configuración estructural de IVR"
             >
               <Unlock className="w-3.5 h-3.5" />
               <span>Desbloquear</span>
@@ -702,6 +864,142 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         </div>
       )}
 
+      {/* SECCIÓN AISLADA: Guión / Entidad a Simular Seleccionada (Persistencia AstDB en Caliente) */}
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-purple-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Guión / Entidad a Simular en IVR</span>
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30">
+                  Ext. {userExtension}
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-semibold bg-sky-500/10 text-sky-400 rounded-full border border-sky-500/20">
+                  AstDB en caliente (Sin caída ni recarga de Dialplan)
+                </span>
+                {isEntityLocked && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Guión Protegido</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Selecciona la entidad bancaria o servicio que tu extensión utilizará durante la llamada. Al guardar, solo se actualizan las variables en la base de datos de Asterisk (AstDB).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start lg:self-center">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleToggleEntityLock}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition-all cursor-pointer"
+                title={isEntityLocked ? "Desbloquear guión en AstDB" : "Bloquear guión en AstDB para prevenir sobrescritura"}
+              >
+                {isEntityLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                <span>{isEntityLocked ? 'Desbloquear' : 'Bloquear en AstDB'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleSaveSelectedEntityToAstDB()}
+              disabled={isSavingEntityAstDb}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md bg-purple-600 hover:bg-purple-500 active:scale-95 text-white shadow-purple-600/30 cursor-pointer disabled:opacity-50"
+              title="Guardar únicamente las variables de audio de esta entidad en AstDB para su extensión"
+            >
+              {isSavingEntityAstDb ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span>{isSavingEntityAstDb ? 'Guardando en AstDB...' : `Guardar Guión (Ext. ${userExtension})`}</span>
+            </button>
+          </div>
+        </div>
+
+        {entitySaveFeedback && (
+          <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-purple-400" />
+            <span>{entitySaveFeedback}</span>
+          </div>
+        )}
+
+        {/* Entities Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+          {entities.map((ent) => {
+            const isSelected = selectedEntityId === ent.id;
+            return (
+              <div
+                key={ent.id}
+                onClick={() => handleSelectEntity(ent.id)}
+                className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between relative group ${
+                  isSelected
+                    ? 'bg-purple-950/40 border-purple-500 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500'
+                    : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-850'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1 mb-2">
+                  <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-800 text-slate-400'}`}>
+                    {renderEntityIcon(ent.icon)}
+                  </div>
+                  {isSelected && (
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-purple-500 text-slate-950">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold truncate leading-tight">{ent.name}</div>
+                  <div className="text-[10px] text-slate-400 truncate mt-0.5">{ent.subtitle}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Selected Entity Audio Paths Preview */}
+        {currentSelectedEntity && (
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/50 pb-2">
+              <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <FileAudio className="w-3.5 h-3.5 text-purple-400" />
+                <span>Rutas de audio asignadas a <strong>{currentSelectedEntity.name}</strong> para Ext. <strong>{userExtension}</strong>:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSaveSelectedEntityToAstDB(currentSelectedEntity.id)}
+                disabled={isSavingEntityAstDb}
+                className="text-[11px] font-bold text-purple-400 hover:text-purple-300 underline cursor-pointer"
+              >
+                Actualizar solo en AstDB ahora &rarr;
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-[11px] font-mono text-slate-400">
+              <div className="bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800 truncate">
+                <span className="text-slate-500 font-sans block text-[10px]">Audio Introducción (Intro):</span>
+                <span className="text-emerald-400">{currentSelectedEntity.introAudioPath}</span>
+              </div>
+              <div className="bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800 truncate">
+                <span className="text-slate-500 font-sans block text-[10px]">Audio Solicitud OTP (Prompt):</span>
+                <span className="text-sky-400">{currentSelectedEntity.promptAudioPath}</span>
+              </div>
+              <div className="bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800 truncate">
+                <span className="text-slate-500 font-sans block text-[10px]">Música en Espera (MOH):</span>
+                <span className="text-amber-400">{currentSelectedEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Real-time IVR Testing Banner */}
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-emerald-500/30 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -732,14 +1030,14 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 <span>OPCIÓN 1: Probar desde Softphone X-Lite</span>
               </div>
               <p className="text-xs text-slate-300">
-                Desde tu extensión <strong>1001</strong> en X-Lite tienes dos opciones de prueba:
+                Marca desde tu softphone registrado en la extensión asignada <strong>{userExtension}</strong>:
               </p>
               <div className="mt-2 flex items-center gap-3">
                 <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm font-bold text-emerald-400">
                   <span>8888</span>
                 </div>
                 <span className="text-[11px] text-slate-300">
-                  Llama directamente al cliente de prueba <strong>16104803845</strong> sin errores.
+                  Prueba al instante el Guión guardado en AstDB para tu extensión <strong>{userExtension}</strong>.
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-3">
