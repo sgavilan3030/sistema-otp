@@ -1690,7 +1690,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
           transport: 'transport-udp',
           port: 47923,
           maxContacts: 10,
-          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          codecs: ['ulaw', 'alaw', 'g722'],
           callerIdNum: (Array.isArray(u.assignedExtensions) && u.assignedExtensions[0]) || cleanU,
           callerIdName: u.name || cleanU,
           status: 'registered',
@@ -1732,7 +1732,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
             transport: 'transport-udp',
             port: 47923,
             maxContacts: 10,
-            codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+            codecs: ['ulaw', 'alaw', 'g722'],
             callerIdNum: cleanC,
             callerIdName: c.name || cleanC,
             status: 'registered',
@@ -1813,7 +1813,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     const cleanCidNum = (ext.callerIdNum && ext.callerIdNum !== '+18005550199') ? ext.callerIdNum : num;
     const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
     const rawCodecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-    const codecs = rawCodecs === 'opus,g722,ulaw,alaw,g729' ? 'ulaw,alaw,g722' : rawCodecs;
+    const codecs = (rawCodecs === 'opus,g722,ulaw,alaw,g729' || rawCodecs.startsWith('opus,')) ? 'ulaw,alaw,g722' : rawCodecs;
     const extPort = parseInt(ext.port, 10) || activePort;
 
     let transport = 'transport-udp';
@@ -2621,7 +2621,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($[\${RETRY_COUNT} < 3]?pedir_codigo)\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -2673,7 +2672,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -8203,7 +8201,7 @@ app.post('/api/reseller/clients', async (req, res) => {
       transport: 'transport-udp',
       port: 47923,
       maxContacts: 5,
-      codecs: ['ulaw', 'alaw', 'g729', 'opus'],
+      codecs: ['ulaw', 'alaw', 'g722'],
       callerId: `"${client.name || cleanUsername}" <+18005550199>`,
       callerIdNum: '+18005550199',
       callerIdName: client.name || cleanUsername,
@@ -8434,7 +8432,7 @@ app.post('/api/users/sync-sip', async (req, res) => {
       transport: 'transport-udp',
       port: 47923,
       maxContacts: 10,
-      codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+      codecs: ['ulaw', 'alaw', 'g722'],
       callerIdNum: (Array.isArray(targetUser.assignedExtensions) && targetUser.assignedExtensions[0]) || cleanUser,
       callerIdName: targetUser.name || cleanUser,
       status: 'registered',
