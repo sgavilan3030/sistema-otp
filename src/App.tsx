@@ -280,7 +280,7 @@ export default function App() {
   };
 
   // Global OTP Alert monitor across all tabs
-  const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string } | null>(null);
+  const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string; agent?: string } | null>(null);
   const [dismissedOtpKey, setDismissedOtpKey] = useState<string>('');
   const [copiedOtp, setCopiedOtp] = useState<boolean>(false);
 
@@ -288,16 +288,30 @@ export default function App() {
     const pollGlobalOtp = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
-        const res = await fetch('/api/asterisk/otp/records');
+        const activeU = users.find((u) => u.id === currentUserId) || users[0];
+        const assignedExts = Array.isArray(activeU?.assignedExtensions)
+          ? activeU.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+          : [];
+        const params = new URLSearchParams();
+        if (activeU?.tenantId) params.set('tenantId', activeU.tenantId);
+        if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+        const qs = params.toString();
+
+        const res = await fetch(qs ? `/api/asterisk/otp/records?${qs}` : '/api/asterisk/otp/records');
         const data = await res.json();
-        if (data.success && Array.isArray(data.records) && data.records.length > 0) {
-          const activeU = users.find((u) => u.id === currentUserId) || users[0];
+        if (data.success && Array.isArray(data.records)) {
           let recs = data.records;
           if (activeU?.tenantId) {
             recs = recs.filter((r: any) => !r.tenantId || r.tenantId === activeU.tenantId);
           }
-          if (activeU?.role !== 'admin' && activeU?.assignedExtensions && activeU.assignedExtensions.length > 0) {
-            recs = recs.filter((r: any) => !r.agent || activeU.assignedExtensions.includes(r.agent) || r.agent === 'ringall' || r.agent === 'all');
+          // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
+          if (assignedExts.length > 0) {
+            recs = recs.filter((r: any) => {
+              const recAgent = r.agent ? String(r.agent).trim() : '';
+              if (recAgent) return assignedExts.includes(recAgent);
+              const recNum = r.number ? String(r.number).trim() : '';
+              return recNum ? assignedExts.includes(recNum) : false;
+            });
           }
           if (recs.length > 0) {
             const newest = recs[0];
@@ -305,6 +319,8 @@ export default function App() {
             if (newest && newest.otp && alertKey !== dismissedOtpKey) {
               setGlobalOtpAlert(newest);
             }
+          } else {
+            setGlobalOtpAlert(null);
           }
         }
       } catch (err) {}
@@ -352,6 +368,7 @@ export default function App() {
           id: globalOtpAlert.id,
           number: globalOtpAlert.number,
           otp: globalOtpAlert.otp,
+          agent: globalOtpAlert.agent,
           status,
         }),
       });

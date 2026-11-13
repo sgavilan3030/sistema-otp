@@ -162,6 +162,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return userAssignedExt || '1001';
   });
 
+  const activeUserRef = useRef(activeUser);
+  useEffect(() => {
+    activeUserRef.current = activeUser;
+  }, [activeUser]);
+
   useEffect(() => {
     if (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) {
       setAgentExtension(activeUser.assignedExtensions[0]);
@@ -1367,26 +1372,32 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Polling captured OTPs from Asterisk backend with fast real-time response
   const fetchCapturedOtps = async (forceFresh = false) => {
     try {
-      const tenantParam = currentUser?.tenantId ? `&tenantId=${encodeURIComponent(currentUser.tenantId)}` : '';
-      const url = forceFresh
-        ? `/api/asterisk/otp/records?fresh=1${tenantParam}`
-        : (tenantParam ? `/api/asterisk/otp/records?${tenantParam.substring(1)}` : '/api/asterisk/otp/records');
+      const u = activeUserRef.current || activeUser;
+      const assignedExts = Array.isArray(u?.assignedExtensions)
+        ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+        : [];
+      const params = new URLSearchParams();
+      if (forceFresh) params.set('fresh', '1');
+      if (u?.tenantId) params.set('tenantId', u.tenantId);
+      if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+      const qs = params.toString();
+      const url = qs ? `/api/asterisk/otp/records?${qs}` : '/api/asterisk/otp/records';
+
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
-        let filtered = currentUser?.tenantId
-          ? data.records.filter((r: any) => !r.tenantId || r.tenantId === currentUser.tenantId)
+        let filtered = u?.tenantId
+          ? data.records.filter((r: any) => !r.tenantId || r.tenantId === u.tenantId)
           : data.records;
 
-        // Si el usuario es operador (no admin) con extensiones asignadas, filtrar solo sus OTPs
-        if (!isAdmin && activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) {
-          filtered = filtered.filter(
-            (r: any) =>
-              !r.agent ||
-              activeUser.assignedExtensions.includes(r.agent) ||
-              r.agent === 'ringall' ||
-              r.agent === 'all'
-          );
+        // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
+        if (assignedExts.length > 0) {
+          filtered = filtered.filter((r: any) => {
+            const recAgent = r.agent ? String(r.agent).trim() : '';
+            if (recAgent) return assignedExts.includes(recAgent);
+            const recNum = r.number ? String(r.number).trim() : '';
+            return recNum ? assignedExts.includes(recNum) : false;
+          });
         }
 
         setOtpRecords(filtered);
@@ -1685,9 +1696,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       fetchCapturedOtps();
     }, 3500);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeUser?.id, activeUser?.tenantId, activeUser?.assignedExtensions?.join(',')]);
 
-  // Polling de canales activos de Asterisk para detectar llamadas manuales (ej. marcando 7777 u 8888 desde extensión 1002/1001)
+  // Polling de canales activos de Asterisk para detectar llamadas manuales pertenecientes a las extensiones del usuario
   useEffect(() => {
     const pollLiveChannels = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -1695,20 +1706,29 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         const res = await fetch('/api/asterisk/live/channels');
         const data = await res.json();
         if (data.success && Array.isArray(data.channels)) {
-          // Buscar si hay algún canal interactuando con 7777, 8888 o con el IVR
+          const u = activeUserRef.current || activeUser;
+          const assignedExts = Array.isArray(u?.assignedExtensions)
+            ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+            : [];
+
+          // Buscar solo canales interactuando con el IVR que pertenezcan a las extensiones asignadas de este usuario
           const ivrChannel = data.channels.find((ch: any) => {
             const exten = String(ch.extension || ch.exten || '');
             const context = String(ch.context || '');
             const channel = String(ch.channel || '');
-            const callerId = String(ch.callerId || ch.callerid || '');
-            return (
+            const callerId = String(ch.callerId || ch.callerid || '').trim();
+            const isIvrOrCapture =
               exten.includes('7777') ||
               exten.includes('8888') ||
+              /^4\d{3}$/.test(exten) ||
               context.includes('captura') ||
               context.includes('ivr') ||
               channel.includes('7777') ||
-              channel.includes('8888') ||
-              (callerId && (callerId === '1002' || callerId === '1001') && (context.includes('ivr') || exten === '7777' || exten === '8888' || exten === 's'))
+              channel.includes('8888');
+            if (!isIvrOrCapture) return false;
+            if (assignedExts.length === 0) return true;
+            return assignedExts.some(
+              (ext) => callerId === ext || channel.includes(`PJSIP/${ext}-`)
             );
           });
 
@@ -1716,13 +1736,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             const detectedNumber = ivrChannel.callerId || ivrChannel.callerid || '8888';
             setActiveCall((prev) => {
               if (prev && prev.isActive) {
-                // Si ya está activo, mantener estado y actualizar canal si faltaba
                 return {
                   ...prev,
                   channel: prev.channel || ivrChannel.channel,
                 };
               }
-              // Si no estaba activo, activar automáticamente el HUD
               return {
                 isActive: true,
                 number: detectedNumber === '8888' ? 'Prueba Local Ext. 8888' : detectedNumber,
@@ -1731,10 +1749,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 status: 'in_ivr',
                 duration: 0,
                 channel: ivrChannel.channel,
+                agent: assignedExts.find((ext) => String(ivrChannel.channel || '').includes(`PJSIP/${ext}-`) || detectedNumber === ext),
               };
             });
           } else if (activeCallRef.current?.isActive && (activeCallRef.current.duration || 0) >= 5 && Array.isArray(data.channels)) {
-            // Si la llamada estaba activa pero ya no figura en ningún canal de Asterisk
             const queryClean = activeCallRef.current.number.replace(/[^0-9]/g, '');
             const channelStillAlive = data.channels.some((c: any) => {
               const chStr = (c.channel || '') + (c.extension || '') + (c.callerId || '') + (c.data || '');
@@ -1751,15 +1769,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     pollLiveChannels();
     const chanInterval = setInterval(pollLiveChannels, 4000);
     return () => clearInterval(chanInterval);
-  }, []);
+  }, [activeUser?.id, activeUser?.assignedExtensions?.join(',')]);
 
-  // Check if there is an active call running on Asterisk on mount
+  // Check if there is an active call running on Asterisk on mount (strictly scoped to user's assigned extensions)
   useEffect(() => {
     fetch('/api/asterisk/call/latest-active')
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.call && (!activeCallRef.current || !activeCallRef.current.isActive)) {
           const c = data.call;
+          const u = activeUserRef.current || activeUser;
+          const assignedExts = Array.isArray(u?.assignedExtensions)
+            ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+            : [];
+          if (assignedExts.length > 0 && c.agent && c.agent !== 'ringall' && !assignedExts.includes(String(c.agent).trim())) {
+            return;
+          }
           setActiveCall({
             isActive: true,
             number: c.number,
@@ -1771,6 +1796,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             pressed1At: c.pressed1At,
             pressed1Time: c.pressed1At ? new Date(c.pressed1At).toLocaleTimeString() : undefined,
             agentExten: c.agent || '1001',
+            agent: c.agent,
           });
         }
       })
@@ -2142,8 +2168,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const handleClearHistory = async () => {
     if (!confirm('¿Deseas vaciar los registros y códigos de pruebas anteriores tanto de la web como de Asterisk?')) return;
     try {
-      const tenantParam = currentUser?.tenantId ? `&tenantId=${encodeURIComponent(currentUser.tenantId)}` : '';
-      await fetch(`/api/asterisk/otp/records?clear=1${tenantParam}`, { method: 'DELETE' });
+      const u = activeUserRef.current || activeUser;
+      const assignedExts = Array.isArray(u?.assignedExtensions)
+        ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+        : [];
+      const params = new URLSearchParams({ clear: '1' });
+      if (u?.tenantId) params.set('tenantId', u.tenantId);
+      if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+      await fetch(`/api/asterisk/otp/records?${params.toString()}`, { method: 'DELETE' });
       setOtpRecords([]);
       setLiveCapturedAlert(null);
       validRecordIdsRef.current.clear();
@@ -5252,7 +5284,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
             <div className="flex items-center gap-3">
               <div className="text-xs font-mono text-slate-400">
-                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong> ({otpRecords[0].service || 'Servicio al Cliente'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
+                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong>
+                {otpRecords[0].agent ? (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
+                    Ext. {otpRecords[0].agent}
+                  </span>
+                ) : null}
+                {' '}({otpRecords[0].service || 'Servicio al Cliente'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
               </div>
               <button
                 type="button"
@@ -5377,6 +5415,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <span>🌐 Base de Datos Global (Todos los Call Centers)</span>
                 </span>
               )}
+              {activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0 && (
+                <span className="px-2.5 py-0.5 text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Solo Ext: {activeUser.assignedExtensions.join(', ')}</span>
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-1">
               Almacén en vivo de todos los códigos capturados en llamadas salientes {currentUser?.tenantId ? 'exclusivo para su Call Center' : 'para el sistema general'}.
@@ -5422,7 +5466,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-mono">
                 <th className="p-3">Hora</th>
                 <th className="p-3">Número Destino</th>
-                <th className="p-3">Servicio</th>
+                <th className="p-3">Servicio / Extensión</th>
                 <th className="p-3">Código OTP Capturado</th>
                 <th className="p-3">Decisión del Agente (Válido/Inválido)</th>
                 <th className="p-3 text-right">Acciones</th>
@@ -5441,7 +5485,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <tr key={record.id} className="hover:bg-slate-900/40 transition-colors">
                     <td className="p-3 text-slate-400 font-mono">{record.timestamp}</td>
                     <td className="p-3 font-mono font-bold text-white">{record.number}</td>
-                    <td className="p-3 text-slate-300">{record.service || 'Servicio al Cliente'}</td>
+                    <td className="p-3 text-slate-300">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{record.service || 'Servicio al Cliente'}</span>
+                        {record.agent && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-[10px] font-bold">
+                            Ext. {record.agent}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-3">
                       <span className="inline-flex items-center px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 font-mono text-sm font-black text-emerald-300 tracking-wider">
                         {record.otp}
