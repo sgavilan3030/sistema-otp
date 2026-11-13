@@ -63,41 +63,12 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Purge IP-to-IP carriers (carrier operates via SIP registration)
-          const filtered = parsed.filter((c: CarrierTrunk) => c && c.authType !== 'ip_auth' && c.host !== '69.197.187.87' && c.name !== 'trunk_69_197_187_87');
-          const hasTelevox = filtered.some((c: CarrierTrunk) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
-          let list: CarrierTrunk[] = filtered.map((c: CarrierTrunk): CarrierTrunk => {
-            if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
-              return {
-                ...c,
-                id: 'trunk-televox',
-                name: 'televoxin',
-                authType: 'registration',
-                host: 'televox.in',
-                port: Number(c.port) || 5060,
-                username: 'alberto2026',
-                secret: 'Robert2026@',
-                fromuser: 'alberto2026',
-                enabled: true,
-                status: (c.status === 'disabled' ? 'reachable' : c.status) as any,
-                outboundCallerName: 'Atención al Cliente',
-              };
-            }
-            return {
+          return parsed
+            .filter((c: CarrierTrunk) => c && c.name && c.host)
+            .map((c: CarrierTrunk): CarrierTrunk => ({
               ...c,
               outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? 'Atención al Cliente' : c.outboundCallerName,
-            };
-          });
-          if (!hasTelevox && initialCarriers[0]) {
-            list = [initialCarriers[0], ...list];
-          }
-          // Ensure televox is at index 0 (primary #1)
-          const tvoxIdx = list.findIndex((c) => c.name === 'televoxin' || c.name === 'televox' || c.id === 'trunk-televox');
-          if (tvoxIdx > 0) {
-            const [tvox] = list.splice(tvoxIdx, 1);
-            list.unshift(tvox);
-          }
-          return list;
+            }));
         }
       }
     } catch (_) {}
@@ -968,12 +939,12 @@ export default function App() {
   };
 
   // Full Hot Reload Execution with Backoff Check
-  const handleQuickSync = async (extsToSync = extensions, carriersToSync = carriers) => {
+  const handleQuickSync = async (extsToSync = extensions, carriersToSync = carriers, forceSync = false) => {
     const now = Date.now();
     const state = amiBackoffRef.current;
 
-    // Check if AMI circuit is currently in exponential backoff
-    if (state.isBackoffActive && now < state.nextAllowedTime) {
+    // Check if AMI circuit is currently in exponential backoff (bypass if user explicitly mutated carriers/config)
+    if (!forceSync && state.isBackoffActive && now < state.nextAllowedTime) {
       const remainingSec = Math.max(1, Math.ceil((state.nextAllowedTime - now) / 1000));
       addLog(
         'AMI',
@@ -1101,40 +1072,37 @@ export default function App() {
   const handleAddCarrier = (newCarrier: CarrierTrunk) => {
     const updated = [...carriers, newCarrier];
     setCarriers(updated);
+    try {
+      localStorage.setItem('ast20_carriers', JSON.stringify(updated));
+    } catch (_) {}
     addLog(
       'PJSIP',
-      `Nuevo Carrier SIP agregado: ${newCarrier.name} (${newCarrier.host})`,
+      `Nuevo Carrier SIP agregado: ${newCarrier.name} (${newCarrier.host}:${newCarrier.port})`,
       `AuthType: ${newCarrier.authType}\nInboundContext: ${newCarrier.inboundContext}\nCodecs: ${newCarrier.codecs.join(',')}`
     );
-    if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync(extensions, updated);
-    } else {
-      showToast(`Carrier ${newCarrier.name} agregado.`);
-    }
+    handleQuickSync(extensions, updated, true);
   };
 
   const handleUpdateCarrier = (updatedCarrier: CarrierTrunk) => {
     const updated = carriers.map((c) => (c.id === updatedCarrier.id ? updatedCarrier : c));
     setCarriers(updated);
-    addLog('PJSIP', `Carrier SIP actualizado: ${updatedCarrier.name}`);
-    if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync(extensions, updated);
-    } else {
-      showToast(`Carrier ${updatedCarrier.name} actualizado.`);
-    }
+    try {
+      localStorage.setItem('ast20_carriers', JSON.stringify(updated));
+    } catch (_) {}
+    addLog('PJSIP', `Carrier SIP actualizado: ${updatedCarrier.name} (${updatedCarrier.host}:${updatedCarrier.port})`);
+    handleQuickSync(extensions, updated, true);
   };
 
   const handleDeleteCarrier = (id: string) => {
     const c = carriers.find((item) => item.id === id);
     const updated = carriers.filter((item) => item.id !== id);
     setCarriers(updated);
+    try {
+      localStorage.setItem('ast20_carriers', JSON.stringify(updated));
+    } catch (_) {}
     if (c) {
       addLog('PJSIP', `Carrier SIP eliminado: ${c.name}`);
-      if (connectionSettings.autoSyncOnChange) {
-        handleQuickSync(extensions, updated);
-      } else {
-        showToast(`Carrier ${c.name} eliminado.`);
-      }
+      handleQuickSync(extensions, updated, true);
     }
   };
 
@@ -1144,25 +1112,57 @@ export default function App() {
       localStorage.setItem('ast20_carriers', JSON.stringify(reordered));
     } catch (_) {}
     addLog('PJSIP', `Prioridad de troncales actualizada: ${reordered.map(c => c.name).join(' -> ')}`);
-    if (connectionSettings.autoSyncOnChange) {
-      handleQuickSync(extensions, reordered);
-    } else {
-      showToast('Prioridad de troncales actualizada.');
-    }
+    handleQuickSync(extensions, reordered, true);
   };
 
-  const handlePingCarrier = (id: string) => {
+  const handlePingCarrier = async (id: string) => {
     const c = carriers.find((item) => item.id === id);
     if (!c) return;
-    addLog('AMI', `Enviando SIP OPTIONS ping a Carrier ${c.name} (${c.host}:${c.port})`);
-    setTimeout(() => {
-      const latency = Math.floor(Math.random() * 20) + 12;
-      setCarriers((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, latencyMs: latency } : item))
-      );
-      addLog('AMI', `Carrier ${c.name} respuesta: Reachable (${latency}ms)`);
-      showToast(`Carrier ${c.name} latencia: ${latency}ms`);
-    }, 400);
+    addLog('AMI', `Verificando conectividad SIP y registro de Carrier ${c.name} (${c.host}:${c.port})...`);
+    try {
+      const res = await fetch('/api/asterisk/carriers/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: c.name,
+          host: c.host,
+          port: c.port,
+          authType: c.authType,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const latency = typeof data.latencyMs === 'number' ? data.latencyMs : undefined;
+        const isOk = Boolean(data.reachable || data.registered);
+        setCarriers((prev) =>
+          prev.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  latencyMs: latency ?? item.latencyMs,
+                  status: item.enabled === false ? 'disabled' : (isOk ? 'reachable' : 'unreachable'),
+                }
+              : item
+          )
+        );
+        const regText = c.authType === 'registration'
+          ? ` | Registro: ${data.registrationState || 'Verificado'}`
+          : ' | Peering IP';
+        const latText = latency !== undefined ? ` (${latency}ms)` : '';
+        addLog('AMI', `Carrier ${c.name} respuesta: ${isOk ? 'Reachable' : 'Sin respuesta'}${latText}${regText}`);
+        showToast(
+          isOk
+            ? `Carrier [${c.name}] activo${latText}${regText}`
+            : `Carrier [${c.name}] sin respuesta en ${c.host}:${c.port}`,
+          isOk ? 'success' : 'error'
+        );
+      } else {
+        throw new Error(data.error || 'No se pudo verificar el carrier');
+      }
+    } catch (err: any) {
+      addLog('AMI', `Error verificando Carrier ${c.name}: ${err.message}`, undefined, 'failed');
+      showToast(`Error probando ${c.name}: ${err.message}`, 'error');
+    }
   };
 
   const handleToggleCarrier = (id: string) => {
@@ -1184,13 +1184,16 @@ export default function App() {
     });
 
     setCarriers(updated);
+    try {
+      localStorage.setItem('ast20_carriers', JSON.stringify(updated));
+    } catch (_) {}
     addLog(
       'PJSIP',
       newEnabled ? `Carrier SIP Habilitado: ${c.name}` : `Carrier SIP Deshabilitado: ${c.name}`,
       `Host: ${c.host}:${c.port} | Estado: ${newEnabled ? 'ACTIVO (Se conecta)' : 'SUSPENDIDO (No conecta)'}`
     );
     // Sincronizar inmediatamente con Asterisk en 1 clic
-    handleQuickSync(extensions, updated);
+    handleQuickSync(extensions, updated, true);
     showToast(newEnabled ? `Troncal [${c.name}] HABILITADA y conectando` : `Troncal [${c.name}] DESHABILITADA (Conexión suspendida)`, 'info');
   };
 

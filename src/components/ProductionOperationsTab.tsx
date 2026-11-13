@@ -150,8 +150,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   })();
 
   const isAdmin = activeUser ? activeUser.role === 'admin' : false;
+  const isSuperAdmin = isAdmin && !activeUser?.tenantId;
   const isAgent = activeUser ? activeUser.role === 'agent' : false;
   const isSupervisor = activeUser ? activeUser.role === 'supervisor' : false;
+  const canRunMassCalls = Boolean(
+    activeUser &&
+      (activeUser.role === 'admin' ||
+        activeUser.role === 'supervisor' ||
+        activeUser.role === 'reseller_client')
+  );
 
   // User assigned extension: Si un usuario tiene extensión asignada, sus llamadas individuales retornan EXCLUSIVAMENTE a su extensión
   const userAssignedExt = (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0)
@@ -186,6 +193,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
+
+  useEffect(() => {
+    if (!canRunMassCalls && productionMode === 'mass_campaign') {
+      setProductionMode('single');
+    }
+  }, [canRunMassCalls, productionMode]);
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -1263,21 +1276,45 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [extensions, userTenant, activeUser?.assignedExtensions]);
 
   const lockedTenantCarrier = React.useMemo(() => {
-    if (!userTenant?.carrierId) return null;
-    return carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId) || null;
-  }, [userTenant, carriers]);
+    if (userTenant?.carrierId) {
+      const byTenant = carriers.find(
+        (c) =>
+          c.id === userTenant.carrierId ||
+          c.name === userTenant.carrierId ||
+          c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_')
+      );
+      if (byTenant) return byTenant;
+    }
+    if (activeUser?.assignedCarrierId && activeUser.assignedCarrierId !== 'auto') {
+      return (
+        carriers.find(
+          (c) =>
+            c.id === activeUser.assignedCarrierId ||
+            c.name === activeUser.assignedCarrierId ||
+            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(activeUser.assignedCarrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        ) || null
+      );
+    }
+    return null;
+  }, [userTenant, carriers, activeUser?.assignedCarrierId]);
 
-  const isCarrierLockedToTenant = Boolean(!isAdmin && userTenant && lockedTenantCarrier);
+  const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
 
   const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
 
   useEffect(() => {
-    if (isCarrierLockedToTenant && lockedTenantCarrier) {
-      setSelectedCarrierName(lockedTenantCarrier.name);
+    if (!isSuperAdmin) {
+      if (lockedTenantCarrier) {
+        setSelectedCarrierName(lockedTenantCarrier.name);
+      } else {
+        setSelectedCarrierName('auto');
+      }
     }
-  }, [isCarrierLockedToTenant, lockedTenantCarrier]);
+  }, [isSuperAdmin, lockedTenantCarrier]);
 
-  const effectiveSelectedCarrier = isCarrierLockedToTenant && lockedTenantCarrier ? lockedTenantCarrier.name : selectedCarrierName;
+  const effectiveSelectedCarrier = !isSuperAdmin
+    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (activeUser?.assignedCarrierId && activeUser.assignedCarrierId !== 'auto' ? activeUser.assignedCarrierId : 'auto'))
+    : selectedCarrierName;
   const activeCarrierObj = (effectiveSelectedCarrier !== 'auto' ? enabledCarriers.find((c) => c.name === effectiveSelectedCarrier || c.id === effectiveSelectedCarrier) : null) || lockedTenantCarrier || enabledCarriers[0] || carriers[0];
   const activeCarrier = effectiveSelectedCarrier !== 'auto' ? effectiveSelectedCarrier : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
   const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
@@ -2080,7 +2117,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           tenantId: userTenant?.id,
           callerExtension: userAssignedExt,
           tenantExtensions: tenantScopedExtensions,
-          isAdmin,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
           callerId: effectiveCallerIdNum,
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
@@ -2100,7 +2138,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       if (data.success) {
         setLaunchFeedback({
-          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando con la troncal ${activeCarrier} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
+          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando por ${isSuperAdmin ? `la troncal ${activeCarrier}` : 'Canal Seguro Asignado'} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
           type: 'success',
         });
 
@@ -2304,6 +2342,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Mass campaign execution with Ring-All (All Extensions)
   // CRITICAL REQUIREMENT: Numbers disappear from the list as they are dialed!
   const handleStartMassCampaign = async () => {
+    if (!canRunMassCalls) {
+      setLaunchFeedback({
+        text: 'Solo el Administrador del Call Center o Super Administrador puede ejecutar campañas de Llamadas Masivas.',
+        type: 'error',
+      });
+      return;
+    }
+
     const rawLines = massNumbersText.split(/[\n,;]+/);
     const cleanNumbers = rawLines
       .map((line) => line.trim().replace(/[^0-9]/g, ''))
@@ -2358,7 +2404,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             tenantId: userTenant?.id,
             callerExtension: userAssignedExt,
             tenantExtensions: tenantScopedExtensions,
-            isAdmin,
+            isAdmin: isSuperAdmin,
+            isSuperAdmin,
             callerId: callerIdNum,
             callerIdNum: callerIdNum,
             callerIdName: callerIdName,
@@ -2626,32 +2673,25 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
-            {isAdmin ? (
+            {isSuperAdmin ? (
               <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
                 <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   <span>Troncal SIP Saliente</span>
                 </div>
-                {isCarrierLockedToTenant && lockedTenantCarrier ? (
-                  <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Asignada exclusivamente por Super Administrador">
-                    <Lock className="w-3 h-3 shrink-0" />
-                    <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
-                  </div>
-                ) : (
-                  <select
-                    id="select-banner-carrier"
-                    value={selectedCarrierName}
-                    onChange={(e) => setSelectedCarrierName(e.target.value)}
-                    className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-                  >
-                    <option value="auto">🔄 Pool Automático</option>
-                    {enabledCarriers.map((c, idx) => (
-                      <option key={c.id} value={c.name}>
-                        {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <select
+                  id="select-banner-carrier"
+                  value={selectedCarrierName}
+                  onChange={(e) => setSelectedCarrierName(e.target.value)}
+                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+                >
+                  <option value="auto">🔄 Pool Automático</option>
+                  {enabledCarriers.map((c, idx) => (
+                    <option key={c.id} value={c.name}>
+                      {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             ) : (
               <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
@@ -2659,9 +2699,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   <span>Ruta Saliente</span>
                 </div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Troncal bloqueada exclusivamente para tu Call Center">
                   <Lock className="w-3 h-3 shrink-0" />
-                  <span>Canal Seguro Asignado</span>
+                  <span>Canal Seguro Asignado{userTenant?.code ? ` (${userTenant.code})` : ''}</span>
                 </div>
               </div>
             )}
@@ -2863,25 +2903,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </span>
         </button>
 
-        <button
-          id="btn-tab-mass-campaign"
-          onClick={() => setProductionMode('mass_campaign')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            productionMode === 'mass_campaign'
-              ? 'bg-purple-500 text-slate-950 shadow-lg shadow-purple-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Centro de Llamadas Masivas</span>
-          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-            productionMode === 'mass_campaign'
-              ? 'bg-slate-950 text-purple-300'
-              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-          }`}>
-            ⚡ Ring-All (Todas las Extensiones)
-          </span>
-        </button>
+        {canRunMassCalls && (
+          <button
+            id="btn-tab-mass-campaign"
+            onClick={() => setProductionMode('mass_campaign')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              productionMode === 'mass_campaign'
+                ? 'bg-purple-500 text-slate-950 shadow-lg shadow-purple-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Centro de Llamadas Masivas</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+              productionMode === 'mass_campaign'
+                ? 'bg-slate-950 text-purple-300'
+                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+            }`}>
+              ⚡ Ring-All ({userTenant ? `${userTenant.extensionStart}-${userTenant.extensionEnd}` : 'Todas'})
+            </span>
+          </button>
+        )}
 
         {!isAgent && (
           <button
@@ -4084,7 +4126,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       {/* ======================================================== */}
       {/* CENTRO DE LLAMADAS MASIVAS (RING-ALL A TODAS LAS EXTENSIONES) */}
       {/* ======================================================== */}
-      {productionMode === 'mass_campaign' && (
+      {productionMode === 'mass_campaign' && canRunMassCalls && (
         <div className="space-y-6">
           {/* Header Banner */}
           <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-950 via-purple-950/40 to-slate-950 border border-purple-500/40 shadow-2xl relative overflow-hidden">
@@ -4100,8 +4142,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
                   Lanza llamadas automatizadas a una lista de números. Cuando el cliente presione 1,{' '}
-                  <strong className="text-purple-300 font-bold">timbrarán TODAS las extensiones disponibles simultáneamente</strong>{' '}
-                  ({extensions.map((e) => e.extension).join(', ')}). El primer asesor que descuelgue toma la llamada.
+                  <strong className="text-purple-300 font-bold">
+                    timbrarán las extensiones {userTenant ? `de ${userTenant.name}` : 'disponibles'} simultáneamente
+                  </strong>{' '}
+                  ({tenantScopedExtensions.join(', ')}). El primer asesor que descuelgue toma la llamada.
                 </p>
               </div>
 
@@ -4111,10 +4155,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <span>DESTINO AL PRESIONAR 1:</span>
                 </div>
                 <div className="font-bold text-white font-mono flex items-center gap-1">
-                  <span>⚡ TODAS las Extensiones (Ring-All)</span>
+                  <span>⚡ Ring-All {userTenant ? `(${userTenant.name})` : '(Todas las Extensiones)'}</span>
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  {extensions.map((e) => e.extension).join(' & ')}
+                  {tenantScopedExtensions.join(' & ')}
                 </div>
               </div>
             </div>
@@ -4339,13 +4383,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
               <div className="space-y-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">Troncal SIP Saliente</div>
-                  {isCarrierLockedToTenant && lockedTenantCarrier ? (
-                    <div className="w-full bg-slate-950 border border-emerald-500/30 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 shrink-0" />
-                      <span>{lockedTenantCarrier.name} ({userTenant?.name})</span>
-                    </div>
-                  ) : (
+                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">
+                    {isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente'}
+                  </div>
+                  {isSuperAdmin ? (
                     <select
                       value={selectedCarrierName}
                       onChange={(e) => setSelectedCarrierName(e.target.value)}
@@ -4359,6 +4400,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </option>
                       ))}
                     </select>
+                  ) : (
+                    <div className="w-full bg-slate-950 border border-emerald-500/30 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 shrink-0" />
+                      <span>Canal Seguro Asignado{userTenant?.name ? ` (${userTenant.name})` : ''}</span>
+                    </div>
                   )}
                 </div>
 
@@ -4382,12 +4428,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[10px] text-purple-300 font-mono font-bold">Destino al Presionar 1 (Difusión)</div>
                   <div className="text-xs font-bold text-white mt-1">
                     {agentExtension === 'ringall'
-                      ? '⚡ Cacería Ring-All a Todas las Extensiones'
+                      ? `⚡ Cacería Ring-All (${userTenant ? userTenant.name : 'Extensiones del Centro'})`
                       : `👤 Extensión Específica: ${agentExtension}`}
                   </div>
                   <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
                     {agentExtension === 'ringall'
-                      ? `Suenan al mismo tiempo todas las extensiones (${extensions.map((e) => e.extension).join(', ')}). La extensión que conteste la llamada (ej: 1002) queda registrada automáticamente, y al transferir al cliente a la extensión 3333 para ingresar su código, cuando el administrador apruebe el código la llamada regresará de inmediato a esa misma extensión 1002.`
+                      ? `Suenan al mismo tiempo únicamente las extensiones asignadas (${tenantScopedExtensions.join(', ')}). La extensión que conteste la llamada queda registrada automáticamente para el retorno exclusivo de su código OTP.`
                       : `La llamada irá directamente a la extensión ${agentExtension}.`}
                   </p>
                 </div>

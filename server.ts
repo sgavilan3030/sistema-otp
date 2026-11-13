@@ -1426,10 +1426,16 @@ function saveStoredTenants(tenants: any[]) {
 function resolveCarrierNameByRef(carrierRef: string, carriersList: any[] = lastSyncedCarriers): string {
   if (!carrierRef) return '';
   const list = Array.isArray(carriersList) && carriersList.length > 0 ? carriersList : loadStoredCarriers();
-  const matched = list.find(
-    (c: any) => c && (String(c.id) === String(carrierRef) || String(c.name) === String(carrierRef))
-  );
-  return matched ? String(matched.name) : String(carrierRef);
+  const refLower = String(carrierRef).trim().toLowerCase();
+  const refSlug = refLower.replace(/[^a-z0-9_]/g, '_');
+  const matched = list.find((c: any) => {
+    if (!c) return false;
+    const cId = String(c.id || '').trim().toLowerCase();
+    const cName = String(c.name || '').trim().toLowerCase();
+    const cSlug = cName.replace(/[^a-z0-9_]/g, '_');
+    return cId === refLower || cName === refLower || cSlug === refSlug;
+  });
+  return matched ? String(matched.name).trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') : String(carrierRef).trim();
 }
 
 function resolveTenantCarrierForCall(
@@ -1601,62 +1607,24 @@ function loadStoredCarriers(): any[] {
     list = defaultCarriersList;
   }
 
-  // CRITICAL: Guarantee televox is always present, enabled, and positioned as #1 (primary outbound carrier via SIP connection)
-  const televoxDefault = defaultCarriersList[0];
-
-  // Purge any IP-to-IP carriers (system operates exclusively via SIP registration / authentication)
-  list = list.filter((c: any) => c && c.authType !== 'ip_auth' && c.host !== '69.197.187.87' && c.name !== 'trunk_69_197_187_87' && c.id !== 'trunk-ip-69-197-187-87');
-
-  const hasTelevox = list.some((c: any) => c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox');
-
-  list = list.map((c: any) => {
-    if (c.name === 'televox' || c.name === 'televoxin' || c.id === 'trunk-televox') {
-      const u = (c.username || 'alberto2026').trim();
-      const f = (c.fromuser || u).trim();
-      return {
-        ...c,
-        id: 'trunk-televox',
-        name: 'televoxin',
-        authType: 'registration',
-        host: 'televox.in',
-        port: Number(c.port) || 5060,
-        username: u,
-        secret: c.secret || 'Robert2026@',
-        fromuser: f,
-        enabled: true,
-        status: (c.status === 'disabled' ? 'reachable' : c.status) || 'reachable',
-        outboundCallerName: 'Atención al Cliente',
-        outboundCallerIdName: 'Atención al Cliente',
-      };
-    }
-    // Cleanse any old BANRESERVAS or Seguridad Bancaria
-    if (c.outboundCallerName === 'BANRESERVAS' || c.outboundCallerName === 'Seguridad Bancaria' || c.outboundCallerIdName === 'BANRESERVAS' || c.outboundCallerIdName === 'Seguridad Bancaria') {
-      return {
-        ...c,
-        outboundCallerName: 'Atención al Cliente',
-        outboundCallerIdName: 'Atención al Cliente',
-      };
-    }
-    return c;
-  });
-
-  if (!hasTelevox) {
-    list.unshift(televoxDefault);
-  }
-
-  // Ensure televox is positioned at index 0 (primary #1 for outbound calls)
-  const televoxIdx = list.findIndex((c: any) => c.name === 'televoxin' || c.name === 'televox' || c.id === 'trunk-televox');
-  if (televoxIdx > 0) {
-    const [tVox] = list.splice(televoxIdx, 1);
-    list.unshift(tVox);
-  }
-  // Ensure televox is enabled
-  if (list[0]) {
-    list[0].enabled = true;
-    if (list[0].status === 'disabled') list[0].status = 'reachable';
-  }
-
-  return list;
+  // Respect user-saved carriers, IP-auth trunks, credentials, order (#1 priority), and enabled/disabled state
+  return list
+    .filter((c: any) => c && c.name && c.host)
+    .map((c: any) => {
+      if (
+        c.outboundCallerName === 'BANRESERVAS' ||
+        c.outboundCallerName === 'Seguridad Bancaria' ||
+        c.outboundCallerIdName === 'BANRESERVAS' ||
+        c.outboundCallerIdName === 'Seguridad Bancaria'
+      ) {
+        return {
+          ...c,
+          outboundCallerName: 'Atención al Cliente',
+          outboundCallerIdName: 'Atención al Cliente',
+        };
+      }
+      return c;
+    });
 }
 
 function saveStoredCarriers(carriers: any[]) {
@@ -1901,7 +1869,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   }
 
   // Process carriers/trunks
-  const rawCarriers = (Array.isArray(carriers) && carriers.length > 0) ? carriers : defaultCarriersList;
+  const rawCarriers = Array.isArray(carriers) ? carriers : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : defaultCarriersList);
   const carriersToProcess = [...rawCarriers];
 
   if (Array.isArray(carriersToProcess) && carriersToProcess.length > 0) {
@@ -1910,21 +1878,35 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `; ========================================================\n\n`;
 
     const processedHosts = new Set<string>();
+    const usedCarrierSlugs = new Set<string>(extsToUse.map((e: any) => String(e.extension || '').toLowerCase()));
+    const rawCarrierNamesSet = new Set<string>(
+      carriersToProcess
+        .filter((c: any) => c && c.name && c.enabled !== false && c.status !== 'disabled')
+        .map((c: any) => c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'))
+    );
 
-    for (const carrier of carriersToProcess) {
-      if (!carrier.name || !carrier.host) continue;
+    for (let cIdx = 0; cIdx < carriersToProcess.length; cIdx++) {
+      const carrier = carriersToProcess[cIdx];
+      if (!carrier || !carrier.name || !carrier.host) continue;
       const isEnabled = carrier.enabled !== false && carrier.status !== 'disabled';
-      const cSlug = carrier.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-      const cName = cSlug.startsWith('trunk_') ? cSlug : (cSlug ? cSlug : `trunk_${Date.now()}`);
+      const baseSlug = carrier.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') || `trunk_${cIdx + 1}`;
+      let cName = baseSlug;
+      if (usedCarrierSlugs.has(cName)) {
+        cName = cName.startsWith('trunk_') ? `${cName}_${cIdx + 1}` : `trunk_${cName}`;
+        if (usedCarrierSlugs.has(cName)) {
+          cName = `trunk_${baseSlug}_${cIdx + 1}`;
+        }
+      }
 
       // Sanitización agresiva de host y puerto
-      let cHost = (carrier.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:\/\//i, '').replace(/\/.*$/, '');
+      let cHost = (carrier.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '');
       let cPort = Number(carrier.port) || 5060;
       if (cHost.includes(':')) {
         const parts = cHost.split(':');
-        cHost = parts[0];
+        cHost = parts[0].trim();
         cPort = Number(parts[1]) || cPort;
       }
+      if (!cHost) continue;
 
       if (!isEnabled) {
         pjsipContent += `; --- CARRIER DESHABILITADO: ${cName} (${cHost}:${cPort}) ---\n`;
@@ -1932,17 +1914,21 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         continue;
       }
 
+      usedCarrierSlugs.add(cName);
+
       const cUser = (carrier.username || cName).trim();
       const cSecret = (carrier.secret || '').trim();
-      const cContext = carrier.inboundContext || 'trunkinbound';
-      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
+      const cContext = (carrier.inboundContext || 'trunkinbound').trim();
+      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729,g722,opus';
 
-      // CRITICAL: effectiveFromUser asegura que el From SIP coincida con la cuenta SIP para que el Carrier no rechace llamadas con 403 Forbidden
-      const effectiveFromUser = (carrier.fromuser || carrier.username || '').trim();
+      // effectiveFromUser asegura que el From SIP coincida con la cuenta SIP cuando se especifica o se registra
+      const effectiveFromUser = (carrier.fromuser || '').trim();
+      const isRegTrunk = carrier.authType !== 'ip_auth' && !!cSecret;
+      const trunkTransport = (carrier.authType === 'ip_auth' && activePort !== 5060) ? 'transport-udp-5060' : 'transport-udp';
 
-      pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) ---\n`;
+      pjsipContent += `; --- CARRIER: ${cName} (${cHost}:${cPort}) [${isRegTrunk ? 'REGISTRATION' : 'IP_AUTH'}] ---\n`;
 
-      if (carrier.authType === 'registration' && cSecret) {
+      if (isRegTrunk) {
         pjsipContent += `[reg_${cName}]\n`;
         pjsipContent += `type = registration\n`;
         pjsipContent += `outbound_auth = auth_${cName}\n`;
@@ -1957,22 +1943,22 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `expiration = 3600\n`;
         pjsipContent += `line = yes\n`;
         pjsipContent += `endpoint = ${cName}\n`;
-        pjsipContent += `transport = transport-udp\n\n`;
+        pjsipContent += `transport = ${trunkTransport}\n\n`;
       }
 
-      if (cSecret) {
+      if (cSecret && carrier.authType !== 'ip_auth') {
+        // IMPORTANTE: No fijar "realm = asterisk" para aceptar cualquier realm SIP que envíe el carrier remoto (evita 401/403)
         pjsipContent += `[auth_${cName}]\n`;
         pjsipContent += `type = auth\n`;
         pjsipContent += `auth_type = userpass\n`;
         pjsipContent += `username = ${cUser}\n`;
-        pjsipContent += `password = ${cSecret}\n`;
-        pjsipContent += `realm = asterisk\n\n`;
+        pjsipContent += `password = ${cSecret}\n\n`;
       }
 
       pjsipContent += `[${cName}_aor]\n`;
       pjsipContent += `type = aor\n`;
       pjsipContent += `contact = sip:${cHost}:${cPort}\n`;
-      const qualifyVal = carrier.authType === 'ip_auth' ? (carrier.qualifyFreq ?? 0) : (carrier.qualifyFreq || 60);
+      const qualifyVal = carrier.authType === 'ip_auth' ? (carrier.qualifyFreq ?? 30) : (carrier.qualifyFreq || 60);
       pjsipContent += `qualify_frequency = ${qualifyVal}\n\n`;
 
       pjsipContent += `[${cName}]\n`;
@@ -1983,13 +1969,13 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `aors = ${cName}_aor\n`;
       if (carrier.authType === 'ip_auth' || !cSecret) {
         pjsipContent += `identify_by = ip\n`;
-      } else if (cSecret && carrier.authType === 'registration') {
+      } else {
         pjsipContent += `outbound_auth = auth_${cName}\n`;
       }
       if (effectiveFromUser) {
         pjsipContent += `from_user = ${effectiveFromUser}\n`;
         pjsipContent += `contact_user = ${effectiveFromUser}\n`;
-      } else if (carrier.authType === 'registration') {
+      } else if (isRegTrunk) {
         pjsipContent += `from_user = ${cUser}\n`;
         pjsipContent += `contact_user = ${cUser}\n`;
       }
@@ -1997,9 +1983,12 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `direct_media = no\n`;
       pjsipContent += `rtp_symmetric = yes\n`;
       pjsipContent += `force_rport = yes\n`;
-      if (carrier.authType === 'registration') {
-        pjsipContent += `send_pai = no\n`;
-        pjsipContent += `send_rpid = no\n`;
+      pjsipContent += `rewrite_contact = yes\n`;
+      pjsipContent += `rtp_timeout = 60\n`;
+      pjsipContent += `rtp_timeout_hold = 300\n`;
+      if (isRegTrunk) {
+        pjsipContent += `send_pai = ${carrier.sendrpid === 'yes' ? 'yes' : 'no'}\n`;
+        pjsipContent += `send_rpid = ${carrier.sendrpid === 'yes' ? 'yes' : 'no'}\n`;
       } else {
         pjsipContent += `send_pai = yes\n`;
         pjsipContent += `send_rpid = ${carrier.sendrpid || 'yes'}\n`;
@@ -2013,11 +2002,11 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `timers = yes\n`;
       pjsipContent += `language = es\n`;
       pjsipContent += `moh_suggest = default\n`;
-      const trunkTransport = (carrier.authType === 'ip_auth' && activePort !== 5060) ? 'transport-udp-5060' : 'transport-udp';
       pjsipContent += `transport = ${trunkTransport}\n\n`;
 
-      // Alias de compatibilidad bidireccional televox <-> televoxin
-      if (cName === 'televoxin') {
+      // Alias de compatibilidad bidireccional televox <-> televoxin (solo si el otro alias no existe ya en la lista)
+      if (cName === 'televoxin' && !rawCarrierNamesSet.has('televox') && !usedCarrierSlugs.has('televox')) {
+        usedCarrierSlugs.add('televox');
         pjsipContent += `; Alias de compatibilidad televox -> televoxin\n`;
         pjsipContent += `[televox]\n`;
         pjsipContent += `type = endpoint\n`;
@@ -2025,8 +2014,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `disallow = all\n`;
         pjsipContent += `allow = ${cCodecs}\n`;
         pjsipContent += `aors = televoxin_aor\n`;
-        pjsipContent += `outbound_auth = auth_televoxin\n`;
-        pjsipContent += `from_user = ${cUser}\n`;
+        if (isRegTrunk) pjsipContent += `outbound_auth = auth_televoxin\n`;
+        pjsipContent += `from_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `from_domain = ${cHost}\n`;
         pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `direct_media = no\n`;
@@ -2042,8 +2031,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `rtp_keepalive = 5\n`;
         pjsipContent += `timers = yes\n`;
         pjsipContent += `language = es\n`;
-        pjsipContent += `transport = transport-udp\n\n`;
-      } else if (cName === 'televox') {
+        pjsipContent += `transport = ${trunkTransport}\n\n`;
+      } else if (cName === 'televox' && !rawCarrierNamesSet.has('televoxin') && !usedCarrierSlugs.has('televoxin')) {
+        usedCarrierSlugs.add('televoxin');
         pjsipContent += `; Alias de compatibilidad televoxin -> televox\n`;
         pjsipContent += `[televoxin]\n`;
         pjsipContent += `type = endpoint\n`;
@@ -2051,8 +2041,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `disallow = all\n`;
         pjsipContent += `allow = ${cCodecs}\n`;
         pjsipContent += `aors = televox_aor\n`;
-        pjsipContent += `outbound_auth = auth_televox\n`;
-        pjsipContent += `from_user = ${cUser}\n`;
+        if (isRegTrunk) pjsipContent += `outbound_auth = auth_televox\n`;
+        pjsipContent += `from_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `from_domain = ${cHost}\n`;
         pjsipContent += `contact_user = ${effectiveFromUser || cUser}\n`;
         pjsipContent += `direct_media = no\n`;
@@ -2068,11 +2058,11 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `rtp_keepalive = 5\n`;
         pjsipContent += `timers = yes\n`;
         pjsipContent += `language = es\n`;
-        pjsipContent += `transport = transport-udp\n\n`;
+        pjsipContent += `transport = ${trunkTransport}\n\n`;
       }
 
       // Identify section for IP auth or non-registration trunks
-      if (carrier.authType === 'ip_auth' || !cSecret) {
+      if (!isRegTrunk) {
         if (!processedHosts.has(cHost)) {
           processedHosts.add(cHost);
           pjsipContent += `[${cName}-identify]\n`;
@@ -2367,10 +2357,15 @@ export function generateCleanDialplanConf(
 
     // 1. Resolve ASSIGNED_CARRIER from channel variable (AMI/Originate), AstDB ivr_vars, or user_carrier
     block += ` same => n,Set(DIAL_NUM=${destVar})\n`;
-    block += ` same => n,ExecIf($["\${DIAL_NUM:0:2}" = "77"]?Set(DIAL_NUM=\${DIAL_NUM:2}))\n`;
-    block += ` same => n,ExecIf($["\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
+    block += ` same => n,ExecIf($[\${LEN(\${DIAL_NUM})} > 11 & "\${DIAL_NUM:0:2}" = "77"]?Set(DIAL_NUM=\${DIAL_NUM:2}))\n`;
+    block += ` same => n,ExecIf($[\${LEN(\${DIAL_NUM})} > 10 & "\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
     block += ` same => n,Set(CALLING_USER_CHAN=\${CALLERID(num)})\n`;
     block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER_CHAN=\${CHANNEL(endpoint)}))\n`;
+    // Asegurar CallerID válido cuando se marca manualmente desde MicroSIP (1001..1999)
+    block += ` same => n,Set(CUSTOM_EXT_CID=\${DB(extension_cid/\${CALLING_USER_CHAN}/number)})\n`;
+    block += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 7 & "\${CUSTOM_EXT_CID}" != ""]?Set(CALLERID(num)=\${CUSTOM_EXT_CID}))\n`;
+    block += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 7 & "\${GLOBAL_DEFAULT_CID_NUM}" != ""]?Set(CALLERID(num)=\${GLOBAL_DEFAULT_CID_NUM}))\n`;
+    block += ` same => n,ExecIf($["\${CALLERID(name)}" = ""]?Set(CALLERID(name)=\${GLOBAL_DEFAULT_CID_NAME}))\n`;
     block += ` same => n,Set(ASSIGNED_CARRIER=\${IF($["\${ASSIGNED_CARRIER}" != ""]?\${ASSIGNED_CARRIER}:\${OUTBOUND_CARRIER})})\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(ivr_vars/\${EXTEN}_carrier)}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(ivr_vars/\${TARGET_DEST}_carrier)}))\n`;
@@ -2384,24 +2379,31 @@ export function generateCleanDialplanConf(
     enabledCarriers.forEach((c) => {
       const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const cId = c.id;
-      const cHost = c.host;
-      const cPort = c.port || 5060;
-      const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '';
+      let cHost = (c.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '');
+      let cPort = Number(c.port) || 5060;
+      if (cHost.includes(':')) {
+        const parts = cHost.split(':');
+        cHost = parts[0].trim();
+        cPort = Number(parts[1]) || cPort;
+      }
+      const isIpAuth = c.authType === 'ip_auth' || !String(c.secret || '').trim();
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? String(c.techPrefix).trim() : '';
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
+      const cOutCid = (c.outboundCallerId || '').replace(/[^0-9+]/g, '');
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const fallbackDialTarget = `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}) a ${numWithPrefix} ===)\n`;
+      if (cOutCid && !cOutCid.includes('5550199')) {
+        block += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 7 || "\${CALLERID(num)}" = "18005550199" || "\${CALLERID(num)}" = "+18005550199"]?Set(CALLERID(num)=${cOutCid}))\n`;
+      }
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Asignada: ${cSlug} (${cHost}:${cPort}) a ${numWithPrefix} | CID=\${CALLERID(num)} ===)\n`;
       block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal Asignada ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,Ttb(sub-pjsip-outbound^s^1))\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       }
       block += ` same => n,NoOp(=== [FAILOVER TRONCAL DEDICADA] Troncal ${cSlug} fallo (\${DIALSTATUS}), pasando a pool general ===)\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
@@ -2413,28 +2415,35 @@ export function generateCleanDialplanConf(
       const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const isFirst = idx === 0;
       const labelNext = `try_carrier_${tag}_${idx + 1}`;
-      const cHost = c.host;
-      const cPort = c.port || 5060;
-      const isIpAuth = c.authType === 'ip_auth';
-      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? c.techPrefix : '';
+      let cHost = (c.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '');
+      let cPort = Number(c.port) || 5060;
+      if (cHost.includes(':')) {
+        const parts = cHost.split(':');
+        cHost = parts[0].trim();
+        cPort = Number(parts[1]) || cPort;
+      }
+      const isIpAuth = c.authType === 'ip_auth' || !String(c.secret || '').trim();
+      const cPrefix = (c.techPrefix !== undefined && c.techPrefix !== null) ? String(c.techPrefix).trim() : '';
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
+      const cOutCid = (c.outboundCallerId || '').replace(/[^0-9+]/g, '');
       const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const fallbackDialTarget = `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       if (!isFirst) {
-        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}) ===)\n`;
+        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}:${cPort}) ===)\n`;
       } else {
-        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}) a ${numWithPrefix} ===)\n`;
+        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}:${cPort}) a ${numWithPrefix} ===)\n`;
       }
 
+      if (cOutCid && !cOutCid.includes('5550199')) {
+        block += ` same => n,ExecIf($[\${LEN(\${CALLERID(num)})} < 7 || "\${CALLERID(num)}" = "18005550199" || "\${CALLERID(num)}" = "+18005550199"]?Set(CALLERID(num)=${cOutCid}))\n`;
+      }
       block += ` same => n,Dial(${primaryDialTarget},40,Ttb(sub-pjsip-outbound^s^1))\n`;
       block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+      block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},30,Ttb(sub-pjsip-outbound^s^1))\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER"]?${labelEnd})\n`;
-        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "BUSY"]?${labelEnd})\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,Ttb(sub-pjsip-outbound^s^1))\n`;
+        block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       }
     });
 
@@ -2489,8 +2498,8 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${EXTEN:0:2}" = "77"]?Goto(from-internal,\${EXTEN:2},1))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${EXTEN:0:3}" = "018"]?Goto(from-internal,\${EXTEN:3},1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 11 & "\${EXTEN:0:2}" = "77"]?Goto(from-internal,\${EXTEN:2},1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 10 & "\${EXTEN:0:3}" = "018"]?Goto(from-internal,\${EXTEN:3},1))\n`;
   dialplanContent += ` same => n,Set(CALLING_USER=\${CALLERID(num)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
@@ -3155,11 +3164,13 @@ async function autoRepairAsteriskPjsipOnStartup() {
       needsRepair = true;
     }
 
-    // Always generate pure up-to-date PJSIP config with all stored users and reload Asterisk
+    // Always generate pure up-to-date PJSIP config with all stored extensions, users & carriers and reload Asterisk
     const storedUsers = loadStoredUsers();
+    const storedExts = loadStoredExtensions();
     const storedCarriers = loadStoredCarriers();
+    lastSyncedExtensions = storedExts;
     lastSyncedCarriers = storedCarriers;
-    const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, storedCarriers, storedUsers);
+    const cleanPjsip = generateCleanPjsipConf(storedExts, storedCarriers, storedUsers);
     await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
     try {
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
@@ -3179,7 +3190,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
     ensureAudioCodecsAndRtpConfExists();
 
     // Auto-generate dialplan baseline and keep synced
-    const cleanDialplan = generateCleanDialplanConf(storedCarriers);
+    const cleanDialplan = generateCleanDialplanConf(storedCarriers, undefined, {}, storedExts);
     lastGeneratedDialplan = cleanDialplan;
     try {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
@@ -3288,6 +3299,101 @@ app.get('/api/asterisk/carriers/live', async (req, res) => {
       rawRegistrations: regOutput,
       rawEndpoints: epOutput,
       rawAors: aorOutput,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Real SIP Carrier Ping & Asterisk Reachability Check (replaces simulated frontend latency)
+app.post('/api/asterisk/carriers/ping', async (req, res) => {
+  try {
+    const { name, host, port = 5060, authType = 'registration' } = req.body || {};
+    const slug = String(name || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const cleanHost = String(host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '').split(':')[0];
+    const targetPort = Number(port) || 5060;
+
+    let rttMs: number | null = null;
+    let reachable = false;
+    let registered = false;
+    let registrationState = '';
+    let endpointState = '';
+
+    if (slug) {
+      try {
+        const epOutput = await executeAsteriskCommand(`pjsip show endpoint ${slug}`);
+        const regOutput = authType === 'registration'
+          ? await executeAsteriskCommand('pjsip show registrations')
+          : '';
+
+        if (epOutput) {
+          const epStateMatch = epOutput.match(/Endpoint:\s*[^\s]+\s+([A-Za-z ]+?)(?:\s+\d+\s+of|\n|$)/);
+          if (epStateMatch) endpointState = epStateMatch[1].trim();
+          const contactMatch = epOutput.match(/Contact:\s*[^\s]+\s+(?:[0-9a-fA-F]+\s+)?(Avail|Unavail|Created|Removed)\s*([\d.]+)?/);
+          if (contactMatch) {
+            if (contactMatch[1] === 'Avail') reachable = true;
+            if (contactMatch[2]) rttMs = Math.round(parseFloat(contactMatch[2]));
+          }
+        }
+        if (regOutput) {
+          const regLine = regOutput.split('\n').find((l) => l.trim().startsWith(`reg_${slug}/`) || l.trim().startsWith(`reg_${slug} `));
+          if (regLine) {
+            const parts = regLine.trim().split(/\s+/);
+            registrationState = parts[parts.length - 1] || '';
+            registered = registrationState.toLowerCase() === 'registered';
+            if (registered) reachable = true;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Network/TCP+DNS probe fallback if Asterisk didn't return qualify RTT
+    let dnsResolved = false;
+    if (cleanHost) {
+      const start = Date.now();
+      await new Promise<void>((resolve) => {
+        const sock = new net.Socket();
+        let done = false;
+        const finish = (ok: boolean) => {
+          if (done) return;
+          done = true;
+          try { sock.destroy(); } catch (_) {}
+          if (ok) {
+            dnsResolved = true;
+            reachable = true;
+            if (rttMs === null) rttMs = Math.max(1, Date.now() - start);
+          }
+          resolve();
+        };
+        sock.setTimeout(1800);
+        sock.on('connect', () => finish(true));
+        sock.on('timeout', () => finish(false));
+        sock.on('error', (err: any) => {
+          // ECONNREFUSED on TCP 5060 still proves host IP is reachable (SIP typically listens UDP only)
+          if (err && err.code === 'ECONNREFUSED') {
+            finish(true);
+          } else {
+            finish(false);
+          }
+        });
+        try {
+          sock.connect(targetPort, cleanHost);
+        } catch (_) {
+          finish(false);
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      carrier: slug || name,
+      host: cleanHost,
+      port: targetPort,
+      reachable: reachable || dnsResolved,
+      registered,
+      registrationState: registrationState || (authType === 'ip_auth' ? 'IP_Auth' : 'Pendiente'),
+      endpointState: endpointState || 'Verificado',
+      latencyMs: rttMs,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -3435,13 +3541,15 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], asy
   }
 });
 
-// Dedicated one-click repair and re-register endpoint for extensions 1001 & 1002
+// Dedicated one-click repair and re-register endpoint
 app.post('/api/asterisk/extensions/repair', async (req, res) => {
   try {
     const extensionsToUse = (Array.isArray(req.body.extensions) && req.body.extensions.length > 0)
       ? req.body.extensions
-      : defaultExtensionsList;
-    const carriersToUse = Array.isArray(req.body.carriers) ? req.body.carriers : [];
+      : (lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions());
+    const carriersToUse = (Array.isArray(req.body.carriers) && req.body.carriers.length > 0)
+      ? req.body.carriers
+      : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers());
 
     const cleanPjsip = generateCleanPjsipConf(extensionsToUse, carriersToUse);
     const pjsipPath = '/etc/asterisk/pjsip.conf';
@@ -3472,7 +3580,7 @@ app.post('/api/asterisk/extensions/repair', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Extensiones 1001 y 1002 reparadas exitosamente en Asterisk 20 con secciones limpias (endpoint, auth, aor).',
+      message: 'Extensiones y troncales reparadas exitosamente en Asterisk 20 con secciones limpias.',
       written,
       cliReload,
       amiReload,
@@ -3491,8 +3599,10 @@ let lastGeneratedDialplan = '';
 // Serve raw generated configuration files for easy curl / wget update on VPS
 app.get('/api/asterisk/config/extensions.conf', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  const primaryCarrier = lastSyncedCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || lastSyncedCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
-  const cleanDialplan = generateCleanDialplanConf(lastSyncedCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, defaultExtensionsList);
+  const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+  const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
+  const primaryCarrier = activeCarriers.find((c) => c && c.enabled !== false && c.status !== 'disabled') || activeCarriers[0] || { name: 'carrier_default', host: 'voip.ghostcall.online' };
+  const cleanDialplan = generateCleanDialplanConf(activeCarriers, primaryCarrier.host || 'voip.ghostcall.online', {}, activeExts);
   lastGeneratedDialplan = cleanDialplan;
   try {
     fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
@@ -3505,7 +3615,9 @@ app.get('/api/asterisk/config/extensions.conf', (req, res) => {
 
 app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  const cleanPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
+  const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+  const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
+  const cleanPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
   lastGeneratedPjsip = cleanPjsip;
   try {
     fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
@@ -3864,9 +3976,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     lastSyncedExtensions = extensions;
     saveStoredExtensions(extensions);
 
-    const validCarriers = Array.isArray(carriers) ? carriers : defaultCarriersList;
+    const validCarriers = Array.isArray(carriers)
+      ? carriers
+      : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers());
     lastSyncedCarriers = validCarriers;
-    if (Array.isArray(carriers) && carriers.length > 0) {
+    if (Array.isArray(carriers)) {
       saveStoredCarriers(validCarriers);
     }
     const enabledCarriers = validCarriers.filter((c: any) => c && c.name && c.enabled !== false && c.status !== 'disabled');
@@ -4257,7 +4371,11 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       lastSyncedCarriers
     );
 
-    if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && req.body.isAdmin !== true) {
+    const callerIsSuperAdmin =
+      req.body.isSuperAdmin === true ||
+      (req.body.isAdmin === true && !tenantResolution.tenant && !req.body.tenantId);
+
+    if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && !callerIsSuperAdmin) {
       return res.status(403).json({
         success: false,
         error: `El Call Center "${tenantResolution.tenant.name}" se encuentra suspendido. Contacta al Super Administrador.`,
@@ -4310,9 +4428,39 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     let cleanCarrier = (carrier || '').trim();
     if (tenantResolution.carrierName) {
-      const callerIsAdmin = req.body.isAdmin === true;
-      if (!callerIsAdmin || !cleanCarrier || cleanCarrier === 'auto' || cleanCarrier === 'pool') {
+      if (!callerIsSuperAdmin || !cleanCarrier || cleanCarrier === 'auto' || cleanCarrier === 'pool') {
         cleanCarrier = tenantResolution.carrierName;
+      }
+    }
+
+    // Validate outbound SIP carriers before launching external call
+    const isInternalOrTestCall =
+      ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) ||
+      cleanDest.endsWith('8888') ||
+      cleanDest.length <= 4;
+
+    if (!isInternalOrTestCall) {
+      const activePool = (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers())
+        .filter((c: any) => c && c.name && c.host && c.enabled !== false && c.status !== 'disabled');
+      if (activePool.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No hay ningún Carrier SIP habilitado en el sistema. Activa o agrega un Carrier antes de lanzar llamadas.',
+        });
+      }
+      if (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') {
+        const refSlug = cleanCarrier.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        const matchedCarrier = activePool.find((c: any) => {
+          const cSlug = String(c.name || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          return String(c.id || '').toLowerCase() === cleanCarrier.toLowerCase() || String(c.name || '').toLowerCase() === cleanCarrier.toLowerCase() || cSlug === refSlug;
+        });
+        if (!matchedCarrier) {
+          return res.status(400).json({
+            success: false,
+            error: `El Carrier asignado ("${cleanCarrier}") está deshabilitado o no existe. Habilítalo o selecciona otro Carrier activo.`,
+          });
+        }
+        cleanCarrier = String(matchedCarrier.name).trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       }
     }
 
@@ -4399,7 +4547,9 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       if (fs.existsSync(pjsipPath)) {
         const curContent = fs.readFileSync(pjsipPath, 'utf8');
         if ((!curContent.includes('type = transport') && !curContent.includes('type=transport')) || curContent.includes('1001-aor')) {
-          const fixedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
+          const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
+          const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+          const fixedPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
           fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
           fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');
           if (hasLocalAsterisk) {
@@ -8067,10 +8217,12 @@ app.post('/api/reseller/clients', async (req, res) => {
 
     // Auto-update /etc/asterisk/pjsip.conf and /etc/asterisk/extensions.conf and reload
     try {
-      const updatedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers);
+      const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : defaultExtensionsList;
+      const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+      const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
       await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
       await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
-      const updatedDialplan = generateCleanDialplanConf(lastSyncedCarriers);
+      const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
       await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
       await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
       if (hasLocalAsterisk) {
@@ -8356,12 +8508,14 @@ app.post('/api/users/sync-sip', async (req, res) => {
     }
 
     // 6. Generate and write clean pjsip.conf
-    const updatedPjsip = generateCleanPjsipConf(defaultExtensionsList, lastSyncedCarriers, stored);
+    const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : defaultExtensionsList;
+    const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+    const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, stored);
     await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
     await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
 
     // Also write extensions.conf to ensure dialplan supports manual dialing
-    const updatedDialplan = generateCleanDialplanConf(lastSyncedCarriers);
+    const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
     await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
     await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
 

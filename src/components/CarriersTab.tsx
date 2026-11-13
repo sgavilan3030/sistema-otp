@@ -69,6 +69,8 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   const [isLoadingLiveStatus, setIsLoadingLiveStatus] = useState(false);
   const [showLiveStatusModal, setShowLiveStatusModal] = useState(false);
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const fetchLiveAsteriskStatus = async () => {
     setIsLoadingLiveStatus(true);
     try {
@@ -87,6 +89,10 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
       setIsLoadingLiveStatus(false);
     }
   };
+
+  useEffect(() => {
+    fetchLiveAsteriskStatus();
+  }, []);
 
   // Form state
   const [name, setName] = useState('');
@@ -154,6 +160,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   };
 
   const handleOpenCreateModal = () => {
+    setFormError(null);
     setEditingCarrier(null);
     setName('');
     setAuthType('registration');
@@ -163,7 +170,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setUsername('');
     setSecret('');
     setInboundContext('trunkinbound');
-    setOutboundCallerId('+18494386040');
+    setOutboundCallerId('');
     setSelectedCodecs(['ulaw', 'alaw', 'g729']);
     setQualifyFreq(60);
     setFromuser('');
@@ -177,6 +184,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   };
 
   const handleOpenEditModal = (c: CarrierTrunk) => {
+    setFormError(null);
     setEditingCarrier(c);
     setName(c.name);
     setAuthType(c.authType);
@@ -211,11 +219,47 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !host.trim()) return;
+    setFormError(null);
 
-    const cleanSlug = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    const safeName = cleanSlug.startsWith('trunk_') ? cleanSlug : cleanSlug;
-    const cleanHost = host.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+    if (!safeName) {
+      setFormError('Ingresa un nombre válido para el Carrier (solo letras, números y guion bajo).');
+      return;
+    }
+    if (/^\d+$/.test(safeName)) {
+      setFormError('El nombre del Carrier no puede ser únicamente numérico para evitar colisiones con extensiones.');
+      return;
+    }
+
+    const duplicate = carriers.find(
+      (c) => c.id !== editingCarrier?.id && c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') === safeName
+    );
+    if (duplicate) {
+      setFormError(`Ya existe otra troncal llamada "${duplicate.name}". Usa un nombre único.`);
+      return;
+    }
+
+    let cleanHost = host
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/^sips?:/i, '')
+      .replace(/^\/\//, '')
+      .replace(/\/.*$/, '');
+    let parsedPort = Number(port) || 5060;
+    if (cleanHost.includes(':')) {
+      const parts = cleanHost.split(':');
+      cleanHost = parts[0].trim();
+      parsedPort = Number(parts[1]) || parsedPort;
+    }
+    if (!cleanHost) {
+      setFormError('Ingresa una IP pública o dominio SIP válido para el Carrier.');
+      return;
+    }
+
+    if (authType === 'registration' && (!username.trim() || !secret.trim())) {
+      setFormError('En modo Registro SIP debes ingresar Username y Secret / Password.');
+      return;
+    }
 
     if (editingCarrier) {
       onUpdateCarrier({
@@ -225,7 +269,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         enabled: isEnabled,
         status: isEnabled ? (editingCarrier.status === 'disabled' ? 'reachable' : editingCarrier.status) : 'disabled',
         host: cleanHost,
-        port: Number(port) || 5060,
+        port: parsedPort,
         username: username.trim(),
         secret: secret.trim(),
         inboundContext: inboundContext.trim() || 'trunkinbound',
@@ -247,7 +291,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         authType,
         enabled: isEnabled,
         host: cleanHost,
-        port: Number(port) || 5060,
+        port: parsedPort,
         username: username.trim(),
         secret: secret.trim(),
         inboundContext: inboundContext.trim() || 'trunkinbound',
@@ -255,7 +299,6 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         codecs: selectedCodecs,
         qualifyFreq: Number(qualifyFreq) || 60,
         status: isEnabled ? 'reachable' : 'disabled',
-        latencyMs: Math.floor(Math.random() * 25) + 10,
         fromuser: fromuser.trim(),
         sendrpid,
         trustrpid,
@@ -268,6 +311,9 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
       setSelectedCarrierId(newCarrier.id);
     }
     setIsModalOpen(false);
+    setTimeout(() => {
+      fetchLiveAsteriskStatus();
+    }, 1800);
   };
 
 
@@ -303,8 +349,11 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
               `outbound_auth = auth_${slug}\n` +
               `server_uri = sip:${c.host}:${c.port}\n` +
               `client_uri = sip:${c.username || slug}@${c.host}:${c.port}\n` +
-              `contact_user = ${c.username || slug}\n` +
+              `contact_user = ${c.fromuser || c.username || slug}\n` +
               `retry_interval = 30\n` +
+              `forbidden_retry_interval = 30\n` +
+              `auth_rejection_permanent = false\n` +
+              `max_retries = 100\n` +
               `expiration = 3600\n` +
               `line = yes\n` +
               `endpoint = ${slug}\n\n`;
@@ -319,7 +368,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
               `; Asterisk autentica e identifica el tráfico entrante/saliente por IP: ${c.host}\n` +
               `; ====================================================================\n\n`;
     }
-    const qualifyVal = c.authType === 'ip_auth' ? (c.qualifyFreq ?? 0) : (c.qualifyFreq || 60);
+    const qualifyVal = c.authType === 'ip_auth' ? (c.qualifyFreq ?? 30) : (c.qualifyFreq || 60);
     text += `[${slug}_aor]\n` +
             `type = aor\n` +
             `contact = sip:${c.host}:${c.port}\n` +
@@ -328,17 +377,16 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
             `type = endpoint\n` +
             `context = ${c.inboundContext || 'trunkinbound'}\n` +
             `disallow = all\n` +
-            `allow = ${(c.codecs && c.codecs.length > 0) ? c.codecs.join(',') : 'opus,g722,ulaw,alaw'}\n` +
+            `allow = ${(c.codecs && c.codecs.length > 0) ? c.codecs.join(',') : 'ulaw,alaw,g729,g722,opus'}\n` +
             `aors = ${slug}_aor\n` +
             (isRegistration && c.secret ? `outbound_auth = auth_${slug}\n` : `identify_by = ip\n`) +
             (isRegistration && (c.fromuser || c.username) ? `from_user = ${c.fromuser || c.username || slug}\n` : '') +
             `from_domain = ${c.host}\n` +
-            `callerid = "${c.outboundCallerName || 'Atención al Cliente'}" <${c.outboundCallerId || '+18005550199'}>\n` +
             `direct_media = no\n` +
             `rtp_symmetric = yes\n` +
             `force_rport = yes\n` +
             `rewrite_contact = yes\n` +
-            `send_pai = yes\n` +
+            `send_pai = ${isRegistration ? (c.sendrpid === 'yes' ? 'yes' : 'no') : 'yes'}\n` +
             `send_rpid = ${c.sendrpid || 'yes'}\n` +
             `trust_id_outbound = yes\n` +
             `trust_id_inbound = ${c.trustrpid || 'yes'}\n` +
@@ -346,10 +394,12 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
             `dtmf_mode = rfc4733\n` +
             `timers = yes\n` +
             `transport = transport-udp\n\n`;
-    text += `[${slug}-identify]\n` +
-            `type = identify\n` +
-            `endpoint = ${slug}\n` +
-            `match = ${c.host}\n`;
+    if (!isRegistration || !c.secret) {
+      text += `[${slug}-identify]\n` +
+              `type = identify\n` +
+              `endpoint = ${slug}\n` +
+              `match = ${c.host}\n`;
+    }
     return text;
   };
 
@@ -1024,6 +1074,11 @@ insecure=${carrierInsecure}`;
             </div>
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
+              {formError && (
+                <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs font-medium">
+                  {formError}
+                </div>
+              )}
               {/* Selector de Modo de Conexión: IP a IP vs Registro SIP */}
               <div className="space-y-2">
                 <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider">
@@ -1206,6 +1261,7 @@ insecure=${carrierInsecure}`;
                     </label>
                     <input
                       type="text"
+                      required={authType === 'registration'}
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder={authType === 'ip_auth' ? 'Opcional o slug' : 'sgavilan30'}
@@ -1218,6 +1274,7 @@ insecure=${carrierInsecure}`;
                     </label>
                     <input
                       type="text"
+                      required={authType === 'registration'}
                       value={secret}
                       onChange={(e) => setSecret(e.target.value)}
                       placeholder={authType === 'ip_auth' ? 'Sin contraseña en IP a IP' : 'Robert2026'}
@@ -1234,17 +1291,17 @@ insecure=${carrierInsecure}`;
                       type="text"
                       value={fromuser}
                       onChange={(e) => setFromuser(e.target.value)}
-                      placeholder="sgavilan30"
+                      placeholder="Igual al Username si vacío"
                       className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-300 font-medium mb-1">Insecure</label>
+                    <label className="block text-slate-300 font-medium mb-1">CallerID Saliente (DID)</label>
                     <input
                       type="text"
-                      value={insecure}
-                      onChange={(e) => setInsecure(e.target.value)}
-                      placeholder="port,invite"
+                      value={outboundCallerId}
+                      onChange={(e) => setOutboundCallerId(e.target.value)}
+                      placeholder="+18494386040"
                       className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-white font-mono focus:border-cyan-500 focus:outline-none"
                     />
                   </div>

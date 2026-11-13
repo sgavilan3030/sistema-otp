@@ -187,6 +187,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   onNavigateToLiveCalls,
 }) => {
   const isAdmin = currentUser?.role === 'admin';
+  const isSuperAdmin = isAdmin && !currentUser?.tenantId;
   const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
 
   // Active view tab: 'dialer' (Operador 1-Clic) vs 'audit' (Auditoría Administrador)
@@ -248,25 +249,33 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   }, [tenants, currentUser?.tenantId, selectedExtension]);
 
   const lockedTenantCarrier = React.useMemo(() => {
-    if (!userTenant?.carrierId) return null;
-    return carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId) || null;
-  }, [userTenant, carriers]);
+    if (userTenant?.carrierId) {
+      const byTenant = carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId);
+      if (byTenant) return byTenant;
+    }
+    if (currentUser?.assignedCarrierId && currentUser.assignedCarrierId !== 'auto') {
+      return carriers.find((c) => c.id === currentUser.assignedCarrierId || c.name === currentUser.assignedCarrierId) || null;
+    }
+    return null;
+  }, [userTenant, carriers, currentUser?.assignedCarrierId]);
 
-  const isCarrierLockedToTenant = Boolean(!isAdmin && userTenant && lockedTenantCarrier);
+  const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
 
   // Selected Carrier for dialing
   const [selectedCarrier, setSelectedCarrier] = useState<string>(() => {
     const active = carriers.find((c) => c.enabled !== false && c.status !== 'disabled');
-    return active?.name || carriers[0]?.name || 'televox';
+    return active?.name || carriers[0]?.name || 'auto';
   });
 
   useEffect(() => {
-    if (isCarrierLockedToTenant && lockedTenantCarrier) {
+    if (!isSuperAdmin && lockedTenantCarrier) {
       setSelectedCarrier(lockedTenantCarrier.name);
     }
-  }, [isCarrierLockedToTenant, lockedTenantCarrier]);
+  }, [isSuperAdmin, lockedTenantCarrier]);
 
-  const effectiveCarrier = isCarrierLockedToTenant && lockedTenantCarrier ? lockedTenantCarrier.name : selectedCarrier;
+  const effectiveCarrier = !isSuperAdmin
+    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (currentUser?.assignedCarrierId && currentUser.assignedCarrierId !== 'auto' ? currentUser.assignedCarrierId : 'auto'))
+    : selectedCarrier;
 
   // Call Mode & Audio Prompt State for 1-Click Dialing
   const [callMode, setCallMode] = useState<ManualDialerCallMode>('playback');
@@ -465,7 +474,8 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
           channel: `PJSIP/${selectedExtension}`,
           carrier: effectiveCarrier,
           tenantId: userTenant?.id,
-          isAdmin,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
           agentExten: selectedExtension,
           callMode,
           mode: callMode,
@@ -1128,13 +1138,10 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-300">Troncal Saliente:</label>
-                {isCarrierLockedToTenant && lockedTenantCarrier ? (
-                  <div className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5">
-                    <Lock className="w-3 h-3 shrink-0" />
-                    <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
-                  </div>
-                ) : (
+                <label className="text-xs font-bold text-slate-300">
+                  {isSuperAdmin ? 'Troncal Saliente:' : 'Ruta Saliente:'}
+                </label>
+                {isSuperAdmin ? (
                   <select
                     value={selectedCarrier}
                     onChange={(e) => setSelectedCarrier(e.target.value)}
@@ -1146,6 +1153,11 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                       </option>
                     ))}
                   </select>
+                ) : (
+                  <div className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5">
+                    <Lock className="w-3 h-3 shrink-0" />
+                    <span>Canal Seguro Asignado{userTenant?.code ? ` (${userTenant.code})` : ''}</span>
+                  </div>
                 )}
                 {userTenant?.magnusBillingUrl && (
                   <a
