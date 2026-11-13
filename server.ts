@@ -593,13 +593,13 @@ function ensureAmdConfExists() {
   const localAmdPath = path.join(process.cwd(), 'amd.conf');
   const amdContent = `; ========================================================
 ; Asterisk Answering Machine Detection Configuration (AMD)
-; Optimizado para respuesta rapida (~1.0s humano, max 2.4s)
+; Optimizado para respuesta inmediata al hablar (~0.6-0.8s humano, max 2.0s)
 ; ========================================================
 [general]
-initial_silence = 2000
+initial_silence = 1800
 greeting = 1100
-after_greeting_silence = 350
-total_analysis_time = 2400
+after_greeting_silence = 250
+total_analysis_time = 2000
 min_word_length = 100
 between_words_silence = 50
 maximum_number_of_words = 3
@@ -612,16 +612,18 @@ maximum_word_length = 2000
       const current = fs.readFileSync(amdPath, 'utf8');
       if (
         current.includes('total_analysis_time = 3500') ||
+        current.includes('total_analysis_time = 2400') ||
         current.includes('after_greeting_silence = 800') ||
+        current.includes('after_greeting_silence = 350') ||
         current.includes('maximum_on_length') ||
-        !current.includes('total_analysis_time = 2400')
+        !current.includes('total_analysis_time = 2000')
       ) {
         shouldWrite = true;
       }
     }
     if (shouldWrite) {
       writeAsteriskConfigFile(amdPath, amdContent);
-      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD rápido ~1.0s)');
+      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD inmediato al hablar, max 2.0s)');
       if (hasLocalAsterisk) {
         exec('asterisk -rx "module reload app_amd.so"', () => {});
       }
@@ -2703,14 +2705,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
-  dialplanContent += ` same => n,Wait(0.15)\n`;
-  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (modo rapido <= 2.4s) ===)\n`;
-  dialplanContent += ` same => n,AMD(2000,1100,350,2400,100,50,3,384,2000)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} al instante desde que hable ===)\n`;
+  dialplanContent += ` same => n,AMD(1800,1100,250,2000,100,50,3,384,2000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
-  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección de grabadora desactivada por usuario ===)\n`;
-  dialplanContent += ` same => n,Wait(0.4)\n`;
+  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Esperando 2s antes de iniciar IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n(amd_ok_press1),Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
@@ -2833,14 +2834,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
-  dialplanContent += ` same => n,Wait(0.15)\n`;
-  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (modo rapido <= 2.4s) ===)\n`;
-  dialplanContent += ` same => n,AMD(2000,1100,350,2400,100,50,3,384,2000)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} al instante desde que hable ===)\n`;
+  dialplanContent += ` same => n,AMD(1800,1100,250,2000,100,50,3,384,2000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
-  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección de grabadora desactivada por usuario ===)\n`;
-  dialplanContent += ` same => n,Wait(0.4)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Esperando 2s antes de iniciar IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n(amd_ok_otp),Set(VOLUME(rx)=1)\n`;
   dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
@@ -6992,8 +6992,8 @@ app.post('/api/asterisk/amd/toggle', async (req, res) => {
       success: true,
       enabled: isAmdEnabled,
       message: isAmdEnabled
-        ? 'Detección de grabadora (AMD) ACTIVADA: Si contesta un contestador o correo de voz, colgará y reintentará.'
-        : 'Detección de grabadora (AMD) DESACTIVADA: La llamada se conectará de inmediato sin filtrar contestadores.',
+        ? 'Detección de grabadora (AMD) ACTIVADA: El IVR entrará en cuanto el cliente hable (y colgará/reintentará si es contestador).'
+        : 'Detección de grabadora (AMD) DESACTIVADA: Al contestar el cliente esperará 2 segundos antes de iniciar el IVR.',
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

@@ -87,8 +87,8 @@ export const AmdConfigModal: React.FC<AmdConfigModalProps> = ({
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   {amdEnabled
-                    ? 'Si el cliente no responde y entra el correo de voz o contestador automático, Asterisk colgará y reintentará.'
-                    : 'La detección está desactivada: la llamada se conectará de inmediato sin filtrar contestadores.'}
+                    ? 'Al contestar, el IVR entra inmediatamente desde que el cliente hable. Si detecta correo de voz o contestador, colgará y reintentará.'
+                    : 'La detección está desactivada: al contestar el cliente, esperará 2 segundos antes de iniciar el IVR sin filtrar contestadores.'}
                 </p>
               </div>
 
