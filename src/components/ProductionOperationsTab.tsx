@@ -165,8 +165,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     ? activeUser.assignedExtensions[0]
     : '1001';
 
+  const isSingleExtensionAgent = Boolean(
+    !isAdmin && !isSupervisor && activeUser?.assignedExtensions && activeUser.assignedExtensions.length === 1
+  );
+
   const [agentExtension, setAgentExtension] = useState<string>(() => {
-    return userAssignedExt || '1001';
+    return isSingleExtensionAgent ? userAssignedExt : 'ringall';
   });
 
   const activeUserRef = useRef(activeUser);
@@ -175,10 +179,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [activeUser]);
 
   useEffect(() => {
-    if (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0) {
-      setAgentExtension(activeUser.assignedExtensions[0]);
+    if (isSingleExtensionAgent) {
+      setAgentExtension(userAssignedExt);
     }
-  }, [activeUser]);
+  }, [activeUser?.id, isSingleExtensionAgent, userAssignedExt]);
 
   useEffect(() => {
     if (agentExtension) {
@@ -313,10 +317,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           if (Array.isArray(data.extensions) && data.extensions.length > 0) {
             setPress1DestExtensions(data.extensions);
           }
+          if (!isSingleExtensionAgent) {
+            if (data.mode === 'ringall') {
+              setAgentExtension('ringall');
+            } else if (Array.isArray(data.extensions) && data.extensions.length > 0) {
+              setAgentExtension(data.extensions[0]);
+            }
+          }
         }
       })
       .catch(() => {});
-  }, [amdEnabledProp]);
+  }, [amdEnabledProp, isSingleExtensionAgent]);
 
   const handleToggleAmd = async () => {
     if (onToggleAmdProp) {
@@ -389,6 +400,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } finally {
       setIsSavingDest(false);
       setTimeout(() => setDestSaveFeedback(null), 6000);
+    }
+  };
+
+  const handleSelectAgentExtension = (val: string) => {
+    setAgentExtension(val);
+    if (val === 'ringall') {
+      setPress1DestMode('ringall');
+      fetch('/api/asterisk/press1-destination/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'ringall', extensions: [] }),
+      }).catch(() => {});
+    } else {
+      setPress1DestMode('specific');
+      setPress1DestExtensions([val]);
+      fetch('/api/asterisk/press1-destination/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'specific', extensions: [val] }),
+      }).catch(() => {});
     }
   };
 
@@ -1249,9 +1280,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const enabledCarriers = carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled');
 
-  // Resolve Call Center Tenant assigned to this user (or their extension range)
+  // Resolve Call Center Tenant assigned to this user (never narrow SuperAdmin to a tenant)
   const userTenant = React.useMemo(() => {
-    if (!tenants || tenants.length === 0) return null;
+    if (isSuperAdmin || !tenants || tenants.length === 0) return null;
     if (activeUser?.tenantId) {
       const byId = tenants.find((t) => t.id === activeUser.tenantId);
       if (byId) return byId;
@@ -1261,7 +1292,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       return tenants.find((t) => extNum >= t.extensionStart && extNum <= t.extensionEnd) || null;
     }
     return null;
-  }, [tenants, activeUser?.tenantId, agentExtension, userAssignedExt]);
+  }, [isSuperAdmin, tenants, activeUser?.tenantId, agentExtension, userAssignedExt]);
 
   // Extensiones que pertenecen exclusivamente al Call Center del usuario (para aislar Ring-All en llamadas masivas)
   const tenantScopedExtensions = React.useMemo(() => {
@@ -1274,6 +1305,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       .map((e) => e.extension);
     return inRange.length > 0 ? inRange : (activeUser?.assignedExtensions || []);
   }, [extensions, userTenant, activeUser?.assignedExtensions]);
+
+  const visibleAgentExtensions = React.useMemo(() => {
+    if (!userTenant) return extensions;
+    return extensions.filter((e) => tenantScopedExtensions.includes(e.extension));
+  }, [extensions, userTenant, tenantScopedExtensions]);
 
   const lockedTenantCarrier = React.useMemo(() => {
     if (userTenant?.carrierId) {
@@ -2123,9 +2159,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
           mode: callFlowMode,
-          agentExten: press1DestMode === 'ringall'
-            ? (userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall')
-            : (press1DestExtensions.join('&') || agentExtension || '1001'),
+          agentExten: isSingleExtensionAgent
+            ? userAssignedExt
+            : (agentExtension === 'ringall' || press1DestMode === 'ringall')
+              ? (userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall')
+              : (press1DestMode === 'specific' && press1DestExtensions.length > 1
+                  ? press1DestExtensions.join('&')
+                  : (agentExtension || press1DestExtensions.join('&') || '1001')),
           audioIntro: currentAudios.introAudioPath,
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
@@ -2732,13 +2772,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <select
                   id="select-banner-agent"
                   value={agentExtension}
-                  onChange={(e) => setAgentExtension(e.target.value)}
+                  onChange={(e) => handleSelectAgentExtension(e.target.value)}
                   className="mt-1 bg-slate-900 border border-slate-700 hover:border-sky-500 rounded px-2 py-0.5 text-xs text-sky-400 font-mono font-bold focus:outline-none cursor-pointer"
                 >
                   <option value="ringall" className="text-purple-300 font-bold">
                     ⚡ Todas las Extensiones (Ring-All)
                   </option>
-                  {extensions.map((ext) => (
+                  {visibleAgentExtensions.map((ext) => (
                     <option key={ext.id} value={ext.extension}>
                       👤 Ext. {ext.extension} {ext.name ? `(${ext.name})` : ''}
                     </option>
@@ -3571,7 +3611,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* Opción 1: Ring-All */}
                   <label
-                    onClick={() => setPress1DestMode('ringall')}
+                    onClick={() => {
+                      setPress1DestMode('ringall');
+                      if (!isSingleExtensionAgent) setAgentExtension('ringall');
+                    }}
                     className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                       press1DestMode === 'ringall'
                         ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500/40'
@@ -3582,7 +3625,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       type="radio"
                       name="press1_dest_mode"
                       checked={press1DestMode === 'ringall'}
-                      onChange={() => setPress1DestMode('ringall')}
+                      onChange={() => {
+                        setPress1DestMode('ringall');
+                        if (!isSingleExtensionAgent) setAgentExtension('ringall');
+                      }}
                       className="mt-1 text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700"
                     />
                     <div>
@@ -3600,7 +3646,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
                   {/* Opción 2: Extensiones Específicas */}
                   <label
-                    onClick={() => setPress1DestMode('specific')}
+                    onClick={() => {
+                      setPress1DestMode('specific');
+                      if (!isSingleExtensionAgent && press1DestExtensions.length > 0) {
+                        setAgentExtension(press1DestExtensions[0]);
+                      }
+                    }}
                     className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                       press1DestMode === 'specific'
                         ? 'bg-sky-950/30 border-sky-500 text-white shadow-md ring-1 ring-sky-500/40'
@@ -3611,7 +3662,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       type="radio"
                       name="press1_dest_mode"
                       checked={press1DestMode === 'specific'}
-                      onChange={() => setPress1DestMode('specific')}
+                      onChange={() => {
+                        setPress1DestMode('specific');
+                        if (!isSingleExtensionAgent && press1DestExtensions.length > 0) {
+                          setAgentExtension(press1DestExtensions[0]);
+                        }
+                      }}
                       className="mt-1 text-sky-500 focus:ring-sky-500 bg-slate-900 border-slate-700"
                     />
                     <div className="flex-1">
@@ -3635,7 +3691,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                      {extensions.map((ext) => {
+                      {visibleAgentExtensions.map((ext) => {
                         const isChecked = press1DestExtensions.includes(ext.extension);
                         return (
                           <label
@@ -5260,13 +5316,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <select
                         id="select-ivr-action-agent"
                         value={agentExtension}
-                        onChange={(e) => setAgentExtension(e.target.value)}
+                        onChange={(e) => handleSelectAgentExtension(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:border-emerald-500 focus:outline-none cursor-pointer"
                       >
                         <option value="ringall" className="text-purple-300 font-bold">
                           ⚡ Todas las Extensiones (Ring-All) - Timbran todas a la vez
                         </option>
-                        {extensions.map((ext) => (
+                        {visibleAgentExtensions.map((ext) => (
                           <option key={ext.id} value={ext.extension}>
                             👤 Extensión {ext.extension} - {ext.name || `Agente ${ext.extension}`}
                           </option>

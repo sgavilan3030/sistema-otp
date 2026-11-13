@@ -1178,7 +1178,7 @@ const defaultExtensionsList = [
     name: 'Operador Principal',
     secret: 'Secr3tP@ssw0rd!1001',
     context: 'from-internal',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1190,7 +1190,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 2',
     secret: 'S0p0rte#2026@1002',
     context: 'from-internal',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1202,7 +1202,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 3',
     secret: 'S0p0rte#2026@1003',
     context: 'from-internal',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1214,7 +1214,7 @@ const defaultExtensionsList = [
     name: 'Supervisor Turno',
     secret: 'Superv1sor2026!',
     context: 'from-internal',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw', 'g722'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1812,7 +1812,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     }
     const cleanCidNum = (ext.callerIdNum && ext.callerIdNum !== '+18005550199') ? ext.callerIdNum : num;
     const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
-    const codecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'opus,g722,ulaw,alaw,g729';
+    const rawCodecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
+    const codecs = rawCodecs === 'opus,g722,ulaw,alaw,g729' ? 'ulaw,alaw,g722' : rawCodecs;
     const extPort = parseInt(ext.port, 10) || activePort;
 
     let transport = 'transport-udp';
@@ -2174,8 +2175,28 @@ export function generateCleanDialplanConf(
   // Generación dinámica de la cadena Ring-All para todas las extensiones activas (ej: PJSIP/1001&PJSIP/1002...)
   // Quien descuelga primero gana la llamada y los demás canales dejan de timbrar inmediatamente
   const extsList = (Array.isArray(extensionsInput) && extensionsInput.length > 0) ? extensionsInput : lastSyncedExtensions;
-  const validExts = extsList.filter((e: any) => e && (e.extension || e.id));
-  const ringAllList = validExts.map((e: any) => `PJSIP/${(e.extension || e.id).toString().trim()}`).filter((s: string) => !s.endsWith('/'));
+  const ringAllSet = new Set<string>();
+  for (const e of extsList) {
+    if (!e || e.enabled === false) continue;
+    const rawExt = (e.extension || e.id || '').toString().trim();
+    if (rawExt && /^[0-9]{2,6}$/.test(rawExt)) {
+      ringAllSet.add(`PJSIP/${rawExt}`);
+    }
+  }
+  try {
+    const storedUsersForRing = loadStoredUsers();
+    for (const u of storedUsersForRing) {
+      if (u && Array.isArray(u.assignedExtensions)) {
+        for (const ue of u.assignedExtensions) {
+          const cleanUe = String(ue || '').trim();
+          if (cleanUe && /^[0-9]{2,6}$/.test(cleanUe)) {
+            ringAllSet.add(`PJSIP/${cleanUe}`);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  const ringAllList = Array.from(ringAllSet);
   const ringAllDialString = ringAllList.length > 0 ? ringAllList.join('&') : 'PJSIP/1001&PJSIP/1002';
 
   let dialplanContent = `; ========================================================\n`;
@@ -2206,7 +2227,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `; Subrutina Pre-Dial para preparacion de audio en canal saliente real (CallerID asignado por el carrier)\n`;
   dialplanContent += `[sub-pjsip-outbound]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Preparando canal saliente: \${CHANNEL} (CallerID asignado por Carrier) ===)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_200,target_30)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
@@ -2216,7 +2237,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[sub-pjsip-headers]\n`;
   dialplanContent += `exten => s,1,Goto(sub-pjsip-outbound,s,1)\n\n`;
 
-  dialplanContent += `; Subrutina Pre-Dial para mostrar el número exacto del cliente en MicroSIP al presionar 1 con audio HD natural (sin modulador)\n`;
+  dialplanContent += `; Subrutina Pre-Dial para mostrar el número exacto del cliente en MicroSIP al presionar 1 con audio limpio sin doble jitterbuffer\n`;
   dialplanContent += `[sub-audio-quality]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] Mostrando Cliente en Pantalla MicroSIP: \${ARG1} / \${TARGET_NUM} en Canal: \${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
@@ -2230,7 +2251,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(CONNECTEDLINE(all,i)=\"\${TARGET_DISPLAY}\" <\${TARGET_DISPLAY}>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,P-Asserted-Identity)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>))\n`;
   dialplanContent += ` same => n,ExecIf($[\"\${TARGET_DISPLAY}\" != \"\"]?Set(PJSIP_HEADER(add,Remote-Party-ID)=\"\${TARGET_DISPLAY}\" <sip:\${TARGET_DISPLAY}@127.0.0.1>\\;party=calling\\;screen=yes\\;privacy=off))\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `; Subrutina Pre-Bridge (U) ejecutada en el canal que atiende (Ring-All o Directo) para registrar la extension exacta\n`;
@@ -2265,18 +2285,16 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
-  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio HD y corte limpio de MOH\n`;
-  dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN} con optimización HD)\n`;
+  dialplanContent += `; 1. Llamadas internas entre extensiones (1001-1999) con Audio nativo limpio sin doble jitterbuffer\n`;
+  dialplanContent += `exten => _1XXX,1,NoOp(Llamada interna a extension \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; 1b. Llamadas directas a extensiones por nombre para MicroSIP (ej: juan_perez, agente1)\n`;
-  dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con optimización HD)\n`;
+  dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_150,target_20)\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -2330,7 +2348,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLING_USER}" = ""]?Set(CALLING_USER=1001))\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
-  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${CALLING_USER})\n`;
+  dialplanContent += ` same => n,Set(CONFIG_8888_AGENT=\${DB(ivr_vars/8888_agent_exten)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CONFIG_8888_AGENT}" = ""]?Set(CONFIG_8888_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${IF($["\${CONFIG_8888_AGENT}" != ""]?\${CONFIG_8888_AGENT}:\${CALLING_USER})})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
@@ -2488,8 +2508,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
   dialplanContent += `; 4. Regla Saliente USA / Canada / RD 10 digitos (ej. 8494386040) -> Convierte automáticamente a 11 digitos (18494386040) requeridos por el proveedor\n`;
@@ -2521,8 +2539,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
@@ -2532,21 +2548,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=\${CALLING_AGENT}&secs=\${CDR(billsec)}&dest=\${TARGET_NUM}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
-  dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio HD)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
-  dialplanContent += `exten => s,1,NoOp(Llamada Entrante s por Troncal: \${CALLERID(num)} con Audio HD)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += `exten => s,1,NoOp(Llamada Entrante s por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
@@ -2561,11 +2569,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-DINAMICA-OTP] INICIO MOTOR CAPTURA CON EXT: \${OTP_ENGINE_EXTEN} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=max_350,target_60)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(rx)=on)\n`;
-  dialplanContent += ` same => n,Set(DENOISE(tx)=on)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=1)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(CURR_EXT=\${IF($["\${OTP_ENGINE_EXTEN}" != ""]?\${OTP_ENGINE_EXTEN}:4001)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -2705,9 +2709,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
   dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Esperando 2s antes de iniciar IVR ===)\n`;
   dialplanContent += ` same => n,Wait(2)\n`;
-  dialplanContent += ` same => n(amd_ok_press1),Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
-  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n(amd_ok_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
@@ -2790,7 +2792,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
   dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" =~ "PJSIP/"]?\${FINAL_AGENT}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" =~ "PJSIP/"]?Set(DIAL_AGENTS=\${FINAL_AGENT}))\n`;
+  dialplanContent += ` same => n,NoOp(=== [PRESS-1 DIAL STRING] Marcando simultaneamente a: \${DIAL_AGENTS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1^\${TARGET_NUM})U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Goto(press1_finish)\n`;
   dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
@@ -2833,9 +2837,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
   dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Esperando 2s antes de iniciar IVR ===)\n`;
   dialplanContent += ` same => n,Wait(2)\n`;
-  dialplanContent += ` same => n(amd_ok_otp),Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
-  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n(amd_ok_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
@@ -3037,7 +3039,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
   dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
-  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" =~ "PJSIP/"]?\${FINAL_AGENT}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" =~ "PJSIP/"]?Set(DIAL_AGENTS=\${FINAL_AGENT}))\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Goto(otp_press1_finish)\n`;
   dialplanContent += ` same => n(dial_otp_ringall),NoOp(=== [OTP PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
@@ -3072,8 +3075,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Answer()\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=playing_audio&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
@@ -3106,8 +3107,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,Set(VOLUME(rx)=1)\n`;
-  dialplanContent += ` same => n,Set(VOLUME(tx)=2)\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
@@ -3123,10 +3122,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
-  dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Conectando con Asesor PJSIP/\${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Conectando con Asesor: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=talking_agent)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=talking_agent&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   return dialplanContent;
@@ -4063,25 +4063,26 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const defaultSuccess = req.body.audioSuccess || 'custom/operacion_bloqueada_exito';
     const defaultAgent = req.body.audioAgent || 'custom/conectar_asesor';
 
+    const persistedPress1Agent = press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&');
     const defaultAudiosCommands = [
       `database put ivr_vars default_intro "${defaultIntro}"`,
       `database put ivr_vars default_prompt "${defaultPrompt}"`,
       `database put ivr_vars default_wait "${defaultWait}"`,
       `database put ivr_vars default_success "${defaultSuccess}"`,
       `database put ivr_vars default_agent "${defaultAgent}"`,
-      `database put ivr_vars default_agent_exten "1001"`,
+      `database put ivr_vars default_agent_exten "${persistedPress1Agent}"`,
       `database put ivr_vars 8888_intro "${defaultIntro}"`,
       `database put ivr_vars 8888_prompt "${defaultPrompt}"`,
       `database put ivr_vars 8888_wait "${defaultWait}"`,
       `database put ivr_vars 8888_success "${defaultSuccess}"`,
       `database put ivr_vars 8888_agent "${defaultAgent}"`,
-      `database put ivr_vars 8888_agent_exten "1001"`,
+      `database put ivr_vars 8888_agent_exten "${persistedPress1Agent}"`,
       `database put ivr_vars 7777_intro "${defaultIntro}"`,
       `database put ivr_vars 7777_prompt "${defaultPrompt}"`,
       `database put ivr_vars 7777_wait "${defaultWait}"`,
       `database put ivr_vars 7777_success "${defaultSuccess}"`,
       `database put ivr_vars 7777_agent "${defaultAgent}"`,
-      `database put ivr_vars 7777_agent_exten "1001"`,
+      `database put ivr_vars 7777_agent_exten "${persistedPress1Agent}"`,
     ];
 
     (async () => {
@@ -4355,21 +4356,25 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       formattedDest = `1${cleanDest}`;
     }
 
-    // Determine effective agent destination: if ringall, or using saved press-1 destination preference
-    let effectiveAgentExten = (agentExten && agentExten !== 'ringall' && agentExten !== 'all')
-      ? agentExten
+    // Determine effective agent destination: respect explicit 'ringall' or specific extension(s) from request
+    let effectiveAgentExten = agentExten
+      ? ((agentExten === 'ringall' || agentExten === 'all') ? 'ringall' : String(agentExten).trim())
       : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
 
+    const explicitSuperAdminWithoutTenant = req.body.isSuperAdmin === true && !req.body.tenantId;
+
     // Resolve Call Center Tenant & enforce its assigned SIP carrier + isolated extension range
-    const tenantResolution = resolveTenantCarrierForCall(
-      {
-        tenantId: req.body.tenantId,
-        agentExten: (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
-          ? effectiveAgentExten
-          : (req.body.callerExtension || req.body.agent),
-      },
-      lastSyncedCarriers
-    );
+    const tenantResolution = explicitSuperAdminWithoutTenant
+      ? { tenant: null, carrierName: '' }
+      : resolveTenantCarrierForCall(
+          {
+            tenantId: req.body.tenantId,
+            agentExten: (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
+              ? effectiveAgentExten
+              : (req.body.callerExtension || req.body.agent),
+          },
+          lastSyncedCarriers
+        );
 
     const callerIsSuperAdmin =
       req.body.isSuperAdmin === true ||
@@ -4385,7 +4390,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // AISLAMIENTO RING-ALL POR CALL CENTER:
     // Si el modo es 'ringall' y pertenece a un Call Center (tenant) con rango [extensionStart, extensionEnd],
     // limitar estrictamente el timbrado a las extensiones de ese Call Center y NUNCA a todos los Call Centers.
-    if ((effectiveAgentExten === 'ringall' || effectiveAgentExten === 'all') && tenantResolution.tenant) {
+    if ((effectiveAgentExten === 'ringall' || effectiveAgentExten === 'all') && tenantResolution.tenant && !explicitSuperAdminWithoutTenant) {
       const tStart = Number(tenantResolution.tenant.extensionStart);
       const tEnd = Number(tenantResolution.tenant.extensionEnd);
       if (!isNaN(tStart) && !isNaN(tEnd) && tEnd >= tStart) {
