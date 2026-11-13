@@ -13,12 +13,12 @@ echo ""
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ ! -f "$APP_DIR/package.json" ]; then
-  if [ -f "/root/sistema-otp/package.json" ]; then
+  if [ -f "/var/www/sistema-otp/package.json" ]; then
+    APP_DIR="/var/www/sistema-otp"
+  elif [ -f "/root/sistema-otp/package.json" ]; then
     APP_DIR="/root/sistema-otp"
   elif [ -f "$(pwd)/package.json" ]; then
     APP_DIR="$(pwd)"
-  elif [ -f "/var/www/sistema-otp/package.json" ]; then
-    APP_DIR="/var/www/sistema-otp"
   elif [ -f "/var/www/black-hat-dialer/package.json" ]; then
     APP_DIR="/var/www/black-hat-dialer"
   fi
@@ -113,10 +113,12 @@ echo "Estado de registros SIP con el proveedor:"
 asterisk -rx "pjsip show registrations" 2>/dev/null || true
 
 echo "=== [6/6] Reiniciando servicio de la aplicacion Node.js ==="
-# Garantizar que el puerto 3000 no quede bloqueado por procesos zombies o huérfanos
-echo "Liberando puerto 3000 si hay procesos bloqueándolo..."
+# Garantizar que el puerto 3000 no quede bloqueado por procesos zombies, systemd duplicados o huérfanos
+echo "Liberando puerto 3000 y deteniendo procesos duplicados..."
 if command -v pm2 >/dev/null 2>&1; then
   pm2 stop all 2>/dev/null || true
+  systemctl stop sistema-otp asterisk-web dialer otp 2>/dev/null || true
+  systemctl disable sistema-otp asterisk-web dialer otp 2>/dev/null || true
 fi
 fuser -k 3000/tcp 2>/dev/null || true
 pkill -9 -f "dist/server.cjs" 2>/dev/null || true
@@ -124,12 +126,14 @@ pkill -9 -f "tsx server.ts" 2>/dev/null || true
 sleep 1
 
 if command -v pm2 >/dev/null 2>&1; then
-  # Si ya existe en PM2 lo arrancamos limpio, si no lo creamos
   pm2 delete all 2>/dev/null || true
   cd "$APP_DIR"
-  pm2 start dist/server.cjs --name "sistema-otp"
+  NODE_ENV=production pm2 start dist/server.cjs --name "sistema-otp" -- --production
   pm2 save 2>/dev/null || true
-  echo "✓ Proceso PM2 'sistema-otp' iniciado limpiamente en el puerto 3000."
+  echo "✓ Proceso PM2 'sistema-otp' iniciado en MODO PRODUCCIÓN puro en el puerto 3000."
+elif systemctl is-active --quiet sistema-otp 2>/dev/null; then
+  systemctl restart sistema-otp
+  echo "✓ Servicio systemd sistema-otp reiniciado."
 elif systemctl is-active --quiet asterisk-web 2>/dev/null; then
   systemctl restart asterisk-web
   echo "✓ Servicio systemd asterisk-web reiniciado."
@@ -140,8 +144,8 @@ elif systemctl is-active --quiet otp 2>/dev/null; then
   systemctl restart otp
   echo "✓ Servicio systemd otp reiniciado."
 else
-  nohup npm start > app.log 2>&1 &
-  echo "✓ Aplicacion iniciada con 'npm start' en segundo plano (PID: $!)."
+  NODE_ENV=production nohup node dist/server.cjs --production > app.log 2>&1 &
+  echo "✓ Aplicacion iniciada en producción en segundo plano (PID: $!)."
 fi
 
 echo ""
