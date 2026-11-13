@@ -25,7 +25,19 @@ import {
   WifiOff,
   Clock,
   PhoneCall,
+  Terminal,
+  Send,
+  RotateCcw,
 } from 'lucide-react';
+import { SyncLogEntry } from '../types';
+
+interface ServerTelemetryTabProps {
+  logs?: SyncLogEntry[];
+  onClearLogs?: () => void;
+  onExecuteAmiCommand?: (command: string) => void;
+  onForceFullSync?: () => void;
+  isSyncing?: boolean;
+}
 
 interface TelemetryResponse {
   success: boolean;
@@ -166,7 +178,13 @@ const TelemetryTooltip: React.FC<ChartTooltipProps> = ({ active, payload, label 
   );
 };
 
-export const ServerTelemetryTab: React.FC = () => {
+export const ServerTelemetryTab: React.FC<ServerTelemetryTabProps> = ({
+  logs = [],
+  onClearLogs,
+  onExecuteAmiCommand,
+  onForceFullSync,
+  isSyncing = false,
+}) => {
   const [samples, setSamples] = useState<TelemetrySample[]>([]);
   const [latest, setLatest] = useState<TelemetryResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -174,9 +192,51 @@ export const ServerTelemetryTab: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [intervalMs, setIntervalMs] = useState<number>(3000);
+  const [amiCmd, setAmiCmd] = useState<string>('pjsip show endpoints');
+  const [amiCmdOutput, setAmiCmdOutput] = useState<string | null>(null);
+  const [isRunningCmd, setIsRunningCmd] = useState<boolean>(false);
+  const [isResettingBackoff, setIsResettingBackoff] = useState<boolean>(false);
+  const [serverLogs, setServerLogs] = useState<Array<{ id: string; timestamp: string; type: string; message: string; payload?: string; status: string }>>([]);
 
   const sampleCounterRef = useRef<number>(1);
   const isMountedRef = useRef<boolean>(true);
+
+  const handleRunAmiConsole = async (cmdOverride?: string) => {
+    const command = (cmdOverride || amiCmd).trim();
+    if (!command) return;
+    setIsRunningCmd(true);
+    setAmiCmdOutput(null);
+    if (onExecuteAmiCommand) {
+      onExecuteAmiCommand(command);
+    }
+    try {
+      const res = await fetch('/api/asterisk/ami/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      const data = await res.json();
+      setAmiCmdOutput(data.output || data.error || JSON.stringify(data, null, 2));
+    } catch (err: any) {
+      setAmiCmdOutput(`Error ejecutando "${command}": ${err?.message || 'Sin conexión'}`);
+    } finally {
+      setIsRunningCmd(false);
+    }
+  };
+
+  const handleResetBackoff = async () => {
+    setIsResettingBackoff(true);
+    try {
+      const res = await fetch('/api/asterisk/ami/reset-backoff', { method: 'POST' });
+      const data = await res.json();
+      setAmiCmdOutput(data.message || 'Backoff AMI restablecido.');
+      fetchTelemetry(true);
+    } catch (err: any) {
+      setAmiCmdOutput(`Error reseteando backoff: ${err?.message}`);
+    } finally {
+      setIsResettingBackoff(false);
+    }
+  };
 
   const fetchTelemetry = useCallback(async (manual = false) => {
     if (!manual && typeof document !== 'undefined' && document.hidden) return;
@@ -220,6 +280,14 @@ export const ServerTelemetryTab: React.FC = () => {
       setLatest(data);
       setSamples((prev) => [...prev.slice(-(MAX_SAMPLES - 1)), nextSample]);
       setErrorMsg(null);
+      fetch('/api/asterisk/telemetry/logs')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((logData) => {
+          if (isMountedRef.current && logData?.success && Array.isArray(logData.logs)) {
+            setServerLogs(logData.logs.slice(0, 25));
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       if (isMountedRef.current) {
         setErrorMsg(err?.message || 'Error de red al obtener métricas del servidor');
@@ -744,6 +812,131 @@ export const ServerTelemetryTab: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Consola AMI & Logs Consolidados */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-sm font-bold text-white">Consola Rápida Asterisk AMI</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              {onForceFullSync && (
+                <button
+                  type="button"
+                  onClick={onForceFullSync}
+                  disabled={isSyncing}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>Recargar PJSIP & Dialplan</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleResetBackoff}
+                disabled={isResettingBackoff}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className={`w-3 h-3 ${isResettingBackoff ? 'animate-spin' : ''}`} />
+                <span>Reset Backoff</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              'pjsip show endpoints',
+              'core show channels',
+              'dialplan show ivr-press1',
+              'database show ivr_vars',
+            ].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => {
+                  setAmiCmd(preset);
+                  handleRunAmiConsole(preset);
+                }}
+                className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 cursor-pointer"
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRunAmiConsole();
+            }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              value={amiCmd}
+              onChange={(e) => setAmiCmd(e.target.value)}
+              placeholder="Comando Asterisk CLI (ej. pjsip show endpoints)"
+              className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="submit"
+              disabled={isRunningCmd}
+              className="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isRunningCmd ? 'Ejecutando...' : 'Ejecutar'}</span>
+            </button>
+          </form>
+
+          {amiCmdOutput && (
+            <pre className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-300 overflow-x-auto max-h-48 whitespace-pre-wrap">
+              {amiCmdOutput}
+            </pre>
+          )}
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              <h3 className="text-sm font-bold text-white">Eventos Recientes AMI / PJSIP</h3>
+            </div>
+            {onClearLogs && logs.length > 0 && (
+              <button
+                type="button"
+                onClick={onClearLogs}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Limpiar</span>
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {[...serverLogs.slice(0, 12), ...logs.slice(0, 12)].slice(0, 15).length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">
+                Sin eventos recientes registrados.
+              </div>
+            ) : (
+              [...serverLogs.slice(0, 10), ...logs.slice(0, 10)].slice(0, 14).map((item, idx) => (
+                <div
+                  key={`${item.id}-${idx}`}
+                  className="p-2 rounded-lg bg-slate-950 border border-slate-800/80 text-[11px] font-mono flex items-start justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <span className="text-cyan-400 font-bold mr-1.5">[{item.type}]</span>
+                    <span className="text-slate-200 break-words">{item.message}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 shrink-0">{item.timestamp}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

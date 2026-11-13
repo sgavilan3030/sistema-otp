@@ -250,7 +250,7 @@ export interface UserPermissions {
   canSyncAsterisk: boolean;
   canUseSoftphone: boolean;
   canManageUsers: boolean;
-  canExportConfigs: boolean;
+  canExportConfigs?: boolean;
 }
 
 export interface CapturedOtpRecord {

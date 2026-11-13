@@ -2,18 +2,16 @@ import React from 'react';
 import {
   PhoneCall,
   Headphones,
-  DollarSign,
   RefreshCw,
   Menu,
   LogOut,
   ShieldCheck,
   Server,
-  Zap,
-  Terminal,
   Volume2,
   Users,
-  Database,
   Cpu,
+  Building2,
+  PhoneForwarded,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 
@@ -23,7 +21,6 @@ interface HeaderProps {
   connectionSettings: AsteriskConnectionSettings;
   currentUser?: SystemUser;
   onQuickSync: () => void;
-  onOpenCallSimulator: () => void;
   onOpenMobileMenu?: () => void;
   onLogout?: () => void;
   isSyncing: boolean;
@@ -38,23 +35,25 @@ export const Header: React.FC<HeaderProps> = ({
   connectionSettings,
   currentUser,
   onQuickSync,
-  onOpenCallSimulator,
   onOpenMobileMenu,
   onLogout,
   isSyncing,
   activeCallCount = 0,
-  theme = 'light',
-  onToggleTheme,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
     production: {
       title: 'Centro de Producción',
-      subtitle: 'Lanzador telefónico, entidades a simular y captura de OTP en tiempo real',
+      subtitle: 'Lanzador telefónico, campañas y captura de OTP en tiempo real',
       icon: ShieldCheck,
+    },
+    'manual-dialer': {
+      title: 'Marcación por Lista',
+      subtitle: 'Discado 1-Clic para operadores y auditoría de contactos',
+      icon: PhoneForwarded,
     },
     'live-calls': {
       title: 'Llamadas en Vivo & Supervisión',
-      subtitle: 'Monitoreo en tiempo real de clientes, agentes, duración y control de Hold con música',
+      subtitle: 'Monitoreo en tiempo real de clientes, agentes, duración y control de Hold',
       icon: PhoneCall,
     },
     'call-spy': {
@@ -62,35 +61,25 @@ export const Header: React.FC<HeaderProps> = ({
       subtitle: 'Escucha en tiempo real de llamadas entre operadores y clientes, modo susurro y conferencia',
       icon: Headphones,
     },
-    prompt: {
-      title: 'Prompt Maestro AI',
-      subtitle: 'Instrucciones maestras para Black Hat Dialer System y reglas de telefonía',
-      icon: Zap,
+    tenants: {
+      title: 'Grupos Call Center & MagnusBilling',
+      subtitle: 'Control multi-tenant de minutos, saldos y cuentas SIP externas',
+      icon: Building2,
     },
     extensions: {
       title: 'Extensiones PJSIP',
-      subtitle: 'Endpoints numéricos ≥ 1001 y por Nombre para MicroSIP, transporte UDP/TLS/WSS y códecs',
+      subtitle: 'Endpoints numéricos ≥ 1001, transporte UDP/TLS/WSS y códecs HD',
       icon: PhoneCall,
-    },
-    reseller: {
-      title: 'Reventa de Minutos & Facturación VoIP',
-      subtitle: 'Administración de clientes prepago, paquetes de minutos, recargas y registro por nombre en MicroSIP',
-      icon: DollarSign,
     },
     carriers: {
       title: 'Carriers / Troncales SIP',
-      subtitle: 'Carrier Account Entry (sip.conf) & Dialplan (extensions.conf)',
+      subtitle: 'Administración exclusiva Super Admin de troncales y ruteo saliente',
       icon: Server,
     },
     ivr: {
       title: 'IVR Press-1 & Captura OTP',
       subtitle: 'Flujo de locución, captura de dígitos y validación manual por asesor',
       icon: ShieldCheck,
-    },
-    sqlite: {
-      title: 'Base de Datos SQLite3',
-      subtitle: 'AstDB (/var/lib/asterisk/astdb.sqlite3) y registros CDR de llamadas',
-      icon: Database,
     },
     audios: {
       title: 'Audioteca de Prompts',
@@ -102,24 +91,14 @@ export const Header: React.FC<HeaderProps> = ({
       subtitle: 'Control de acceso RBAC para Administradores, Supervisores y Operadores',
       icon: Users,
     },
-    sync: {
-      title: 'Sincronizador AMI / ARI',
-      subtitle: 'Telemetría de eventos en tiempo real y recargas de dialplan en caliente',
-      icon: Terminal,
-    },
     telemetry: {
-      title: 'Telemetría de Servidor',
-      subtitle: 'Gráficos en tiempo real de carga CPU, uso de RAM y latencia AMI (:5038)',
+      title: 'Telemetría & Consola AMI',
+      subtitle: 'Gráficos en tiempo real de CPU, RAM, latencia AMI (:5038) y comandos',
       icon: Cpu,
-    },
-    configs: {
-      title: 'Archivos .conf & Scripts',
-      subtitle: 'Exportador descargable para despliegue en servidores Linux Debian / Rocky',
-      icon: RefreshCw,
     },
   };
 
-  const currentTabInfo = tabTitles[activeTab] || tabTitles.prompt;
+  const currentTabInfo = tabTitles[activeTab] || tabTitles.production;
   const CurrentIcon = currentTabInfo.icon;
 
   return (

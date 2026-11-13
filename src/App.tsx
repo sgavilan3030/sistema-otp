@@ -10,8 +10,6 @@ import {
   AudioRole,
   ActiveAudioAssignments,
   SystemUser,
-  AstDbEntry,
-  SqliteCdrRecord,
   CallCenterTenant,
 } from './types';
 import {
@@ -22,8 +20,6 @@ import {
   initialConnectionSettings,
   initialAudios,
   initialUsers,
-  initialAstDbEntries,
-  initialCdrRecords,
   initialTenants,
 } from './data/defaultConfig';
 import { Header } from './components/Header';
@@ -33,20 +29,13 @@ import { ProductionOperationsTab } from './components/ProductionOperationsTab';
 import { ManualDialerTab } from './components/ManualDialerTab';
 import { LiveCallsTab } from './components/LiveCallsTab';
 import { CallSpyMonitorTab } from './components/CallSpyMonitorTab';
-import { PromptMaestroTab } from './components/PromptMaestroTab';
 import { ExtensionsTab } from './components/ExtensionsTab';
-import { MinuteResellerTab } from './components/MinuteResellerTab';
 import { TenantsTab } from './components/TenantsTab';
 import { CarriersTab } from './components/CarriersTab';
 import { IVRStudioTab } from './components/IVRStudioTab';
-import { SqliteTab } from './components/SqliteTab';
 import { AudioLibraryTab } from './components/AudioLibraryTab';
 import { UsersTab } from './components/UsersTab';
-import { SyncTelemetryTab } from './components/SyncTelemetryTab';
-import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
 import { ServerTelemetryTab } from './components/ServerTelemetryTab';
-import { ConfigExporterTab } from './components/ConfigExporterTab';
-import { CallSimulatorModal } from './components/CallSimulatorModal';
 import { AmdConfigModal } from './components/AmdConfigModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
@@ -167,17 +156,6 @@ export default function App() {
     return initialConnectionSettings;
   });
 
-  // Native SQLite3 AstDB and CDR States
-  const [astDbEntries, setAstDbEntries] = useState<AstDbEntry[]>(() => {
-    const saved = localStorage.getItem('ast20_astdb');
-    return saved ? JSON.parse(saved) : initialAstDbEntries;
-  });
-
-  const [cdrRecords, setCdrRecords] = useState<SqliteCdrRecord[]>(() => {
-    const saved = localStorage.getItem('ast20_cdr');
-    return saved ? JSON.parse(saved) : initialCdrRecords;
-  });
-
   // Pre-recorded Audios State
   const [audios, setAudios] = useState<AudioPrompt[]>(() => {
     const saved = localStorage.getItem('ast20_audios');
@@ -260,7 +238,6 @@ export default function App() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
   const [isAmdModalOpen, setIsAmdModalOpen] = useState(false);
   const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
   const [isTogglingAmd, setIsTogglingAmd] = useState<boolean>(false);
@@ -501,10 +478,6 @@ export default function App() {
           setConnectionSettings(s.connectionSettings);
           try { localStorage.setItem('ast20_conn_settings', JSON.stringify(s.connectionSettings)); } catch (e) {}
         }
-        if (Array.isArray(s.astDbEntries)) {
-          setAstDbEntries(s.astDbEntries);
-          try { localStorage.setItem('ast20_astdb', JSON.stringify(s.astDbEntries)); } catch (e) {}
-        }
         if (s.theme) {
           setTheme(s.theme);
           try { localStorage.setItem('ast20_theme', s.theme); } catch (e) {}
@@ -554,7 +527,6 @@ export default function App() {
         if (e.key === 'ast20_audios' && e.newValue) setAudios(JSON.parse(e.newValue));
         if (e.key === 'ast20_users' && e.newValue) setUsers(JSON.parse(e.newValue));
         if (e.key === 'ast20_conn_settings' && e.newValue) setConnectionSettings(JSON.parse(e.newValue));
-        if (e.key === 'ast20_astdb' && e.newValue) setAstDbEntries(JSON.parse(e.newValue));
         if (e.key === 'ast20_audio_locks_ui' && e.newValue) setManualLocks(JSON.parse(e.newValue));
       } catch (err) {}
     };
@@ -575,7 +547,6 @@ export default function App() {
           audios,
           users,
           connectionSettings,
-          astDbEntries,
           theme,
         };
         const res = await fetch('/api/app/user-state', {
@@ -597,7 +568,7 @@ export default function App() {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, astDbEntries, theme, currentUser.id, currentUser.username]);
+  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, theme, currentUser.id, currentUser.username]);
 
   useEffect(() => {
     fetch('/api/asterisk/audio/active-assignments')
@@ -722,14 +693,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ast20_current_user_id', currentUserId);
   }, [currentUserId]);
-
-  useEffect(() => {
-    localStorage.setItem('ast20_astdb', JSON.stringify(astDbEntries));
-  }, [astDbEntries]);
-
-  useEffect(() => {
-    localStorage.setItem('ast20_cdr', JSON.stringify(cdrRecords));
-  }, [cdrRecords]);
 
   const isTenantsHydratedRef = useRef(false);
 
@@ -871,39 +834,6 @@ export default function App() {
       status,
     };
     setLogs((prev) => [newLog, ...prev]);
-  };
-
-  // AstDB & SQLite3 Handlers
-  const handleAddAstDbEntry = (entry: AstDbEntry) => {
-    setAstDbEntries((prev) => [entry, ...prev]);
-    addLog(
-      'SQLITE',
-      `AstDB: database put ${entry.family} ${entry.key} ${entry.value}`,
-      `Key: /${entry.family}/${entry.key}\nValue: ${entry.value}\nEngine: /var/lib/asterisk/astdb.sqlite3`
-    );
-    showToast(`Registro AstDB guardado: /${entry.family}/${entry.key}`);
-  };
-
-  const handleDeleteAstDbEntry = (id: string) => {
-    const item = astDbEntries.find((e) => e.id === id);
-    setAstDbEntries((prev) => prev.filter((e) => e.id !== id));
-    if (item) {
-      addLog('SQLITE', `AstDB: database del ${item.family} ${item.key}`);
-      showToast(`Registro AstDB eliminado: /${item.family}/${item.key}`);
-    }
-  };
-
-  const handleSaveCdrRecord = (cdr: SqliteCdrRecord) => {
-    setCdrRecords((prev) => [cdr, ...prev]);
-    addLog(
-      'SQLITE',
-      `CDR SQLite3: Nuevo registro de llamada insertado (${cdr.src} -> ${cdr.dst})`,
-      `Table: cdr\nDB: ${connectionSettings.sqliteCdrDbPath}\nDisposition: ${cdr.disposition}\nBillsec: ${cdr.billsec}s`
-    );
-  };
-
-  const handleExecuteSqliteCommand = (cmd: string) => {
-    addLog('SQLITE', `Ejecutando en SQLite3 / Asterisk CLI: ${cmd}`);
   };
 
   // =========================================================================
@@ -1733,7 +1663,6 @@ export default function App() {
         connectionSettings={connectionSettings}
         currentUser={currentUser}
         onQuickSync={handleQuickSync}
-        onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
         onLogout={handleLogout}
         isSyncing={isSyncing}
         isOpenMobile={isMobileSidebarOpen}
@@ -1755,7 +1684,6 @@ export default function App() {
           connectionSettings={connectionSettings}
           currentUser={currentUser}
           onQuickSync={handleQuickSync}
-          onOpenCallSimulator={() => setIsCallSimulatorOpen(true)}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onLogout={handleLogout}
           isSyncing={isSyncing}
@@ -1797,7 +1725,6 @@ export default function App() {
             onAddAudio={handleAddAudio}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
-            onNavigateToReseller={() => setActiveTab('reseller')}
             isSyncing={isSyncing}
             amdEnabled={amdEnabled}
             isTogglingAmd={isTogglingAmd}
@@ -1841,15 +1768,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'prompt' && isTabAllowedForUser('prompt', currentUser) && (
-          <PromptMaestroTab
-            amiPort={connectionSettings.amiPort}
-            ariPort={connectionSettings.ariPort}
-            otpDigits={otpConfig.digitLength}
-            webhookUrl={otpConfig.webhookUrl}
-          />
-        )}
-
         {activeTab === 'extensions' && isTabAllowedForUser('extensions', currentUser) && (
           <ExtensionsTab
             extensions={extensions}
@@ -1859,18 +1777,7 @@ export default function App() {
             onSimulateQualify={handleSimulateQualify}
             onSyncAsterisk={() => handleQuickSync(extensions)}
             onResetDefaultExtensions={handleResetDefaultExtensions}
-            onNavigateToReseller={() => setActiveTab('reseller')}
             isSyncing={isSyncing}
-          />
-        )}
-
-        {activeTab === 'reseller' && isTabAllowedForUser('reseller', currentUser) && (
-          <MinuteResellerTab
-            extensions={extensions}
-            carriers={carriers}
-            onAddExtension={handleAddExtension}
-            onUpdateExtension={handleUpdateExtension}
-            onTriggerSync={() => handleQuickSync(extensions, carriers)}
           />
         )}
 
@@ -1919,19 +1826,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'sqlite' && isTabAllowedForUser('sqlite', currentUser) && (
-          <SqliteTab
-            astDbEntries={astDbEntries}
-            onAddAstDbEntry={handleAddAstDbEntry}
-            onDeleteAstDbEntry={handleDeleteAstDbEntry}
-            cdrRecords={cdrRecords}
-            extensions={extensions}
-            carriers={carriers}
-            settings={connectionSettings}
-            onExecuteCommand={handleExecuteSqliteCommand}
-          />
-        )}
-
         {activeTab === 'audios' && isTabAllowedForUser('audios', currentUser) && (
           <AudioLibraryTab
             audios={audios}
@@ -1970,37 +1864,13 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'sync' && isTabAllowedForUser('sync', currentUser) && (
-          <SyncTelemetryTab
-            settings={connectionSettings}
-            onUpdateSettings={setConnectionSettings}
+        {activeTab === 'telemetry' && isTabAllowedForUser('telemetry', currentUser) && (
+          <ServerTelemetryTab
             logs={logs}
             onClearLogs={() => setLogs([])}
             onExecuteAmiCommand={handleExecuteAmiCommand}
             onForceFullSync={handleQuickSync}
             isSyncing={isSyncing}
-          />
-        )}
-
-        {activeTab === 'diagnostics' && isTabAllowedForUser('diagnostics', currentUser) && (
-          <AmiAriDiagnosticsTab
-            settings={connectionSettings}
-            onUpdateSettings={setConnectionSettings}
-            onLogEvent={addLog}
-          />
-        )}
-
-        {activeTab === 'telemetry' && isTabAllowedForUser('telemetry', currentUser) && (
-          <ServerTelemetryTab />
-        )}
-
-        {activeTab === 'configs' && isTabAllowedForUser('configs', currentUser) && (
-          <ConfigExporterTab
-            extensions={extensions}
-            carriers={carriers}
-            press1={press1Config}
-            otp={otpConfig}
-            settings={connectionSettings}
           />
         )}
       </main>
@@ -2096,20 +1966,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* Softphone & Call Simulator Modal */}
-      <CallSimulatorModal
-        isOpen={isCallSimulatorOpen}
-        onClose={() => setIsCallSimulatorOpen(false)}
-        press1Config={press1Config}
-        otpConfig={otpConfig}
-        extensions={extensions}
-        audios={audios}
-        currentUser={currentUser}
-        onLogEvent={addLog}
-        onSaveAstDbEntry={handleAddAstDbEntry}
-        onSaveCdrRecord={handleSaveCdrRecord}
-      />
 
       {/* AMD Answering Machine Detection Modal */}
       <AmdConfigModal

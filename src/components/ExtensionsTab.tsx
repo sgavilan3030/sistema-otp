@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert, ArrowRight, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -10,7 +10,6 @@ interface ExtensionsTabProps {
   onSimulateQualify: (extNumber: string) => void;
   onSyncAsterisk?: () => void;
   onResetDefaultExtensions?: () => void;
-  onNavigateToReseller?: () => void;
   isSyncing?: boolean;
 }
 
@@ -22,7 +21,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   onSimulateQualify,
   onSyncAsterisk,
   onResetDefaultExtensions,
-  onNavigateToReseller,
   isSyncing,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -425,39 +423,6 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             <span>Nueva Extensión PJSIP</span>
           </button>
         </div>
-      </div>
-
-      {/* Reventa de Minutos & Nombres MicroSIP Direct Promotion Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border border-emerald-500/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center space-x-3.5">
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/10">
-            <DollarSign className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-bold text-white text-base">
-                ¿Deseas revender minutos o registrar softphones por NOMBRE en vez de número?
-              </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950 uppercase shadow-sm">
-                ★ NUEVO MÓDULO
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
-              En el nuevo módulo <strong className="text-emerald-400">Reventa de Minutos</strong> puedes crear clientes con cuentas alfanuméricas (ej. <code className="text-emerald-300 font-mono">juan_perez</code>, <code className="text-emerald-300 font-mono">agente1</code>), fijar tarifas por minuto, recargar saldos prepago y descargar el archivo <code className="text-cyan-300 font-mono">microsip.ini</code> autoconfigurado.
-            </p>
-          </div>
-        </div>
-
-        {onNavigateToReseller && (
-          <button
-            id="btn-goto-reseller-from-ext"
-            onClick={onNavigateToReseller}
-            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all shrink-0 cursor-pointer"
-          >
-            <span>Ir a Reventa de Minutos</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
       {/* Asterisk 20 PJSIP Live Diagnostic & Repair Banner */}

@@ -4,25 +4,17 @@ import {
   PhoneCall,
   RefreshCw,
   Server,
-  Zap,
-  Terminal,
   ShieldCheck,
   Volume2,
   Users,
-  Database,
   LogOut,
-  ChevronRight,
-  ExternalLink,
-  Activity,
   Radio,
   Headphones,
-  DollarSign,
   Building2,
   X,
   Sun,
   Moon,
   PhoneForwarded,
-  Sparkles,
   Cpu,
   Mic,
 } from 'lucide-react';
@@ -36,7 +28,6 @@ interface SidebarProps {
   connectionSettings: AsteriskConnectionSettings;
   currentUser?: SystemUser;
   onQuickSync: () => void;
-  onOpenCallSimulator: () => void;
   onLogout: () => void;
   isSyncing: boolean;
   isOpenMobile?: boolean;
@@ -56,7 +47,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   connectionSettings,
   currentUser,
   onQuickSync,
-  onOpenCallSimulator,
   onLogout,
   isSyncing,
   isOpenMobile,
@@ -106,12 +96,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
     },
     {
-      id: 'prompt',
-      label: 'Prompt Maestro AI',
-      subtitle: 'Instrucciones & Contexto',
-      icon: Zap,
-      badge: 'Core',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+      id: 'tenants',
+      label: 'Grupos Call Center',
+      subtitle: 'Multi-Tenant & MagnusBilling',
+      icon: Building2,
+      badge: 'BPO',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
     },
     {
       id: 'extensions',
@@ -122,25 +112,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
     },
     {
-      id: 'reseller',
-      label: 'Reventa de Minutos',
-      subtitle: 'Saldo, Facturas & MicroSIP',
-      icon: DollarSign,
-      badge: '★ NUEVO',
-      badgeColor: 'bg-emerald-500 text-slate-950 font-black animate-pulse shadow-sm shadow-emerald-500/50',
-    },
-    {
-      id: 'tenants',
-      label: 'Grupos Call Center',
-      subtitle: 'Multi-Tenant, Rangos & Reventa',
-      icon: Building2,
-      badge: 'BPO',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
-    },
-    {
       id: 'carriers',
       label: 'Carriers / Troncales',
-      subtitle: 'sip.conf & Dialplan',
+      subtitle: 'Solo Super Admin',
       icon: Server,
       badge: `${carrierCount}`,
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
@@ -150,14 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'IVR & Captura OTP',
       subtitle: 'Press-1 & Asesor',
       icon: ShieldCheck,
-    },
-    {
-      id: 'sqlite',
-      label: 'Base SQLite3 AstDB',
-      subtitle: 'AstDB & Registros CDR',
-      icon: Database,
-      badge: 'Nativo',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
     },
     {
       id: 'audios',
@@ -172,32 +138,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Users,
     },
     {
-      id: 'sync',
-      label: 'Sincronizador AMI/ARI',
-      subtitle: 'Telemetría & Reload',
-      icon: Terminal,
-    },
-    {
-      id: 'diagnostics',
-      label: 'Pruebas AMI & ARI',
-      subtitle: 'Diagnóstico en Vivo',
-      icon: Activity,
-      badge: 'Live',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-    },
-    {
       id: 'telemetry',
-      label: 'Telemetría de Servidor',
-      subtitle: 'CPU, RAM & Latencia AMI',
+      label: 'Telemetría & Consola AMI',
+      subtitle: 'CPU, RAM, Latencia & Logs',
       icon: Cpu,
       badge: 'Live',
       badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
-    },
-    {
-      id: 'configs',
-      label: 'Archivos .conf',
-      subtitle: 'Exportador de Código',
-      icon: RefreshCw,
     },
   ];
 
@@ -257,22 +203,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Quick Actions Buttons */}
         <div className="px-3 pt-3 pb-2 space-y-2 flex-shrink-0">
-          <button
-            id="sidebar-btn-open-softphone"
-            onClick={() => {
-              onOpenCallSimulator();
-              if (onCloseMobile) onCloseMobile();
-            }}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer font-medium"
-          >
-            <div className="flex items-center space-x-2">
-              <PhoneCall className="w-4 h-4 text-emerald-100" />
-              <span>Probar Softphone</span>
-            </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700/60 text-emerald-100 font-mono">
-              DTMF
-            </span>
-          </button>
 
           {(currentUser?.role === 'admin' || currentUser?.permissions?.canSyncAsterisk) && (
             <button
@@ -355,8 +285,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all text-left group ${
                     isActive
                       ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold shadow-sm'
-                      : item.id === 'reseller'
-                      ? 'text-emerald-300 bg-emerald-950/25 hover:bg-emerald-900/40 border border-emerald-500/30 hover:border-emerald-400 shadow-sm'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
                   }`}
                 >

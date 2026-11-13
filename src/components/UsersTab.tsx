@@ -388,11 +388,6 @@ regInterval=300
       label: 'Administración de Usuarios y Roles',
       desc: 'Crear usuarios del sistema y asignar extensiones y permisos RBAC',
     },
-    {
-      key: 'canExportConfigs',
-      label: 'Exportar Archivos de Configuración',
-      desc: 'Descargar pjsip.conf, extensions.conf y scripts de aprovisionamiento',
-    },
   ];
 
   const activeUser = currentUser || users.find((u) => u.id === currentUserId);

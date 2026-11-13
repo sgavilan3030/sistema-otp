@@ -6,18 +6,12 @@ export type AppModuleId =
   | 'tenants'
   | 'live-calls'
   | 'call-spy'
-  | 'prompt'
   | 'extensions'
-  | 'reseller'
   | 'carriers'
   | 'ivr'
-  | 'sqlite'
   | 'audios'
   | 'users'
-  | 'sync'
-  | 'diagnostics'
-  | 'telemetry'
-  | 'configs';
+  | 'telemetry';
 
 /**
  * Validates strictly whether the given module / tab is accessible by the specified user
@@ -39,32 +33,30 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
     canSyncAsterisk: false,
     canUseSoftphone: true,
     canManageUsers: false,
-    canExportConfigs: false,
   };
 
   // 2. Agent (Operador / Asesor telefónico):
-  // Allowed to make/receive calls, handle live calls on their extension, use 1-click manual dialer, and use the softphone.
+  // Allowed to make/receive calls, handle live calls on their extension, and use 1-click manual dialer.
   if (user.role === 'agent') {
     return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls';
   }
 
-  // 3. Reseller Client (Cliente VoIP prepago):
-  // Allowed to use dialer, and check their own minute balance / billing
+  // 3. Reseller Client (Call Center / Cliente VoIP):
+  // Allowed to use dialer and view their Call Center group balance/MagnusBilling panel
   if (user.role === 'reseller_client') {
-    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'reseller';
+    return tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants';
   }
 
   // 4. Supervisor:
-  // Operational supervision: production calls, manual list dialer, live calls, live spy (ChanSpy/Whisper), diagnostics,
-  // and IVR/extensions/audios/configs ONLY if explicitly permitted.
+  // Operational supervision: production calls, manual list dialer, live calls, live spy (ChanSpy/Whisper), telemetry,
+  // and IVR/extensions/audios ONLY if explicitly permitted.
   if (user.role === 'supervisor') {
-    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy' || tabId === 'diagnostics' || tabId === 'telemetry') {
+    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy' || tabId === 'telemetry') {
       return true;
     }
     if (tabId === 'extensions') return Boolean(perms.canManageExtensions);
     if (tabId === 'ivr') return Boolean(perms.canManageIVR);
     if (tabId === 'audios') return Boolean(perms.canUploadAudio);
-    if (tabId === 'configs') return Boolean(perms.canExportConfigs);
     return false;
   }
 
@@ -74,9 +66,8 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
   if (tabId === 'carriers') return false;
   if (tabId === 'ivr') return Boolean(perms.canManageIVR);
   if (tabId === 'audios') return Boolean(perms.canUploadAudio);
-  if (tabId === 'sync') return Boolean(perms.canSyncAsterisk);
+  if (tabId === 'telemetry') return Boolean(perms.canSyncAsterisk);
   if (tabId === 'users') return Boolean(perms.canManageUsers);
-  if (tabId === 'configs') return Boolean(perms.canExportConfigs);
 
   return false;
 }
