@@ -243,7 +243,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         {/* Marca Principal: Black Hat Dialer System */}
         <div className="flex items-center space-x-3 bg-slate-950/85 backdrop-blur-xl px-4 py-2 rounded-xl border border-emerald-500/35 shadow-[0_4px_24px_rgba(0,0,0,0.45)]">
           <BrandLogo size="sm" />
-          <BrandWordmark variant="topbar" subtitle="ENTERPRISE CLOUD PBX &bull; ASTERISK 20" />
+          <BrandWordmark variant="topbar" subtitle="ENTERPRISE CLOUD PBX &bull; ZERO-TRUST" />
         </div>
 
         {/* Controles de Vista & Realismo */}
@@ -338,7 +338,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <span>CONSOLA EMPRESARIAL</span>
                   </div>
                   <span className="text-[9px] font-mono text-emerald-400 font-bold bg-black/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                    AST 20
+                    CLOUD PBX
                   </span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight leading-tight">
@@ -472,15 +472,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 subtitle="Infraestructura empresarial de telefonía Cloud PBX, enrutamiento SIP de alta disponibilidad y centros de contacto."
               />
 
-              {/* Indicadores técnicos de telefonía */}
+              {/* Indicadores de seguridad y telefonía */}
               <div className="pt-1 flex flex-wrap items-center justify-end gap-2 text-xs font-mono text-emerald-400">
                 <span className="px-2.5 py-1 rounded-lg bg-black/80 border border-emerald-500/40 backdrop-blur-md shadow-md flex items-center space-x-1.5 text-[11px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>ASTERISK 20 PJSIP</span>
+                  <span>CANAL VOZ CIFRADO</span>
                 </span>
                 <span className="px-2.5 py-1 rounded-lg bg-black/80 border border-cyan-500/40 text-cyan-300 backdrop-blur-md shadow-md flex items-center space-x-1.5 text-[11px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                  <span>TRONCALES MULTI-CARRIER</span>
+                  <span>ENRUTAMIENTO SEGURO</span>
                 </span>
                 <span className="px-2.5 py-1 rounded-lg bg-black/80 border border-emerald-500/40 text-emerald-300 backdrop-blur-md shadow-md text-[11px]">
                   AUDIO HD BIDIRECCIONAL

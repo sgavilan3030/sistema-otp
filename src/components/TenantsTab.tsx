@@ -555,17 +555,19 @@ same => n,Hangup()
             Mapa de Rangos de Extensiones
           </button>
 
-          <button
-            onClick={() => setActiveSubTab('dialplan')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeSubTab === 'dialplan'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <FileCode className="w-4 h-4" />
-            Dialplan Asterisk [tenant_xxx]
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveSubTab('dialplan')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'dialplan'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <FileCode className="w-4 h-4" />
+              Dialplan Asterisk [tenant_xxx]
+            </button>
+          )}
 
           <button
             onClick={() => setActiveSubTab('recharges')}
@@ -659,11 +661,11 @@ same => n,Hangup()
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="text-slate-400 flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5 text-amber-400" />
-                        Cuenta SIP / Carrier:
+                        {isAdmin ? 'Cuenta SIP / Carrier:' : 'Ruta Saliente:'}
                       </span>
                       <span className="font-mono font-semibold text-emerald-300">
-                        {carrier ? carrier.name : 'Troncal por defecto'}
-                        {tenant.magnusSipAccount ? ` (${tenant.magnusSipAccount})` : ''}
+                        {isAdmin ? (carrier ? carrier.name : 'Troncal por defecto') : 'Canal Seguro Asignado'}
+                        {isAdmin && tenant.magnusSipAccount ? ` (${tenant.magnusSipAccount})` : ''}
                       </span>
                     </div>
 
@@ -857,7 +859,7 @@ same => n,Hangup()
       )}
 
       {/* SUBTAB 3: ASTERISK DIALPLAN CONFIG GENERATOR */}
-      {activeSubTab === 'dialplan' && (
+      {isAdmin && activeSubTab === 'dialplan' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>

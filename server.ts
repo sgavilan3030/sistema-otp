@@ -2777,7 +2777,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/6666)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
@@ -3025,7 +3024,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/6666)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(ivr_vars/global_agent_exten)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
@@ -4244,9 +4242,57 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     // Determine effective agent destination: if ringall, or using saved press-1 destination preference
-    const effectiveAgentExten = (agentExten && agentExten !== 'ringall' && agentExten !== 'all')
+    let effectiveAgentExten = (agentExten && agentExten !== 'ringall' && agentExten !== 'all')
       ? agentExten
       : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
+
+    // Resolve Call Center Tenant & enforce its assigned SIP carrier + isolated extension range
+    const tenantResolution = resolveTenantCarrierForCall(
+      {
+        tenantId: req.body.tenantId,
+        agentExten: (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
+          ? effectiveAgentExten
+          : (req.body.callerExtension || req.body.agent),
+      },
+      lastSyncedCarriers
+    );
+
+    if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && req.body.isAdmin !== true) {
+      return res.status(403).json({
+        success: false,
+        error: `El Call Center "${tenantResolution.tenant.name}" se encuentra suspendido. Contacta al Super Administrador.`,
+      });
+    }
+
+    // AISLAMIENTO RING-ALL POR CALL CENTER:
+    // Si el modo es 'ringall' y pertenece a un Call Center (tenant) con rango [extensionStart, extensionEnd],
+    // limitar estrictamente el timbrado a las extensiones de ese Call Center y NUNCA a todos los Call Centers.
+    if ((effectiveAgentExten === 'ringall' || effectiveAgentExten === 'all') && tenantResolution.tenant) {
+      const tStart = Number(tenantResolution.tenant.extensionStart);
+      const tEnd = Number(tenantResolution.tenant.extensionEnd);
+      if (!isNaN(tStart) && !isNaN(tEnd) && tEnd >= tStart) {
+        const allExts = (Array.isArray(lastSyncedExtensions) && lastSyncedExtensions.length > 0)
+          ? lastSyncedExtensions
+          : loadStoredExtensions();
+        const tenantExts = allExts
+          .filter((e: any) => {
+            if (!e || e.enabled === false) return false;
+            const n = parseInt(String(e.extension || e.id || '').trim(), 10);
+            return !isNaN(n) && n >= tStart && n <= tEnd;
+          })
+          .map((e: any) => String(e.extension || e.id).trim());
+
+        if (tenantExts.length > 0) {
+          effectiveAgentExten = tenantExts.join('&');
+        } else if (Array.isArray(req.body.tenantExtensions) && req.body.tenantExtensions.length > 0) {
+          effectiveAgentExten = req.body.tenantExtensions.map((x: any) => String(x).trim()).filter(Boolean).join('&');
+        } else if (tEnd - tStart <= 50) {
+          const rangeExts: string[] = [];
+          for (let n = tStart; n <= tEnd; n++) rangeExts.push(String(n));
+          effectiveAgentExten = rangeExts.join('&');
+        }
+      }
+    }
 
     // Save payload for automatic retry ONLY if explicitly requested (e.g. mass campaign with AMD active)
     const shouldAutoRetry = req.body.autoRetry === true || req.body.autoRetry === 'true' || req.body.autoRetry === 1;
@@ -4260,19 +4306,6 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       lastOriginatePayloads.delete(formattedDest);
       callRetryAttempts.delete(cleanDest);
       callRetryAttempts.delete(formattedDest);
-    }
-
-    // Resolve Call Center Tenant & enforce its assigned MagnusBilling SIP carrier when applicable
-    const tenantResolution = resolveTenantCarrierForCall(
-      { tenantId: req.body.tenantId, agentExten: effectiveAgentExten || req.body.agent },
-      lastSyncedCarriers
-    );
-
-    if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && req.body.isAdmin !== true) {
-      return res.status(403).json({
-        success: false,
-        error: `El Call Center "${tenantResolution.tenant.name}" se encuentra suspendido. Contacta al Super Administrador.`,
-      });
     }
 
     let cleanCarrier = (carrier || '').trim();

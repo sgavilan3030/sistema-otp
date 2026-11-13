@@ -1250,6 +1250,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return null;
   }, [tenants, activeUser?.tenantId, agentExtension, userAssignedExt]);
 
+  // Extensiones que pertenecen exclusivamente al Call Center del usuario (para aislar Ring-All en llamadas masivas)
+  const tenantScopedExtensions = React.useMemo(() => {
+    if (!userTenant) return extensions.map((e) => e.extension);
+    const inRange = extensions
+      .filter((e) => {
+        const n = parseInt(String(e.extension || '').trim(), 10);
+        return !isNaN(n) && n >= userTenant.extensionStart && n <= userTenant.extensionEnd;
+      })
+      .map((e) => e.extension);
+    return inRange.length > 0 ? inRange : (activeUser?.assignedExtensions || []);
+  }, [extensions, userTenant, activeUser?.assignedExtensions]);
+
   const lockedTenantCarrier = React.useMemo(() => {
     if (!userTenant?.carrierId) return null;
     return carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId) || null;
@@ -2066,12 +2078,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           destination: targetNumber.trim(),
           carrier: effectiveSelectedCarrier,
           tenantId: userTenant?.id,
+          callerExtension: userAssignedExt,
+          tenantExtensions: tenantScopedExtensions,
           isAdmin,
           callerId: effectiveCallerIdNum,
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
           mode: callFlowMode,
-          agentExten: press1DestMode === 'ringall' ? 'ringall' : (press1DestExtensions.join('&') || agentExtension || '1001'),
+          agentExten: press1DestMode === 'ringall'
+            ? (userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall')
+            : (press1DestExtensions.join('&') || agentExtension || '1001'),
           audioIntro: currentAudios.introAudioPath,
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
@@ -2340,12 +2356,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             destination: num,
             carrier: effectiveSelectedCarrier,
             tenantId: userTenant?.id,
+            callerExtension: userAssignedExt,
+            tenantExtensions: tenantScopedExtensions,
             isAdmin,
             callerId: callerIdNum,
             callerIdNum: callerIdNum,
             callerIdName: callerIdName,
             mode: callFlowMode,
-            agentExten: 'ringall', // IN MASS CAMPAIGN, ALWAYS RINGALL!
+            agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
             autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
             audioIntro: currentAudios.introAudioPath,
             audioPrompt: currentAudios.promptAudioPath,
@@ -2608,32 +2626,45 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
-            <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-              <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Troncal SIP Saliente</span>
-              </div>
-              {isCarrierLockedToTenant && lockedTenantCarrier ? (
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Asignada exclusivamente por Super Administrador">
-                  <Lock className="w-3 h-3 shrink-0" />
-                  <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
+            {isAdmin ? (
+              <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Troncal SIP Saliente</span>
                 </div>
-              ) : (
-                <select
-                  id="select-banner-carrier"
-                  value={selectedCarrierName}
-                  onChange={(e) => setSelectedCarrierName(e.target.value)}
-                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-                >
-                  <option value="auto">🔄 Pool Automático</option>
-                  {enabledCarriers.map((c, idx) => (
-                    <option key={c.id} value={c.name}>
-                      {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+                {isCarrierLockedToTenant && lockedTenantCarrier ? (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Asignada exclusivamente por Super Administrador">
+                    <Lock className="w-3 h-3 shrink-0" />
+                    <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
+                  </div>
+                ) : (
+                  <select
+                    id="select-banner-carrier"
+                    value={selectedCarrierName}
+                    onChange={(e) => setSelectedCarrierName(e.target.value)}
+                    className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+                  >
+                    <option value="auto">🔄 Pool Automático</option>
+                    {enabledCarriers.map((c, idx) => (
+                      <option key={c.id} value={c.name}>
+                        {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ) : (
+              <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Ruta Saliente</span>
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
+                  <Lock className="w-3 h-3 shrink-0" />
+                  <span>Canal Seguro Asignado</span>
+                </div>
+              </div>
+            )}
 
             {userTenant?.magnusBillingUrl && (
               <a
@@ -3515,10 +3546,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Todas las Extensiones (Ring-All)</span>
+                        <span>
+                          {userTenant ? `Todas las Extensiones de ${userTenant.name} (Ring-All)` : 'Todas las Extensiones (Ring-All)'}
+                        </span>
                       </div>
                       <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                        Suenan todas las extensiones conectadas ({extensions.map((e) => e.extension).join(', ')}). El primer asesor que descuelgue toma la llamada.
+                        Suenan únicamente las extensiones de este grupo ({tenantScopedExtensions.join(', ')}). El primer asesor que descuelgue toma la llamada.
                       </p>
                     </div>
                   </label>

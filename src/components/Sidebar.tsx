@@ -139,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'telemetry',
-      label: 'Telemetría & Consola AMI',
+      label: 'Telemetría del Sistema',
       subtitle: 'CPU, RAM, Latencia & Logs',
       icon: Cpu,
       badge: 'Live',
@@ -168,7 +168,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 min-w-0">
               <BrandLogo size="md" />
-              <BrandWordmark variant="sidebar" subtitle="Cloud PBX Core &bull; v20.4" />
+              <BrandWordmark variant="sidebar" subtitle="Cloud PBX Enterprise" />
             </div>
 
             {/* Mobile close button */}
@@ -180,24 +180,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <X className="w-5 h-5" />
               </button>
             )}
-          </div>
-
-          {/* Service Status Badges */}
-          <div className="mt-3 grid grid-cols-3 gap-1 pt-2.5 border-t border-slate-900 text-[10px] font-mono">
-            <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
-              <span className="text-slate-500 block">AMI</span>
-              <span className={`font-bold ${connectionSettings.status === 'error' ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
-                :{connectionSettings.amiPort}
-              </span>
-            </div>
-            <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
-              <span className="text-slate-500 block">ARI</span>
-              <span className="text-blue-400 font-bold">:{connectionSettings.ariPort}</span>
-            </div>
-            <div className="px-1.5 py-1 rounded bg-slate-900/80 border border-slate-800/60 text-center">
-              <span className="text-slate-500 block">DB</span>
-              <span className="text-emerald-400 font-bold">AstDB</span>
-            </div>
           </div>
         </div>
 
@@ -219,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-400' : ''}`} />
                 <span>{isSyncing ? 'Sincronizando...' : 'Recarga en Caliente'}</span>
               </div>
-              <span className="text-[9px] text-slate-400 font-mono">AMI</span>
+              <span className="text-[9px] text-slate-400 font-mono">PBX</span>
             </button>
           )}
 

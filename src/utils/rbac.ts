@@ -51,7 +51,7 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
   // Operational supervision: production calls, manual list dialer, live calls, live spy (ChanSpy/Whisper), telemetry,
   // and IVR/extensions/audios ONLY if explicitly permitted.
   if (user.role === 'supervisor') {
-    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy' || tabId === 'telemetry') {
+    if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'tenants' || tabId === 'live-calls' || tabId === 'call-spy') {
       return true;
     }
     if (tabId === 'extensions') return Boolean(perms.canManageExtensions);
@@ -60,13 +60,12 @@ export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): bo
     return false;
   }
 
-  // 5. Custom role: verify granular permissions (carriers strictly Super Admin only)
+  // 5. Custom role: verify granular permissions (carriers and telemetry strictly Super Admin only)
   if (tabId === 'production' || tabId === 'manual-dialer' || tabId === 'live-calls') return true;
   if (tabId === 'extensions') return Boolean(perms.canManageExtensions);
-  if (tabId === 'carriers') return false;
+  if (tabId === 'carriers' || tabId === 'telemetry') return false;
   if (tabId === 'ivr') return Boolean(perms.canManageIVR);
   if (tabId === 'audios') return Boolean(perms.canUploadAudio);
-  if (tabId === 'telemetry') return Boolean(perms.canSyncAsterisk);
   if (tabId === 'users') return Boolean(perms.canManageUsers);
 
   return false;

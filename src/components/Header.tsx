@@ -92,8 +92,8 @@ export const Header: React.FC<HeaderProps> = ({
       icon: Users,
     },
     telemetry: {
-      title: 'Telemetría & Consola AMI',
-      subtitle: 'Gráficos en tiempo real de CPU, RAM, latencia AMI (:5038) y comandos',
+      title: 'Telemetría & Sistema',
+      subtitle: 'Monitoreo en tiempo real de rendimiento, latencia y estado de la central',
       icon: Cpu,
     },
   };
@@ -153,20 +153,6 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Live Services Pill */}
-            <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
-              <span className="text-slate-400 font-medium">AMI:</span>
-              <span className={`font-mono font-semibold ${connectionSettings.status === 'error' ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
-                :{connectionSettings.amiPort} {connectionSettings.status === 'error' ? 'RETRY' : 'OK'}
-              </span>
-              <span className="text-slate-700">|</span>
-              <span className="text-slate-400 font-medium">ARI:</span>
-              <span className="text-blue-400 font-mono font-semibold">:{connectionSettings.ariPort} OK</span>
-              <span className="text-slate-700">|</span>
-              <span className="text-slate-400 font-medium">Carrier:</span>
-              <span className="text-emerald-400 font-mono font-semibold">[televox]</span>
-            </div>
-
             {/* Quick Sync Button: Only for Admin or Users with canSyncAsterisk */}
             {(currentUser?.role === 'admin' || currentUser?.permissions?.canSyncAsterisk) && (
               <button
@@ -178,10 +164,10 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 cursor-wait'
                     : 'bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 hover:border-emerald-500/40'
                 }`}
-                title="Disparar acción AMI pjsip reload & dialplan reload"
+                title="Sincronizar configuración de la central PBX"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Recarga AMI'}</span>
+                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Recarga PBX'}</span>
               </button>
             )}
 
