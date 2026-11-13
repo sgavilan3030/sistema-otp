@@ -15,8 +15,9 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { CyberDialerCanvas } from './CyberDialerCanvas';
+import { BrandLogo, BrandWordmark } from './BrandLogo';
 
-// Realistic background: Central Telefónica Clandestina & Servidores VoIP Asterisk PJSIP
+// Fondo corporativo de centro de operaciones y servidores VoIP Asterisk PJSIP
 import blackHatDialerBg from '../assets/images/black_hat_dialer_alt.jpg';
 
 interface LoginScreenProps {
@@ -193,13 +194,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   return (
     <div className="cyber-login-wrapper cyber-login-gradient min-h-screen w-full relative overflow-hidden text-slate-100 flex flex-col justify-between select-none">
-      {/* 1. BACKGROUND LAYER: CENTRAL TELEFÓNICA CLANDESTINA REALISTA */}
+      {/* 1. BACKGROUND LAYER: INFRAESTRUCTURA CLOUD PBX */}
       <div className="fixed inset-0 z-0 pointer-events-auto overflow-hidden bg-black">
-        {/* Imagen realista de la central telefónica y racks PBX */}
+        {/* Imagen de la central telefónica y racks PBX */}
         <div className="absolute inset-0 z-0">
           <img
             src={blackHatDialerBg}
-            alt="Central Telefónica Clandestina Black Hat Dialer System"
+            alt="Centro de Operaciones Cloud PBX Black Hat Dialer System"
             className={`w-full h-full object-cover object-[center_35%] transition-all duration-700 select-none ${
               visualMode === 'cinematic'
                 ? 'brightness-[1.02] contrast-[1.2] saturate-[1.12]'
@@ -240,21 +241,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       {/* 2. TOP BAR CON NOMBRE DESTACADO Y CONTROLES VISUALES */}
       <header className="relative z-20 w-full px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-between pointer-events-auto gap-3">
         {/* Marca Principal: Black Hat Dialer System */}
-        <div className="flex items-center space-x-3 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-xl border border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.25)]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-slate-950 via-emerald-950 to-emerald-700 border border-emerald-400 flex items-center justify-center text-xl shadow-md shadow-emerald-500/30 shrink-0">
-            🎩
-          </div>
-          <div className="flex items-center space-x-2.5">
-            <div>
-              <h1 className="text-sm sm:text-base font-black text-white tracking-wide font-sans bg-clip-text text-transparent bg-gradient-to-r from-white via-emerald-100 to-emerald-300">
-                Black Hat Dialer System
-              </h1>
-              <p className="text-[9px] text-emerald-400 font-mono tracking-wider font-semibold">
-                SISTEMA TELEFÓNICO VOIP ASTERISK
-              </p>
-            </div>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#10b981]"></span>
-          </div>
+        <div className="flex items-center space-x-3 bg-slate-950/85 backdrop-blur-xl px-4 py-2 rounded-xl border border-emerald-500/35 shadow-[0_4px_24px_rgba(0,0,0,0.45)]">
+          <BrandLogo size="sm" />
+          <BrandWordmark variant="topbar" subtitle="ENTERPRISE CLOUD PBX &bull; ASTERISK 20" />
         </div>
 
         {/* Controles de Vista & Realismo */}
@@ -269,7 +258,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline">REALISMO:</span>
             <span className="font-bold text-emerald-200 uppercase">
-              {visualMode === 'cinematic' ? 'CINEMÁTICO' : visualMode === 'vivid' ? 'VÍVIDO' : 'SIGILO'}
+              {visualMode === 'cinematic' ? 'CINEMÁTICO' : visualMode === 'vivid' ? 'VÍVIDO' : 'NOCTURNO'}
             </span>
           </button>
 
@@ -308,15 +297,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {showFullBackground ? (
           <div className="flex flex-col items-center justify-center space-y-3 p-6 bg-black/85 backdrop-blur-2xl rounded-2xl border-2 border-emerald-500/70 shadow-[0_0_60px_rgba(16,185,129,0.35)] max-w-md mx-auto text-center animate-in fade-in zoom-in-95 duration-300">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-tr from-slate-950 via-emerald-950 to-emerald-700 border border-emerald-400 flex items-center justify-center text-3xl shadow-lg shadow-emerald-500/40">
-              🎩
-            </div>
+            <BrandLogo size="lg" />
             <div>
-              <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold tracking-widest uppercase mb-1.5">
+              <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 text-[10px] font-mono font-semibold tracking-widest uppercase mb-1.5">
                 <span>VISTA PANORÁMICA DE LA CENTRAL</span>
               </div>
-              <div className="text-emerald-400 font-mono font-black text-lg tracking-tight">
-                BLACK HAT DIALER SYSTEM
+              <div className="text-lg font-extrabold tracking-tight" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+                <span className="text-white">Black Hat</span>{' '}
+                <span className="text-emerald-400 font-semibold">Dialer System</span>
               </div>
             </div>
 
@@ -347,7 +335,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[9px] font-mono font-bold tracking-widest uppercase">
                     <Zap className="w-2.5 h-2.5 text-emerald-400" />
-                    <span>TERMINAL VOIP</span>
+                    <span>CONSOLA EMPRESARIAL</span>
                   </div>
                   <span className="text-[9px] font-mono text-emerald-400 font-bold bg-black/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
                     AST 20
@@ -357,7 +345,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   Iniciar Sesión
                 </h2>
                 <p className="text-[11px] text-slate-300 mt-0.5 font-medium">
-                  Acceso autorizado al <strong className="text-emerald-400 font-mono">Dialer System</strong>.
+                  Acceso autorizado a <strong className="text-emerald-400 font-semibold">Black Hat Dialer System</strong>.
                 </p>
               </div>
 
@@ -469,26 +457,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <ShieldCheck className="w-3 h-3 text-emerald-400" />
                   Cifrado Zero-Trust
                 </span>
-                <span className="text-emerald-400/80 font-bold">Black Hat v4.2</span>
+                <span className="text-emerald-400/80 font-semibold">Black Hat Dialer v4.2</span>
               </div>
             </div>
 
             {/* Cartel / Mensaje Destacado a la Derecha */}
             <div className="hidden lg:flex flex-col items-end text-right max-w-md xl:max-w-xl space-y-3 pointer-events-none select-none z-10 pr-2">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-black/85 border border-emerald-500/50 text-emerald-300 text-xs font-mono font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-md">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span>SISTEMA TELEFÓNICO VOIP ASTERISK</span>
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-950/85 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono font-semibold tracking-[0.16em] uppercase shadow-[0_4px_20px_rgba(0,0,0,0.4)] backdrop-blur-md">
+                <span>PLATAFORMA EMPRESARIAL CLOUD PBX</span>
               </div>
 
-              <div className="space-y-1">
-                <h2 className="text-3xl xl:text-4xl 2xl:text-5xl font-black text-white font-mono tracking-tight leading-tight uppercase drop-shadow-[0_0_35px_rgba(16,185,129,0.65)]">
-                  BLACK HAT DIALER SYSTEM
-                </h2>
-              </div>
-
-              <p className="text-xs sm:text-sm text-slate-200 font-mono tracking-wider max-w-md drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                Infraestructura de telefonía PBX de alta intrusión, distribución de troncales SIP y comunicaciones cifradas.
-              </p>
+              <BrandWordmark
+                variant="hero"
+                subtitle="Infraestructura empresarial de telefonía Cloud PBX, enrutamiento SIP de alta disponibilidad y centros de contacto."
+              />
 
               {/* Indicadores técnicos de telefonía */}
               <div className="pt-1 flex flex-wrap items-center justify-end gap-2 text-xs font-mono text-emerald-400">
@@ -511,9 +493,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       {/* 4. FOOTER FLOTANTE TRANSLÚCIDA */}
       <footer className="relative z-20 w-full px-4 sm:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between text-[10px] font-mono text-slate-300 bg-black/80 backdrop-blur-md border-t border-emerald-500/30 pointer-events-auto gap-2">
-        <div className="flex items-center space-x-2 text-emerald-400 font-bold">
+        <div className="flex items-center space-x-2 text-emerald-400 font-semibold">
           <Activity className="w-3 h-3" />
-          <span>BLACK HAT DIALER SYSTEM</span>
+          <span className="tracking-wide">Black Hat Dialer System</span>
         </div>
 
         <div className="flex items-center space-x-3 text-slate-400 text-[10px]">

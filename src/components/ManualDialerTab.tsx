@@ -33,7 +33,9 @@ import {
   VolumeX,
   Radio,
   Headphones,
-  Music
+  Music,
+  Lock,
+  ExternalLink
 } from 'lucide-react';
 import {
   CarrierTrunk,
@@ -42,7 +44,8 @@ import {
   ManualDialerLead,
   ManualDialerAuditLog,
   ManualDialerDisposition,
-  AudioPrompt
+  AudioPrompt,
+  CallCenterTenant
 } from '../types';
 
 export type ManualDialerCallMode = 'playback' | 'audio_then_agent' | 'direct';
@@ -50,6 +53,7 @@ export type ManualDialerCallMode = 'playback' | 'audio_then_agent' | 'direct';
 interface ManualDialerTabProps {
   extensions: PjsipExtension[];
   carriers: CarrierTrunk[];
+  tenants?: CallCenterTenant[];
   currentUser: SystemUser;
   audios?: AudioPrompt[];
   onNavigateToLiveCalls?: () => void;
@@ -177,10 +181,12 @@ const DISPOSITIONS: { value: ManualDialerDisposition; label: string; badgeColor:
 export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   extensions,
   carriers,
+  tenants = [],
   currentUser,
   audios = [],
   onNavigateToLiveCalls,
 }) => {
+  const isAdmin = currentUser?.role === 'admin';
   const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
 
   // Active view tab: 'dialer' (Operador 1-Clic) vs 'audit' (Auditoría Administrador)
@@ -228,11 +234,39 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     return extensions[0]?.extension || '1001';
   });
 
+  const userTenant = React.useMemo(() => {
+    if (!tenants || tenants.length === 0) return null;
+    if (currentUser?.tenantId) {
+      const byId = tenants.find((t) => t.id === currentUser.tenantId);
+      if (byId) return byId;
+    }
+    const extNum = parseInt(selectedExtension || '', 10);
+    if (!isNaN(extNum)) {
+      return tenants.find((t) => extNum >= t.extensionStart && extNum <= t.extensionEnd) || null;
+    }
+    return null;
+  }, [tenants, currentUser?.tenantId, selectedExtension]);
+
+  const lockedTenantCarrier = React.useMemo(() => {
+    if (!userTenant?.carrierId) return null;
+    return carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId) || null;
+  }, [userTenant, carriers]);
+
+  const isCarrierLockedToTenant = Boolean(!isAdmin && userTenant && lockedTenantCarrier);
+
   // Selected Carrier for dialing
   const [selectedCarrier, setSelectedCarrier] = useState<string>(() => {
     const active = carriers.find((c) => c.enabled !== false && c.status !== 'disabled');
     return active?.name || carriers[0]?.name || 'televox';
   });
+
+  useEffect(() => {
+    if (isCarrierLockedToTenant && lockedTenantCarrier) {
+      setSelectedCarrier(lockedTenantCarrier.name);
+    }
+  }, [isCarrierLockedToTenant, lockedTenantCarrier]);
+
+  const effectiveCarrier = isCarrierLockedToTenant && lockedTenantCarrier ? lockedTenantCarrier.name : selectedCarrier;
 
   // Call Mode & Audio Prompt State for 1-Click Dialing
   const [callMode, setCallMode] = useState<ManualDialerCallMode>('playback');
@@ -421,7 +455,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
     // Call Asterisk Originate API
     try {
-      const carrierTrunk = carriers.find((c) => c.name === selectedCarrier);
+      const carrierTrunk = carriers.find((c) => c.name === effectiveCarrier);
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -429,7 +463,9 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
           destination: lead.number,
           exten: lead.number,
           channel: `PJSIP/${selectedExtension}`,
-          carrier: selectedCarrier,
+          carrier: effectiveCarrier,
+          tenantId: userTenant?.id,
+          isAdmin,
           agentExten: selectedExtension,
           callMode,
           mode: callMode,
@@ -1093,17 +1129,36 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
               <div className="flex items-center gap-2">
                 <label className="text-xs font-bold text-slate-300">Troncal Saliente:</label>
-                <select
-                  value={selectedCarrier}
-                  onChange={(e) => setSelectedCarrier(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
-                >
-                  {carriers.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      [{c.name}] ({c.authType === 'ip_auth' ? 'IP a IP' : 'SIP Reg'})
-                    </option>
-                  ))}
-                </select>
+                {isCarrierLockedToTenant && lockedTenantCarrier ? (
+                  <div className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5">
+                    <Lock className="w-3 h-3 shrink-0" />
+                    <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedCarrier}
+                    onChange={(e) => setSelectedCarrier(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
+                  >
+                    {carriers.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        [{c.name}] ({c.authType === 'ip_auth' ? 'IP a IP' : 'SIP Reg'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {userTenant?.magnusBillingUrl && (
+                  <a
+                    href={userTenant.magnusBillingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-center gap-1"
+                    title="Abrir MagnusBilling para ver minutos"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Minutos</span>
+                  </a>
+                )}
               </div>
             </div>
 

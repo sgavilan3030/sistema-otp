@@ -6,7 +6,6 @@ import {
   RefreshCw,
   Menu,
   LogOut,
-  ChevronRight,
   ShieldCheck,
   Server,
   Zap,
@@ -14,15 +13,9 @@ import {
   Volume2,
   Users,
   Database,
-  Sun,
-  Moon,
-  Radio,
-  PhoneForwarded,
-  Sparkles,
-  Sliders,
+  Cpu,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
-import { isTabAllowedForUser, getRoleBadgeInfo } from '../utils/rbac';
 
 interface HeaderProps {
   activeTab: string;
@@ -114,6 +107,11 @@ export const Header: React.FC<HeaderProps> = ({
       subtitle: 'Telemetría de eventos en tiempo real y recargas de dialplan en caliente',
       icon: Terminal,
     },
+    telemetry: {
+      title: 'Telemetría de Servidor',
+      subtitle: 'Gráficos en tiempo real de carga CPU, uso de RAM y latencia AMI (:5038)',
+      icon: Cpu,
+    },
     configs: {
       title: 'Archivos .conf & Scripts',
       subtitle: 'Exportador descargable para despliegue en servidores Linux Debian / Rocky',
@@ -147,8 +145,8 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-500 font-mono hidden sm:inline">
-                    Black Hat Dialer System /
+                  <span className="text-xs text-slate-500 font-medium hidden sm:inline tracking-tight">
+                    Black Hat <span className="text-emerald-400/90">Dialer</span> /
                   </span>
                   <h2 className="text-sm sm:text-base font-bold text-white tracking-tight leading-none">
                     {currentTabInfo.title}
@@ -208,226 +206,17 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Simulator Button */}
-            <button
-              id="btn-open-call-simulator"
-              onClick={onOpenCallSimulator}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 transition-all cursor-pointer font-medium"
-            >
-              <PhoneCall className="w-3.5 h-3.5" />
-              <span>Softphone</span>
-            </button>
-
-
-            {/* Quick Access to Reventa de Minutos (Only if allowed) */}
-            {isTabAllowedForUser('reseller', currentUser) && (
+            {/* Quick Logout Button */}
+            {currentUser && onLogout && (
               <button
-                id="btn-header-reseller"
-                type="button"
-                onClick={() => setActiveTab('reseller')}
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer ${
-                  activeTab === 'reseller'
-                    ? 'bg-emerald-500 text-slate-950 font-black shadow-emerald-500/30'
-                    : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400'
-                }`}
-                title="Abrir módulo de Reventa de Minutos y MicroSIP por Nombre"
+                onClick={onLogout}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors cursor-pointer"
+                title="Cerrar Sesión"
               >
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="font-bold hidden sm:inline">Reventa Minutos</span>
-                <span className="sm:hidden font-bold">Minutos</span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500 text-slate-950 font-black ml-1 animate-pulse">
-                  NUEVO
-                </span>
+                <LogOut className="w-4 h-4" />
               </button>
             )}
-
-            {/* Theme Toggle Button */}
-            {onToggleTheme && (
-              <button
-                id="btn-toggle-theme"
-                onClick={onToggleTheme}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/60 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-all cursor-pointer shadow-sm"
-                title={theme === 'light' ? 'Cambiar a Tema Oscuro' : 'Cambiar a Tema Claro'}
-              >
-                {theme === 'light' ? (
-                  <>
-                    <Sun className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="hidden md:inline font-medium">Tema Claro</span>
-                  </>
-                ) : (
-                  <>
-                    <Moon className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="hidden md:inline font-medium">Tema Oscuro</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* User Pill with Quick Logout */}
-            {currentUser && (() => {
-              const canAccessUsers = isTabAllowedForUser('users', currentUser);
-              const roleInfo = getRoleBadgeInfo(currentUser.role);
-              return (
-                <div className="flex items-center pl-2 sm:border-l sm:border-slate-800">
-                  {canAccessUsers ? (
-                    <button
-                      onClick={() => setActiveTab('users')}
-                      className="flex items-center space-x-2 p-1 sm:px-2.5 sm:py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs transition-colors cursor-pointer"
-                      title="Ver panel de Usuarios y Permisos"
-                    >
-                      <div
-                        className={`w-6 h-6 rounded-full bg-gradient-to-tr ${currentUser.avatarColor} flex items-center justify-center text-white text-[10px] font-bold`}
-                      >
-                        {currentUser.name[0]}
-                      </div>
-                      <span className="text-white font-medium hidden md:inline truncate max-w-[100px]">
-                        {currentUser.username || currentUser.name.split(' ')[0]}
-                      </span>
-                      <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold border hidden lg:inline ${roleInfo.color}`}>
-                        {currentUser.role}
-                      </span>
-                    </button>
-                  ) : (
-                    <div
-                      className="flex items-center space-x-2 p-1 sm:px-2.5 sm:py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs"
-                      title={`Sesión activa: ${currentUser.name} (${roleInfo.label})`}
-                    >
-                      <div
-                        className={`w-6 h-6 rounded-full bg-gradient-to-tr ${currentUser.avatarColor} flex items-center justify-center text-white text-[10px] font-bold`}
-                      >
-                        {currentUser.name[0]}
-                      </div>
-                      <span className="text-white font-medium hidden md:inline truncate max-w-[100px]">
-                        {currentUser.username || currentUser.name.split(' ')[0]}
-                      </span>
-                      <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold border ${roleInfo.color}`}>
-                        {currentUser.role}
-                      </span>
-                    </div>
-                  )}
-
-                  {onLogout && (
-                    <button
-                      onClick={onLogout}
-                      className="ml-1.5 p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors cursor-pointer"
-                      title="Cerrar Sesión"
-                    >
-                      <LogOut className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
           </div>
-        </div>
-
-        {/* Quick Access Modules Navigation Bar - Filtered strictly by User Role */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-2 border-t border-slate-900 scrollbar-none text-xs">
-          <span className="text-[10px] uppercase font-bold text-slate-500 mr-1 shrink-0 font-mono hidden md:inline">
-            Módulos:
-          </span>
-
-          {isTabAllowedForUser('production', currentUser) && (
-            <button
-              onClick={() => setActiveTab('production')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'production'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Centro Producción</span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('live-calls', currentUser) && (
-            <button
-              onClick={() => setActiveTab('live-calls')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'live-calls'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5" />
-              <span>Llamadas en Vivo</span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('call-spy', currentUser) && (
-            <button
-              onClick={() => setActiveTab('call-spy')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'call-spy'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <Headphones className="w-3.5 h-3.5" />
-              <span>Escucha en Vivo (Espía)</span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('reseller', currentUser) && (
-            <button
-              id="quick-nav-reseller"
-              onClick={() => setActiveTab('reseller')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'reseller'
-                  ? 'bg-emerald-500 text-slate-950 font-black shadow-sm shadow-emerald-500/30'
-                  : 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900/50 hover:border-emerald-400 font-bold'
-              }`}
-            >
-              <DollarSign className="w-3.5 h-3.5" />
-              <span>Reventa de Minutos</span>
-              <span className={`text-[9px] px-1 py-0.2 rounded font-black ${activeTab === 'reseller' ? 'bg-slate-950 text-emerald-400' : 'bg-emerald-500 text-slate-950 animate-pulse'}`}>
-                ★ NUEVO
-              </span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('extensions', currentUser) && (
-            <button
-              onClick={() => setActiveTab('extensions')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'extensions'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <PhoneCall className="w-3.5 h-3.5" />
-              <span>Extensiones PJSIP</span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('carriers', currentUser) && (
-            <button
-              onClick={() => setActiveTab('carriers')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'carriers'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <Server className="w-3.5 h-3.5" />
-              <span>Troncales SIP</span>
-            </button>
-          )}
-
-          {isTabAllowedForUser('ivr', currentUser) && (
-            <button
-              onClick={() => setActiveTab('ivr')}
-              className={`px-2.5 py-1 rounded-md text-xs shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'ivr'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>IVR Press-1</span>
-            </button>
-          )}
         </div>
       </div>
     </header>

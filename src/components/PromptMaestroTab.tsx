@@ -46,8 +46,9 @@ export const PromptMaestroTab: React.FC<PromptMaestroTabProps> = ({
               <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
                 <Sparkles className="w-5 h-5" />
               </span>
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                Prompt Maestro • Black Hat Dialer System
+              <h2 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+                Prompt Maestro &bull; <span className="text-white">Black Hat</span>{' '}
+                <span className="text-emerald-400 font-semibold">Dialer System</span>
               </h2>
             </div>
             <p className="text-sm text-slate-300 max-w-3xl">

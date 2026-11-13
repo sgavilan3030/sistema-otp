@@ -44,8 +44,10 @@ import { AudioLibraryTab } from './components/AudioLibraryTab';
 import { UsersTab } from './components/UsersTab';
 import { SyncTelemetryTab } from './components/SyncTelemetryTab';
 import { AmiAriDiagnosticsTab } from './components/AmiAriDiagnosticsTab';
+import { ServerTelemetryTab } from './components/ServerTelemetryTab';
 import { ConfigExporterTab } from './components/ConfigExporterTab';
 import { CallSimulatorModal } from './components/CallSimulatorModal';
+import { AmdConfigModal } from './components/AmdConfigModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
@@ -259,7 +261,46 @@ export default function App() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCallSimulatorOpen, setIsCallSimulatorOpen] = useState(false);
+  const [isAmdModalOpen, setIsAmdModalOpen] = useState(false);
+  const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
+  const [isTogglingAmd, setIsTogglingAmd] = useState<boolean>(false);
+  const [amdFeedback, setAmdFeedback] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/asterisk/amd/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && typeof data.enabled === 'boolean') {
+          setAmdEnabled(data.enabled);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleAmd = async () => {
+    setIsTogglingAmd(true);
+    setAmdFeedback(null);
+    try {
+      const nextVal = !amdEnabled;
+      const res = await fetch('/api/asterisk/amd/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextVal }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAmdEnabled(data.enabled);
+        setAmdFeedback(data.message || (data.enabled ? 'Detección de grabadora ACTIVADA' : 'Detección de grabadora DESACTIVADA'));
+        setTimeout(() => setAmdFeedback(null), 4500);
+      }
+    } catch (e: any) {
+      setAmdFeedback(`Error al alternar AMD: ${e.message}`);
+      setTimeout(() => setAmdFeedback(null), 4500);
+    } finally {
+      setIsTogglingAmd(false);
+    }
+  };
 
   // Global OTP Alert monitor across all tabs
   const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string } | null>(null);
@@ -690,8 +731,37 @@ export default function App() {
     localStorage.setItem('ast20_cdr', JSON.stringify(cdrRecords));
   }, [cdrRecords]);
 
+  const isTenantsHydratedRef = useRef(false);
+
+  useEffect(() => {
+    fetch('/api/tenants')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.tenants) && data.tenants.length > 0) {
+          setTenants(data.tenants);
+        } else {
+          fetch('/api/tenants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenants }),
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        isTenantsHydratedRef.current = true;
+      });
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('ast20_tenants', JSON.stringify(tenants));
+    if (isTenantsHydratedRef.current) {
+      fetch('/api/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenants }),
+      }).catch(() => {});
+    }
   }, [tenants]);
 
   // Call Center Tenants Handlers
@@ -986,6 +1056,7 @@ export default function App() {
           extensions: extsToSync,
           carriers: carriersToSync,
           users: users,
+          tenants: tenants,
         }),
         signal: controller.signal,
       });
@@ -999,7 +1070,7 @@ export default function App() {
           `Black Hat Dialer System Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
           data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
         );
-        showToast(`Dialer System sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
+        showToast(`Black Hat Dialer System sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
       } else {
         throw new Error('Servidor Asterisk no disponible');
       }
@@ -1672,6 +1743,8 @@ export default function App() {
         activeCallCount={activeCallCount}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        amdEnabled={amdEnabled}
+        onOpenAmdModal={() => setIsAmdModalOpen(true)}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL A LA DERECHA */}
@@ -1726,6 +1799,9 @@ export default function App() {
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
             onNavigateToReseller={() => setActiveTab('reseller')}
             isSyncing={isSyncing}
+            amdEnabled={amdEnabled}
+            isTogglingAmd={isTogglingAmd}
+            onToggleAmd={handleToggleAmd}
           />
         )}
 
@@ -1733,6 +1809,7 @@ export default function App() {
           <ManualDialerTab
             extensions={extensions}
             carriers={carriers}
+            tenants={tenants}
             currentUser={currentUser}
             audios={audios}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
@@ -1913,6 +1990,10 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'telemetry' && isTabAllowedForUser('telemetry', currentUser) && (
+          <ServerTelemetryTab />
+        )}
+
         {activeTab === 'configs' && isTabAllowedForUser('configs', currentUser) && (
           <ConfigExporterTab
             extensions={extensions}
@@ -2028,6 +2109,16 @@ export default function App() {
         onLogEvent={addLog}
         onSaveAstDbEntry={handleAddAstDbEntry}
         onSaveCdrRecord={handleSaveCdrRecord}
+      />
+
+      {/* AMD Answering Machine Detection Modal */}
+      <AmdConfigModal
+        isOpen={isAmdModalOpen}
+        onClose={() => setIsAmdModalOpen(false)}
+        amdEnabled={amdEnabled}
+        isToggling={isTogglingAmd}
+        feedback={amdFeedback}
+        onToggleAmd={handleToggleAmd}
       />
 
     </div>

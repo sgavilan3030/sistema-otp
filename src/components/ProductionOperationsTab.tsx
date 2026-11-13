@@ -60,6 +60,7 @@ import {
   PhoneIncoming,
   Upload,
   FileText,
+  ExternalLink,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -117,6 +118,9 @@ interface ProductionOperationsTabProps {
   onNavigateToLiveCalls?: () => void;
   onNavigateToReseller?: () => void;
   isSyncing: boolean;
+  amdEnabled?: boolean;
+  isTogglingAmd?: boolean;
+  onToggleAmd?: () => void;
 }
 
 export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = ({
@@ -130,6 +134,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   onNavigateToLiveCalls,
   onNavigateToReseller,
   isSyncing,
+  amdEnabled: amdEnabledProp,
+  isTogglingAmd: isTogglingAmdProp,
+  onToggleAmd: onToggleAmdProp,
 }) => {
   // Determinar usuario activo y privilegios de Administrador para proteger edición de Guiones / Entidades
   const activeUser = currentUser || (() => {
@@ -231,10 +238,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [uploadedFileFeedback, setUploadedFileFeedback] = useState<string | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
 
-  // AMD (Answering Machine Detection / Detección de Grabadora) State
-  const [amdEnabled, setAmdEnabled] = useState<boolean>(true);
-  const [isTogglingAmd, setIsTogglingAmd] = useState<boolean>(false);
-  const [amdFeedback, setAmdFeedback] = useState<string | null>(null);
+  // AMD (Answering Machine Detection / Detección de Grabadora) State (synced with App menu)
+  const [localAmdEnabled, setLocalAmdEnabled] = useState<boolean>(true);
+  const [localIsTogglingAmd, setLocalIsTogglingAmd] = useState<boolean>(false);
+  const amdEnabled = typeof amdEnabledProp === 'boolean' ? amdEnabledProp : localAmdEnabled;
+  const isTogglingAmd = typeof isTogglingAmdProp === 'boolean' ? isTogglingAmdProp : localIsTogglingAmd;
   const [isPurgingZombies, setIsPurgingZombies] = useState<boolean>(false);
 
   const handlePurgeZombies = async () => {
@@ -268,14 +276,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Fetch AMD status & Press 1 destination configuration on mount
   useEffect(() => {
-    fetch('/api/asterisk/amd/status')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && typeof data.enabled === 'boolean') {
-          setAmdEnabled(data.enabled);
-        }
-      })
-      .catch(() => {});
+    if (typeof amdEnabledProp !== 'boolean') {
+      fetch('/api/asterisk/amd/status')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && typeof data.enabled === 'boolean') {
+            setLocalAmdEnabled(data.enabled);
+          }
+        })
+        .catch(() => {});
+    }
 
     fetch('/api/asterisk/press1-destination')
       .then((r) => r.json())
@@ -290,13 +300,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }
       })
       .catch(() => {});
-  }, []);
+  }, [amdEnabledProp]);
 
   const handleToggleAmd = async () => {
-    setIsTogglingAmd(true);
-    setAmdFeedback(null);
+    if (onToggleAmdProp) {
+      onToggleAmdProp();
+      return;
+    }
+    setLocalIsTogglingAmd(true);
     try {
-      const nextVal = !amdEnabled;
+      const nextVal = !localAmdEnabled;
       const res = await fetch('/api/asterisk/amd/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,15 +317,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       });
       const data = await res.json();
       if (data.success) {
-        setAmdEnabled(data.enabled);
-        setAmdFeedback(data.message || (data.enabled ? 'Detección de grabadora ACTIVADA' : 'Detección de grabadora DESACTIVADA'));
-        setTimeout(() => setAmdFeedback(null), 4500);
+        setLocalAmdEnabled(data.enabled);
       }
-    } catch (e: any) {
-      setAmdFeedback(`Error al alternar AMD: ${e.message}`);
-      setTimeout(() => setAmdFeedback(null), 4500);
+    } catch (_) {
     } finally {
-      setIsTogglingAmd(false);
+      setLocalIsTogglingAmd(false);
     }
   };
 
@@ -1225,9 +1234,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const enabledCarriers = carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled');
+
+  // Resolve Call Center Tenant assigned to this user (or their extension range)
+  const userTenant = React.useMemo(() => {
+    if (!tenants || tenants.length === 0) return null;
+    if (activeUser?.tenantId) {
+      const byId = tenants.find((t) => t.id === activeUser.tenantId);
+      if (byId) return byId;
+    }
+    const extNum = parseInt(agentExtension || userAssignedExt || '', 10);
+    if (!isNaN(extNum)) {
+      return tenants.find((t) => extNum >= t.extensionStart && extNum <= t.extensionEnd) || null;
+    }
+    return null;
+  }, [tenants, activeUser?.tenantId, agentExtension, userAssignedExt]);
+
+  const lockedTenantCarrier = React.useMemo(() => {
+    if (!userTenant?.carrierId) return null;
+    return carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId) || null;
+  }, [userTenant, carriers]);
+
+  const isCarrierLockedToTenant = Boolean(!isAdmin && userTenant && lockedTenantCarrier);
+
   const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
-  const activeCarrierObj = (selectedCarrierName !== 'auto' ? enabledCarriers.find((c) => c.name === selectedCarrierName || c.id === selectedCarrierName) : null) || enabledCarriers[0] || carriers[0];
-  const activeCarrier = selectedCarrierName !== 'auto' ? selectedCarrierName : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
+
+  useEffect(() => {
+    if (isCarrierLockedToTenant && lockedTenantCarrier) {
+      setSelectedCarrierName(lockedTenantCarrier.name);
+    }
+  }, [isCarrierLockedToTenant, lockedTenantCarrier]);
+
+  const effectiveSelectedCarrier = isCarrierLockedToTenant && lockedTenantCarrier ? lockedTenantCarrier.name : selectedCarrierName;
+  const activeCarrierObj = (effectiveSelectedCarrier !== 'auto' ? enabledCarriers.find((c) => c.name === effectiveSelectedCarrier || c.id === effectiveSelectedCarrier) : null) || lockedTenantCarrier || enabledCarriers[0] || carriers[0];
+  const activeCarrier = effectiveSelectedCarrier !== 'auto' ? effectiveSelectedCarrier : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
   const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
 
   // Dynamic CallerID fields directly configurable by agent and synced with Header/Sidebar Caller ID Modal
@@ -2003,7 +2042,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destination: targetNumber.trim(),
-          carrier: selectedCarrierName,
+          carrier: effectiveSelectedCarrier,
+          tenantId: userTenant?.id,
+          isAdmin,
           callerId: effectiveCallerIdNum,
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
@@ -2269,7 +2310,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             destination: num,
-            carrier: selectedCarrierName,
+            carrier: effectiveSelectedCarrier,
+            tenantId: userTenant?.id,
+            isAdmin,
             callerId: callerIdNum,
             callerIdNum: callerIdNum,
             callerIdName: callerIdName,
@@ -2542,20 +2585,40 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>Troncal SIP Saliente</span>
               </div>
-              <select
-                id="select-banner-carrier"
-                value={selectedCarrierName}
-                onChange={(e) => setSelectedCarrierName(e.target.value)}
-                className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-              >
-                <option value="auto">🔄 Pool Automático</option>
-                {enabledCarriers.map((c, idx) => (
-                  <option key={c.id} value={c.name}>
-                    {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
-                  </option>
-                ))}
-              </select>
+              {isCarrierLockedToTenant && lockedTenantCarrier ? (
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Asignada exclusivamente por Super Administrador">
+                  <Lock className="w-3 h-3 shrink-0" />
+                  <span>{lockedTenantCarrier.name} ({userTenant?.code})</span>
+                </div>
+              ) : (
+                <select
+                  id="select-banner-carrier"
+                  value={selectedCarrierName}
+                  onChange={(e) => setSelectedCarrierName(e.target.value)}
+                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+                >
+                  <option value="auto">🔄 Pool Automático</option>
+                  {enabledCarriers.map((c, idx) => (
+                    <option key={c.id} value={c.name}>
+                      {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+
+            {userTenant?.magnusBillingUrl && (
+              <a
+                href={userTenant.magnusBillingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-xs font-bold text-cyan-300 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                title="Consultar saldo y minutos en MagnusBilling"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Ver Minutos</span>
+              </a>
+            )}
 
             <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
               <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
@@ -3365,71 +3428,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     placeholder="Nombre titular (opcional)"
                     className="w-1/3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:border-emerald-500 focus:outline-none hidden sm:block"
                   />
-                </div>
-              </div>
-
-              {/* CARD 1: DETECCIÓN DE GRABADORA (AMD) Y LÍMITE DE 2 REINTENTOS */}
-              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Mic className={`w-4 h-4 ${amdEnabled ? 'text-emerald-400' : 'text-rose-400'}`} />
-                      <span className="text-xs font-bold text-white uppercase tracking-wider">
-                        Sistema de Detección de Grabadora / Contestador (AMD)
-                      </span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                        amdEnabled
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                      }`}>
-                        {amdEnabled ? '✓ ACTIVA' : '✕ DESACTIVADA'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      {amdEnabled
-                        ? 'Si el cliente no responde y entra el correo de voz o contestador automático, Asterisk colgará y reintentará.'
-                        : 'La detección está desactivada: la llamada se conectará de inmediato sin filtrar contestadores.'}
-                    </p>
-                  </div>
-
-                  <button
-                    id="btn-toggle-amd-prod"
-                    type="button"
-                    onClick={handleToggleAmd}
-                    disabled={isTogglingAmd}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shrink-0 ${
-                      amdEnabled
-                        ? 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 hover:border-rose-400'
-                        : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400'
-                    }`}
-                  >
-                    {isTogglingAmd ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Sliders className="w-3.5 h-3.5" />
-                    )}
-                    <span>{amdEnabled ? 'Desactivar Detección AMD' : 'Activar Detección AMD'}</span>
-                  </button>
-                </div>
-
-                {amdFeedback && (
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>{amdFeedback}</span>
-                  </div>
-                )}
-
-                {/* Badge informativa de límite estricto de 2 marcaciones */}
-                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-sky-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2 text-sky-300">
-                    <ShieldAlert className="w-4 h-4 text-sky-400 shrink-0" />
-                    <span>
-                      <strong>Límite de Marcación Si No Contesta:</strong> Máximo <strong>2 llamadas</strong> en total (1 llamada inicial + 1 reintento automático).
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                    Estricto: No más de 2 marcaciones
-                  </span>
                 </div>
               </div>
 
@@ -4297,19 +4295,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">Troncal SIP Saliente</div>
-                  <select
-                    value={selectedCarrierName}
-                    onChange={(e) => setSelectedCarrierName(e.target.value)}
-                    disabled={isMassRunning}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-                  >
-                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
-                    {enabledCarriers.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name} ({c.host})
-                      </option>
-                    ))}
-                  </select>
+                  {isCarrierLockedToTenant && lockedTenantCarrier ? (
+                    <div className="w-full bg-slate-950 border border-emerald-500/30 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 shrink-0" />
+                      <span>{lockedTenantCarrier.name} ({userTenant?.name})</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedCarrierName}
+                      onChange={(e) => setSelectedCarrierName(e.target.value)}
+                      disabled={isMassRunning}
+                      className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
+                    >
+                      <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
+                      {enabledCarriers.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name} ({c.host})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">

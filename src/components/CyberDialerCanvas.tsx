@@ -88,7 +88,7 @@ export const CyberDialerCanvas: React.FC = () => {
 
     const matrixChars = '0123456789ABCDEF#*+<>@%&/!=VOIPRTPHD256TLS';
     const telecomTelemetry = [
-      'BLACK HAT DIALER SYSTEM • NOC CORE',
+      'BLACK HAT DIALER SYSTEM • CLOUD PBX CORE',
       'CARRIER TRUNK 01 [SECURE]: ACTIVE',
       'VOICE CHANNEL LATENCY: 12ms JITTER: 0.05ms',
       'HARDENED TELEMETRY MATRIX: VERIFIED',
@@ -324,7 +324,7 @@ export const CyberDialerCanvas: React.FC = () => {
           bannerY2
         );
 
-        // 5. LARGE HOLOGRAPHIC BLACK HAT EMBLEM & TARGETING SYSTEM (CENTER/RIGHT)
+        // 5. HOLOGRAPHIC VOXCORE CLOUD EMBLEM & NETWORK TELEMETRY (CENTER/RIGHT)
         const emblemCenterX = width > 800 ? width * 0.72 : width * 0.5;
         const emblemCenterY = height * 0.48;
         const emblemRadius = Math.min(width, height) * 0.28;
@@ -369,55 +369,50 @@ export const CyberDialerCanvas: React.FC = () => {
         ctx.fillStyle = sweepGrad;
         ctx.fill();
 
-        // Vector Holographic Hat Silhouette in Center
-        const hatScale = Math.min(width, height) * 0.0014;
+        // Corporate Vector Hexagon & Voice Waveform Emblem in Center
+        const emblemScale = Math.min(width, height) * 0.0014;
         ctx.save();
-        ctx.translate(emblemCenterX, emblemCenterY - 15);
-        ctx.scale(hatScale, hatScale);
+        ctx.translate(emblemCenterX, emblemCenterY - 10);
+        ctx.scale(emblemScale, emblemScale);
 
-        // Hat Brim
         ctx.beginPath();
-        ctx.ellipse(0, 30, 85, 20, 0, 0, Math.PI * 2);
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 3) * i - Math.PI / 2;
+          const hx = Math.cos(angle) * 62;
+          const hy = Math.sin(angle) * 62;
+          if (i === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        ctx.closePath();
         ctx.strokeStyle = '#34d399';
         ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 20;
-        ctx.lineWidth = 4;
-        ctx.stroke();
-
-        // Hat Crown
-        ctx.beginPath();
-        ctx.moveTo(-45, 25);
-        ctx.lineTo(-40, -50);
-        ctx.bezierCurveTo(-40, -68, 40, -68, 40, -50);
-        ctx.lineTo(45, 25);
-        ctx.closePath();
-        ctx.strokeStyle = '#6ee7b7';
+        ctx.shadowBlur = 18;
         ctx.lineWidth = 3.5;
         ctx.stroke();
 
-        // Hat Band
-        ctx.beginPath();
-        ctx.moveTo(-44, 10);
-        ctx.bezierCurveTo(-30, 18, 30, 18, 44, 10);
-        ctx.lineTo(44.5, 22);
-        ctx.bezierCurveTo(30, 30, -30, 30, -44.5, 22);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.55)';
-        ctx.fill();
-        ctx.strokeStyle = '#38bdf8';
-        ctx.stroke();
+        const bars = [
+          { x: -30, h: 24, color: '#34d399' },
+          { x: -12, h: 46, color: '#10b981' },
+          { x: 6, h: 34, color: '#6ee7b7' },
+          { x: 24, h: 22, color: '#38bdf8' },
+        ];
+        bars.forEach((b, idx) => {
+          const dynamicH = b.h + Math.sin(time * 3 + idx) * 6;
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x - 4, -dynamicH / 2, 8, dynamicH);
+        });
 
         ctx.restore();
         ctx.shadowBlur = 0;
 
         // Text inside the target
-        ctx.font = 'bold 12px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#34d399';
+        ctx.font = '700 12px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillStyle = '#f8fafc';
         ctx.textAlign = 'center';
-        ctx.fillText('BLACK HAT DIALER SYSTEM CORE', emblemCenterX, emblemCenterY + emblemRadius * 0.55);
-        ctx.font = 'bold 10px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillText('VOIP TELEPHONY MATRIX • AUTONOMOUS ENGINE', emblemCenterX, emblemCenterY + emblemRadius * 0.55 + 16);
+        ctx.fillText('BLACK HAT DIALER SYSTEM', emblemCenterX, emblemCenterY + emblemRadius * 0.55);
+        ctx.font = '600 10px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#34d399';
+        ctx.fillText('ENTERPRISE CLOUD PBX • ASTERISK 20', emblemCenterX, emblemCenterY + emblemRadius * 0.55 + 16);
         ctx.textAlign = 'left';
 
         ctx.restore();

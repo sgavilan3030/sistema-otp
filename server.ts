@@ -1,4 +1,5 @@
 import express from 'express';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
@@ -1407,6 +1408,71 @@ function saveStoredTenants(tenants: any[]) {
   } catch (_) {}
 }
 
+function resolveCarrierNameByRef(carrierRef: string, carriersList: any[] = lastSyncedCarriers): string {
+  if (!carrierRef) return '';
+  const list = Array.isArray(carriersList) && carriersList.length > 0 ? carriersList : loadStoredCarriers();
+  const matched = list.find(
+    (c: any) => c && (String(c.id) === String(carrierRef) || String(c.name) === String(carrierRef))
+  );
+  return matched ? String(matched.name) : String(carrierRef);
+}
+
+function resolveTenantCarrierForCall(
+  { tenantId, agentExten }: { tenantId?: string; agentExten?: string },
+  carriersList: any[] = lastSyncedCarriers
+): { tenant: any | null; carrierName: string } {
+  const tenantsList = loadStoredTenants();
+  if (!Array.isArray(tenantsList) || tenantsList.length === 0) {
+    return { tenant: null, carrierName: '' };
+  }
+
+  let matchedTenant: any | null = null;
+  if (tenantId) {
+    matchedTenant = tenantsList.find((t: any) => t && String(t.id) === String(tenantId)) || null;
+  }
+
+  if (!matchedTenant && agentExten) {
+    const firstExt = String(agentExten).split('&')[0].trim();
+    const numericExt = parseInt(firstExt, 10);
+    if (!isNaN(numericExt)) {
+      matchedTenant =
+        tenantsList.find(
+          (t: any) =>
+            t &&
+            typeof t.extensionStart === 'number' &&
+            typeof t.extensionEnd === 'number' &&
+            numericExt >= t.extensionStart &&
+            numericExt <= t.extensionEnd
+        ) || null;
+    }
+  }
+
+  if (!matchedTenant || !matchedTenant.carrierId) {
+    return { tenant: matchedTenant, carrierName: '' };
+  }
+
+  return {
+    tenant: matchedTenant,
+    carrierName: resolveCarrierNameByRef(matchedTenant.carrierId, carriersList),
+  };
+}
+
+async function syncTenantCarriersToAstDb(tenantsList: any[], carriersList: any[] = lastSyncedCarriers) {
+  if (!Array.isArray(tenantsList) || tenantsList.length === 0) return;
+  for (const t of tenantsList) {
+    if (!t || !t.carrierId) continue;
+    const resolvedCarrierName = resolveCarrierNameByRef(t.carrierId, carriersList);
+    if (!resolvedCarrierName) continue;
+    const start = Number(t.extensionStart);
+    const end = Number(t.extensionEnd);
+    if (!isNaN(start) && !isNaN(end) && end >= start && end - start <= 500) {
+      for (let ext = start; ext <= end; ext++) {
+        executeAsteriskCommand(`database put user_carrier ${ext} "${resolvedCarrierName}"`).catch(() => {});
+      }
+    }
+  }
+}
+
 const AUDIOS_META_FILE = path.join(DATA_DIR, 'audios_meta.json');
 
 function loadStoredAudios(): any[] {
@@ -1432,12 +1498,13 @@ app.get('/api/tenants', (req, res) => {
   res.json({ success: true, tenants });
 });
 
-app.post('/api/tenants', (req, res) => {
+app.post('/api/tenants', async (req, res) => {
   try {
     const { tenants } = req.body;
     if (Array.isArray(tenants)) {
       saveStoredTenants(tenants);
-      return res.json({ success: true, message: 'Tenants guardados exitosamente.', count: tenants.length });
+      syncTenantCarriersToAstDb(tenants, lastSyncedCarriers).catch(() => {});
+      return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas.', count: tenants.length });
     }
     res.status(400).json({ success: false, error: 'tenants debe ser un array' });
   } catch (err: any) {
@@ -3497,6 +3564,292 @@ app.post('/api/asterisk/telemetry/clear', (req, res) => {
   res.json({ success: true, message: 'Logs de telemetría limpiados.' });
 });
 
+// ==============================================================================
+// REAL-TIME SERVER TELEMETRY (CPU %, RAM MB/%, LOAD AVG, AMI PING LATENCY)
+// ==============================================================================
+let prevCpuSample: { idle: number; total: number; percent: number; at: number } | null = null;
+
+function readCpuTimesAggregate(): { idle: number; total: number } {
+  const cpus = os.cpus();
+  let idle = 0;
+  let total = 0;
+  for (const cpu of cpus) {
+    idle += cpu.times.idle;
+    total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+  }
+  return { idle, total };
+}
+
+function getCpuUsagePercent(): number {
+  const now = Date.now();
+  const current = readCpuTimesAggregate();
+
+  if (!prevCpuSample) {
+    const initialPercent = current.total > 0
+      ? Number((((current.total - current.idle) / current.total) * 100).toFixed(1))
+      : 0;
+    prevCpuSample = { idle: current.idle, total: current.total, percent: initialPercent, at: now };
+    return initialPercent;
+  }
+
+  // Avoid zero-delta spikes if two clients poll within < 400ms
+  if (now - prevCpuSample.at < 400) {
+    return prevCpuSample.percent;
+  }
+
+  const deltaIdle = current.idle - prevCpuSample.idle;
+  const deltaTotal = current.total - prevCpuSample.total;
+  const percent = deltaTotal > 0
+    ? Number(Math.min(100, Math.max(0, ((deltaTotal - deltaIdle) / deltaTotal) * 100)).toFixed(1))
+    : prevCpuSample.percent;
+
+  prevCpuSample = { idle: current.idle, total: current.total, percent, at: now };
+  return percent;
+}
+
+function getRealMemoryStats() {
+  let totalMb = Math.round(os.totalmem() / (1024 * 1024));
+  let freeMb = Math.round(os.freemem() / (1024 * 1024));
+  let availableMb = freeMb;
+  let cachedMb = 0;
+  let swapTotalMb = 0;
+  let swapUsedMb = 0;
+
+  try {
+    if (fs.existsSync('/proc/meminfo')) {
+      const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+      const parseKb = (key: string): number | null => {
+        const match = meminfo.match(new RegExp(`^${key}:\\s+(\\d+)\\s+kB`, 'm'));
+        return match ? Number(match[1]) : null;
+      };
+      const memTotalKb = parseKb('MemTotal');
+      const memFreeKb = parseKb('MemFree');
+      const memAvailKb = parseKb('MemAvailable');
+      const buffersKb = parseKb('Buffers') ?? 0;
+      const cachedKb = parseKb('Cached') ?? 0;
+      const swapTotalKb = parseKb('SwapTotal');
+      const swapFreeKb = parseKb('SwapFree');
+
+      if (memTotalKb) totalMb = Math.round(memTotalKb / 1024);
+      if (memFreeKb !== null) freeMb = Math.round(memFreeKb / 1024);
+      if (memAvailKb !== null) {
+        availableMb = Math.round(memAvailKb / 1024);
+      } else {
+        availableMb = Math.round(((memFreeKb ?? 0) + buffersKb + cachedKb) / 1024);
+      }
+      cachedMb = Math.round((buffersKb + cachedKb) / 1024);
+      if (swapTotalKb !== null && swapFreeKb !== null) {
+        swapTotalMb = Math.round(swapTotalKb / 1024);
+        swapUsedMb = Math.max(0, Math.round((swapTotalKb - swapFreeKb) / 1024));
+      }
+    }
+  } catch (_) {}
+
+  const usedMb = Math.max(0, totalMb - availableMb);
+  const usedPercent = totalMb > 0 ? Number(((usedMb / totalMb) * 100).toFixed(1)) : 0;
+  const procMem = process.memoryUsage();
+
+  return {
+    totalMb,
+    usedMb,
+    freeMb,
+    availableMb,
+    cachedMb,
+    usedPercent,
+    swapTotalMb,
+    swapUsedMb,
+    processRssMb: Math.round(procMem.rss / (1024 * 1024)),
+    processHeapUsedMb: Math.round(procMem.heapUsed / (1024 * 1024)),
+  };
+}
+
+function measureAmiPingLatency(
+  host = ASTERISK_HOST,
+  port = 5038,
+  user = 'sammy',
+  secret = 'Robert2026RDTGcvgbsg'
+): Promise<{ connected: boolean; latencyMs: number | null; error?: string; asteriskHost: string }> {
+  const now = Date.now();
+  if (amiHealthState.isCircuitOpen && now < amiHealthState.nextAllowedAttemptTime) {
+    const remainingSec = Math.max(1, Math.ceil((amiHealthState.nextAllowedAttemptTime - now) / 1000));
+    return Promise.resolve({
+      connected: false,
+      latencyMs: null,
+      error: `Backoff AMI activo (${remainingSec}s): ${amiHealthState.lastError || 'Sin conexión'}`,
+      asteriskHost: host,
+    });
+  }
+
+  return new Promise((resolve) => {
+    const startedAt = performance.now();
+    const socket = new net.Socket();
+    let buffer = '';
+    let loggedIn = false;
+    let pingSentAt = 0;
+    let settled = false;
+
+    const finish = (connected: boolean, latencyMs: number | null, error?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { socket.destroy(); } catch (_) {}
+      resolve({ connected, latencyMs, error, asteriskHost: host });
+    };
+
+    const timer = setTimeout(() => {
+      finish(false, null, `Timeout AMI Ping (${AMI_TIMEOUT_MS}ms) en ${host}:${port}`);
+    }, AMI_TIMEOUT_MS);
+
+    socket.connect(port, host, () => {
+      socket.write(`Action: Login\r\nUsername: ${user}\r\nSecret: ${secret}\r\nEvents: off\r\nActionID: tel_login\r\n\r\n`);
+    });
+
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString();
+
+      if (!loggedIn && (buffer.includes('Message: Authentication accepted') || buffer.includes('ActionID: tel_login'))) {
+        if (buffer.includes('Message: Authentication failed')) {
+          finish(false, null, `Autenticación AMI fallida para '${user}'`);
+          return;
+        }
+        if (buffer.includes('Authentication accepted') || buffer.includes('Response: Success')) {
+          loggedIn = true;
+          buffer = '';
+          pingSentAt = performance.now();
+          socket.write(`Action: Ping\r\nActionID: tel_ping\r\n\r\n`);
+          return;
+        }
+      }
+
+      if (buffer.includes('Message: Authentication failed')) {
+        finish(false, null, `Autenticación AMI fallida para '${user}'`);
+        return;
+      }
+
+      if (loggedIn && (buffer.includes('Ping: Pong') || buffer.includes('ActionID: tel_ping') || buffer.includes('Response: Success'))) {
+        const endAt = performance.now();
+        // Measure total handshake + ping or pure ping RTT (minimum 0.1ms)
+        const totalMs = Number(Math.max(0.1, endAt - startedAt).toFixed(1));
+        const pingOnlyMs = pingSentAt > 0 ? Number(Math.max(0.1, endAt - pingSentAt).toFixed(1)) : totalMs;
+        recordAmiSuccess();
+        try { socket.write('Action: Logoff\r\n\r\n'); } catch (_) {}
+        finish(true, pingOnlyMs < totalMs ? totalMs : pingOnlyMs);
+      }
+    });
+
+    socket.on('error', (err) => {
+      finish(false, null, `${err.message} (${host}:${port})`);
+    });
+
+    socket.on('close', () => {
+      if (!settled) {
+        finish(false, null, `Socket AMI cerrado inesperadamente (${host}:${port})`);
+      }
+    });
+  });
+}
+
+app.get('/api/system/telemetry', async (req, res) => {
+  const localOnly = req.headers['x-telemetry-local-only'] === '1' || req.query.local === '1';
+
+  // If running outside the VPS (e.g. AI Studio preview) and REMOTE_ASTERISK_HTTP is configured,
+  // try pulling live OS + AMI telemetry directly from the VPS first.
+  if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !localOnly) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2200);
+      const remoteStart = performance.now();
+      const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/system/telemetry?local=1`, {
+        headers: { 'x-telemetry-local-only': '1' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (remoteResp.ok) {
+        const remoteJson = (await remoteResp.json()) as any;
+        if (remoteJson && remoteJson.success) {
+          return res.json({
+            ...remoteJson,
+            proxyRoundTripMs: Number((performance.now() - remoteStart).toFixed(1)),
+            source: 'remote-vps',
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  const cpuPercent = getCpuUsagePercent();
+  const loadAvg = os.loadavg().map((n) => Number(n.toFixed(2)));
+  const cpus = os.cpus();
+  const memory = getRealMemoryStats();
+
+  // Measure real AMI Ping latency (if local Asterisk doesn't exist and REMOTE_ASTERISK_HTTP exists, measure direct AMI or remote HTTP AMI bridge)
+  let amiProbe: { connected: boolean; latencyMs: number | null; error?: string; asteriskHost: string };
+  if (hasLocalAsterisk) {
+    if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
+      amiProbe = {
+        connected: false,
+        latencyMs: null,
+        error: 'Servicio Asterisk detenido (/var/run/asterisk/asterisk.ctl ausente)',
+        asteriskHost: '127.0.0.1',
+      };
+    } else {
+      amiProbe = await measureAmiPingLatency('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg');
+    }
+  } else {
+    amiProbe = await measureAmiPingLatency(ASTERISK_HOST, 5038, 'sammy', 'Robert2026RDTGcvgbsg');
+  }
+
+  // Deduplicate active calls in callStatusStore (since both cleanDest and formattedDest may point to same active call)
+  const uniqueActiveChannels = new Set<string>();
+  for (const call of callStatusStore.values()) {
+    if (call && call.status !== 'ended') {
+      uniqueActiveChannels.add(call.channel || call.number);
+    }
+  }
+
+  res.json({
+    success: true,
+    timestamp: Date.now(),
+    source: hasLocalAsterisk ? 'vps-local' : 'app-host',
+    host: {
+      hostname: os.hostname(),
+      platform: `${os.type()} ${os.release()}`,
+      arch: os.arch(),
+      nodeVersion: process.version,
+      uptimeSec: Math.round(os.uptime()),
+      processUptimeSec: Math.round(process.uptime()),
+      pid: process.pid,
+    },
+    cpu: {
+      percent: cpuPercent,
+      cores: cpus.length,
+      model: cpus[0]?.model || 'Unknown CPU',
+      load1m: loadAvg[0] ?? 0,
+      load5m: loadAvg[1] ?? 0,
+      load15m: loadAvg[2] ?? 0,
+    },
+    memory,
+    ami: {
+      connected: amiProbe.connected,
+      latencyMs: amiProbe.latencyMs,
+      error: amiProbe.error || null,
+      asteriskHost: amiProbe.asteriskHost,
+      isCircuitOpen: amiHealthState.isCircuitOpen,
+      consecutiveFailures: amiHealthState.consecutiveFailures,
+      totalAttempts: amiHealthState.totalAttempts,
+      successfulAttempts: amiHealthState.successfulAttempts,
+      lastError: amiHealthState.lastError || null,
+    },
+    asteriskRuntime: {
+      hasLocalAsterisk,
+      asteriskCtlExists: fs.existsSync('/var/run/asterisk/asterisk.ctl'),
+      activeCalls: uniqueActiveChannels.size,
+      capturedOtps: capturedOtpHistory.length,
+      cliCacheKeys: cliCommandCache.size,
+    },
+  });
+});
+
 // Endpoint to sync all extensions directly into /etc/asterisk/pjsip.conf and reload
 app.post('/api/asterisk/sync/extensions', async (req, res) => {
   try {
@@ -3574,10 +3927,18 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         const uName = u.username || u.id;
         const uCarrier = u.assignedCarrierId || u.carrierId || '';
         if (uName && uCarrier && uCarrier !== 'auto') {
-          executeAsteriskCommand(`database put user_carrier ${uName} "${uCarrier}"`).catch(() => {});
+          executeAsteriskCommand(`database put user_carrier ${uName} "${resolveCarrierNameByRef(uCarrier, validCarriers)}"`).catch(() => {});
         }
       }
     }
+
+    const tenantsToSync = Array.isArray(req.body.tenants) && req.body.tenants.length > 0
+      ? req.body.tenants
+      : loadStoredTenants();
+    if (Array.isArray(req.body.tenants) && req.body.tenants.length > 0) {
+      saveStoredTenants(tenantsToSync);
+    }
+    await syncTenantCarriersToAstDb(tenantsToSync, validCarriers);
 
     // 4. Save default pre-recorded IVR audios into AstDB for fallback and extension 8888 tests
     const defaultIntro = req.body.audioIntro || 'custom/banrearreglado';
@@ -3897,7 +4258,26 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       callRetryAttempts.delete(formattedDest);
     }
 
-    const cleanCarrier = (carrier || '').trim();
+    // Resolve Call Center Tenant & enforce its assigned MagnusBilling SIP carrier when applicable
+    const tenantResolution = resolveTenantCarrierForCall(
+      { tenantId: req.body.tenantId, agentExten: effectiveAgentExten || req.body.agent },
+      lastSyncedCarriers
+    );
+
+    if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && req.body.isAdmin !== true) {
+      return res.status(403).json({
+        success: false,
+        error: `El Call Center "${tenantResolution.tenant.name}" se encuentra suspendido. Contacta al Super Administrador.`,
+      });
+    }
+
+    let cleanCarrier = (carrier || '').trim();
+    if (tenantResolution.carrierName) {
+      const callerIsAdmin = req.body.isAdmin === true;
+      if (!callerIsAdmin || !cleanCarrier || cleanCarrier === 'auto' || cleanCarrier === 'pool') {
+        cleanCarrier = tenantResolution.carrierName;
+      }
+    }
 
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [

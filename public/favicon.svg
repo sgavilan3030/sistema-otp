@@ -1,41 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
   <defs>
-    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+    <linearGradient id="bhBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#020617"/>
-    </radialGradient>
-    <linearGradient id="crownGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#1e293b"/>
-      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#042f2e"/>
       <stop offset="100%" stop-color="#020617"/>
     </linearGradient>
-    <linearGradient id="bandGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#06b6d4"/>
-      <stop offset="50%" stop-color="#3b82f6"/>
+    <linearGradient id="bhAccent" x1="14" y1="16" x2="50" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="45%" stop-color="#34d399"/>
       <stop offset="100%" stop-color="#06b6d4"/>
     </linearGradient>
   </defs>
 
-  <!-- Background circle for high contrast in browser tab -->
-  <circle cx="32" cy="32" r="30" fill="url(#bgGlow)" stroke="#334155" stroke-width="2"/>
+  <rect x="4" y="4" width="56" height="56" rx="15" fill="url(#bhBg)" stroke="#10b981" stroke-opacity="0.45" stroke-width="2"/>
 
-  <!-- Black Hat Crown -->
-  <!-- Crease and top indentation typical of a fedora / black hat -->
-  <path d="M 22 28 C 22 22, 26 15, 32 17 C 38 15, 42 22, 42 28 L 44 38 L 20 38 Z"
-        fill="url(#crownGrad)" stroke="#475569" stroke-width="1.2" stroke-linejoin="round"/>
-  
-  <!-- Crown Top Crease / Dimple -->
-  <path d="M 27 21 C 30 23, 34 23, 37 21" stroke="#334155" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Precision Hex Frame -->
+  <path
+    d="M32 10L50 20.5V43.5L32 54L14 43.5V20.5L32 10Z"
+    stroke="url(#bhAccent)"
+    stroke-width="1.8"
+    stroke-linejoin="round"
+    stroke-opacity="0.35"
+  />
 
-  <!-- Cyber / Secret Agent Band -->
-  <path d="M 19.5 35.5 C 26 37.5, 38 37.5, 44.5 35.5 L 45 38.5 C 38 40.5, 26 40.5, 19 38.5 Z"
-        fill="url(#bandGrad)" opacity="0.95"/>
+  <!-- Minimalist Executive Crest / Hat Silhouette + Voice Bars -->
+  <path
+    d="M23 28.5L25.5 18.5C26 17 27.5 16.5 32 16.5C36.5 16.5 38 17 38.5 18.5L41 28.5"
+    stroke="#f8fafc"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path d="M23.5 25.5H40.5" stroke="#34d399" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M16 30.5C22.5 33 41.5 33 48 30.5" stroke="url(#bhAccent)" stroke-width="2.6" stroke-linecap="round"/>
 
-  <!-- Hat Brim with curved 3D hacker styling -->
-  <path d="M 8 41 C 12 37, 24 38, 32 38 C 40 38, 52 37, 56 41 C 58 43, 54 46, 44 47 C 34 48, 22 47, 12 45 C 7 43.5, 6 42, 8 41 Z"
-        fill="#090d16" stroke="#06b6d4" stroke-width="1.2" stroke-linejoin="round"/>
-  
-  <!-- Brim highlight edge -->
-  <path d="M 10 41.5 C 18 39, 32 39.5, 46 41 C 53 41.8, 55 43, 53 43.8 C 45 46.2, 27 46.5, 14 44.5"
-        stroke="#38bdf8" stroke-width="0.75" stroke-linecap="round" opacity="0.8"/>
+  <!-- Precision Telephony Signal Wave -->
+  <rect x="22" y="38.5" width="3" height="6" rx="1.5" fill="#34d399"/>
+  <rect x="27.5" y="36" width="3" height="11" rx="1.5" fill="#6ee7b7"/>
+  <rect x="33.5" y="37" width="3" height="9" rx="1.5" fill="#34d399"/>
+  <rect x="39" y="39" width="3" height="5" rx="1.5" fill="#38bdf8"/>
 </svg>

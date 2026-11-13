@@ -25,7 +25,9 @@ import {
   RefreshCw,
   Sliders,
   PhoneForwarded,
-  Info
+  Info,
+  ExternalLink,
+  Lock
 } from 'lucide-react';
 import { CallCenterTenant, TenantRechargeHistory, PjsipExtension, CarrierTrunk, SystemUser } from '../types';
 
@@ -58,6 +60,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   onSyncAsterisk,
   onNavigateToManualDialer,
 }) => {
+  const isAdmin = currentUser?.role === 'admin';
   const [activeSubTab, setActiveSubTab] = useState<'groups' | 'ranges' | 'dialplan' | 'recharges'>('groups');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedContext, setCopiedContext] = useState<string | null>(null);
@@ -85,6 +88,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     contactPhone: '',
     contactEmail: '',
     notes: '',
+    magnusBillingUrl: '',
+    magnusSipAccount: '',
   });
 
   // Recharge modal form
@@ -156,13 +161,16 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       contactPhone: '',
       contactEmail: '',
       notes: '',
+      magnusBillingUrl: '',
+      magnusSipAccount: '',
     });
     setEditingTenant(null);
     setIsCreateModalOpen(true);
   };
 
-  // Open Edit Modal
+  // Open Edit Modal (Super Admin only)
   const handleOpenEditModal = (tenant: CallCenterTenant) => {
+    if (!isAdmin) return;
     setFormData({
       name: tenant.name,
       code: tenant.code,
@@ -179,15 +187,17 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       contactPhone: tenant.contactPhone || '',
       contactEmail: tenant.contactEmail || '',
       notes: tenant.notes || '',
+      magnusBillingUrl: tenant.magnusBillingUrl || '',
+      magnusSipAccount: tenant.magnusSipAccount || '',
     });
     setEditingTenant(tenant);
     setIsCreateModalOpen(true);
   };
 
-  // Save Tenant (Create or Edit)
+  // Save Tenant (Create or Edit - Super Admin only)
   const handleSaveTenant = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    if (!isAdmin || !formData.name.trim()) return;
 
     const code = formData.code.trim().toUpperCase() || formData.name.substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const dialplanContext = `tenant_${code.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
@@ -213,6 +223,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         contactEmail: formData.contactEmail.trim(),
         notes: formData.notes.trim(),
         dialplanContext,
+        magnusBillingUrl: formData.magnusBillingUrl.trim(),
+        magnusSipAccount: formData.magnusSipAccount.trim(),
       };
       onUpdateTenant(updated);
     } else {
@@ -238,6 +250,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         notes: formData.notes.trim(),
         createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         dialplanContext,
+        magnusBillingUrl: formData.magnusBillingUrl.trim(),
+        magnusSipAccount: formData.magnusSipAccount.trim(),
       };
       onAddTenant(newTenant);
     }
@@ -325,9 +339,12 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     };
   }, [tenants]);
 
-  // Filtered tenants
+  // Filtered tenants (Non-admin users ONLY see their own assigned Call Center)
   const filteredTenants = useMemo(() => {
     return tenants.filter((t) => {
+      if (!isAdmin && currentUser?.tenantId && t.id !== currentUser.tenantId) {
+        return false;
+      }
       const q = searchTerm.toLowerCase();
       return (
         t.name.toLowerCase().includes(q) ||
@@ -338,7 +355,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         t.extensionEnd.toString().includes(q)
       );
     });
-  }, [tenants, searchTerm]);
+  }, [tenants, searchTerm, isAdmin, currentUser?.tenantId]);
 
   // Copy helper
   const handleCopyText = (text: string, id: string) => {
@@ -415,23 +432,25 @@ same => n,Hangup()
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {onSyncAsterisk && (
+            {isAdmin && onSyncAsterisk && (
               <button
                 onClick={onSyncAsterisk}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all shadow-sm"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all shadow-sm cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4 text-amber-400" />
                 Sincronizar Asterisk
               </button>
             )}
 
-            <button
-              onClick={handleOpenCreateModal}
-              className="px-5 py-2.5 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              Crear Nuevo Call Center
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleOpenCreateModal}
+                className="px-5 py-2.5 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Crear Nuevo Call Center
+              </button>
+            )}
           </div>
         </div>
 
@@ -639,11 +658,12 @@ same => n,Hangup()
                   <div className="space-y-2 text-xs mb-4">
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="text-slate-400 flex items-center gap-1.5">
-                        <Server className="w-3.5 h-3.5 text-amber-400" />
-                        Carrier Troncal:
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        Cuenta SIP / Carrier:
                       </span>
-                      <span className="font-medium text-slate-200">
+                      <span className="font-mono font-semibold text-emerald-300">
                         {carrier ? carrier.name : 'Troncal por defecto'}
+                        {tenant.magnusSipAccount ? ` (${tenant.magnusSipAccount})` : ''}
                       </span>
                     </div>
 
@@ -708,48 +728,67 @@ same => n,Hangup()
                 </div>
 
                 {/* Action Buttons */}
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setRechargeModalTenant(tenant)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-colors flex items-center gap-1.5 shadow-sm"
-                      title="Recargar saldo en dólares o minutos"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Recargar
-                    </button>
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {isAdmin && (
+                      <button
+                        onClick={() => setRechargeModalTenant(tenant)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Recargar saldo en dólares o minutos"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Recargar
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => setProvisionConfirmTenant(tenant)}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 transition-colors flex items-center gap-1"
-                      title="Auto-generar extensiones PJSIP para este rango en Asterisk"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      PJSIP
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setProvisionConfirmTenant(tenant)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Auto-generar extensiones PJSIP para este rango en Asterisk"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        PJSIP
+                      </button>
+                    )}
+
+                    {tenant.magnusBillingUrl && (
+                      <a
+                        href={tenant.magnusBillingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-cyan-300 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 transition-colors flex items-center gap-1.5"
+                        title="Abrir portal MagnusBilling para ver minutos y consumo"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Ver Minutos</span>
+                      </a>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEditModal(tenant)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                      title="Editar configuración del Call Center"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditModal(tenant)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Editar configuración del Call Center"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
 
-                    <button
-                      onClick={() => {
-                        if (confirm(`¿Estás seguro de eliminar el Call Center "${tenant.name}"?`)) {
-                          onDeleteTenant(tenant.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                      title="Eliminar grupo"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => {
+                          if (confirm(`¿Estás seguro de eliminar el Call Center "${tenant.name}"?`)) {
+                            onDeleteTenant(tenant.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                        title="Eliminar grupo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -988,11 +1027,12 @@ same => n,Hangup()
                 </div>
               </div>
 
-              {/* Carrier & Caller ID */}
+              {/* Carrier & Caller ID (Super Admin locked) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Carrier Troncal Asignado
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center justify-between">
+                    <span>Carrier / Cuenta SIP MagnusBilling</span>
+                    <span className="text-[10px] font-mono text-emerald-400">Solo Super Admin</span>
                   </label>
                   <select
                     value={formData.carrierId}
@@ -1001,7 +1041,7 @@ same => n,Hangup()
                   >
                     {carriers.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} ({c.authType === 'ip_auth' ? 'IP-a-IP' : 'Registro'}) - {c.host}
+                        {c.name} ({c.authType === 'ip_auth' ? 'IP-a-IP' : 'Cuenta SIP'}) - {c.host}
                       </option>
                     ))}
                   </select>
@@ -1018,6 +1058,34 @@ same => n,Hangup()
                     value={formData.outboundCallerId}
                     onChange={(e) => setFormData({ ...formData, outboundCallerId: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* MagnusBilling Portal Integration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 border border-cyan-500/20 rounded-xl p-3">
+                <div>
+                  <label className="block text-[11px] text-cyan-300 font-semibold mb-1">
+                    Usuario / Cuenta SIP en MagnusBilling (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. cc_mario"
+                    value={formData.magnusSipAccount}
+                    onChange={(e) => setFormData({ ...formData, magnusSipAccount: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-cyan-300 font-semibold mb-1">
+                    URL Portal MagnusBilling del Cliente (Opcional)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://billing.tuservidor.com"
+                    value={formData.magnusBillingUrl}
+                    onChange={(e) => setFormData({ ...formData, magnusBillingUrl: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
                   />
                 </div>
               </div>

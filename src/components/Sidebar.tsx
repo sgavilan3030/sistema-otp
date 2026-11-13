@@ -23,9 +23,12 @@ import {
   Moon,
   PhoneForwarded,
   Sparkles,
+  Cpu,
+  Mic,
 } from 'lucide-react';
 import { AsteriskConnectionSettings, SystemUser } from '../types';
 import { isTabAllowedForUser, getRoleBadgeInfo } from '../utils/rbac';
+import { BrandLogo, BrandWordmark } from './BrandLogo';
 
 interface SidebarProps {
   activeTab: string;
@@ -43,6 +46,8 @@ interface SidebarProps {
   activeCallCount?: number;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  amdEnabled?: boolean;
+  onOpenAmdModal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -61,6 +66,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeCallCount = 0,
   theme = 'light',
   onToggleTheme,
+  amdEnabled = true,
+  onOpenAmdModal,
 }) => {
   const navItems = [
     {
@@ -179,6 +186,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
     },
     {
+      id: 'telemetry',
+      label: 'Telemetría de Servidor',
+      subtitle: 'CPU, RAM & Latencia AMI',
+      icon: Cpu,
+      badge: 'Live',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
+    },
+    {
       id: 'configs',
       label: 'Archivos .conf',
       subtitle: 'Exportador de Código',
@@ -205,21 +220,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Top Header: Branding & Close Button on Mobile */}
         <div className="p-4 border-b border-slate-800/80 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-900 via-emerald-950 to-emerald-500/30 border border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-500/10 text-emerald-400 font-black text-lg tracking-wider flex-shrink-0 font-mono">
-                🎩
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center space-x-2">
-                  <h1 className="text-sm font-bold text-white tracking-tight leading-tight truncate">
-                    Black Hat Dialer System
-                  </h1>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                </div>
-                <p className="text-[10px] text-emerald-400/80 font-mono tracking-wider uppercase">
-                  System Core &bull; v20.4
-                </p>
-              </div>
+            <div className="flex items-center space-x-3 min-w-0">
+              <BrandLogo size="md" />
+              <BrandWordmark variant="sidebar" subtitle="Cloud PBX Core &bull; v20.4" />
             </div>
 
             {/* Mobile close button */}
@@ -287,6 +290,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>{isSyncing ? 'Sincronizando...' : 'Recarga en Caliente'}</span>
               </div>
               <span className="text-[9px] text-slate-400 font-mono">AMI</span>
+            </button>
+          )}
+
+          {onOpenAmdModal && (
+            <button
+              id="sidebar-btn-amd-config"
+              type="button"
+              onClick={() => {
+                onOpenAmdModal();
+                if (onCloseMobile) onCloseMobile();
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                amdEnabled
+                  ? 'bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-slate-200'
+                  : 'bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/30 text-rose-300'
+              }`}
+              title="Configurar Detección de Grabadora / Contestador (AMD) y límite de reintentos"
+            >
+              <div className="flex items-center space-x-2 min-w-0">
+                <Mic className={`w-3.5 h-3.5 shrink-0 ${amdEnabled ? 'text-emerald-400' : 'text-rose-400'}`} />
+                <span className="truncate">Detección AMD</span>
+              </div>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold shrink-0 ${
+                  amdEnabled
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}
+              >
+                {amdEnabled ? 'ACTIVA' : 'OFF'}
+              </span>
             </button>
           )}
         </div>

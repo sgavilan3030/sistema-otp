@@ -580,6 +580,8 @@ export interface CallCenterTenant {
   createdAt: string;
   lastRechargeDate?: string;
   dialplanContext: string; // e.g. "tenant_alpha"
+  magnusBillingUrl?: string; // URL del portal MagnusBilling para consultar minutos
+  magnusSipAccount?: string; // Nombre de cuenta SIP en MagnusBilling (ej. cc_mario)
 }
 
 export interface TenantRechargeHistory {
