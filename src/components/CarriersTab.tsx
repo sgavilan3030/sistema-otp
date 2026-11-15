@@ -451,10 +451,12 @@ insecure=${carrierInsecure}`;
     const carrierName = c.name.replace(/\s+/g, '_');
     const flags = c.dialFlags || 'Tor';
 
+    const cidLines = c.outboundCallerId && !c.outboundCallerId.includes('5550199')
+      ? ` same => n,Set(CALLERID(num)=${c.outboundCallerId})\n${c.outboundCallerName ? ` same => n,Set(CALLERID(name)=${c.outboundCallerName})\n` : ''}`
+      : ` ; Caller ID asignado directamente por el proveedor SIP (${carrierName})\n`;
+
     return `exten => ${pattern},1,NoOp(--- Llamada Saliente PJSIP via ${carrierName} ---)
- same => n,Set(CALLERID(num)=${c.outboundCallerId || '+18005550199'})
- same => n,Set(CALLERID(name)=${c.outboundCallerName || 'Atención al Cliente'})
- same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
+${cidLines} same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
  same => n,Hangup()`;
   };
 
@@ -555,7 +557,7 @@ insecure=${carrierInsecure}`;
                 Auth: Registro SIP
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                CID: {televoxCarrier?.outboundCallerId || '+18005550199'}
+                CID: {televoxCarrier?.outboundCallerId || 'Asignado por Proveedor'}
               </span>
               {isTelevoxPrimary ? (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-400/50 flex items-center gap-1 shadow-sm">

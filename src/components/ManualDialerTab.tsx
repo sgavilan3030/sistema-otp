@@ -464,7 +464,10 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
     // Call Asterisk Originate API
     try {
-      const carrierTrunk = carriers.find((c) => c.name === effectiveCarrier);
+      const carrierTrunk = carriers.find((c) => c.name === effectiveCarrier || c.id === effectiveCarrier);
+      const rawCarrierCid = String(carrierTrunk?.outboundCallerId || '').trim();
+      const explicitCarrierCid = rawCarrierCid && !rawCarrierCid.includes('5550199') && !/asignado/i.test(rawCarrierCid) ? rawCarrierCid : '';
+      const explicitCarrierName = explicitCarrierCid ? String(carrierTrunk?.outboundCallerName || '').trim() : '';
       const res = await fetch('/api/asterisk/call/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -482,9 +485,9 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
           audioPrompt: selectedAudioPath,
           audioIntro: selectedAudioPath,
           selectedAudioName,
-          callerId: carrierTrunk?.outboundCallerId || '+18494386040',
-          callerIdNum: carrierTrunk?.outboundCallerId || '+18494386040',
-          callerIdName: carrierTrunk?.outboundCallerName || 'Atención al Cliente',
+          callerId: explicitCarrierCid,
+          callerIdNum: explicitCarrierCid,
+          callerIdName: explicitCarrierName,
           timeout: 45000,
           async: true,
           leadName: lead.name,

@@ -79,8 +79,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     extensionEnd: 1020,
     maxConcurrentCalls: 10,
     carrierId: carriers[0]?.id || '',
-    outboundCallerId: '+18005550199',
-    outboundCallerName: 'CALL CENTER',
+    outboundCallerId: '',
+    outboundCallerName: '',
     dollarBalance: 50.0,
     ratePerMinute: 0.015,
     cutoffOnZero: true,
@@ -152,8 +152,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       extensionEnd: proposedEnd,
       maxConcurrentCalls: 10,
       carrierId: carriers[0]?.id || '',
-      outboundCallerId: '+18005550199',
-      outboundCallerName: 'CALL CENTER',
+      outboundCallerId: '',
+      outboundCallerName: '',
       dollarBalance: 50.0,
       ratePerMinute: 0.015,
       cutoffOnZero: true,
@@ -387,10 +387,9 @@ same => n,Set(__TENANT_ID=${t.id})
 same => n,Set(__TENANT_RATE=${t.ratePerMinute})
 ${t.cutoffOnZero ? `same => n,GotoIf($[${t.dollarBalance} <= 0]?saldo_agotado,1)` : ''}
 
-; 3. Inyección automática de Caller ID corporativo del Tenant
+; 3. Caller ID asignado por el proveedor SIP de la troncal (${carrierTrunkName})${t.outboundCallerId && !t.outboundCallerId.includes('5550199') ? `
 same => n,Set(CALLERID(num)=${t.outboundCallerId})
-same => n,Set(CALLERID(name)=${t.outboundCallerName || t.name})
-same => n,Set(PJSIP_HEADER(add,P-Asserted-Identity)=<sip:${t.outboundCallerId.replace(/[^0-9+]/g, '')}@${carrier?.host || '127.0.0.1'}>)
+same => n,Set(CALLERID(name)=${t.outboundCallerName || t.name})` : ''}
 
 ; 4. Envío de llamada por troncal asignada (${carrierTrunkName})
 same => n,Dial(PJSIP/\${EXTEN}@${carrierTrunkName},60,Tor)
@@ -1051,12 +1050,11 @@ same => n,Hangup()
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Caller ID Saliente (Número)
+                    Caller ID Saliente (Opcional — lo asigna el proveedor)
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="+18005550199"
+                    placeholder="Asignado por Proveedor SIP"
                     value={formData.outboundCallerId}
                     onChange={(e) => setFormData({ ...formData, outboundCallerId: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"

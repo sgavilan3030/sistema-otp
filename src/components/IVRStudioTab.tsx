@@ -612,7 +612,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         body: JSON.stringify({
           destination: testPhone.trim(),
           carrier: activeCarrierName,
-          callerId: '+18005550199',
+          callerId: '',
           agentExten: userExtension,
           entityId: currentSelectedEntity?.id,
           service: currentSelectedEntity?.name,

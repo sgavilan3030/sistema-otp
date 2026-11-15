@@ -67,7 +67,7 @@ export default function App() {
             .filter((c: CarrierTrunk) => c && c.name && c.host)
             .map((c: CarrierTrunk): CarrierTrunk => ({
               ...c,
-              outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? 'Atención al Cliente' : c.outboundCallerName,
+              outboundCallerName: c.outboundCallerName === 'Seguridad Bancaria' ? '' : c.outboundCallerName,
             }));
         }
       }
@@ -780,9 +780,9 @@ export default function App() {
           transport: 'transport-udp',
           port: 5060,
           status: 'unregistered',
-          callerId: `"${tenant.name}" <${tenant.outboundCallerId}>`,
-          callerIdNum: tenant.outboundCallerId,
-          callerIdName: tenant.outboundCallerName || tenant.name,
+          callerId: `"${tenant.code} Agente ${ext - start + 1}" <${extStr}>`,
+          callerIdNum: extStr,
+          callerIdName: `${tenant.code} Agente ${ext - start + 1}`,
           lastSeen: 'Listo para registrar',
         });
       }
