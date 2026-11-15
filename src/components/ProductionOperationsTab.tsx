@@ -4105,7 +4105,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                                 )}
                               </div>
                               <div className="flex items-center justify-between text-[10px] text-slate-500">
-                                <span className="truncate">CID: {ent.defaultCallerName || 'Predeterminado'}</span>
+                                <span className="truncate">ID Saliente: Asignado por Carrier</span>
                                 {isSelected ? (
                                   <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 shrink-0">
                                     <Check className="w-3 h-3" /> Guión Activo
@@ -5960,49 +5960,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       disabled={!isAdmin}
                       placeholder="ej. Transferencia desconocida"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Icono Representativo</label>
-                    <select
-                      value={editingEntity.icon}
-                      onChange={(e) => setEditingEntity({ ...editingEntity, icon: e.target.value as any })}
-                      disabled={!isAdmin}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      <option value="building">Empresa / Corporativo (Edificio)</option>
-                      <option value="card">Tarjeta de Crédito (Tarjeta)</option>
-                      <option value="message">WhatsApp / Telegram (Mensaje)</option>
-                      <option value="lock">Google / Apple ID (Seguridad)</option>
-                      <option value="shopping">Amazon / Pedidos (Bolsa)</option>
-                      <option value="sliders">Personalizado (Control)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Caller ID Name sugerido</label>
-                    <input
-                      type="text"
-                      value={editingEntity.defaultCallerName || ''}
-                      onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerName: e.target.value })}
-                      disabled={!isAdmin}
-                      placeholder="ej. SERVICIO CLIENTE"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Caller ID Number sugerido</label>
-                    <input
-                      type="text"
-                      value={editingEntity.defaultCallerNum || ''}
-                      onChange={(e) => setEditingEntity({ ...editingEntity, defaultCallerNum: e.target.value })}
-                      disabled={!isAdmin}
-                      placeholder="ej. 8099602110"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
