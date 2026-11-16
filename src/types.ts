@@ -375,6 +375,8 @@ export interface HoldMusicPreset {
   category?: string;
 }
 
+export type CallFlowMode = 'otp' | 'press1' | 'hybrid' | 'cancel_code';
+
 export interface CampaignEntity {
   id: string;
   name: string;
@@ -384,8 +386,9 @@ export interface CampaignEntity {
   defaultCallerName?: string;
   defaultCallerNum?: string;
   introAudioPath: string;    // Saludo / Alerta
-  promptAudioPath: string;   // Solicitud OTP
+  promptAudioPath: string;   // Solicitud OTP / Código de Cancelación
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
+  cancelCodeAudioPath?: string; // Audio al marcar 1: "Un momento por favor, le estamos enviando un código de cancelación"
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
