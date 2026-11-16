@@ -1564,6 +1564,11 @@ async function syncTenantCarriersToAstDb(tenantsList: any[], carriersList?: any[
         executeAsteriskCommand(`database del user_carrier ${ext}`).catch(() => {});
       }
     }
+    if (t.id) {
+      executeAsteriskCommand(`database put tenant_balance ${t.id} "${Number(t.dollarBalance) || 0}"`).catch(() => {});
+      executeAsteriskCommand(`database put tenant_cutoff ${t.id} "${t.cutoffOnZero !== false ? '1' : '0'}"`).catch(() => {});
+      executeAsteriskCommand(`database put tenant_status ${t.id} "${String(t.status || 'active')}"`).catch(() => {});
+    }
   }
 }
 
@@ -2406,7 +2411,21 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
-  dialplanContent += `; 1. Llamadas internas entre extensiones de todos los Call Centers (1XXX, 2XXX, 3XXX, 5XXX-9XXX; 4XXX reservado para OTP) con Audio nativo limpio\n`;
+  dialplanContent += `; 1. Llamadas internas exactas para todas las extensiones configuradas (2-6 digitos o nombre) desde MicroSIP\n`;
+  const seenInternalExts = new Set<string>();
+  for (const ext of extsList) {
+    const extNum = String(ext?.extension || ext?.id || ext?.number || ext?.num || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+    if (!extNum || seenInternalExts.has(extNum.toLowerCase())) continue;
+    if (/^4\d{3}$/.test(extNum) || extNum === '8888' || extNum === '8880') continue;
+    seenInternalExts.add(extNum.toLowerCase());
+    dialplanContent += `exten => ${extNum},1,NoOp(Llamada interna directa a extension ${extNum} desde MicroSIP)\n`;
+    dialplanContent += ` same => n,StopMusicOnHold()\n`;
+    dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/${extNum},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
+    dialplanContent += ` same => n,Hangup()\n\n`;
+  }
+
+  dialplanContent += `; 1a. Llamadas internas entre extensiones de todos los Call Centers (1XXX, 2XXX, 3XXX, 5XXX-9XXX; 4XXX reservado para OTP) con Audio nativo limpio\n`;
   dialplanContent += `exten => _[12356789]XXX,1,NoOp(Llamada interna a extension \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
@@ -2417,7 +2436,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   // 2a. Extensiones Dinámicas de Captura OTP (desde 4001 en adelante _4XXX)
@@ -2491,6 +2510,24 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => *8888,1,Goto(*43,1)\n`;
   dialplanContent += `exten => 8880,1,Goto(*43,1)\n\n`;
 
+  const usedTrunkEndpointSlugs = new Set<string>(extsList.map((e: any) => String(e.extension || '').toLowerCase()));
+  const carrierEndpointMap = new Map<string, string>();
+  carriersList.forEach((c: any, idx: number) => {
+    if (!c || !c.name || !c.host) return;
+    const isEnabled = c.enabled !== false && c.status !== 'disabled';
+    if (!isEnabled) return;
+    const baseSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_') || `trunk_${idx + 1}`;
+    let epName = baseSlug;
+    if (usedTrunkEndpointSlugs.has(epName)) {
+      epName = epName.startsWith('trunk_') ? `${epName}_${idx + 1}` : `trunk_${epName}`;
+      if (usedTrunkEndpointSlugs.has(epName)) {
+        epName = `trunk_${baseSlug}_${idx + 1}`;
+      }
+    }
+    usedTrunkEndpointSlugs.add(epName);
+    carrierEndpointMap.set(String(c.id || c.name || idx), epName);
+  });
+
   const generateOutboundDialSteps = (destVar: string, tag: string) => {
     if (enabledCarriers.length === 0) {
       return ` same => n,NoOp(=== [ALERTA] No hay troncales SIP habilitadas en el sistema para destino ${destVar} ===)\n` +
@@ -2500,7 +2537,7 @@ export function generateCleanDialplanConf(
     let block = '';
     const labelEnd = `end_carrier_${tag}`;
 
-    // 1. Resolve ASSIGNED_CARRIER from channel variable (AMI/Tenant Context), AstDB ivr_vars, user_carrier, or Tenant Extension Range
+    // 1. Resolve ASSIGNED_CARRIER and TENANT_ID from channel variable (AMI/Tenant Context), AstDB ivr_vars, user_carrier, or Tenant Extension Range
     block += ` same => n,Set(DIAL_NUM=${destVar})\n`;
     block += ` same => n,ExecIf($[\${LEN(\${DIAL_NUM})} > 11 & "\${DIAL_NUM:0:2}" = "77"]?Set(DIAL_NUM=\${DIAL_NUM:2}))\n`;
     block += ` same => n,ExecIf($[\${LEN(\${DIAL_NUM})} > 10 & "\${DIAL_NUM:0:3}" = "018"]?Set(DIAL_NUM=\${DIAL_NUM:3}))\n`;
@@ -2513,21 +2550,40 @@ export function generateCleanDialplanConf(
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLERID(num)})}))\n`;
     block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = ""]?Set(ASSIGNED_CARRIER=\${DB(user_carrier/\${CALLING_AGENT})}))\n`;
     for (const tenant of storedTenantsForDialplan) {
-      if (!tenant || !tenant.carrierId || tenant.carrierId === 'auto') continue;
+      if (!tenant) continue;
       const tStart = Number(tenant.extensionStart);
       const tEnd = Number(tenant.extensionEnd);
       if (isNaN(tStart) || isNaN(tEnd) || tEnd < tStart) continue;
+      if (tenant.id) {
+        block += ` same => n,ExecIf($["\${TENANT_ID}" = "" & \${REGEX("^[0-9]+$" \${CALLING_USER_CHAN})} = 1 & \${CALLING_USER_CHAN} >= ${tStart} & \${CALLING_USER_CHAN} <= ${tEnd}]?Set(__TENANT_ID=${tenant.id}))\n`;
+      }
+      if (!tenant.carrierId || tenant.carrierId === 'auto') continue;
       const tCarrierSlug = resolveCarrierNameByRef(tenant.carrierId, carriersList);
       if (tCarrierSlug && tCarrierSlug !== 'auto' && tCarrierSlug !== 'pool') {
         block += ` same => n,ExecIf($["\${ASSIGNED_CARRIER}" = "" & \${REGEX("^[0-9]+$" \${CALLING_USER_CHAN})} = 1 & \${CALLING_USER_CHAN} >= ${tStart} & \${CALLING_USER_CHAN} <= ${tEnd}]?Set(ASSIGNED_CARRIER=${tCarrierSlug}))\n`;
       }
     }
+    // Check Tenant balance cutoff when dialing directly from MicroSIP
+    block += ` same => n,GotoIf($["\${TENANT_ID}" = ""]?skip_tenant_bal_${tag})\n`;
+    block += ` same => n,Set(TENANT_BAL=\${DB(tenant_balance/\${TENANT_ID})})\n`;
+    block += ` same => n,Set(TENANT_CUT=\${DB(tenant_cutoff/\${TENANT_ID})})\n`;
+    block += ` same => n,GotoIf($["\${TENANT_BAL}" = ""]?skip_tenant_bal_${tag})\n`;
+    block += ` same => n,GotoIf($[0\${TENANT_BAL} > 0]?skip_tenant_bal_${tag})\n`;
+    block += ` same => n,GotoIf($["\${TENANT_CUT}" != "1"]?skip_tenant_bal_${tag})\n`;
+    block += ` same => n,NoOp(=== [CORTE CALL CENTER $0.00] Tenant \${TENANT_ID} (Ext \${CALLING_USER_CHAN}) sin saldo prepago ===)\n`;
+    block += ` same => n,Congestion(34)\n`;
+    block += ` same => n,Hangup()\n`;
+    block += ` same => n(skip_tenant_bal_${tag}),NoOp()\n`;
+    // Register live direct MicroSIP outbound calls into Monitor & concurrency tracker
+    block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${DIAL_NUM}&status=talking&agent=\${CALLING_USER_CHAN}&tenant=\${TENANT_ID}&channel=\${CHANNEL}" &))\n`;
+
     block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = "" || "\${ASSIGNED_CARRIER}" = "auto" || "\${ASSIGNED_CARRIER}" = "pool"]?standard_carriers_${tag})\n`;
     block += ` same => n,NoOp(=== [CARRIER DEDICADO] Intentando troncal exclusiva asignada: \${ASSIGNED_CARRIER} para destino \${DIAL_NUM} ===)\n`;
 
     // Dedicated carrier routing (STRICT ISOLATION: never failover to another Call Center's carrier)
-    enabledCarriers.forEach((c) => {
+    enabledCarriers.forEach((c, cIdx) => {
       const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const epName = carrierEndpointMap.get(String(c.id || c.name || cIdx)) || cSlug;
       const cId = c.id;
       let cHost = (c.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '');
       let cPort = Number(c.port) || 5060;
@@ -2542,22 +2598,22 @@ export function generateCleanDialplanConf(
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const rawOutCid = String(c.outboundCallerId || '').trim();
       const cOutCid = (rawOutCid && !rawOutCid.includes('5550199') && !/asignado/i.test(rawOutCid)) ? rawOutCid.replace(/[^0-9+]/g, '') : '';
-      const cOutArg2 = cOutCid ? String(c.outboundCallerName || c.outboundCallerIdName || '').trim() : (isIpAuth ? '' : cUser);
-      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const cOutArg2 = cOutCid ? String(c.outboundCallerName || c.outboundCallerIdName || '').trim() : (isIpAuth ? String(c.fromuser || '').trim() : cUser);
+      const primaryDialTarget = isIpAuth ? `PJSIP/${epName}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${epName}`;
+      const fallbackDialTarget = `PJSIP/${epName}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
-      block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
+      block += ` same => n,GotoIf($["\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${cSlug}" && "\${TOLOWER(\${ASSIGNED_CARRIER})}" != "${epName}" && "\${ASSIGNED_CARRIER}" != "${cId}" && "\${ASSIGNED_CARRIER}" != "${c.name}"]?skip_dedicated_${cSlug}_${tag})\n`;
       if (cOutCid) {
         block += ` same => n,Set(CALLERID(num)=${cOutCid})\n`;
       }
-      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Exclusiva: ${cSlug} (${cHost}:${cPort}) a ${numWithPrefix} | CID=${cOutCid || 'Asignado por Proveedor'} ===)\n`;
-      block += ` same => n,Dial(${primaryDialTarget},40,TtIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
-      block += ` same => n,NoOp(=== Troncal Exclusiva ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Exclusiva: ${epName} (${cHost}:${cPort}) a ${numWithPrefix} | CID=${cOutCid || 'Asignado por Proveedor'} ===)\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,TIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
+      block += ` same => n,NoOp(=== Troncal Exclusiva ${epName} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},25,TtIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,TIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
       }
-      block += ` same => n,NoOp(=== [AISLAMIENTO ESTRICTO] Troncal exclusiva ${cSlug} finalizada (\${DIALSTATUS}) - NO conmuta a troncales de otros Call Centers ===)\n`;
+      block += ` same => n,NoOp(=== [AISLAMIENTO ESTRICTO] Troncal exclusiva ${epName} finalizada (\${DIALSTATUS}) - NO conmuta a troncales de otros Call Centers ===)\n`;
       block += ` same => n,Goto(${labelEnd})\n`;
       block += ` same => n(skip_dedicated_${cSlug}_${tag}),NoOp()\n`;
     });
@@ -2566,6 +2622,7 @@ export function generateCleanDialplanConf(
     block += ` same => n(standard_carriers_${tag}),NoOp(=== [OUTBOUND POOL] Iniciando ruteo por pool de ${enabledCarriers.length} troncal(es) habilitada(s) ===)\n`;
     enabledCarriers.forEach((c, idx) => {
       const cSlug = c.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const epName = carrierEndpointMap.get(String(c.id || c.name || idx)) || cSlug;
       const isFirst = idx === 0;
       const labelNext = `try_carrier_${tag}_${idx + 1}`;
       let cHost = (c.host || '').trim().replace(/^https?:\/\//i, '').replace(/^sips?:/i, '').replace(/^\/\//, '').replace(/\/.*$/, '');
@@ -2581,24 +2638,24 @@ export function generateCleanDialplanConf(
       const numWithPrefix = cPrefix ? `${cPrefix}\${DIAL_NUM}` : `\${DIAL_NUM}`;
       const rawOutCid = String(c.outboundCallerId || '').trim();
       const cOutCid = (rawOutCid && !rawOutCid.includes('5550199') && !/asignado/i.test(rawOutCid)) ? rawOutCid.replace(/[^0-9+]/g, '') : '';
-      const cOutArg2 = cOutCid ? String(c.outboundCallerName || c.outboundCallerIdName || '').trim() : (isIpAuth ? '' : cUser);
-      const primaryDialTarget = isIpAuth ? `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${cSlug}`;
-      const fallbackDialTarget = `PJSIP/${cSlug}/sip:${numWithPrefix}@${cHost}:${cPort}`;
+      const cOutArg2 = cOutCid ? String(c.outboundCallerName || c.outboundCallerIdName || '').trim() : (isIpAuth ? String(c.fromuser || '').trim() : cUser);
+      const primaryDialTarget = isIpAuth ? `PJSIP/${epName}/sip:${numWithPrefix}@${cHost}:${cPort}` : `PJSIP/${numWithPrefix}@${epName}`;
+      const fallbackDialTarget = `PJSIP/${epName}/sip:${numWithPrefix}@${cHost}:${cPort}`;
 
       if (!isFirst) {
-        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${cSlug} (${cHost}:${cPort}) ===)\n`;
+        block += ` same => n(${labelNext}),NoOp(=== [FAILOVER] Conmutando llamada a Troncal ${idx + 1}/${enabledCarriers.length}: ${epName} (${cHost}:${cPort}) ===)\n`;
       } else {
-        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${cSlug} (${cHost}:${cPort}) a ${numWithPrefix} ===)\n`;
+        block += ` same => n,NoOp(=== [OUTBOUND POOL] Intentando llamada por Troncal Primaria: ${epName} (${cHost}:${cPort}) a ${numWithPrefix} ===)\n`;
       }
 
       if (cOutCid) {
         block += ` same => n,Set(CALLERID(num)=${cOutCid})\n`;
       }
-      block += ` same => n,Dial(${primaryDialTarget},40,TtIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
-      block += ` same => n,NoOp(=== Troncal ${cSlug} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,TIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
+      block += ` same => n,NoOp(=== Troncal ${epName} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},25,TtIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,TIb(sub-pjsip-outbound^s^1^${cOutCid}^${cOutArg2}))\n`;
         block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       }
     });
@@ -2623,10 +2680,10 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 16104803845) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1XXXXXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
-  dialplanContent += ` same => n,Set(CALLING_USER=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
-  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${CALLING_USER})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP" || "\${CALLING_AGENT}" = ""]?Set(__CALLING_AGENT=\${CALLING_USER}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP" || "\${IVR_AGENT_EXTEN}" = ""]?Set(__IVR_AGENT_EXTEN=\${CALLING_USER}))\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CLIENT_BAL=\${IF($["\${DB(reseller_balance/\${CALLING_USER})}" != ""]?\${DB(reseller_balance/\${CALLING_USER})}:\${DB(reseller_balance/\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(CLIENT_CUT=\${IF($["\${DB(reseller_cutoff/\${CALLING_USER})}" != ""]?\${DB(reseller_cutoff/\${CALLING_USER})}:\${DB(reseller_cutoff/\${CALLERID(num)})})})\n`;
@@ -2654,10 +2711,10 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 11 & "\${EXTEN:0:2}" = "77"]?Goto(from-internal,\${EXTEN:2},1))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 10 & "\${EXTEN:0:3}" = "018"]?Goto(from-internal,\${EXTEN:3},1))\n`;
-  dialplanContent += ` same => n,Set(CALLING_USER=\${CALLERID(num)})\n`;
+  dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
-  dialplanContent += ` same => n,Set(__CALLING_AGENT=\${CALLING_USER})\n`;
-  dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${CALLING_USER})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP" || "\${CALLING_AGENT}" = ""]?Set(__CALLING_AGENT=\${CALLING_USER}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP" || "\${IVR_AGENT_EXTEN}" = ""]?Set(__IVR_AGENT_EXTEN=\${CALLING_USER}))\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CLIENT_BAL=\${IF($["\${DB(reseller_balance/\${CALLING_USER})}" != ""]?\${DB(reseller_balance/\${CALLING_USER})}:\${DB(reseller_balance/\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(CLIENT_CUT=\${IF($["\${DB(reseller_cutoff/\${CALLING_USER})}" != ""]?\${DB(reseller_cutoff/\${CALLING_USER})}:\${DB(reseller_cutoff/\${CALLERID(num)})})})\n`;
@@ -3320,7 +3377,14 @@ export function generateCleanDialplanConf(
     dialplanContent += ` same => n,Set(__TENANT_ID=${t.id || t.code})\n`;
     dialplanContent += ` same => n,Goto(from-internal,\${EXTEN},1)\n`;
     dialplanContent += `exten => _+X.,1,Goto(${t.dialplanContext},\${EXTEN:1},1)\n`;
-    dialplanContent += `exten => _*X.,1,Goto(from-internal,\${EXTEN},1)\n\n`;
+    dialplanContent += `exten => _*X.,1,Goto(from-internal,\${EXTEN},1)\n`;
+    dialplanContent += `exten => _[a-zA-Z].,1,NoOp(=== [TENANT ${t.code || t.dialplanContext}] Extension por nombre: \${EXTEN} ===)\n`;
+    if (tCarrierSlug && tCarrierSlug !== 'auto' && tCarrierSlug !== 'pool') {
+      dialplanContent += ` same => n,Set(__ASSIGNED_CARRIER=${tCarrierSlug})\n`;
+      dialplanContent += ` same => n,Set(__OUTBOUND_CARRIER=${tCarrierSlug})\n`;
+    }
+    dialplanContent += ` same => n,Set(__TENANT_ID=${t.id || t.code})\n`;
+    dialplanContent += ` same => n,Goto(from-internal,\${EXTEN},1)\n\n`;
   }
 
   return dialplanContent;
@@ -7284,6 +7348,7 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
   const channel = String(req.query.channel || req.body?.channel || '').trim();
   const digit = String(req.query.digit || req.body?.digit || '').trim();
   const agent = String(req.query.agent || req.body?.agent || '').trim();
+  const tenant = String(req.query.tenant || req.body?.tenant || '').trim();
 
   if (number) {
     const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
@@ -7294,7 +7359,7 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
     let answeredAt = existing?.answeredAt;
     let pressed1At = existing?.pressed1At;
 
-    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1') && !answeredAt) {
+    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1' || status === 'talking') && !answeredAt) {
       answeredAt = Date.now();
     }
     if (status === 'pressed_1' || digit === '1') {
@@ -7315,7 +7380,7 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
       answeredAt,
       pressed1At,
       duration,
-      tenantId: existing?.tenantId,
+      tenantId: tenant || existing?.tenantId,
       isOnHold: existing?.isOnHold,
       bridgedChannel: existing?.bridgedChannel,
     };
@@ -8895,6 +8960,10 @@ app.get('/api/reseller/deduct', (req, res) => {
         }
         tenantsList[tIdx] = targetTenant;
         saveStoredTenants(tenantsList);
+        if (targetTenant.id) {
+          executeAsteriskCommand(`database put tenant_balance ${targetTenant.id} "${newBal}"`).catch(() => {});
+          executeAsteriskCommand(`database put tenant_status ${targetTenant.id} "${String(targetTenant.status || 'active')}"`).catch(() => {});
+        }
         if (dest) {
           console.log(`[TENANT BILLING] ${targetTenant.name}: -${billedMinutes} min ($${tCost}) por llamada a ${dest} | Saldo restante: $${newBal}`);
         }
