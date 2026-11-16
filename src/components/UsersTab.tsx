@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk, CallCenterTenant } from '../types';
 import {
   Users,
@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Network,
   Building2,
+  BookOpen,
 } from 'lucide-react';
 
 interface UsersTabProps {
@@ -77,14 +78,55 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [filterTenantId, setFilterTenantId] = useState<string>('all');
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
+  const [formAssignedEntityIds, setFormAssignedEntityIds] = useState<string[]>([]);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
-  // Modals for MicroSIP setup and balance recharge
+  // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts — no fake inactive templates)
+  const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() => {
+    try {
+      const saved = localStorage.getItem('prod_campaign_entities_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((e: any) => e && e.id && e.isActive !== false)
+            .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }));
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+
+  const refreshMasterEntities = useCallback(() => {
+    fetch('/api/app/master-entities')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.entities)) {
+          setAvailableEntities(
+            data.entities
+              .filter((e: any) => e && e.id && e.isActive !== false)
+              .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshMasterEntities();
+    const onFocus = () => refreshMasterEntities();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshMasterEntities]);
+
+  // Modals for MicroSIP setup, balance recharge, and scripts assignment
   const [microsipModalUser, setMicrosipModalUser] = useState<SystemUser | null>(null);
   const [rechargeModalUser, setRechargeModalUser] = useState<SystemUser | null>(null);
   const [rechargeAmount, setRechargeAmount] = useState<number>(10);
+  const [scriptsModalUser, setScriptsModalUser] = useState<SystemUser | null>(null);
+  const [scriptsModalSelectedIds, setScriptsModalSelectedIds] = useState<string[]>([]);
 
   const [permissions, setPermissions] = useState<UserPermissions>({
     canManageExtensions: false,
@@ -268,6 +310,7 @@ regInterval=300
   };
 
   const handleOpenCreateModal = () => {
+    refreshMasterEntities();
     setEditingUser(null);
     setFormName('');
     setFormEmail('');
@@ -282,6 +325,7 @@ regInterval=300
     setFormCarrierId('auto');
     setFormTenantId('');
     setFormStatus('active');
+    setFormAssignedEntityIds([]);
     // Standalone non-Call-Center clients default to next free 2001+ extension
     const nextClientExt = getNextClientExtension2001();
     setSelectedExts([nextClientExt]);
@@ -290,6 +334,7 @@ regInterval=300
   };
 
   const handleOpenEditModal = (user: SystemUser) => {
+    refreshMasterEntities();
     setEditingUser(user);
     setFormName(user.name);
     setFormEmail(user.email);
@@ -316,7 +361,60 @@ regInterval=300
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
     setPermissions(user.permissions);
+    const activeIdSet = new Set(availableEntities.map((e) => e.id));
+    if (Array.isArray(user.assignedEntityIds)) {
+      setFormAssignedEntityIds(
+        user.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+      );
+    } else if (user.tenantId) {
+      const userTenantObj = tenants.find((t) => t.id === user.tenantId);
+      setFormAssignedEntityIds(
+        Array.isArray(userTenantObj?.assignedEntityIds)
+          ? userTenantObj.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+          : availableEntities.map((e) => e.id)
+      );
+    } else {
+      setFormAssignedEntityIds(availableEntities.map((e) => e.id));
+    }
     setIsModalOpen(true);
+  };
+
+  const handleOpenUserScriptsModal = (user: SystemUser) => {
+    refreshMasterEntities();
+    const activeIdSet = new Set(availableEntities.map((e) => e.id));
+    setScriptsModalUser(user);
+    if (Array.isArray(user.assignedEntityIds)) {
+      setScriptsModalSelectedIds(
+        user.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+      );
+    } else if (user.tenantId) {
+      const userTenantObj = tenants.find((t) => t.id === user.tenantId);
+      setScriptsModalSelectedIds(
+        Array.isArray(userTenantObj?.assignedEntityIds)
+          ? userTenantObj.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+          : availableEntities.map((e) => e.id)
+      );
+    } else {
+      setScriptsModalSelectedIds(availableEntities.map((e) => e.id));
+    }
+  };
+
+  const handleSaveUserScripts = () => {
+    if (!scriptsModalUser) return;
+    const isGlobalSuperAdmin = scriptsModalUser.role === 'admin' && !scriptsModalUser.tenantId;
+    const updatedUser: SystemUser = {
+      ...scriptsModalUser,
+      assignedEntityIds: isGlobalSuperAdmin ? undefined : [...scriptsModalSelectedIds],
+    };
+    onUpdateUser(updatedUser);
+    fetch('/api/users/sync-sip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: updatedUser }),
+    }).catch(() => {});
+    setSyncFeedback(`✓ Guiones actualizados para ${scriptsModalUser.name} (${scriptsModalSelectedIds.length} activos asignados).`);
+    setTimeout(() => setSyncFeedback(null), 4000);
+    setScriptsModalUser(null);
   };
 
   const toggleExtensionAssignment = (extNum: string) => {
@@ -352,6 +450,9 @@ regInterval=300
     ];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
+    const finalRole = formAccountType === 'reseller_client' ? 'reseller_client' : formRole;
+    const isGlobalSuperAdmin = finalRole === 'admin' && !formTenantId;
+
     const userObj: SystemUser = {
       ...(editingUser || {}),
       id: editingUser ? editingUser.id : `user-${Date.now()}`,
@@ -359,7 +460,7 @@ regInterval=300
       email: formEmail,
       username: usernameFinal,
       password: passwordFinal,
-      role: formAccountType === 'reseller_client' ? 'reseller_client' : formRole,
+      role: finalRole,
       accountType: formAccountType,
       balance: formBalance,
       costPerMinute: formRate,
@@ -370,6 +471,7 @@ regInterval=300
       assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       tenantId: formTenantId ? formTenantId : undefined,
       assignedExtensions: selectedExts,
+      assignedEntityIds: isGlobalSuperAdmin ? undefined : [...formAssignedEntityIds],
       permissions,
       status: formStatus,
       avatarColor: editingUser?.avatarColor || randomColor,
@@ -795,9 +897,67 @@ regInterval=300
                     </span>
                   ) : (
                     <span className="text-[10px] text-slate-400 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                      🌐 Administrador Global
+                      🌐 Cliente / Global
                     </span>
                   )}
+                </div>
+
+                {/* Assigned Guiones / Entidades IVR Badge */}
+                <div className="mb-2.5 p-2 rounded-lg bg-slate-950/80 border border-sky-500/25 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1">
+                      <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Guiones IVR Asignados</span>
+                    </span>
+                    {!(user.role === 'admin' && !user.tenantId) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenUserScriptsModal(user)}
+                        className="text-[10px] font-bold text-sky-300 hover:text-sky-200 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                      >
+                        Agregar / Quitar
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {user.role === 'admin' && !user.tenantId ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        Acceso Global ({availableEntities.length} activos)
+                      </span>
+                    ) : !Array.isArray(user.assignedEntityIds) ? (
+                      user.tenantId ? (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          Hereda del Call Center
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                          Todos los activos ({availableEntities.length})
+                        </span>
+                      )
+                    ) : (() => {
+                      const activeIds = availableEntities.length > 0
+                        ? user.assignedEntityIds.filter((id) => availableEntities.some((e) => e.id === id))
+                        : user.assignedEntityIds;
+                      if (activeIds.length === 0) {
+                        return (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Sin guiones asignados (0/{availableEntities.length})
+                          </span>
+                        );
+                      }
+                      return activeIds.map((entId) => {
+                        const entMeta = availableEntities.find((e) => e.id === entId);
+                        return (
+                          <span
+                            key={entId}
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-500/30"
+                          >
+                            {entMeta ? entMeta.name : entId}
+                          </span>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
 
                 {/* Assigned Extensions (>= 1001) */}
@@ -859,6 +1019,23 @@ regInterval=300
                 <span className="text-[11px] text-slate-500 font-mono">{user.lastLogin}</span>
 
                 <div className="flex items-center space-x-2">
+                  {!(user.role === 'admin' && !user.tenantId) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUserScriptsModal(user)}
+                      className="px-2 py-1 rounded text-[11px] font-semibold text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Asignar o quitar Guiones / Entidades activos para este usuario"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>
+                        Guiones (
+                        {Array.isArray(user.assignedEntityIds)
+                          ? user.assignedEntityIds.filter((id) => availableEntities.length === 0 || availableEntities.some((e) => e.id === id)).length
+                          : availableEntities.length}
+                        /{availableEntities.length})
+                      </span>
+                    </button>
+                  )}
                   <button
                     onClick={() => handleOpenEditModal(user)}
                     className="p-1.5 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors"
@@ -1231,10 +1408,22 @@ regInterval=300
 
                 <select
                   value={formTenantId}
-                  onChange={(e) => setFormTenantId(e.target.value)}
+                  onChange={(e) => {
+                    const nextTenantId = e.target.value;
+                    setFormTenantId(nextTenantId);
+                    if (!editingUser && nextTenantId) {
+                      const t = tenants.find((item) => item.id === nextTenantId);
+                      if (t && Array.isArray(t.assignedEntityIds)) {
+                        const activeIdSet = new Set(availableEntities.map((ent) => ent.id));
+                        setFormAssignedEntityIds(
+                          t.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+                        );
+                      }
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-indigo-500/30 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 font-mono"
                 >
-                  <option value="">🌐 Sin asignar (Administrador Global / Sistema - Gestiona todos los centros)</option>
+                  <option value="">🌐 Sin asignar (Cliente Individual 2001+ o Administrador Global)</option>
                   {tenants.map((t) => (
                     <option key={t.id} value={t.id}>
                       🏢 {t.name} [{t.code}] — Rango Ext: {t.extensionStart}-{t.extensionEnd} ({t.dialplanContext})
@@ -1246,13 +1435,106 @@ regInterval=300
                   <div className="p-2.5 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-200 flex items-start gap-2">
                     <Shield className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold">Partición Activa para este Administrador:</span> Perteneciente al Call Center <strong className="text-white font-mono">{tenants.find((t) => t.id === formTenantId)?.name || formTenantId}</strong>. Sus audios y registros OTP no se cruzarán con otros grupos.
+                      <span className="font-bold">Partición Activa para este Administrador / Agente:</span> Perteneciente al Call Center <strong className="text-white font-mono">{tenants.find((t) => t.id === formTenantId)?.name || formTenantId}</strong>. Sus audios, guiones y registros OTP no se cruzarán con otros grupos.
                     </div>
                   </div>
                 ) : (
                   <p className="text-[10px] text-slate-400">
-                    💡 Modo Global: El administrador tendrá visibilidad y acceso a todos los Call Centers registrados.
+                    💡 Sin Call Center: Ideal para Clientes Individuales (extensión 2001+) o Super Administrador Global.
                   </p>
+                )}
+              </div>
+
+              {/* Guiones / Entidades a Simular Permitidos para este Usuario */}
+              <div className="p-3.5 rounded-lg bg-slate-950 border border-sky-500/30 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label className="text-sky-300 font-bold flex items-center gap-1.5 text-xs">
+                      <BookOpen className="w-4 h-4 text-sky-400" />
+                      <span>
+                        Guiones / Entidades a Simular Permitidos (
+                        {formRole === 'admin' && !formTenantId
+                          ? availableEntities.length
+                          : formAssignedEntityIds.filter((id) => availableEntities.some((e) => e.id === id)).length}
+                        /{availableEntities.length})
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {formRole === 'admin' && !formTenantId
+                        ? 'El Super Administrador Global tiene acceso total a todos los guiones activos.'
+                        : 'Solo aparecen tus guiones activos reales. Selecciona cuáles podrá trabajar este usuario cada día sin mezclarse con otros.'}
+                    </p>
+                  </div>
+                  {!(formRole === 'admin' && !formTenantId) && availableEntities.length > 0 && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setFormAssignedEntityIds(availableEntities.map((e) => e.id))}
+                        className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormAssignedEntityIds([])}
+                        className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                      >
+                        Ninguno
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {formRole === 'admin' && !formTenantId ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/25 border border-emerald-500/30 text-[11px] text-emerald-300">
+                    ✓ Acceso completo habilitado para Super Administrador Global.
+                  </div>
+                ) : availableEntities.length === 0 ? (
+                  <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200">
+                    No hay guiones activos configurados todavía. Ve a <strong>Operaciones → Guión / Entidad a Simular</strong> para crear o activar los guiones reales que utilizas.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {availableEntities.map((ent) => {
+                      const checked = formAssignedEntityIds.includes(ent.id);
+                      const tenantObj = formTenantId ? tenants.find((t) => t.id === formTenantId) : null;
+                      const blockedByTenant = Boolean(
+                        tenantObj &&
+                          Array.isArray(tenantObj.assignedEntityIds) &&
+                          !tenantObj.assignedEntityIds.includes(ent.id)
+                      );
+                      return (
+                        <label
+                          key={ent.id}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
+                            checked
+                              ? 'bg-sky-950/50 border-sky-500/50 text-white'
+                              : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                          } ${blockedByTenant ? 'opacity-60' : ''}`}
+                          title={blockedByTenant ? 'Este guión no está habilitado en el Call Center seleccionado' : ent.name}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...formAssignedEntityIds, ent.id]
+                                : formAssignedEntityIds.filter((id) => id !== ent.id);
+                              setFormAssignedEntityIds(next);
+                            }}
+                            className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold truncate">{ent.name}</div>
+                            {ent.subtitle && <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>}
+                            {blockedByTenant && (
+                              <div className="text-[9px] text-amber-400">No activo en su Call Center</div>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
@@ -1592,6 +1874,125 @@ regInterval=300
                 className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Asignar / Quitar Guiones IVR Activos para Usuario */}
+      {scriptsModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <BookOpen className="w-5 h-5 text-sky-400" />
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    Guiones / Entidades para: {scriptsModalUser.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Elige qué guiones activos podrá usar este usuario sin mezclarse con otros Call Centers ni clientes.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScriptsModalUser(null)}
+                className="text-slate-400 hover:text-white text-sm px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-300 font-semibold">
+                Seleccionados: <strong className="text-sky-400 font-mono">{scriptsModalSelectedIds.filter((id) => availableEntities.some((e) => e.id === id)).length}</strong> de {availableEntities.length} activos
+              </span>
+              {availableEntities.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScriptsModalSelectedIds(availableEntities.map((e) => e.id))}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                  >
+                    Seleccionar Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScriptsModalSelectedIds([])}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                  >
+                    Quitar Todos
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {availableEntities.length === 0 ? (
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200">
+                No hay guiones activos creados todavía. Ve a <strong>Operaciones → Guión / Entidad a Simular</strong> para activar o crear tus guiones reales.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {availableEntities.map((ent) => {
+                  const isAssigned = scriptsModalSelectedIds.includes(ent.id);
+                  return (
+                    <label
+                      key={ent.id}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        isAssigned
+                          ? 'bg-sky-950/40 border-sky-500/50 text-white'
+                          : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setScriptsModalSelectedIds((prev) => [...prev, ent.id]);
+                            } else {
+                              setScriptsModalSelectedIds((prev) => prev.filter((id) => id !== ent.id));
+                            }
+                          }}
+                          className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold truncate">{ent.name}</div>
+                          {ent.subtitle && <div className="text-[11px] text-slate-400 truncate">{ent.subtitle}</div>}
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          isAssigned
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700'
+                        }`}
+                      >
+                        {isAssigned ? 'Habilitado' : 'Oculto'}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setScriptsModalUser(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveUserScripts}
+                className="px-5 py-2 rounded-xl text-xs font-black text-slate-950 bg-sky-400 hover:bg-sky-300 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer"
+              >
+                Guardar Guiones del Usuario
               </button>
             </div>
           </div>

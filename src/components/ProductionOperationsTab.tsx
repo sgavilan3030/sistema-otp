@@ -85,6 +85,7 @@ export interface CampaignEntity {
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
+  isActive?: boolean;        // Si es false, está inactivo y no aparece para asignar a Call Centers ni Usuarios
   campaignId?: string;       // ID de la campaña de marcación vinculada
   campaignName?: string;     // Nombre de la campaña de marcación vinculada
 }
@@ -423,7 +424,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
-  // Initial predefined campaign templates
+  // Initial predefined campaign templates (only 'service' active by default; unused templates marked isActive: false until admin activates or edits them)
   const initialCampaignEntities: CampaignEntity[] = [
     {
       id: 'service',
@@ -438,6 +439,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
+      isActive: true,
     },
     {
       id: 'card',
@@ -452,6 +454,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_asesor_tarjetas',
       successAudioPath: 'custom/tarjeta_protegida',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
+      isActive: false,
     },
     {
       id: 'whatsapp',
@@ -466,6 +469,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_soporte_tecnico',
       successAudioPath: 'custom/verificacion_exitosa',
       holdMusicAudioPath: 'custom/moh_digital_hold',
+      isActive: false,
     },
     {
       id: 'google',
@@ -480,6 +484,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_soporte_cuentas',
       successAudioPath: 'custom/acceso_restringido_exito',
       holdMusicAudioPath: 'custom/moh_digital_hold',
+      isActive: false,
     },
     {
       id: 'amazon',
@@ -494,6 +499,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_soporte_pedidos',
       successAudioPath: 'custom/pedido_cancelado_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
+      isActive: false,
     },
     {
       id: 'custom',
@@ -508,6 +514,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
+      isActive: false,
     },
   ];
 
@@ -1163,6 +1170,33 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
+  // Toggle active/inactive visibility for a script in Call Centers & Users
+  const handleToggleEntityActive = (entityId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede activar o desactivar guiones.');
+      setTimeout(() => setAudioSyncFeedback(null), 3500);
+      return;
+    }
+    const target = campaignEntities.find((item) => item.id === entityId);
+    if (!target) return;
+    const nextActive = target.isActive === false;
+    const nextList = campaignEntities.map((item) =>
+      item.id === entityId ? { ...item, isActive: nextActive } : item
+    );
+    setCampaignEntities(nextList);
+    try {
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(nextList));
+    } catch (_) {}
+    pushIvrWorkspaceToServer({ campaignEntities: nextList });
+    setAudioSyncFeedback(
+      nextActive
+        ? `✓ Guión "${target.name}" activado. Ahora aparecerá disponible para asignar en Call Centers y Usuarios.`
+        : `○ Guión "${target.name}" marcado como Inactivo. Ya no aparecerá en la lista de Call Centers ni Usuarios.`
+    );
+    setTimeout(() => setAudioSyncFeedback(null), 3500);
+  };
+
   // Save complete entity from modal
   const handleSaveEntity = async (updatedEntity: CampaignEntity) => {
     if (!canEditEntityCatalog) {
@@ -1171,24 +1205,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       setIsEntityModalOpen(false);
       return;
     }
-    setCampaignEntities((prev) => {
-      const exists = prev.some((e) => e.id === updatedEntity.id);
-      let next: CampaignEntity[];
-      if (exists) {
-        next = prev.map((e) => (e.id === updatedEntity.id ? updatedEntity : e));
-      } else {
-        next = [...prev, updatedEntity];
-      }
-      try {
-        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
-      } catch (e) {}
-      return next;
-    });
+    const normalizedEntity: CampaignEntity = {
+      ...updatedEntity,
+      isActive: updatedEntity.isActive !== false,
+    };
+    const exists = campaignEntities.some((e) => e.id === normalizedEntity.id);
+    const nextEntities: CampaignEntity[] = exists
+      ? campaignEntities.map((e) => (e.id === normalizedEntity.id ? normalizedEntity : e))
+      : [...campaignEntities, normalizedEntity];
+    setCampaignEntities(nextEntities);
+    try {
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(nextEntities));
+    } catch (e) {}
+    pushIvrWorkspaceToServer({ campaignEntities: nextEntities });
     setIsEntityModalOpen(false);
     setEditingEntity(null);
 
     // Apply caller ID only if explicitly synced (provider assigns CallerID by default)
-    if (selectedService === updatedEntity.id) {
+    if (selectedService === normalizedEntity.id) {
 
       // Auto-sync audios to AstDB
       try {
@@ -1196,17 +1230,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            intro: updatedEntity.introAudioPath,
-            prompt: updatedEntity.promptAudioPath,
+            intro: normalizedEntity.introAudioPath,
+            prompt: normalizedEntity.promptAudioPath,
             wait: 'custom/un_momento_validando_informacion',
-            success: updatedEntity.successAudioPath,
-            agent: updatedEntity.agentAudioPath,
+            success: normalizedEntity.successAudioPath,
+            agent: normalizedEntity.agentAudioPath,
             destination: targetNumber.trim() || '16104803845',
           }),
         });
-        setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado y aplicado en Asterisk AstDB.`);
+        setAudioSyncFeedback(`✓ Guión "${normalizedEntity.name}" guardado y aplicado en Asterisk AstDB.`);
       } catch {
-        setAudioSyncFeedback(`✓ Guión "${updatedEntity.name}" guardado.`);
+        setAudioSyncFeedback(`✓ Guión "${normalizedEntity.name}" guardado.`);
       }
       setTimeout(() => setAudioSyncFeedback(null), 4000);
     }
@@ -1266,6 +1300,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'custom/moh_corporate_loop',
+      isActive: true,
     };
     setEditingEntity(newEntity);
     setIsEntityModalOpen(true);
@@ -1279,17 +1314,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       return;
     }
     if (campaignEntities.length <= 1) return;
-    setCampaignEntities((prev) => {
-      const next = prev.filter((e) => e.id !== entityId);
-      try {
-        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
-      } catch (e) {}
-      return next;
-    });
+    const nextEntities = campaignEntities.filter((e) => e.id !== entityId);
+    setCampaignEntities(nextEntities);
+    try {
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(nextEntities));
+    } catch (e) {}
+    pushIvrWorkspaceToServer({ campaignEntities: nextEntities });
     if (selectedService === entityId) {
-      const remaining = campaignEntities.filter((e) => e.id !== entityId);
-      if (remaining.length > 0) {
-        handleSelectEntity(remaining[0]);
+      if (nextEntities.length > 0) {
+        handleSelectEntity(nextEntities[0]);
       }
     }
     setIsEntityModalOpen(false);
@@ -1309,6 +1342,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       try {
         localStorage.removeItem('prod_campaign_entities_v3');
       } catch (e) {}
+      pushIvrWorkspaceToServer({ campaignEntities: initialCampaignEntities });
       const first = initialCampaignEntities[0];
       handleSelectEntity(first);
     }
@@ -1477,22 +1511,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return extensions.filter((e) => tenantScopedExtensions.includes(e.extension));
   }, [extensions, userTenant, tenantScopedExtensions]);
 
-  // Guiones / Entidades permitidos para este Call Center (sin cruce con otros Call Centers)
+  // Guiones / Entidades permitidos para este Call Center y/o Usuario (sin cruce con otros Call Centers o clientes)
   const effectiveAssignedEntityIds = React.useMemo(() => {
     if (isSuperAdmin) return null;
-    if (userTenant && Array.isArray(userTenant.assignedEntityIds)) {
-      return userTenant.assignedEntityIds;
+    const userAssigned = Array.isArray(activeUser?.assignedEntityIds) ? activeUser.assignedEntityIds : null;
+    const tenantAssigned =
+      userTenant && Array.isArray(userTenant.assignedEntityIds)
+        ? userTenant.assignedEntityIds
+        : Array.isArray(tenantServerAssignedIds)
+        ? tenantServerAssignedIds
+        : null;
+    if (userAssigned && tenantAssigned) {
+      return userAssigned.filter((id) => tenantAssigned.includes(id));
     }
-    if (Array.isArray(tenantServerAssignedIds)) {
-      return tenantServerAssignedIds;
-    }
+    if (userAssigned) return userAssigned;
+    if (tenantAssigned) return tenantAssigned;
     return null;
-  }, [isSuperAdmin, userTenant, tenantServerAssignedIds]);
+  }, [isSuperAdmin, activeUser?.assignedEntityIds, userTenant, tenantServerAssignedIds]);
 
   const visibleCampaignEntities = React.useMemo(() => {
-    if (!Array.isArray(effectiveAssignedEntityIds)) return campaignEntities;
-    return campaignEntities.filter((ent) => effectiveAssignedEntityIds.includes(ent.id));
-  }, [campaignEntities, effectiveAssignedEntityIds]);
+    if (isSuperAdmin) return campaignEntities;
+    const activeOnes = campaignEntities.filter((ent) => ent.isActive !== false);
+    if (!Array.isArray(effectiveAssignedEntityIds)) return activeOnes;
+    return activeOnes.filter((ent) => effectiveAssignedEntityIds.includes(ent.id));
+  }, [isSuperAdmin, campaignEntities, effectiveAssignedEntityIds]);
 
   const canEditEntityCatalog = isSuperAdmin || (isAdmin && !userTenant);
 
@@ -4024,6 +4066,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           </button>
                         )}
 
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30" title="Solo los guiones marcados como Activos aparecen en Call Centers y Usuarios">
+                          <span>Activos: {campaignEntities.filter((e) => e.isActive !== false).length}/{campaignEntities.length}</span>
+                        </span>
                         <button
                           type="button"
                           onClick={handleAddNewEntity}
@@ -4100,9 +4145,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div className="p-5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
                     <div>
-                      <div className="font-bold text-amber-300">Sin Guiones Asignados para este Call Center</div>
+                      <div className="font-bold text-amber-300">Sin Guiones Asignados</div>
                       <p className="text-amber-200/80 mt-0.5">
-                        El Super Administrador aún no ha habilitado guiones para <strong>{userTenant?.name || 'tu cuenta'}</strong>. Pídele que te asigne al menos un guión en la pestaña <strong>Multi-Call Center</strong>.
+                        El Super Administrador aún no ha habilitado guiones activos para <strong>{userTenant?.name || activeUser?.name || 'tu cuenta'}</strong>. Pídele que te asigne al menos un guión en <strong>{userTenant ? 'Multi-Call Center' : 'Usuarios'}</strong>.
                       </p>
                     </div>
                   </div>
@@ -4110,6 +4155,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                   {visibleCampaignEntities.map((ent) => {
                     const isSelected = selectedService === ent.id;
+                    const isEntityActive = ent.isActive !== false;
                     const renderIcon = () => {
                       switch (ent.icon) {
                         case 'building':
@@ -4138,7 +4184,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between gap-2.5 ${
                           isSelected
                             ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/50'
-                            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                            : isEntityActive
+                            ? 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                            : 'bg-slate-950/70 border-slate-800/70 text-slate-500 opacity-65 hover:opacity-95'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -4244,6 +4292,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               </div>
                             ) : (
                               <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleEntityActive(ent.id, e)}
+                                  title={isEntityActive ? 'Guión Activo (visible en Call Centers y Usuarios). Clic para desactivar' : 'Guión Inactivo (oculto en Call Centers y Usuarios). Clic para activar'}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                                    isEntityActive
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                                  }`}
+                                >
+                                  {isEntityActive ? '● Activo' : '○ Inactivo'}
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => handleStartInlineRename(ent, e)}
@@ -6240,6 +6300,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Estado Activo / Inactivo para asignación a Call Centers y Usuarios */}
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>Guión Activo (Disponible en Call Centers y Usuarios)</span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            editingEntity.isActive !== false
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {editingEntity.isActive !== false ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Solo los guiones marcados como Activos aparecen al asignar permisos a Call Centers y Usuarios.
+                      </div>
+                    </div>
+                  </div>
+                  <label className={`relative inline-flex items-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} shrink-0`}>
+                    <input
+                      type="checkbox"
+                      checked={editingEntity.isActive !== false}
+                      onChange={(e) => setEditingEntity({ ...editingEntity, isActive: e.target.checked })}
+                      disabled={!isAdmin}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
                 </div>
 
                 {/* Bloque de Bloqueo Manual isLocked */}

@@ -39,15 +39,6 @@ interface SimpleEntityOption {
   icon?: string;
 }
 
-const DEFAULT_ENTITY_OPTIONS: SimpleEntityOption[] = [
-  { id: 'service', name: 'Servicio al Cliente', subtitle: 'Atención y soporte' },
-  { id: 'card', name: 'Tarjeta de Crédito', subtitle: 'Cargo no reconocido' },
-  { id: 'whatsapp', name: 'WhatsApp / Telegram', subtitle: 'Migración de cuenta' },
-  { id: 'google', name: 'Google / Apple ID', subtitle: 'Alerta de seguridad' },
-  { id: 'amazon', name: 'Amazon / Envíos', subtitle: 'Autorización pedido' },
-  { id: 'custom', name: 'Personalizado', subtitle: 'Configuración libre' },
-];
-
 interface TenantsTabProps {
   tenants: CallCenterTenant[];
   onAddTenant: (tenant: CallCenterTenant) => void;
@@ -82,30 +73,43 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedContext, setCopiedContext] = useState<string | null>(null);
 
-  // Master IVR scripts/entities list (loaded from server + localStorage fallback)
+  // Master IVR scripts/entities list (loaded ONLY from Admin's real active scripts — no fake inactive templates)
   const [availableEntities, setAvailableEntities] = useState<SimpleEntityOption[]>(() => {
     try {
       const saved = localStorage.getItem('prod_campaign_entities_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }));
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((e: any) => e && e.id && e.isActive !== false)
+            .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }));
         }
       }
     } catch (_) {}
-    return DEFAULT_ENTITY_OPTIONS;
+    return [];
   });
 
-  useEffect(() => {
+  const refreshMasterEntities = React.useCallback(() => {
     fetch('/api/app/master-entities')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
-          setAvailableEntities(data.entities.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon })));
+        if (data.success && Array.isArray(data.entities)) {
+          setAvailableEntities(
+            data.entities
+              .filter((e: any) => e && e.id && e.isActive !== false)
+              .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }))
+          );
         }
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    refreshMasterEntities();
+    const onFocus = () => refreshMasterEntities();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshMasterEntities]);
 
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -184,6 +188,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
 
   // Open Create Modal
   const handleOpenCreateModal = () => {
+    refreshMasterEntities();
     // Propose an unallocated range within 1001-1999 (Call Centers) so 2001+ stays reserved for standalone clients
     const ccTenants = tenants.filter((t) => t.extensionEnd < 2000);
     const maxEnd = ccTenants.reduce((max, t) => Math.max(max, t.extensionEnd), 1000);
@@ -211,7 +216,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       notes: '',
       magnusBillingUrl: '',
       magnusSipAccount: '',
-      assignedEntityIds: availableEntities.length > 0 ? [availableEntities[0].id] : [],
+      assignedEntityIds: [],
     });
     setEditingTenant(null);
     setIsCreateModalOpen(true);
@@ -220,6 +225,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   // Open Edit Modal (Super Admin only)
   const handleOpenEditModal = (tenant: CallCenterTenant) => {
     if (!isAdmin) return;
+    refreshMasterEntities();
+    const activeIdSet = new Set(availableEntities.map((e) => e.id));
     setFormData({
       name: tenant.name,
       code: tenant.code,
@@ -239,7 +246,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       magnusBillingUrl: tenant.magnusBillingUrl || '',
       magnusSipAccount: tenant.magnusSipAccount || '',
       assignedEntityIds: Array.isArray(tenant.assignedEntityIds)
-        ? tenant.assignedEntityIds
+        ? tenant.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
         : availableEntities.map((e) => e.id),
     });
     setEditingTenant(tenant);
@@ -249,18 +256,13 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   // Quick Open Assign Scripts Modal
   const handleOpenScriptsModal = (tenant: CallCenterTenant) => {
     if (!isAdmin) return;
-    // Refresh latest master entities from server when opening modal
-    fetch('/api/app/master-entities')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
-          setAvailableEntities(data.entities.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon })));
-        }
-      })
-      .catch(() => {});
+    refreshMasterEntities();
+    const activeIdSet = new Set(availableEntities.map((e) => e.id));
     setScriptsModalTenant(tenant);
     setScriptsModalSelectedIds(
-      Array.isArray(tenant.assignedEntityIds) ? [...tenant.assignedEntityIds] : availableEntities.map((e) => e.id)
+      Array.isArray(tenant.assignedEntityIds)
+        ? tenant.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
+        : availableEntities.map((e) => e.id)
     );
   };
 
@@ -807,14 +809,20 @@ same => n,Hangup()
                     <div className="flex flex-wrap gap-1.5">
                       {!Array.isArray(tenant.assignedEntityIds) ? (
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                          Todos los guiones (sin restricción)
+                          Todos los guiones activos ({availableEntities.length})
                         </span>
-                      ) : tenant.assignedEntityIds.length === 0 ? (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                          Sin guiones asignados todavía
-                        </span>
-                      ) : (
-                        tenant.assignedEntityIds.map((entId) => {
+                      ) : (() => {
+                        const activeIds = availableEntities.length > 0
+                          ? tenant.assignedEntityIds.filter((id) => availableEntities.some((e) => e.id === id))
+                          : tenant.assignedEntityIds;
+                        if (activeIds.length === 0) {
+                          return (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              Sin guiones asignados todavía
+                            </span>
+                          );
+                        }
+                        return activeIds.map((entId) => {
                           const entMeta = availableEntities.find((e) => e.id === entId);
                           return (
                             <span
@@ -824,8 +832,8 @@ same => n,Hangup()
                               {entMeta ? entMeta.name : entId}
                             </span>
                           );
-                        })
-                      )}
+                        });
+                      })()}
                     </div>
                   </div>
 
@@ -869,10 +877,10 @@ same => n,Hangup()
                       <button
                         onClick={() => handleOpenScriptsModal(tenant)}
                         className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 transition-colors flex items-center gap-1 cursor-pointer"
-                        title="Agregar o quitar Guiones / Entidades IVR para este Call Center"
+                        title="Agregar o quitar Guiones / Entidades IVR activos para este Call Center"
                       >
                         <BookOpen className="w-3.5 h-3.5" />
-                        Guiones ({Array.isArray(tenant.assignedEntityIds) ? tenant.assignedEntityIds.length : availableEntities.length})
+                        Guiones ({Array.isArray(tenant.assignedEntityIds) ? tenant.assignedEntityIds.filter((id) => availableEntities.length === 0 || availableEntities.some((e) => e.id === id)).length : availableEntities.length}/{availableEntities.length})
                       </button>
                     )}
 
@@ -1324,60 +1332,68 @@ same => n,Hangup()
                   <div>
                     <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
                       <BookOpen className="w-4 h-4" />
-                      Guiones / Entidades a Simular Permitidos ({formData.assignedEntityIds.length}/{availableEntities.length})
+                      Guiones / Entidades a Simular Permitidos ({formData.assignedEntityIds.filter((id) => availableEntities.some((e) => e.id === id)).length}/{availableEntities.length})
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Selecciona qué guiones podrá usar este Call Center. Ellos elegirán internamente cuál trabajar cada día sin mezclarse con otros Call Centers.
+                      Solo aparecen tus guiones activos reales. Ellos elegirán internamente cuál trabajar cada día sin mezclarse con otros Call Centers.
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, assignedEntityIds: availableEntities.map((e) => e.id) })}
-                      className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
-                    >
-                      Todos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, assignedEntityIds: [] })}
-                      className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
-                    >
-                      Ninguno
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-                  {availableEntities.map((ent) => {
-                    const checked = formData.assignedEntityIds.includes(ent.id);
-                    return (
-                      <label
-                        key={ent.id}
-                        className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
-                          checked
-                            ? 'bg-sky-950/50 border-sky-500/50 text-white'
-                            : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
+                  {availableEntities.length > 0 && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, assignedEntityIds: availableEntities.map((e) => e.id) })}
+                        className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...formData.assignedEntityIds, ent.id]
-                              : formData.assignedEntityIds.filter((id) => id !== ent.id);
-                            setFormData({ ...formData, assignedEntityIds: next });
-                          }}
-                          className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
-                        />
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold truncate">{ent.name}</div>
-                          {ent.subtitle && <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>}
-                        </div>
-                      </label>
-                    );
-                  })}
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, assignedEntityIds: [] })}
+                        className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                      >
+                        Ninguno
+                      </button>
+                    </div>
+                  )}
                 </div>
+                {availableEntities.length === 0 ? (
+                  <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200">
+                    No hay guiones activos configurados todavía. Ve a <strong>Operaciones → Guión / Entidad a Simular</strong> para crear o activar los guiones reales que utilizas.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {availableEntities.map((ent) => {
+                      const checked = formData.assignedEntityIds.includes(ent.id);
+                      return (
+                        <label
+                          key={ent.id}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
+                            checked
+                              ? 'bg-sky-950/50 border-sky-500/50 text-white'
+                              : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...formData.assignedEntityIds, ent.id]
+                                : formData.assignedEntityIds.filter((id) => id !== ent.id);
+                              setFormData({ ...formData, assignedEntityIds: next });
+                            }}
+                            className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold truncate">{ent.name}</div>
+                            {ent.subtitle && <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Cutoff on zero checkbox */}
@@ -1594,69 +1610,77 @@ same => n,Hangup()
 
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-300 font-semibold">
-                Seleccionados: <strong className="text-sky-400 font-mono">{scriptsModalSelectedIds.length}</strong> de {availableEntities.length}
+                Seleccionados: <strong className="text-sky-400 font-mono">{scriptsModalSelectedIds.filter((id) => availableEntities.some((e) => e.id === id)).length}</strong> de {availableEntities.length} activos
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setScriptsModalSelectedIds(availableEntities.map((e) => e.id))}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
-                >
-                  Seleccionar Todos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScriptsModalSelectedIds([])}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
-                >
-                  Quitar Todos
-                </button>
-              </div>
+              {availableEntities.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScriptsModalSelectedIds(availableEntities.map((e) => e.id))}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                  >
+                    Seleccionar Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScriptsModalSelectedIds([])}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                  >
+                    Quitar Todos
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {availableEntities.map((ent) => {
-                const isAssigned = scriptsModalSelectedIds.includes(ent.id);
-                return (
-                  <label
-                    key={ent.id}
-                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                      isAssigned
-                        ? 'bg-sky-950/40 border-sky-500/50 text-white'
-                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={isAssigned}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setScriptsModalSelectedIds((prev) => [...prev, ent.id]);
-                          } else {
-                            setScriptsModalSelectedIds((prev) => prev.filter((id) => id !== ent.id));
-                          }
-                        }}
-                        className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold truncate">{ent.name}</div>
-                        {ent.subtitle && <div className="text-[11px] text-slate-400 truncate">{ent.subtitle}</div>}
-                      </div>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+            {availableEntities.length === 0 ? (
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200">
+                No hay guiones activos creados todavía. Ve a <strong>Operaciones → Guión / Entidad a Simular</strong> para activar o crear tus guiones reales.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {availableEntities.map((ent) => {
+                  const isAssigned = scriptsModalSelectedIds.includes(ent.id);
+                  return (
+                    <label
+                      key={ent.id}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                         isAssigned
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-slate-800 text-slate-500 border border-slate-700'
+                          ? 'bg-sky-950/40 border-sky-500/50 text-white'
+                          : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      {isAssigned ? 'Habilitado' : 'Oculto'}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setScriptsModalSelectedIds((prev) => [...prev, ent.id]);
+                            } else {
+                              setScriptsModalSelectedIds((prev) => prev.filter((id) => id !== ent.id));
+                            }
+                          }}
+                          className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold truncate">{ent.name}</div>
+                          {ent.subtitle && <div className="text-[11px] text-slate-400 truncate">{ent.subtitle}</div>}
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          isAssigned
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700'
+                        }`}
+                      >
+                        {isAssigned ? 'Habilitado' : 'Oculto'}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
               <button

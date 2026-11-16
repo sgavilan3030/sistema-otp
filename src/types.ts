@@ -305,6 +305,7 @@ export interface SystemUser {
   assignedCarrierId?: string; // Alias de troncal asignada para llamadas salientes
   tenantId?: string; // ID del Grupo de Call Center al que pertenece
   assignedExtension?: string; // Extensión predeterminada asignada para llamadas 1-clic
+  assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos específicamente para este usuario
 }
 
 export interface AstDbEntry {
@@ -389,6 +390,7 @@ export interface CampaignEntity {
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
+  isActive?: boolean;        // Si es false, está inactivo/deshabilitado y no se muestra para asignar a Call Centers ni Usuarios
   campaignId?: string;       // Campaña vinculada por defecto
   campaignName?: string;     // Nombre de la campaña vinculada
 }

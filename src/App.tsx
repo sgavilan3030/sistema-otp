@@ -1443,7 +1443,7 @@ export default function App() {
 
     if (cleanUser && updatedUser.password) {
       setExtensions((prevExts) => {
-        let updatedExts = prevExts.map((e) => {
+        const updatedExts = prevExts.map((e) => {
           if (e.extension.toLowerCase() === cleanUser) {
             return { ...e, secret: updatedUser.password, name: updatedUser.name };
           }
@@ -1454,7 +1454,9 @@ export default function App() {
         });
         return updatedExts;
       });
+    }
 
+    if (cleanUser) {
       fetch('/api/users/sync-sip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -6584,6 +6584,11 @@ app.post('/api/app/state', (req, res) => {
     };
     fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
 
+    if (Array.isArray(state.users) && state.users.length > 0) {
+      saveStoredUsers(state.users);
+      lastSyncedUsers = state.users;
+    }
+
     if (userId || username) {
       const userPath = getUserConfigPath(userId, username);
       fs.writeFileSync(userPath, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
@@ -6600,11 +6605,12 @@ app.post('/api/app/state', (req, res) => {
 function getMasterEntitiesFromDisk(): any[] {
   try {
     const adminWsPath = getIvrWorkspacePath('user-admin', 'admin');
-    for (const candidate of [adminWsPath, IVR_WORKSPACE_FILE]) {
+    const adminStatePath = getUserConfigPath('user-admin', 'admin');
+    for (const candidate of [adminWsPath, IVR_WORKSPACE_FILE, adminStatePath, APP_STATE_FILE]) {
       if (candidate && fs.existsSync(candidate)) {
         const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-        if (Array.isArray(parsed?.campaignEntities) && parsed.campaignEntities.length > 0) {
-          return parsed.campaignEntities;
+        if (Array.isArray(parsed?.campaignEntities)) {
+          return parsed.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
         }
       }
     }
@@ -6621,27 +6627,54 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     const userId = String(req.query.userId || '').trim();
     const username = String(req.query.username || '').trim();
     let tenantId = String(req.query.tenantId || '').trim();
-    if (!tenantId && (userId || username)) {
-      const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
-      const matched = usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === username.toLowerCase())));
-      if (matched?.tenantId) tenantId = String(matched.tenantId);
+    const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
+    const matchedUser = (userId || username)
+      ? usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === username.toLowerCase())))
+      : null;
+    if (!tenantId && matchedUser?.tenantId) {
+      tenantId = String(matchedUser.tenantId);
     }
 
+    const isSuperAdminReq = Boolean(
+      matchedUser
+        ? matchedUser.role === 'admin' && !matchedUser.tenantId && !tenantId
+        : (!tenantId && (!userId || userId === 'user-admin' || username.toLowerCase() === 'admin'))
+    );
+
     const masterEntities = getMasterEntitiesFromDisk();
-    let assignedEntityIds: string[] | undefined = undefined;
+    let tenantAssigned: string[] | undefined = undefined;
     if (tenantId) {
       const tenantsList = loadStoredTenants();
       const matchedTenant = tenantsList.find((t: any) => t && t.id === tenantId);
       if (matchedTenant && Array.isArray(matchedTenant.assignedEntityIds)) {
-        assignedEntityIds = matchedTenant.assignedEntityIds.map((id: any) => String(id));
+        tenantAssigned = matchedTenant.assignedEntityIds.map((id: any) => String(id));
       }
     }
 
-    const filterEntitiesForTenant = (entities: any[]) => {
-      if (!Array.isArray(assignedEntityIds)) return entities;
+    const userAssigned: string[] | undefined =
+      matchedUser && Array.isArray(matchedUser.assignedEntityIds)
+        ? matchedUser.assignedEntityIds.map((id: any) => String(id))
+        : undefined;
+
+    let assignedEntityIds: string[] | undefined = undefined;
+    if (!isSuperAdminReq) {
+      if (Array.isArray(userAssigned) && Array.isArray(tenantAssigned)) {
+        assignedEntityIds = userAssigned.filter((id) => tenantAssigned!.includes(id));
+      } else if (Array.isArray(userAssigned)) {
+        assignedEntityIds = userAssigned;
+      } else if (Array.isArray(tenantAssigned)) {
+        assignedEntityIds = tenantAssigned;
+      }
+    }
+
+    const filterEntitiesForScope = (entities: any[]) => {
+      const activePool = [...entities, ...masterEntities].filter((e) => e && e.id && e.isActive !== false);
       const byId = new Map<string, any>();
-      for (const e of [...entities, ...masterEntities]) {
-        if (e?.id && !byId.has(e.id)) byId.set(e.id, e);
+      for (const e of activePool) {
+        if (!byId.has(e.id)) byId.set(e.id, e);
+      }
+      if (!Array.isArray(assignedEntityIds)) {
+        return isSuperAdminReq ? entities : Array.from(byId.values());
       }
       return assignedEntityIds.map((id) => byId.get(id)).filter(Boolean);
     };
@@ -6650,32 +6683,38 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     if (fs.existsSync(userWsPath)) {
       const ws = JSON.parse(fs.readFileSync(userWsPath, 'utf8'));
       if (Array.isArray(assignedEntityIds)) {
-        ws.campaignEntities = filterEntitiesForTenant(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
-        if (ws.selectedService && !assignedEntityIds.includes(ws.selectedService)) {
-          ws.selectedService = assignedEntityIds[0] || '';
+        ws.campaignEntities = filterEntitiesForScope(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
+        const validIds = ws.campaignEntities.map((e: any) => e.id);
+        if (ws.selectedService && !validIds.includes(ws.selectedService)) {
+          ws.selectedService = validIds[0] || '';
         }
+      } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
+        ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
       }
       return res.json({
         success: true,
         workspace: ws,
         assignedEntityIds,
-        masterEntities: tenantId ? undefined : masterEntities,
+        masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: tenantId ? 'tenant_workspace' : 'user_workspace',
       });
     }
     if (fs.existsSync(IVR_WORKSPACE_FILE)) {
       const ws = JSON.parse(fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8'));
       if (Array.isArray(assignedEntityIds)) {
-        ws.campaignEntities = filterEntitiesForTenant(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
-        if (ws.selectedService && !assignedEntityIds.includes(ws.selectedService)) {
-          ws.selectedService = assignedEntityIds[0] || '';
+        ws.campaignEntities = filterEntitiesForScope(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
+        const validIds = ws.campaignEntities.map((e: any) => e.id);
+        if (ws.selectedService && !validIds.includes(ws.selectedService)) {
+          ws.selectedService = validIds[0] || '';
         }
+      } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
+        ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
       }
       return res.json({
         success: true,
         workspace: ws,
         assignedEntityIds,
-        masterEntities: tenantId ? undefined : masterEntities,
+        masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: 'global_template',
       });
     }
@@ -6684,7 +6723,7 @@ app.get('/api/app/ivr-workspace', (req, res) => {
         success: true,
         workspace: null,
         assignedEntityIds,
-        assignedEntities: filterEntitiesForTenant([]),
+        assignedEntities: filterEntitiesForScope([]),
       });
     }
   } catch (err: any) {
@@ -9508,10 +9547,18 @@ app.post('/api/users/sync-sip', async (req, res) => {
     const password = targetUser.password || 'Secr3t#Pass2026';
 
     // 1. Ensure user is updated in stored users array
-    const existingIdx = stored.findIndex((u) => String(u.username || '').toLowerCase() === cleanUser);
+    const existingIdx = stored.findIndex(
+      (u) =>
+        (targetUser.id && u.id === targetUser.id) ||
+        String(u.username || '').toLowerCase() === cleanUser
+    );
     const updatedUserObj = { ...targetUser, username: cleanUser, password };
     if (existingIdx >= 0) {
-      stored[existingIdx] = { ...stored[existingIdx], ...updatedUserObj };
+      const merged = { ...stored[existingIdx], ...updatedUserObj };
+      if ('assignedEntityIds' in targetUser && targetUser.assignedEntityIds === undefined) {
+        delete merged.assignedEntityIds;
+      }
+      stored[existingIdx] = merged;
     } else {
       stored.push(updatedUserObj);
     }
