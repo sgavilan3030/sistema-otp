@@ -1340,6 +1340,18 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
 const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
+const IVR_WORKSPACE_FILE = path.join(DATA_DIR, 'ivr_workspace.json');
+
+function getIvrWorkspacePath(userId?: string, username?: string): string {
+  const cleanId = String(userId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+  const cleanName = String(username || '').toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (!cleanId && !cleanName) return IVR_WORKSPACE_FILE;
+  if (cleanId === 'user-admin' || cleanName === 'admin') {
+    return path.join(USER_CONFIGS_DIR, 'ivr_admin.json');
+  }
+  const key = cleanId || `user-${cleanName}`;
+  return path.join(USER_CONFIGS_DIR, `ivr_${key}.json`);
+}
 
 try {
   if (!fs.existsSync(USER_CONFIGS_DIR)) {
@@ -1544,6 +1556,42 @@ function resolveTenantCarrierForCall(
   };
 }
 
+function resolveUserCarrierForCall(
+  { userId, agentExten, callerExtension }: { userId?: string; agentExten?: string; callerExtension?: string },
+  carriersList?: any[]
+): { user: any | null; carrierName: string } {
+  const effectiveCarriers = (Array.isArray(carriersList) && carriersList.length > 0)
+    ? carriersList
+    : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers());
+  const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
+  if (!Array.isArray(usersList) || usersList.length === 0) {
+    return { user: null, carrierName: '' };
+  }
+
+  let matchedUser: any | null = null;
+  if (userId) {
+    matchedUser = usersList.find((u: any) => u && String(u.id) === String(userId)) || null;
+  }
+  const probeExten = String(callerExtension || (agentExten && agentExten !== 'ringall' && agentExten !== 'all' ? agentExten.split('&')[0] : '') || '').trim();
+  if (!matchedUser && probeExten) {
+    matchedUser = usersList.find((u: any) => {
+      if (!u) return false;
+      if (String(u.username || '').toLowerCase() === probeExten.toLowerCase()) return true;
+      return Array.isArray(u.assignedExtensions) && u.assignedExtensions.some((e: any) => String(e).trim() === probeExten);
+    }) || null;
+  }
+
+  if (!matchedUser) return { user: null, carrierName: '' };
+  const rawCarrier = matchedUser.carrierId || matchedUser.assignedCarrierId || '';
+  if (!rawCarrier || rawCarrier === 'auto' || rawCarrier === 'pool') {
+    return { user: matchedUser, carrierName: '' };
+  }
+  return {
+    user: matchedUser,
+    carrierName: resolveCarrierNameByRef(rawCarrier, effectiveCarriers),
+  };
+}
+
 async function syncTenantCarriersToAstDb(tenantsList: any[], carriersList?: any[]) {
   if (!Array.isArray(tenantsList) || tenantsList.length === 0) return;
   const effectiveCarriers = (Array.isArray(carriersList) && carriersList.length > 0)
@@ -1599,21 +1647,37 @@ app.get('/api/tenants', (req, res) => {
 
 app.post('/api/tenants', async (req, res) => {
   try {
-    const { tenants } = req.body;
+    const { tenants, carriers, extensions } = req.body;
     if (Array.isArray(tenants)) {
       saveStoredTenants(tenants);
+      if (Array.isArray(carriers) && carriers.length > 0) {
+        lastSyncedCarriers = carriers;
+        saveStoredCarriers(carriers);
+      }
+      if (Array.isArray(extensions) && extensions.length > 0) {
+        lastSyncedExtensions = extensions;
+        saveStoredExtensions(extensions);
+      }
       const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
       const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
+      const activeUsers = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
       syncTenantCarriersToAstDb(tenants, activeCarriers).catch(() => {});
       try {
+        const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, activeUsers);
+        lastGeneratedPjsip = updatedPjsip;
+        await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+        await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+
         const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
+        lastGeneratedDialplan = updatedDialplan;
         await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
         await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
         if (hasLocalAsterisk) {
-          exec('asterisk -rx "dialplan reload"', () => {});
+          exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
         }
+        sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload', 'dialplan reload']).catch(() => {});
       } catch (_) {}
-      return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas.', count: tenants.length });
+      return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas en PJSIP + Dialplan.', count: tenants.length });
     }
     res.status(400).json({ success: false, error: 'tenants debe ser un array' });
   } catch (err: any) {
@@ -2703,14 +2767,17 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
-  dialplanContent += `; 4. Regla Saliente USA / Canada / RD 10 digitos (ej. 8494386040) -> Convierte automáticamente a 11 digitos (18494386040) requeridos por el proveedor\n`;
-  dialplanContent += `exten => _XXXXXXXXXX,1,NoOp(Llamada Saliente 10 digitos normalizada a 11 digitos para carrier: 1\${EXTEN})\n`;
+  dialplanContent += `; 4. Regla Saliente USA 10 digitos (ej. 3055551234) -> Convierte automáticamente a 11 digitos (13055551234) requeridos por el proveedor\n`;
+  dialplanContent += `exten => _XXXXXXXXXX,1,NoOp(Llamada Saliente USA 10 digitos normalizada a 11 digitos para carrier: 1\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(from-internal,1\${EXTEN},1)\n\n`;
 
-  dialplanContent += `; 5. Regla Saliente Universal (Cualquier longitud) con Multi-Carrier Failover\n`;
+  dialplanContent += `; 5. Regla Saliente Prefijos / USA validado (requiere >= 10 digitos para evitar marcar teclas cortas al carrier)\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Saliente Universal a \${EXTEN})\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 11 & "\${EXTEN:0:2}" = "77"]?Goto(from-internal,\${EXTEN:2},1))\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} > 10 & "\${EXTEN:0:3}" = "018"]?Goto(from-internal,\${EXTEN:3},1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} < 10]?NoOp(=== [BLOQUEADO] Destino \${EXTEN} menor a 10 digitos USA ===))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} < 10]?Congestion(1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${EXTEN})} < 10]?Hangup(1))\n`;
   dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP" || "\${CALLING_AGENT}" = ""]?Set(__CALLING_AGENT=\${CALLING_USER}))\n`;
@@ -4640,10 +4707,22 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
     recentOriginateRequests.set(cleanDest, now);
 
-    // Format destination for NANP standard
+    // Format destination for US NANP standard (1 + 10 digits)
     let formattedDest = cleanDest;
     if (cleanDest.length === 10) {
       formattedDest = `1${cleanDest}`;
+    }
+
+    const isInternalOrTestCall =
+      ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) ||
+      cleanDest.endsWith('8888') ||
+      cleanDest.length <= 4;
+
+    if (!isInternalOrTestCall && !/^1[2-9]\d{9}$/.test(formattedDest)) {
+      return res.status(400).json({
+        success: false,
+        error: `Número inválido para EE. UU. (${destination}). Ingresa 10 dígitos (ej. 3055551234) o 1 + 10 dígitos (ej. 13055551234).`,
+      });
     }
 
     // Determine effective agent destination: respect explicit 'ringall' or specific extension(s) from request
@@ -4652,6 +4731,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
 
     const explicitSuperAdminWithoutTenant = req.body.isSuperAdmin === true && !req.body.tenantId;
+    const activeCarriersForResolve = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
 
     // Resolve Call Center Tenant & enforce its assigned SIP carrier + isolated extension range
     const tenantResolution = explicitSuperAdminWithoutTenant
@@ -4663,7 +4743,18 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
               ? effectiveAgentExten
               : (req.body.callerExtension || req.body.agent),
           },
-          lastSyncedCarriers
+          activeCarriersForResolve
+        );
+
+    const userResolution = explicitSuperAdminWithoutTenant
+      ? { user: null, carrierName: '' }
+      : resolveUserCarrierForCall(
+          {
+            userId: req.body.userId,
+            agentExten: effectiveAgentExten,
+            callerExtension: req.body.callerExtension || req.body.agent,
+          },
+          activeCarriersForResolve
         );
 
     const callerIsSuperAdmin =
@@ -4704,6 +4795,16 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
             error: `Límite de llamadas simultáneas alcanzado (${activeSet.size}/${maxConc}) para "${t.name}".`,
           });
         }
+      }
+    } else if (userResolution.user && !callerIsSuperAdmin) {
+      const cli = resellerStore.clients.find(
+        (c) => c.id === userResolution.user.id || c.sipUsername === String(userResolution.user.username || '').toLowerCase()
+      );
+      if (cli && cli.cutoffOnZero !== false && Number(cli.balance ?? 1) <= 0) {
+        return res.status(403).json({
+          success: false,
+          error: `Saldo agotado ($0.00) para la cuenta "${cli.name || cli.sipUsername}". Recarga saldo para continuar.`,
+        });
       }
     }
 
@@ -4752,19 +4853,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     }
 
     let cleanCarrier = (carrier || '').trim();
-    if (tenantResolution.carrierName) {
+    const forcedCarrier = tenantResolution.carrierName || userResolution.carrierName;
+    if (forcedCarrier) {
       if (!callerIsSuperAdmin || !cleanCarrier || cleanCarrier === 'auto' || cleanCarrier === 'pool') {
-        cleanCarrier = tenantResolution.carrierName;
+        cleanCarrier = forcedCarrier;
       }
     }
 
-    // Validate outbound SIP carriers before launching external call
-    const isInternalOrTestCall =
-      ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) ||
-      cleanDest.endsWith('8888') ||
-      cleanDest.length <= 4;
-
-    const activePool = (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers())
+    const activePool = activeCarriersForResolve
       .filter((c: any) => c && c.name && c.host && c.enabled !== false && c.status !== 'disabled');
     let resolvedCarrierObj: any = null;
 
@@ -6257,6 +6353,54 @@ app.post('/api/app/state', (req, res) => {
     return res.json({ success: true, lastUpdated: stateWithTimestamp.lastUpdated });
   } catch (err: any) {
     console.error('[STATE] Error guardando app_state.json:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Persistent IVR Workspace (Guion / Entidad a Simular, Campañas y Modo IVR sincronizados entre navegadores)
+app.get('/api/app/ivr-workspace', (req, res) => {
+  try {
+    const userId = String(req.query.userId || '').trim();
+    const username = String(req.query.username || '').trim();
+    const userWsPath = getIvrWorkspacePath(userId, username);
+    if (fs.existsSync(userWsPath)) {
+      const data = fs.readFileSync(userWsPath, 'utf8');
+      return res.json({ success: true, workspace: JSON.parse(data), source: 'user_workspace' });
+    }
+    if (fs.existsSync(IVR_WORKSPACE_FILE)) {
+      const data = fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8');
+      return res.json({ success: true, workspace: JSON.parse(data), source: 'global_workspace' });
+    }
+  } catch (err: any) {
+    console.error('[IVR-WORKSPACE] Error leyendo:', err);
+  }
+  return res.json({ success: true, workspace: null });
+});
+
+app.post('/api/app/ivr-workspace', (req, res) => {
+  try {
+    const { userId, username, workspace } = req.body;
+    if (!workspace || typeof workspace !== 'object') {
+      return res.status(400).json({ success: false, error: 'workspace requerido' });
+    }
+    if (!fs.existsSync(USER_CONFIGS_DIR)) {
+      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+    }
+    const payloadWithTs = {
+      ...workspace,
+      lastUpdated: Date.now(),
+      savedByUserId: userId || 'user-admin',
+      savedByUsername: username || 'admin',
+    };
+    const userWsPath = getIvrWorkspacePath(userId, username);
+    fs.writeFileSync(userWsPath, JSON.stringify(payloadWithTs, null, 2), 'utf8');
+    const isMaster = !userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin';
+    if (isMaster || !fs.existsSync(IVR_WORKSPACE_FILE)) {
+      fs.writeFileSync(IVR_WORKSPACE_FILE, JSON.stringify(payloadWithTs, null, 2), 'utf8');
+    }
+    return res.json({ success: true, lastUpdated: payloadWithTs.lastUpdated });
+  } catch (err: any) {
+    console.error('[IVR-WORKSPACE] Error guardando:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -8878,7 +9022,7 @@ app.post('/api/users/sync-sip', async (req, res) => {
     }
 
     // 6. Generate and write clean pjsip.conf
-    const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : defaultExtensionsList;
+    const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
     const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
     const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, stored);
     await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);

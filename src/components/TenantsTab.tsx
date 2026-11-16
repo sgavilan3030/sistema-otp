@@ -78,7 +78,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     extensionStart: 1001,
     extensionEnd: 1020,
     maxConcurrentCalls: 10,
-    carrierId: carriers[0]?.id || '',
+    carrierId: carriers.find((c) => c.enabled !== false && c.status !== 'disabled')?.id || carriers[0]?.id || 'auto',
     outboundCallerId: '',
     outboundCallerName: '',
     dollarBalance: 50.0,
@@ -151,7 +151,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       extensionStart: proposedStart,
       extensionEnd: proposedEnd,
       maxConcurrentCalls: 10,
-      carrierId: carriers[0]?.id || '',
+      carrierId: carriers.find((c) => c.enabled !== false && c.status !== 'disabled')?.id || carriers[0]?.id || 'auto',
       outboundCallerId: '',
       outboundCallerName: '',
       dollarBalance: 50.0,
@@ -1040,12 +1040,24 @@ same => n,Hangup()
                     onChange={(e) => setFormData({ ...formData, carrierId: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
+                    <option value="auto">🌐 Pool General (Failover automático entre troncales activas)</option>
                     {carriers.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} ({c.authType === 'ip_auth' ? 'IP-a-IP' : 'Cuenta SIP'}) - {c.host}
+                        {c.name} ({c.authType === 'ip_auth' ? 'IP-a-IP' : 'Cuenta SIP'}) - {c.host}{c.enabled === false || c.status === 'disabled' ? ' [DESHABILITADO]' : ''}
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const selC = carriers.find((c) => c.id === formData.carrierId || c.name === formData.carrierId);
+                    if (selC && (selC.enabled === false || selC.status === 'disabled')) {
+                      return (
+                        <p className="text-[10px] text-rose-400 mt-1">
+                          ⚠ Este Carrier está deshabilitado actualmente; habilítalo en Troncales SIP o selecciona otro para que salgan llamadas.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <div>

@@ -185,7 +185,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [activeUser?.id, isSingleExtensionAgent, userAssignedExt]);
 
   useEffect(() => {
-    if (agentExtension) {
+    if (isSingleExtensionAgent && agentExtension) {
       try {
         const savedForAgent = localStorage.getItem('prod_selected_service_' + agentExtension);
         if (savedForAgent) {
@@ -193,7 +193,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }
       } catch (_) {}
     }
-  }, [agentExtension]);
+  }, [agentExtension, isSingleExtensionAgent]);
 
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
@@ -654,6 +654,136 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // State to track if the selected entity has been explicitly saved/locked
   const [isEntitySaving, setIsEntitySaving] = useState(false);
   const [isEntitySaved, setIsEntitySaved] = useState(false);
+
+  // Server persistence refs for IVR Workspace (Guion / Entidad a Simular, Campanas, Modo IVR) across browsers
+  const isIvrWsHydratedRef = useRef(false);
+  const isApplyingRemoteIvrWsRef = useRef(false);
+  const lastIvrWsServerTsRef = useRef(0);
+
+  const pushIvrWorkspaceToServer = React.useCallback(
+    async (overrides?: {
+      campaignEntities?: CampaignEntity[];
+      selectedService?: ServiceCampaignKey;
+      dialingCampaigns?: DialingCampaign[];
+      selectedCampaignId?: string;
+      callFlowMode?: 'otp' | 'press1' | 'hybrid';
+    }) => {
+      try {
+        const uId = activeUser?.id || 'user-admin';
+        const uName = activeUser?.username || 'admin';
+        const workspace = {
+          campaignEntities: overrides?.campaignEntities ?? campaignEntities,
+          selectedService: overrides?.selectedService ?? selectedService,
+          dialingCampaigns: overrides?.dialingCampaigns ?? dialingCampaigns,
+          selectedCampaignId: overrides?.selectedCampaignId ?? selectedCampaignId,
+          callFlowMode: overrides?.callFlowMode ?? callFlowMode,
+        };
+        const res = await fetch('/api/app/ivr-workspace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: uId, username: uName, workspace }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          if (d.lastUpdated) {
+            lastIvrWsServerTsRef.current = d.lastUpdated;
+          }
+        }
+      } catch (_) {}
+    },
+    [activeUser?.id, activeUser?.username, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
+  );
+
+  const fetchIvrWorkspaceFromServer = React.useCallback(async () => {
+    try {
+      const uId = activeUser?.id || 'user-admin';
+      const uName = activeUser?.username || 'admin';
+      const res = await fetch(
+        `/api/app/ivr-workspace?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}`
+      );
+      if (!res.ok) {
+        isIvrWsHydratedRef.current = true;
+        return;
+      }
+      const data = await res.json();
+      if (data.success && data.workspace) {
+        const ws = data.workspace;
+        if (ws.lastUpdated && ws.lastUpdated <= lastIvrWsServerTsRef.current && isIvrWsHydratedRef.current) {
+          return;
+        }
+        lastIvrWsServerTsRef.current = ws.lastUpdated || Date.now();
+        isApplyingRemoteIvrWsRef.current = true;
+        isIvrWsHydratedRef.current = true;
+
+        if (Array.isArray(ws.campaignEntities) && ws.campaignEntities.length > 0) {
+          setCampaignEntities(ws.campaignEntities);
+          try {
+            localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(ws.campaignEntities));
+          } catch (_) {}
+        }
+        if (ws.selectedService) {
+          setSelectedService(ws.selectedService as ServiceCampaignKey);
+          try {
+            localStorage.setItem('prod_selected_service_v3', String(ws.selectedService));
+          } catch (_) {}
+        }
+        if (Array.isArray(ws.dialingCampaigns) && ws.dialingCampaigns.length > 0) {
+          setDialingCampaigns(ws.dialingCampaigns);
+          try {
+            localStorage.setItem('ast20_dialing_campaigns_v2', JSON.stringify(ws.dialingCampaigns));
+          } catch (_) {}
+        }
+        if (ws.selectedCampaignId) {
+          setSelectedCampaignId(String(ws.selectedCampaignId));
+          try {
+            localStorage.setItem('ast20_selected_campaign_id', String(ws.selectedCampaignId));
+          } catch (_) {}
+        }
+        if (ws.callFlowMode === 'otp' || ws.callFlowMode === 'press1' || ws.callFlowMode === 'hybrid') {
+          setCallFlowModeState(ws.callFlowMode);
+          try {
+            localStorage.setItem('ast20_call_flow_mode', ws.callFlowMode);
+          } catch (_) {}
+        }
+
+        setTimeout(() => {
+          isApplyingRemoteIvrWsRef.current = false;
+        }, 400);
+      } else {
+        isIvrWsHydratedRef.current = true;
+        // Bootstrap server with existing local config on first run if admin already customized this browser
+        if (isAdmin) {
+          pushIvrWorkspaceToServer();
+        }
+      }
+    } catch (_) {
+      isIvrWsHydratedRef.current = true;
+    }
+  }, [activeUser?.id, activeUser?.username, isAdmin]);
+
+  useEffect(() => {
+    isIvrWsHydratedRef.current = false;
+    lastIvrWsServerTsRef.current = 0;
+    fetchIvrWorkspaceFromServer();
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchIvrWorkspaceFromServer();
+    }, 6000);
+    const onFocus = () => fetchIvrWorkspaceFromServer();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchIvrWorkspaceFromServer]);
+
+  useEffect(() => {
+    if (!isIvrWsHydratedRef.current || isApplyingRemoteIvrWsRef.current) return;
+    const timer = setTimeout(() => {
+      pushIvrWorkspaceToServer();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode, pushIvrWorkspaceToServer]);
 
   // Handle campaign selection by agent or admin
   const handleSelectCampaign = (campaignId: string) => {
@@ -1307,27 +1437,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [extensions, userTenant, tenantScopedExtensions]);
 
   const lockedTenantCarrier = React.useMemo(() => {
-    if (userTenant?.carrierId) {
+    if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
+      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const byTenant = carriers.find(
         (c) =>
           c.id === userTenant.carrierId ||
           c.name === userTenant.carrierId ||
-          c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_')
+          c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
       );
       if (byTenant) return byTenant;
     }
-    if (activeUser?.assignedCarrierId && activeUser.assignedCarrierId !== 'auto') {
+    const userCarrierRef = activeUser?.carrierId || activeUser?.assignedCarrierId;
+    if (userCarrierRef && userCarrierRef !== 'auto') {
+      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       return (
         carriers.find(
           (c) =>
-            c.id === activeUser.assignedCarrierId ||
-            c.name === activeUser.assignedCarrierId ||
-            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(activeUser.assignedCarrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_')
+            c.id === userCarrierRef ||
+            c.name === userCarrierRef ||
+            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
         ) || null
       );
     }
     return null;
-  }, [userTenant, carriers, activeUser?.assignedCarrierId]);
+  }, [userTenant, carriers, activeUser?.carrierId, activeUser?.assignedCarrierId]);
 
   const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
 
@@ -1343,10 +1476,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [isSuperAdmin, lockedTenantCarrier]);
 
+  const userCarrierFallback = activeUser?.carrierId || activeUser?.assignedCarrierId;
   const effectiveSelectedCarrier = !isSuperAdmin
-    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (activeUser?.assignedCarrierId && activeUser.assignedCarrierId !== 'auto' ? activeUser.assignedCarrierId : 'auto'))
+    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (userCarrierFallback && userCarrierFallback !== 'auto' ? userCarrierFallback : 'auto'))
     : selectedCarrierName;
-  const activeCarrierObj = (effectiveSelectedCarrier !== 'auto' ? enabledCarriers.find((c) => c.name === effectiveSelectedCarrier || c.id === effectiveSelectedCarrier) : null) || lockedTenantCarrier || enabledCarriers[0] || carriers[0];
+  const activeCarrierObj =
+    (effectiveSelectedCarrier !== 'auto'
+      ? carriers.find(
+          (c) =>
+            c.name === effectiveSelectedCarrier ||
+            c.id === effectiveSelectedCarrier ||
+            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(effectiveSelectedCarrier).toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        )
+      : null) ||
+    lockedTenantCarrier ||
+    enabledCarriers[0] ||
+    carriers[0];
   const activeCarrier = effectiveSelectedCarrier !== 'auto' ? effectiveSelectedCarrier : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
   const rawCarrierOutboundCid = String(activeCarrierObj?.outboundCallerId || '').trim();
   const outboundCid = (rawCarrierOutboundCid && !rawCarrierOutboundCid.includes('5550199') && !/asignado/i.test(rawCarrierOutboundCid))
@@ -2137,6 +2282,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           destination: targetNumber.trim(),
           carrier: effectiveSelectedCarrier,
           tenantId: userTenant?.id,
+          userId: activeUser?.id,
           callerExtension: userAssignedExt,
           tenantExtensions: tenantScopedExtensions,
           isAdmin: isSuperAdmin,
@@ -2425,6 +2571,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           destination: num,
           carrier: effectiveSelectedCarrier,
           tenantId: userTenant?.id,
+          userId: activeUser?.id,
           callerExtension: userAssignedExt,
           tenantExtensions: tenantScopedExtensions,
           isAdmin: isSuperAdmin,

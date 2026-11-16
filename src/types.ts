@@ -299,6 +299,7 @@ export interface SystemUser {
   costPerMinute?: number; // Tarifa por minuto ($ USD)
   cutoffOnZero?: boolean; // Corte automático en saldo 0
   carrierId?: string; // Troncal asignada para llamadas salientes
+  assignedCarrierId?: string; // Alias de troncal asignada para llamadas salientes
   tenantId?: string; // ID del Grupo de Call Center al que pertenece
   assignedExtension?: string; // Extensión predeterminada asignada para llamadas 1-clic
 }

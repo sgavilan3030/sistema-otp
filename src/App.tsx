@@ -694,7 +694,7 @@ export default function App() {
           fetch('/api/tenants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tenants }),
+            body: JSON.stringify({ tenants, carriers, extensions }),
           }).catch(() => {});
         }
       })
@@ -710,7 +710,7 @@ export default function App() {
       fetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenants }),
+        body: JSON.stringify({ tenants, carriers, extensions }),
       }).catch(() => {});
     }
   }, [tenants]);
@@ -769,16 +769,17 @@ export default function App() {
       const extStr = ext.toString();
       const existing = extensions.find((e) => e.extension === extStr);
       if (!existing) {
+        const activeSipPort = extensions.find((e) => Number(e.port) > 0)?.port || 47923;
         newExts.push({
           id: `ext-${extStr}`,
           extension: extStr,
           name: `${tenant.code} Agente ${ext - start + 1}`,
           secret: `Cc#${tenant.code}${ext}!`,
           context: tenant.dialplanContext,
-          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          codecs: ['ulaw', 'alaw', 'g722'],
           maxContacts: 1,
           transport: 'transport-udp',
-          port: 5060,
+          port: activeSipPort,
           status: 'unregistered',
           callerId: `"${tenant.code} Agente ${ext - start + 1}" <${extStr}>`,
           callerIdNum: extStr,

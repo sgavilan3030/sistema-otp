@@ -249,15 +249,30 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   }, [tenants, currentUser?.tenantId, selectedExtension]);
 
   const lockedTenantCarrier = React.useMemo(() => {
-    if (userTenant?.carrierId) {
-      const byTenant = carriers.find((c) => c.id === userTenant.carrierId || c.name === userTenant.carrierId);
+    if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
+      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const byTenant = carriers.find(
+        (c) =>
+          c.id === userTenant.carrierId ||
+          c.name === userTenant.carrierId ||
+          c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
+      );
       if (byTenant) return byTenant;
     }
-    if (currentUser?.assignedCarrierId && currentUser.assignedCarrierId !== 'auto') {
-      return carriers.find((c) => c.id === currentUser.assignedCarrierId || c.name === currentUser.assignedCarrierId) || null;
+    const userCarrierRef = currentUser?.carrierId || currentUser?.assignedCarrierId;
+    if (userCarrierRef && userCarrierRef !== 'auto') {
+      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      return (
+        carriers.find(
+          (c) =>
+            c.id === userCarrierRef ||
+            c.name === userCarrierRef ||
+            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
+        ) || null
+      );
     }
     return null;
-  }, [userTenant, carriers, currentUser?.assignedCarrierId]);
+  }, [userTenant, carriers, currentUser?.carrierId, currentUser?.assignedCarrierId]);
 
   const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
 
@@ -273,8 +288,9 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     }
   }, [isSuperAdmin, lockedTenantCarrier]);
 
+  const userCarrierFallback = currentUser?.carrierId || currentUser?.assignedCarrierId;
   const effectiveCarrier = !isSuperAdmin
-    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (currentUser?.assignedCarrierId && currentUser.assignedCarrierId !== 'auto' ? currentUser.assignedCarrierId : 'auto'))
+    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (userCarrierFallback && userCarrierFallback !== 'auto' ? userCarrierFallback : 'auto'))
     : selectedCarrier;
 
   // Call Mode & Audio Prompt State for 1-Click Dialing
@@ -477,6 +493,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
           channel: `PJSIP/${selectedExtension}`,
           carrier: effectiveCarrier,
           tenantId: userTenant?.id,
+          userId: currentUser?.id,
           isAdmin: isSuperAdmin,
           isSuperAdmin,
           agentExten: selectedExtension,

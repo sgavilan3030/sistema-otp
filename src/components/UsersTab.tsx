@@ -265,7 +265,17 @@ regInterval=300
     setFormBalance(typeof user.balance === 'number' ? user.balance : 10.00);
     setFormRate(typeof user.costPerMinute === 'number' ? user.costPerMinute : 0.02);
     setFormCutoffOnZero(user.cutoffOnZero !== false);
-    setFormCarrierId(user.carrierId || 'auto');
+    const rawUserCarrier = user.carrierId || user.assignedCarrierId || '';
+    const matchedCarrierForSelect = rawUserCarrier
+      ? carriers.find(
+          (c) =>
+            c.id === rawUserCarrier ||
+            c.name === rawUserCarrier ||
+            c.name.replace(/\s+/g, '_') === rawUserCarrier ||
+            c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === rawUserCarrier.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        )
+      : null;
+    setFormCarrierId(matchedCarrierForSelect ? matchedCarrierForSelect.name.replace(/\s+/g, '_') : (rawUserCarrier || 'auto'));
     setFormTenantId(user.tenantId || '');
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
@@ -321,6 +331,7 @@ regInterval=300
       usedMinutes: editingUser?.usedMinutes || 0,
       cutoffOnZero: formCutoffOnZero,
       carrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
+      assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       tenantId: formTenantId ? formTenantId : undefined,
       assignedExtensions: selectedExts,
       permissions,
