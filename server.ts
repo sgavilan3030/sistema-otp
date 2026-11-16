@@ -535,6 +535,7 @@ export interface CallState {
   holdMusicName?: string;
   trunk?: string;
   callerId?: string;
+  tenantId?: string;
   isOnHold?: boolean;
   holdStartedAt?: number;
   timestamp: number;
@@ -679,16 +680,70 @@ icesupport=no
     try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
     console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
     const mgrPath = '/etc/asterisk/manager.conf';
-    if (!fs.existsSync(mgrPath)) {
-      const mgrContent = `[general]\nenabled = yes\nport = 5038\nbindaddr = 0.0.0.0\n\n[sammy]\nsecret = Robert2026RDTGcvgbsg\nread = all\nwrite = all\n\n[admin]\nsecret = mysecretpass\nread = all\nwrite = all\n`;
+    const mgrContent = `[general]\nenabled = yes\nport = 5038\nbindaddr = 127.0.0.1\n\n[sammy]\nsecret = Robert2026RDTGcvgbsg\nread = all\nwrite = all\n\n[admin]\nsecret = mysecretpass\nread = all\nwrite = all\n`;
+    let shouldWriteMgr = !fs.existsSync(mgrPath);
+    if (!shouldWriteMgr) {
+      try {
+        const curMgr = fs.readFileSync(mgrPath, 'utf8');
+        if (curMgr.includes('bindaddr = 0.0.0.0') || curMgr.includes('bindaddr=0.0.0.0')) {
+          shouldWriteMgr = true;
+        }
+      } catch (_) {}
+    }
+    if (shouldWriteMgr) {
       writeAsteriskConfigFile(mgrPath, mgrContent);
       writeAsteriskConfigFile(path.join(process.cwd(), 'manager.conf'), mgrContent);
-      console.log('✓ Configuración /etc/asterisk/manager.conf creada para AMI');
+      console.log('✓ Configuración /etc/asterisk/manager.conf asegurada en 127.0.0.1 para AMI');
       if (hasLocalAsterisk) {
         exec('asterisk -rx "manager reload"', () => {});
       }
     }
   } catch (_) {}
+}
+
+function isPublicIpv4(ip: string): boolean {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return false;
+  const parts = ip.split('.').map(Number);
+  if (parts.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
+  if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+  if (parts[0] === 192 && parts[1] === 168) return false;
+  if (parts[0] === 169 && parts[1] === 254) return false;
+  return true;
+}
+
+function getLocalPublicIpv4Sync(): string {
+  const envIp = String(process.env.EXTERNAL_IP || process.env.PUBLIC_IP || '').trim();
+  if (isPublicIpv4(envIp)) return envIp;
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const entries of Object.values(ifaces)) {
+      if (!entries) continue;
+      for (const iface of entries) {
+        if (iface.family === 'IPv4' && !iface.internal && isPublicIpv4(iface.address)) {
+          return iface.address;
+        }
+      }
+    }
+  } catch (_) {}
+  return '';
+}
+
+let detectedExternalIp: string = getLocalPublicIpv4Sync();
+
+function prioritizeZeroTranscodeCodecs(raw: string): string {
+  const list = raw
+    .split(',')
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.length === 0) return 'ulaw,alaw,g722';
+  const ordered: string[] = [];
+  if (list.includes('ulaw')) ordered.push('ulaw');
+  if (list.includes('alaw')) ordered.push('alaw');
+  for (const c of list) {
+    if (!ordered.includes(c)) ordered.push(c);
+  }
+  return ordered.join(',');
 }
 
 // High-speed AMI Originate using direct asynchronous socket (under 20ms launch time)
@@ -1801,7 +1856,12 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `local_net = 127.0.0.0/8\n`;
   pjsipContent += `local_net = 10.0.0.0/8\n`;
   pjsipContent += `local_net = 172.16.0.0/12\n`;
-  pjsipContent += `local_net = 192.168.0.0/16\n\n`;
+  pjsipContent += `local_net = 192.168.0.0/16\n`;
+  if (detectedExternalIp) {
+    pjsipContent += `external_media_address = ${detectedExternalIp}\n`;
+    pjsipContent += `external_signaling_address = ${detectedExternalIp}\n`;
+  }
+  pjsipContent += `\n`;
 
   if (activePort !== 5060) {
     pjsipContent += `; Transporte dedicado en puerto 5060 para interconexión estándar con Carriers mayoristas\n`;
@@ -1812,7 +1872,12 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `local_net = 127.0.0.0/8\n`;
     pjsipContent += `local_net = 10.0.0.0/8\n`;
     pjsipContent += `local_net = 172.16.0.0/12\n`;
-    pjsipContent += `local_net = 192.168.0.0/16\n\n`;
+    pjsipContent += `local_net = 192.168.0.0/16\n`;
+    if (detectedExternalIp) {
+      pjsipContent += `external_media_address = ${detectedExternalIp}\n`;
+      pjsipContent += `external_signaling_address = ${detectedExternalIp}\n`;
+    }
+    pjsipContent += `\n`;
   }
 
   pjsipContent += `[transport-tcp]\n`;
@@ -1822,7 +1887,12 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `local_net = 127.0.0.0/8\n`;
   pjsipContent += `local_net = 10.0.0.0/8\n`;
   pjsipContent += `local_net = 172.16.0.0/12\n`;
-  pjsipContent += `local_net = 192.168.0.0/16\n\n`;
+  pjsipContent += `local_net = 192.168.0.0/16\n`;
+  if (detectedExternalIp) {
+    pjsipContent += `external_media_address = ${detectedExternalIp}\n`;
+    pjsipContent += `external_signaling_address = ${detectedExternalIp}\n`;
+  }
+  pjsipContent += `\n`;
 
   pjsipContent += `[transport-wss]\n`;
   pjsipContent += `type = transport\n`;
@@ -1841,7 +1911,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     const cleanCidNum = (ext.callerIdNum && !String(ext.callerIdNum).includes('5550199') && !String(ext.callerIdNum).includes('Asignado')) ? ext.callerIdNum : num;
     const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
     const rawCodecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-    const codecs = (rawCodecs === 'opus,g722,ulaw,alaw,g729' || rawCodecs.startsWith('opus,')) ? 'ulaw,alaw,g722' : rawCodecs;
+    const codecs = prioritizeZeroTranscodeCodecs(rawCodecs);
     const extPort = parseInt(ext.port, 10) || activePort;
 
     let transport = 'transport-udp';
@@ -1948,7 +2018,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       const cUser = (carrier.username || cName).trim();
       const cSecret = (carrier.secret || '').trim();
       const cContext = (carrier.inboundContext || 'trunkinbound').trim();
-      const cCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729,g722,opus';
+      const rawTrunkCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
+      const cCodecs = prioritizeZeroTranscodeCodecs(rawTrunkCodecs);
 
       // effectiveFromUser asegura que el From SIP coincida con la cuenta SIP cuando se especifica o se registra
       const effectiveFromUser = (carrier.fromuser || '').trim();
@@ -2610,7 +2681,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=\${CALLING_AGENT}&secs=\${CDR(billsec)}&dest=\${TARGET_NUM}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=\${CALLING_AGENT}&secs=\${CDR(billsec)}&dest=\${TARGET_NUM}&tenant=\${TENANT_ID}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
@@ -3336,6 +3407,33 @@ async function autoRepairAsteriskPjsipOnStartup() {
       executeAsteriskCommand('database del ivr_vars 16104803845_cid_num').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
     } catch (_) {}
+
+    // Sincronizar rutas Call Center -> Proveedor SIP en AstDB desde el arranque
+    syncTenantCarriersToAstDb(loadStoredTenants(), storedCarriers).catch(() => {});
+
+    // Si el VPS está detrás de NAT 1:1 y la interfaz local solo tiene IP privada, detectar IP pública en segundo plano
+    if (hasLocalAsterisk && !detectedExternalIp) {
+      try {
+        const ipReq = https.get('https://api.ipify.org', { timeout: 2500 }, (ipRes) => {
+          let rawIp = '';
+          ipRes.on('data', (chunk) => { rawIp += chunk; });
+          ipRes.on('end', () => {
+            const candidate = rawIp.trim();
+            if (isPublicIpv4(candidate) && candidate !== detectedExternalIp) {
+              detectedExternalIp = candidate;
+              const updatedPjsip = generateCleanPjsipConf(loadStoredExtensions(), loadStoredCarriers(), loadStoredUsers());
+              lastGeneratedPjsip = updatedPjsip;
+              writeAsteriskConfigFile(pjsipPath, updatedPjsip)
+                .then(() => exec('asterisk -rx "pjsip reload"', () => {}))
+                .catch(() => {});
+              console.log(`[PJSIP-NAT] ✓ IP pública detectada (${candidate}) y aplicada a external_media_address.`);
+            }
+          });
+        });
+        ipReq.on('error', () => {});
+        ipReq.on('timeout', () => { try { ipReq.destroy(); } catch (_) {} });
+      } catch (_) {}
+    }
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
   }
@@ -4515,6 +4613,36 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       });
     }
 
+    if (tenantResolution.tenant && !callerIsSuperAdmin) {
+      const t = tenantResolution.tenant;
+      if (t.cutoffOnZero !== false && Number(t.dollarBalance ?? 1) <= 0) {
+        return res.status(403).json({
+          success: false,
+          error: `Saldo agotado ($0.00) para "${t.name}". Recarga minutos para continuar marcando.`,
+        });
+      }
+      const maxConc = Number(t.maxConcurrentCalls) || 0;
+      if (maxConc > 0) {
+        const activeSet = new Set<string>();
+        const staleLimit = Date.now() - 12 * 60 * 1000;
+        for (const [k, c] of callStatusStore.entries()) {
+          if (!c || (c.timestamp && c.timestamp < staleLimit)) {
+            callStatusStore.delete(k);
+            continue;
+          }
+          if (c.tenantId === t.id && c.status !== 'ended' && c.status !== 'machine') {
+            activeSet.add(c.number);
+          }
+        }
+        if (activeSet.size >= maxConc) {
+          return res.status(429).json({
+            success: false,
+            error: `Límite de llamadas simultáneas alcanzado (${activeSet.size}/${maxConc}) para "${t.name}".`,
+          });
+        }
+      }
+    }
+
     // AISLAMIENTO RING-ALL POR CALL CENTER:
     // Si el modo es 'ringall' y pertenece a un Call Center (tenant) con rango [extensionStart, extensionEnd],
     // limitar estrictamente el timbrado a las extensiones de ese Call Center y NUNCA a todos los Call Centers.
@@ -4748,6 +4876,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       holdMusicName: path.basename(req.body.holdMusic || 'moh_corporate_loop'),
       trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum || 'Asignado por Proveedor',
+      tenantId: tenantResolution.tenant?.id,
       startTime: Date.now(),
       timestamp: Date.now(),
       duration: 0,
@@ -4768,6 +4897,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       __TARGET_NUM: cleanDest,
       __TARGET_DEST: cleanDest,
       __CALL_DEST: cleanDest,
+      ...(tenantResolution.tenant?.id ? { TENANT_ID: String(tenantResolution.tenant.id), __TENANT_ID: String(tenantResolution.tenant.id) } : {}),
       AUTO_RETRY: shouldAutoRetry ? '1' : '0',
       __AUTO_RETRY: shouldAutoRetry ? '1' : '0',
       AMD_ENABLED: isAmdEnabled ? '1' : '0',
@@ -7185,6 +7315,9 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
       answeredAt,
       pressed1At,
       duration,
+      tenantId: existing?.tenantId,
+      isOnHold: existing?.isOnHold,
+      bridgedChannel: existing?.bridgedChannel,
     };
 
     callStatusStore.set(number, callState);
@@ -8714,25 +8847,61 @@ app.post('/api/users/sync-sip', async (req, res) => {
   }
 });
 
-// Endpoint to deduct balance after manual call hangup
+// Endpoint to deduct balance after call hangup (reseller clients + Call Center tenants)
 app.get('/api/reseller/deduct', (req, res) => {
   try {
-    const { client, secs, dest } = req.query as { client: string; secs: string; dest: string };
-    if (!client) return res.json({ success: false });
-    const cleanUser = String(client).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const { client, secs, dest, tenant } = req.query as { client?: string; secs?: string; dest?: string; tenant?: string };
+    const cleanUser = String(client || '').trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
     const durationSecs = parseInt(secs || '0', 10);
+    if (isNaN(durationSecs) || durationSecs <= 0) {
+      return res.json({ success: true, billedMinutes: 0 });
+    }
     const billedMinutes = Math.max(1, Math.ceil(durationSecs / 60));
 
-    const cli = resellerStore.clients.find((c) => c.sipUsername === cleanUser);
-    if (cli) {
-      const rate = cli.costPerMinute || 0.02;
-      const callCost = parseFloat((billedMinutes * rate).toFixed(4));
-      cli.balance = Math.max(0, parseFloat((cli.balance - callCost).toFixed(2)));
-      cli.usedMinutes = (cli.usedMinutes || 0) + billedMinutes;
-      saveResellerStore();
-      executeAsteriskCommand(`database put reseller_balance ${cleanUser} "${cli.balance}"`).catch(() => {});
+    if (cleanUser) {
+      const cli = resellerStore.clients.find((c) => c.sipUsername === cleanUser);
+      if (cli) {
+        const rate = cli.costPerMinute || 0.02;
+        const callCost = parseFloat((billedMinutes * rate).toFixed(4));
+        cli.balance = Math.max(0, parseFloat((cli.balance - callCost).toFixed(2)));
+        cli.usedMinutes = (cli.usedMinutes || 0) + billedMinutes;
+        saveResellerStore();
+        executeAsteriskCommand(`database put reseller_balance ${cleanUser} "${cli.balance}"`).catch(() => {});
+      }
     }
-    res.json({ success: true });
+
+    // Deduct from matching Call Center Tenant if active
+    const tenantsList = loadStoredTenants();
+    if (Array.isArray(tenantsList) && tenantsList.length > 0) {
+      const firstExtNum = parseInt(String(client || '').split('&')[0].trim(), 10);
+      const tIdx = tenantsList.findIndex((t: any) => {
+        if (!t) return false;
+        if (tenant && String(t.id) === String(tenant)) return true;
+        if (!isNaN(firstExtNum) && typeof t.extensionStart === 'number' && typeof t.extensionEnd === 'number') {
+          return firstExtNum >= t.extensionStart && firstExtNum <= t.extensionEnd;
+        }
+        return false;
+      });
+      if (tIdx >= 0) {
+        const targetTenant = tenantsList[tIdx];
+        const tRate = Number(targetTenant.ratePerMinute) > 0 ? Number(targetTenant.ratePerMinute) : 0.015;
+        const tCost = parseFloat((billedMinutes * tRate).toFixed(4));
+        const newBal = Math.max(0, parseFloat(((Number(targetTenant.dollarBalance) || 0) - tCost).toFixed(2)));
+        targetTenant.dollarBalance = newBal;
+        targetTenant.minuteBalance = Math.floor(newBal / tRate);
+        targetTenant.usedMinutes = (Number(targetTenant.usedMinutes) || 0) + billedMinutes;
+        if (newBal <= 0 && targetTenant.cutoffOnZero) {
+          targetTenant.status = 'low_balance';
+        }
+        tenantsList[tIdx] = targetTenant;
+        saveStoredTenants(tenantsList);
+        if (dest) {
+          console.log(`[TENANT BILLING] ${targetTenant.name}: -${billedMinutes} min ($${tCost}) por llamada a ${dest} | Saldo restante: $${newBal}`);
+        }
+      }
+    }
+
+    res.json({ success: true, billedMinutes });
   } catch (e: any) {
     res.json({ success: false, error: e.message });
   }

@@ -2421,30 +2421,43 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       try {
         const currentAudios = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
-        const res = await fetch('/api/asterisk/call/originate', {
+        const payloadBody = JSON.stringify({
+          destination: num,
+          carrier: effectiveSelectedCarrier,
+          tenantId: userTenant?.id,
+          callerExtension: userAssignedExt,
+          tenantExtensions: tenantScopedExtensions,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
+          callerId: outboundCid,
+          callerIdNum: outboundCid,
+          callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
+          mode: callFlowMode,
+          agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
+          autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
+          audioIntro: currentAudios.introAudioPath,
+          audioPrompt: currentAudios.promptAudioPath,
+          audioAgent: currentAudios.agentAudioPath,
+          audioSuccess: currentAudios.successAudioPath,
+          holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
+        });
+
+        let res = await fetch('/api/asterisk/call/originate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            destination: num,
-            carrier: effectiveSelectedCarrier,
-            tenantId: userTenant?.id,
-            callerExtension: userAssignedExt,
-            tenantExtensions: tenantScopedExtensions,
-            isAdmin: isSuperAdmin,
-            isSuperAdmin,
-            callerId: outboundCid,
-            callerIdNum: outboundCid,
-            callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
-            mode: callFlowMode,
-            agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
-            autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
-            audioIntro: currentAudios.introAudioPath,
-            audioPrompt: currentAudios.promptAudioPath,
-            audioAgent: currentAudios.agentAudioPath,
-            audioSuccess: currentAudios.successAudioPath,
-            holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
-          }),
+          body: payloadBody,
         });
+        let attempt = 0;
+        while (res.status === 429 && attempt < 2 && !massCancelRef.current) {
+          attempt++;
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          if (massCancelRef.current) break;
+          res = await fetch('/api/asterisk/call/originate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payloadBody,
+          });
+        }
         const data = await res.json();
         setMassLog((prev) =>
           prev.map((item) =>
