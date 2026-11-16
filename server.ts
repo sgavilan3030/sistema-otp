@@ -2432,7 +2432,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CALLERID(name)=\${ARG2})\n`;
   dialplanContent += ` same => n,Return()\n`;
   dialplanContent += ` same => n(provider_assigned_cid),Set(CALLERID(name)=)\n`;
-  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = "18005550199" || "\${CALLERID(num)}" = "+18005550199" || \${LEN(\${CALLERID(num)})} < 7 || "\${CALLERID(num)}" = "\${TARGET_NUM}" || "\${CALLERID(num)}" = "\${CALL_DEST}"]?Set(CALLERID(num)=\${ARG2}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${ARG2}" != "" & ($["\${CALLERID(num)}" = "18005550199" || "\${CALLERID(num)}" = "+18005550199" || \${LEN(\${CALLERID(num)})} < 7 || "\${CALLERID(num)}" = "\${TARGET_NUM}" || "\${CALLERID(num)}" = "\${CALL_DEST}"])]?Set(CALLERID(num)=\${ARG2}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${ARG2}" = "" & ($["\${CALLERID(num)}" = "" || "\${CALLERID(num)}" = "18005550199" || "\${CALLERID(num)}" = "+18005550199" || "\${CALLERID(num)}" = "\${TARGET_NUM}" || "\${CALLERID(num)}" = "\${CALL_DEST}"])]?Set(CALLERID(num)=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [OUTBOUND CARRIER] CallerID asignado directamente por el proveedor SIP (num=\${CALLERID(num)}) ===)\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
@@ -2444,6 +2445,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => s,1,NoOp(=== [AUDIO-HD-BIDIRECCIONAL] Mostrando Cliente en MicroSIP: ARG1=\${ARG1} | TARGET_NUM=\${TARGET_NUM} | Canal=\${CHANNEL} ===)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(TARGET_DISPLAY=\${IF($["\${ARG1}" != ""]?\${ARG1}:\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${IF($["\${DEST_NUM}" != ""]?\${DEST_NUM}:\${CALLERID(num)})})})})})})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_DISPLAY}" = ""]?Set(TARGET_DISPLAY=SistemaWeb))\n`;
   dialplanContent += ` same => n,NoOp(=== [SETTING-CLIENT-CID-MICROSIP] Asignando número de cliente a MicroSIP: \${TARGET_DISPLAY} ===)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
@@ -2550,9 +2552,13 @@ export function generateCleanDialplanConf(
     dialplanContent += `exten => ${extNum},1,NoOp(Llamada interna directa a extension ${extNum} desde MicroSIP)\n`;
     dialplanContent += ` same => n,StopMusicOnHold()\n`;
     dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
-    dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:SistemaWeb)})})})\n`;
+    dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+    dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+    dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
+    dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = ""]?Set(CALLERID(all)="\${INT_CALLER}" <\${INT_CALLER}>))\n`;
     dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/${extNum})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_${extNum}_\${UNIQUEID}.wav,b))\n`;
-    dialplanContent += ` same => n,Dial(PJSIP/${extNum},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
+    dialplanContent += ` same => n,Dial(PJSIP/${extNum},30,Ttb(sub-audio-quality^s^1^\${INT_CALLER}))\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
   }
 
@@ -2560,18 +2566,26 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _[12356789]XXX,1,NoOp(Llamada interna a extension \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
-  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:SistemaWeb)})})})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = ""]?Set(CALLERID(all)="\${INT_CALLER}" <\${INT_CALLER}>))\n`;
   dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/\${EXTEN})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_\${EXTEN}_\${UNIQUEID}.wav,b))\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${INT_CALLER}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; 1b. Llamadas directas a extensiones por nombre para MicroSIP (ej: juan_perez, agente1)\n`;
   dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
-  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${IF($["\${CALLERID(num)}" != ""]?\${CALLERID(num)}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:SistemaWeb)})})})\n`;
+  dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" = ""]?Set(CALLERID(all)="\${INT_CALLER}" <\${INT_CALLER}>))\n`;
   dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/\${EXTEN})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_\${EXTEN}_\${UNIQUEID}.wav,b))\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${INT_CALLER}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   // 2a. Extensiones Dinámicas de Captura OTP (desde 4001 en adelante _4XXX)
@@ -2963,6 +2977,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [CAPTURA-\${CURR_EXT}] Sin digitos tras reintentos -> Regresando llamada al agente \${FINAL_AGENT} (Cliente: \${TARGET_DEST}) ===)\n`;
   dialplanContent += ` same => n,Playback(beep)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
@@ -3021,6 +3037,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
@@ -3118,6 +3136,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
@@ -3346,6 +3366,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:1001)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLER_EXT}" = "\${FINAL_AGENT}"]?Set(FINAL_AGENT=1002))\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
@@ -3380,6 +3402,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_NUM}" <\${TARGET_NUM}>)\n`;
@@ -3502,6 +3526,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Conectando con Asesor: \${FINAL_AGENT} (Cliente: \${TARGET_DEST}) ===)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(name)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CALLERID(all)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
@@ -3513,6 +3539,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1^\${TARGET_DEST})U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; Alias de compatibilidad para modo hybrid hacia ivr-otp\n`;
+  dialplanContent += `[ivr-hybrid]\n`;
+  dialplanContent += `exten => s,1,Goto(ivr-otp,s,1)\n\n`;
 
   // Contextos dedicados por cada Call Center (tenant) para extensiones aprovisionadas con context = tenant_xxx
   for (const t of storedTenantsForDialplan) {
@@ -5148,12 +5178,15 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // If <= 4 digits (and not IVR extension), direct SIP endpoint (e.g. agent phone 1001)
     // Otherwise standard outbound call via Local NANP routing
     let channel = '';
+    const firstSingleAgent = (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
+      ? effectiveAgentExten.split('&')[0].trim()
+      : '1001';
     if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) || cleanDest.endsWith('8888')) {
-      channel = `PJSIP/${(agentExten && agentExten !== 'ringall' && agentExten !== 'all') ? agentExten : '1001'}`;
+      channel = `PJSIP/${firstSingleAgent || '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
     } else if (effectiveMode === 'direct' && effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all') {
-      channel = `PJSIP/${effectiveAgentExten}`;
+      channel = `PJSIP/${firstSingleAgent}`;
     } else {
       channel = `Local/${formattedDest}@from-internal/n`;
     }
@@ -5183,11 +5216,19 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     callStatusStore.set(formattedDest, initialCallState);
 
     // Fast AMI Originate (Under 20ms asynchronous dispatch)
-    // In direct mode (channel = PJSIP/agent), display the customer's number on the operator's MicroSIP!
-    // In outbound Local mode, omit fake CallerID so the SIP provider assigns the CallerID natively.
-    const originateCallerId = (effectiveMode === 'direct' && channel.startsWith('PJSIP/'))
-      ? `"${cleanDest}" <${cleanDest}>`
-      : (effectiveCidNum ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>` : '');
+    // NEVER send an empty CallerID when originating to PJSIP extensions (1001/1002) or Local channels,
+    // otherwise Asterisk sends "Anonymous" <anonymous@anonymous.invalid> in the SIP INVITE From header!
+    const callerLabelExt = (req.body.callerExtension && /^[a-zA-Z0-9_\-]{2,12}$/.test(String(req.body.callerExtension).trim()))
+      ? String(req.body.callerExtension).trim()
+      : '1001';
+    const isIvrTestExten = ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) || cleanDest.endsWith('8888');
+    const originateCallerId = channel.startsWith('PJSIP/')
+      ? (cleanDest.length > 4 && !isIvrTestExten
+          ? `"${cleanDest}" <${cleanDest}>`
+          : `"Sistema Web (${cleanDest})" <${effectiveCidNum || callerLabelExt}>`)
+      : (effectiveCidNum
+          ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>`
+          : `"Sistema Web" <${callerLabelExt}>`);
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
