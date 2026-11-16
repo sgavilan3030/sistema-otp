@@ -2369,6 +2369,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
           mode: callFlowMode,
+          amdEnabled,
           agentExten: isSingleExtensionAgent
             ? userAssignedExt
             : (agentExtension === 'ringall' || press1DestMode === 'ringall')
@@ -2665,6 +2666,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           callerIdNum: outboundCid,
           callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
           mode: callFlowMode,
+          amdEnabled,
           agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
           autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
           audioIntro: currentAudios.introAudioPath,
