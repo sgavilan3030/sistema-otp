@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import http from 'http';
 import https from 'https';
 import { exec } from 'child_process';
 import compression from 'compression';
@@ -8751,13 +8752,29 @@ app.all('/api/*', (req, res) => {
 
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
+  const httpServer = http.createServer(app);
+  let viteInstance: Awaited<ReturnType<typeof createViteServer>> | null = null;
 
   if (!isProd) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
+    const vitePromise = createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
+    }).then((v) => {
+      viteInstance = v;
+      return v;
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = viteInstance || await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     const publicPath = path.join(process.cwd(), 'public');
@@ -8797,8 +8814,21 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const shutdown = () => {
+    try {
+      viteInstance?.close().catch(() => {});
+    } catch (_) {}
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1000).unref();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Asterisk 20 Governor Server running on http://0.0.0.0:${PORT}`);
+    if (!hasLocalAsterisk) {
+      return;
+    }
     // Ensure Asterisk directory structure exists
     try {
       if (!fs.existsSync('/etc/asterisk')) {
