@@ -660,6 +660,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const isApplyingRemoteIvrWsRef = useRef(false);
   const lastIvrWsServerTsRef = useRef(0);
 
+  const resolvedWorkspaceTenantId = React.useMemo(() => {
+    if (activeUser?.tenantId) return activeUser.tenantId;
+    const firstExtNum = parseInt(String(activeUser?.assignedExtensions?.[0] || '').trim(), 10);
+    if (!isNaN(firstExtNum) && Array.isArray(tenants)) {
+      const matched = tenants.find((t) => firstExtNum >= t.extensionStart && firstExtNum <= t.extensionEnd);
+      if (matched?.id) return matched.id;
+    }
+    return '';
+  }, [activeUser?.tenantId, activeUser?.assignedExtensions, tenants]);
+
   const pushIvrWorkspaceToServer = React.useCallback(
     async (overrides?: {
       campaignEntities?: CampaignEntity[];
@@ -681,7 +691,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         const res = await fetch('/api/app/ivr-workspace', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: uId, username: uName, workspace }),
+          body: JSON.stringify({ userId: uId, username: uName, tenantId: resolvedWorkspaceTenantId || undefined, workspace }),
         });
         if (res.ok) {
           const d = await res.json();
@@ -691,7 +701,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }
       } catch (_) {}
     },
-    [activeUser?.id, activeUser?.username, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
+    [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
   );
 
   const fetchIvrWorkspaceFromServer = React.useCallback(async () => {
@@ -699,7 +709,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       const uId = activeUser?.id || 'user-admin';
       const uName = activeUser?.username || 'admin';
       const res = await fetch(
-        `/api/app/ivr-workspace?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}`
+        `/api/app/ivr-workspace?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}&tenantId=${encodeURIComponent(resolvedWorkspaceTenantId)}`
       );
       if (!res.ok) {
         isIvrWsHydratedRef.current = true;
@@ -759,7 +769,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (_) {
       isIvrWsHydratedRef.current = true;
     }
-  }, [activeUser?.id, activeUser?.username, isAdmin]);
+  }, [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, isAdmin]);
 
   useEffect(() => {
     isIvrWsHydratedRef.current = false;

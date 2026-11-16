@@ -1342,7 +1342,11 @@ const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
 const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
 const IVR_WORKSPACE_FILE = path.join(DATA_DIR, 'ivr_workspace.json');
 
-function getIvrWorkspacePath(userId?: string, username?: string): string {
+function getIvrWorkspacePath(userId?: string, username?: string, tenantId?: string): string {
+  const cleanTenant = String(tenantId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (cleanTenant) {
+    return path.join(USER_CONFIGS_DIR, `ivr_tenant_${cleanTenant}.json`);
+  }
   const cleanId = String(userId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
   const cleanName = String(username || '').toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
   if (!cleanId && !cleanName) return IVR_WORKSPACE_FILE;
@@ -6239,9 +6243,30 @@ app.get('/api/app/user-state', (req, res) => {
     const username = String(req.query.username || '').trim();
     const userPath = getUserConfigPath(userId, username);
 
+    const isMasterUser = !userId || userId === 'user-admin' || username.toLowerCase() === 'admin';
+
     if (fs.existsSync(userPath)) {
       const data = fs.readFileSync(userPath, 'utf-8');
-      return res.json({ success: true, state: stripHeavyBlobs(JSON.parse(data)), source: 'user_file' });
+      const parsedUserState = stripHeavyBlobs(JSON.parse(data));
+      if (!isMasterUser && fs.existsSync(APP_STATE_FILE)) {
+        try {
+          const globalState = stripHeavyBlobs(JSON.parse(fs.readFileSync(APP_STATE_FILE, 'utf-8')));
+          if (Array.isArray(globalState.carriers) && globalState.carriers.length > 0) {
+            parsedUserState.carriers = globalState.carriers;
+          }
+          if (Array.isArray(globalState.audios) && globalState.audios.length > 0) {
+            parsedUserState.audios = globalState.audios;
+          }
+          if (Array.isArray(globalState.extensions) && globalState.extensions.length > 0) {
+            parsedUserState.extensions = globalState.extensions;
+          }
+          if (Array.isArray(globalState.users) && globalState.users.length > 0) {
+            parsedUserState.users = globalState.users;
+          }
+          parsedUserState.lastUpdated = Math.max(Number(parsedUserState.lastUpdated || 0), Number(globalState.lastUpdated || 0));
+        } catch (_) {}
+      }
+      return res.json({ success: true, state: parsedUserState, source: 'user_file' });
     }
 
     if (username && !userId) {
@@ -6357,19 +6382,25 @@ app.post('/api/app/state', (req, res) => {
   }
 });
 
-// Persistent IVR Workspace (Guion / Entidad a Simular, Campañas y Modo IVR sincronizados entre navegadores)
+// Persistent IVR Workspace (Guion / Entidad a Simular, Campañas y Modo IVR sincronizados entre navegadores para Admin, Call Centers y Usuarios)
 app.get('/api/app/ivr-workspace', (req, res) => {
   try {
     const userId = String(req.query.userId || '').trim();
     const username = String(req.query.username || '').trim();
-    const userWsPath = getIvrWorkspacePath(userId, username);
+    let tenantId = String(req.query.tenantId || '').trim();
+    if (!tenantId && (userId || username)) {
+      const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
+      const matched = usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === username.toLowerCase())));
+      if (matched?.tenantId) tenantId = String(matched.tenantId);
+    }
+    const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     if (fs.existsSync(userWsPath)) {
       const data = fs.readFileSync(userWsPath, 'utf8');
-      return res.json({ success: true, workspace: JSON.parse(data), source: 'user_workspace' });
+      return res.json({ success: true, workspace: JSON.parse(data), source: tenantId ? 'tenant_workspace' : 'user_workspace' });
     }
     if (fs.existsSync(IVR_WORKSPACE_FILE)) {
       const data = fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8');
-      return res.json({ success: true, workspace: JSON.parse(data), source: 'global_workspace' });
+      return res.json({ success: true, workspace: JSON.parse(data), source: 'global_template' });
     }
   } catch (err: any) {
     console.error('[IVR-WORKSPACE] Error leyendo:', err);
@@ -6380,8 +6411,14 @@ app.get('/api/app/ivr-workspace', (req, res) => {
 app.post('/api/app/ivr-workspace', (req, res) => {
   try {
     const { userId, username, workspace } = req.body;
+    let tenantId = String(req.body.tenantId || '').trim();
     if (!workspace || typeof workspace !== 'object') {
       return res.status(400).json({ success: false, error: 'workspace requerido' });
+    }
+    if (!tenantId && (userId || username)) {
+      const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
+      const matched = usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === String(username).toLowerCase())));
+      if (matched?.tenantId) tenantId = String(matched.tenantId);
     }
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
       fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
@@ -6391,10 +6428,11 @@ app.post('/api/app/ivr-workspace', (req, res) => {
       lastUpdated: Date.now(),
       savedByUserId: userId || 'user-admin',
       savedByUsername: username || 'admin',
+      savedForTenantId: tenantId || undefined,
     };
-    const userWsPath = getIvrWorkspacePath(userId, username);
+    const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     fs.writeFileSync(userWsPath, JSON.stringify(payloadWithTs, null, 2), 'utf8');
-    const isMaster = !userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin';
+    const isMaster = !tenantId && (!userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin');
     if (isMaster || !fs.existsSync(IVR_WORKSPACE_FILE)) {
       fs.writeFileSync(IVR_WORKSPACE_FILE, JSON.stringify(payloadWithTs, null, 2), 'utf8');
     }
