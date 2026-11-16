@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PjsipExtension } from '../types';
-import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert, Disc, Headphones } from 'lucide-react';
 
 interface ExtensionsTabProps {
   extensions: PjsipExtension[];
@@ -196,28 +196,96 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [extPort, setExtPort] = useState<number>(47923);
   const [extMaxContacts, setExtMaxContacts] = useState(2);
   const [selectedCodecs, setSelectedCodecs] = useState<string[]>(['ulaw', 'alaw', 'g722']);
+  const [extRecordCalls, setExtRecordCalls] = useState<boolean>(false);
+  const [extIsSpyOnly, setExtIsSpyOnly] = useState<boolean>(false);
 
   const availableCodecs = ['ulaw', 'alaw', 'g722', 'opus', 'g729'];
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const getNextExtInRange = (min: number, max?: number) => {
+    const used = new Set<number>(
+      extensions
+        .map((e) => parseInt(e.extension, 10))
+        .filter((n): n is number => !isNaN(n))
+    );
+    let candidate = min;
+    while (used.has(candidate) && (!max || candidate <= max)) {
+      candidate++;
+    }
+    if (max && candidate > max) {
+      const nums: number[] = Array.from(used).filter((n) => n >= min && n <= max);
+      return nums.length > 0 ? String(Math.max(...nums) + 1) : String(min);
+    }
+    return String(candidate);
+  };
+
+  const applyExtRolePreset = (preset: 'client_2001' | 'agent_1001' | 'admin_1000') => {
+    if (preset === 'admin_1000') {
+      setExtNumber('1000');
+      setExtName('Super Admin (Modo Espía)');
+      setExtCallerIdNum('1000');
+      setExtCallerIdName('Super Admin Spy');
+      setExtIsSpyOnly(true);
+      setExtRecordCalls(false);
+    } else if (preset === 'agent_1001') {
+      const next = getNextExtInRange(1001, 1999);
+      setExtNumber(next);
+      setExtName(`Agente ${next}`);
+      setExtCallerIdNum(next);
+      setExtCallerIdName(`Agente ${next}`);
+      setExtIsSpyOnly(false);
+    } else {
+      const next = getNextExtInRange(2001);
+      setExtNumber(next);
+      setExtName(`Cliente ${next}`);
+      setExtCallerIdNum(next);
+      setExtCallerIdName(`Cliente ${next}`);
+      setExtIsSpyOnly(false);
+    }
+  };
+
+  const handleToggleRecording = async (ext: PjsipExtension) => {
+    const nextVal = !ext.recordCalls;
+    onUpdateExtension({
+      ...ext,
+      recordCalls: nextVal,
+    });
+    try {
+      const res = await fetch('/api/asterisk/extensions/recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extension: ext.extension, enabled: nextVal }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRepairFeedback(
+          nextVal
+            ? `🔴 Grabación automática ACTIVADA para la extensión ${ext.extension} (MixMonitor).`
+            : `⚪ Grabación automática DESACTIVADA para la extensión ${ext.extension}.`
+        );
+        setTimeout(() => setRepairFeedback(null), 4000);
+      }
+    } catch (_) {}
+  };
+
   const handleOpenCreateModal = () => {
     setEditingExt(null);
     setValidationError(null);
-    const validNums = extensions
-      .map((e) => parseInt(e.extension, 10))
-      .filter((n) => !isNaN(n) && n >= 1001);
-    const nextExt = validNums.length > 0 ? (Math.max(...validNums) + 1).toString() : '1001';
-    setExtNumber(nextExt);
-    setExtName(`Usuario ${nextExt}`);
+    // Por defecto sugiere clientes individuales desde 2001+ (1000=Admin Espía, 1001-1999=Call Centers)
+    const nextClientExt = getNextExtInRange(2001);
+    setExtNumber(nextClientExt);
+    setExtName(`Cliente ${nextClientExt}`);
     setExtSecret(`Pass!${Math.random().toString(36).slice(-8)}#2026`);
-    setExtCallerIdNum(nextExt);
-    setExtCallerIdName(`Usuario ${nextExt}`);
+    setExtCallerIdNum(nextClientExt);
+    setExtCallerIdName(`Cliente ${nextClientExt}`);
     setExtContext('from-internal');
     setExtTransport('transport-udp');
     setExtPort(47923);
     setExtMaxContacts(2);
     setSelectedCodecs(['ulaw', 'alaw', 'g722']);
+    setExtRecordCalls(false);
+    setExtIsSpyOnly(false);
     setIsModalOpen(true);
   };
 
@@ -234,6 +302,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtPort(ext.port || 47923);
     setExtMaxContacts(ext.maxContacts);
     setSelectedCodecs(ext.codecs);
+    setExtRecordCalls(Boolean(ext.recordCalls));
+    setExtIsSpyOnly(Boolean(ext.isSpyOnly || ext.extension === '1000'));
     setIsModalOpen(true);
   };
 
@@ -266,8 +336,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
 
     if (isPureDigits) {
       const num = parseInt(rawExt, 10);
-      if (num < 1001) {
-        setValidationError('Las extensiones numéricas en Asterisk deben ser a partir de 1001. O puedes escribir un nombre alfanumérico como "juan_perez" o "agente_carlos" para registrarte en MicroSIP por nombre.');
+      if (num < 1000) {
+        setValidationError('Las extensiones numéricas en Asterisk deben ser a partir de 1000 (1000 = Super Admin Espía, 1001-1999 = Call Centers, 2001+ = Clientes Individuales).');
         return;
       }
     } else {
@@ -296,6 +366,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
       return;
     }
 
+    const finalIsSpyOnly = extIsSpyOnly || rawExt === '1000';
+
     if (editingExt) {
       onUpdateExtension({
         ...editingExt,
@@ -310,6 +382,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         callerId,
         callerIdNum: effectiveCidNum,
         callerIdName: effectiveCidName,
+        recordCalls: extRecordCalls,
+        isSpyOnly: finalIsSpyOnly,
         ipAddress: editingExt.ipAddress?.includes(':')
           ? `${editingExt.ipAddress.split(':')[0]}:${portNum}`
           : `192.168.1.145:${portNum}`,
@@ -328,6 +402,8 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         callerId,
         callerIdNum: effectiveCidNum,
         callerIdName: effectiveCidName,
+        recordCalls: extRecordCalls,
+        isSpyOnly: finalIsSpyOnly,
         status: 'registered',
         ipAddress: `192.168.1.${Math.floor(Math.random() * 150) + 50}:${portNum}`,
         lastSeen: 'Recién creada (Sincronizada vía AMI)',
@@ -380,7 +456,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               {extensions.length} totales
             </span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold font-mono">
-              Rango: 1001 en adelante
+              1000 Espía • 1001-1999 Call Centers • 2001+ Clientes
             </span>
           </h2>
           <p className="text-sm text-slate-400">
@@ -394,10 +470,10 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               id="btn-restore-default-extensions"
               onClick={onResetDefaultExtensions}
               className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-md transition-all"
-              title="Restaura en la web y en Asterisk las extensiones oficiales 1001, 1002, 1003 y 1004"
+              title="Restaura en la web y en Asterisk las extensiones oficiales 1000 (Espía Super Admin), 1001, 1002, 1003 y 1004"
             >
               <Zap className="w-4 h-4 text-amber-400" />
-              <span>Cargar 1001, 1002, 1003</span>
+              <span>Cargar 1000, 1001-1004</span>
             </button>
           )}
 
@@ -469,9 +545,9 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           </div>
         </div>
 
-        {/* Live status chips for 1001, 1002, 1003 */}
+        {/* Live status chips for 1000, 1001, 1002, 1003 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
-          {['1001', '1002', '1003', '1004'].map((num) => {
+          {['1000', '1001', '1002', '1003'].map((num) => {
             const epData = diagnosticInfo?.endpoints?.find((e: any) => e.extension === num);
             const isReg = epData?.status === 'registered';
             const stateText = epData?.state || (isReg ? 'Registrado' : 'No Conectado');
@@ -632,13 +708,31 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               {/* Card top */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-mono font-bold text-emerald-400 text-lg border border-slate-700">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-mono font-bold text-lg border ${
+                    ext.extension === '1000' || ext.isSpyOnly
+                      ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/40'
+                      : parseInt(ext.extension, 10) >= 2001
+                      ? 'bg-purple-500/15 text-purple-300 border-purple-500/40'
+                      : 'bg-slate-800 text-emerald-400 border-slate-700'
+                  }`}>
                     {ext.extension}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white text-sm leading-tight">
-                      {ext.name}
-                    </h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="font-semibold text-white text-sm leading-tight">
+                        {ext.name}
+                      </h3>
+                      {(ext.extension === '1000' || ext.isSpyOnly) && (
+                        <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-mono font-bold">
+                          ESPÍA ADMIN
+                        </span>
+                      )}
+                      {parseInt(ext.extension, 10) >= 2001 && (
+                        <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-mono font-bold">
+                          CLIENTE 2001+
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400 font-mono">{ext.callerId}</p>
                   </div>
                 </div>
@@ -747,6 +841,36 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                 </div>
               </div>
 
+              {/* Grabación Selectiva de Llamadas (MixMonitor) */}
+              <div className={`mt-2.5 p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                ext.recordCalls
+                  ? 'bg-rose-950/30 border-rose-500/40'
+                  : 'bg-slate-950/70 border-slate-800'
+              }`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Disc className={`w-4 h-4 shrink-0 ${ext.recordCalls ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`} />
+                  <div className="min-w-0">
+                    <div className={`font-bold text-[11px] ${ext.recordCalls ? 'text-rose-300' : 'text-slate-300'}`}>
+                      Grabación de Llamadas (MixMonitor)
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {ext.recordCalls ? 'Grabando entrantes y salientes en WAV' : 'Grabación desactivada'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleRecording(ext)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all shrink-0 cursor-pointer ${
+                    ext.recordCalls
+                      ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-sm shadow-rose-500/30'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                >
+                  {ext.recordCalls ? '● GRABANDO ON' : '○ Grabar OFF'}
+                </button>
+              </div>
+
               {/* Información de Identificador de Llamada */}
               <div className="mt-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -827,7 +951,38 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
+            <form onSubmit={handleSave} className="space-y-4 text-xs max-h-[75vh] overflow-y-auto pr-1">
+              {!editingExt && (
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1.5">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    Tipo / Rango Recomendado:
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => applyExtRolePreset('client_2001')}
+                      className="px-2 py-1.5 rounded bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[10px] font-bold transition-all cursor-pointer"
+                    >
+                      Cliente (2001+)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyExtRolePreset('agent_1001')}
+                      className="px-2 py-1.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition-all cursor-pointer"
+                    >
+                      Call Center (1001+)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyExtRolePreset('admin_1000')}
+                      className="px-2 py-1.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold transition-all cursor-pointer"
+                    >
+                      Espía Admin (1000)
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">
@@ -838,11 +993,11 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                     required
                     value={extNumber}
                     onChange={(e) => setExtNumber(e.target.value)}
-                    placeholder="1005 o juan_perez"
+                    placeholder="2001 o juan_perez"
                     className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Permite números (ej. <b className="text-emerald-400">1005</b>) o Nombres para MicroSIP (ej. <b className="text-sky-400">juan_perez</b>, <b className="text-sky-400">agente1</b>)
+                    1000 (Espía) • 1001-1999 (Call Center) • <b className="text-purple-300">2001+</b> (Clientes)
                   </span>
                 </div>
                 <div>
@@ -1003,6 +1158,34 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   onChange={(e) => setExtMaxContacts(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Opciones de Grabación y Supervisión */}
+              <div className="grid grid-cols-1 gap-2 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="flex items-center gap-2 text-slate-200 font-medium">
+                    <Disc className="w-4 h-4 text-rose-400" />
+                    <span>Grabar todas las llamadas de esta extensión (MixMonitor)</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={extRecordCalls}
+                    onChange={(e) => setExtRecordCalls(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-rose-500 focus:ring-0"
+                  />
+                </label>
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="flex items-center gap-2 text-slate-300 text-[11px]">
+                    <Headphones className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Extensión exclusiva de Supervisión/Espía (no recibe Ring-All)</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={extIsSpyOnly}
+                    onChange={(e) => setExtIsSpyOnly(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0"
+                  />
+                </label>
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex justify-end space-x-2">

@@ -40,6 +40,7 @@ interface UsersTabProps {
   onAddUser: (user: SystemUser) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
+  onAddExtension?: (ext: PjsipExtension) => void;
   onNavigateToProduction?: () => void;
 }
 
@@ -54,6 +55,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   onAddUser,
   onUpdateUser,
   onDeleteUser,
+  onAddExtension,
   onNavigateToProduction,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -93,12 +95,35 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     canUseSoftphone: true,
     canManageUsers: false,
     canExportConfigs: false,
+    canSpy: false,
   });
 
-  // Filter only extensions >= 1001
+  // Compute next free 2001+ extension for standalone (non-Call Center) clients
+  const getNextClientExtension2001 = (): string => {
+    const usedNums = new Set<number>();
+    extensions.forEach((e) => {
+      const n = parseInt(e.extension, 10);
+      if (!isNaN(n)) usedNums.add(n);
+    });
+    users.forEach((u) => {
+      (u.assignedExtensions || []).forEach((extStr) => {
+        const n = parseInt(extStr, 10);
+        if (!isNaN(n)) usedNums.add(n);
+      });
+    });
+    let candidate = 2001;
+    while (usedNums.has(candidate)) {
+      candidate++;
+    }
+    return String(candidate);
+  };
+
+  // Filter extensions: 1000 only shown to Global Super Admin; 1001+ for agents/call centers/clients
   const availableExtensions = extensions.filter((e) => {
     const num = parseInt(e.extension, 10);
-    return !isNaN(num) && num >= 1001;
+    if (isNaN(num)) return false;
+    if (num === 1000) return formRole === 'admin' && !formTenantId;
+    return num >= 1001;
   });
 
   const applyRolePreset = (role: SystemUser['role']) => {
@@ -114,6 +139,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canUseSoftphone: true,
         canManageUsers: true,
         canExportConfigs: true,
+        canSpy: true,
       });
     } else if (role === 'supervisor') {
       setFormAccountType('agent');
@@ -126,6 +152,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canUseSoftphone: true,
         canManageUsers: false,
         canExportConfigs: true,
+        canSpy: true,
       });
     } else if (role === 'agent') {
       setFormAccountType('agent');
@@ -138,6 +165,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canUseSoftphone: true,
         canManageUsers: false,
         canExportConfigs: false,
+        canSpy: false,
       });
     } else if (role === 'reseller_client') {
       setFormAccountType('reseller_client');
@@ -150,7 +178,14 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canUseSoftphone: true,
         canManageUsers: false,
         canExportConfigs: false,
+        canSpy: false,
       });
+      if (!editingUser && !formTenantId) {
+        const nextClientExt = getNextClientExtension2001();
+        setSelectedExts((prev) =>
+          prev.some((x) => parseInt(x, 10) >= 2001) ? prev : [nextClientExt]
+        );
+      }
     }
   };
 
@@ -247,8 +282,9 @@ regInterval=300
     setFormCarrierId('auto');
     setFormTenantId('');
     setFormStatus('active');
-    // Default assign first available extension >= 1001
-    setSelectedExts(availableExtensions.length > 0 ? [availableExtensions[0].extension] : ['1001']);
+    // Standalone non-Call-Center clients default to next free 2001+ extension
+    const nextClientExt = getNextClientExtension2001();
+    setSelectedExts([nextClientExt]);
     applyRolePreset('reseller_client');
     setIsModalOpen(true);
   };
@@ -347,6 +383,30 @@ regInterval=300
       onAddUser(userObj);
     }
 
+    // Ensure any assigned 2001+ client extension that doesn't yet exist in ExtensionsTab is created automatically
+    if (onAddExtension) {
+      selectedExts.forEach((extNum) => {
+        const cleanNum = String(extNum).trim();
+        if (!/^\d{4,}$/.test(cleanNum)) return;
+        const alreadyExists = extensions.some((ext) => ext.extension === cleanNum);
+        if (!alreadyExists) {
+          onAddExtension({
+            id: `ext-${cleanNum}`,
+            extension: cleanNum,
+            name: `${formName} (Cliente ${cleanNum})`,
+            secret: passwordFinal,
+            context: 'from-internal',
+            transport: 'transport-udp',
+            port: 47923,
+            maxContacts: 5,
+            codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+            status: 'unknown',
+            tenantId: formTenantId || undefined,
+          });
+        }
+      });
+    }
+
     // Auto-provision immediately in Asterisk 20 PJSIP
     fetch('/api/users/sync-sip', {
       method: 'POST',
@@ -354,8 +414,8 @@ regInterval=300
       body: JSON.stringify({ user: userObj }),
     })
       .then((r) => r.json())
-      .then((data) => {
-        setSyncFeedback(`✓ Usuario "${usernameFinal}" registrado en Asterisk PJSIP (Puerto 47923). MicroSIP ya puede conectarse.`);
+      .then(() => {
+        setSyncFeedback(`✓ Usuario "${usernameFinal}" (Ext: ${selectedExts.join(', ') || usernameFinal}) registrado en Asterisk PJSIP (Puerto 47923). MicroSIP ya puede conectarse.`);
         setTimeout(() => setSyncFeedback(null), 6000);
       })
       .catch(() => {});
@@ -398,6 +458,11 @@ regInterval=300
       key: 'canManageUsers',
       label: 'Administración de Usuarios y Roles',
       desc: 'Crear usuarios del sistema y asignar extensiones y permisos RBAC',
+    },
+    {
+      key: 'canSpy',
+      label: 'Modo Espía ChanSpy (*55/*56/*57) y Grabaciones',
+      desc: 'Escuchar, susurrar e intervenir llamadas en vivo y gestionar grabaciones',
     },
   ];
 
@@ -442,7 +507,7 @@ regInterval=300
             </span>
           </h2>
           <p className="text-sm text-slate-400">
-            Crea operadores y supervisores, <strong>asígnales extensiones SIP (a partir de 1001)</strong> y controla exactamente qué módulos del sistema pueden utilizar.
+            Convención de extensiones: <strong className="text-cyan-300">1000</strong> Espía Super Admin • <strong className="text-amber-300">1001–1999</strong> Call Centers • <strong className="text-emerald-300">2001+</strong> Clientes Individuales (No Call Center).
           </p>
         </div>
 
@@ -1191,24 +1256,56 @@ regInterval=300
                 )}
               </div>
 
-              {/* Assign Extensions Section (Enforces >= 1001) */}
+              {/* Assign Extensions Section (1000 Admin Spy, 1001-1999 Call Centers, 2001+ Clientes) */}
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-wrap justify-between items-center gap-2">
                   <label className="text-slate-200 font-semibold flex items-center gap-1.5">
                     <Phone className="w-4 h-4 text-emerald-400" />
-                    <span>Asignar Extensiones PJSIP (1001 en adelante)</span>
+                    <span>Asignar Extensiones PJSIP (1001–1999 Call Centers • 2001+ Clientes)</span>
                   </label>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    {selectedExts.length} asignadas
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextExt = getNextClientExtension2001();
+                        if (!selectedExts.includes(nextExt)) {
+                          setSelectedExts([...selectedExts.filter((e) => parseInt(e, 10) >= 2001), nextExt]);
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold cursor-pointer"
+                      title="Asigna automáticamente la siguiente extensión libre a partir de la 2001 para clientes individuales"
+                    >
+                      + Auto-Ext Cliente ({getNextClientExtension2001()})
+                    </button>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {selectedExts.length} asignadas
+                    </span>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Selecciona qué extensiones puede operar este usuario desde su softphone.
+                  Clientes individuales (sin Call Center) operan en el rango <strong className="text-emerald-300 font-mono">2001+</strong>; si la extensión seleccionada aún no existe, se creará automáticamente al guardar.
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  {selectedExts
+                    .filter((extNum) => !availableExtensions.some((e) => e.extension === extNum))
+                    .map((extNum) => (
+                      <button
+                        type="button"
+                        key={`pending-${extNum}`}
+                        onClick={() => toggleExtensionAssignment(extNum)}
+                        className="p-2 rounded border text-left font-mono transition-all flex items-center justify-between bg-emerald-500/20 border-emerald-500/60 text-emerald-200"
+                      >
+                        <div>
+                          <div className="font-bold text-xs">{extNum}</div>
+                          <div className="text-[10px] truncate max-w-[90px] font-sans text-emerald-300">Nueva Cliente</div>
+                        </div>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      </button>
+                    ))}
                   {availableExtensions.map((ext) => {
                     const isSelected = selectedExts.includes(ext.extension);
+                    const extInt = parseInt(ext.extension, 10);
                     return (
                       <button
                         type="button"
@@ -1221,7 +1318,11 @@ regInterval=300
                         }`}
                       >
                         <div>
-                          <div className="font-bold text-xs">{ext.extension}</div>
+                          <div className="font-bold text-xs flex items-center gap-1">
+                            <span>{ext.extension}</span>
+                            {extInt === 1000 && <span className="text-[9px] text-cyan-400">ESPÍA</span>}
+                            {extInt >= 2001 && <span className="text-[9px] text-emerald-400">CLI</span>}
+                          </div>
                           <div className="text-[10px] truncate max-w-[80px] font-sans text-slate-400">{ext.name}</div>
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}

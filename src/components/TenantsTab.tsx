@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Building2,
   PhoneCall,
@@ -27,9 +27,26 @@ import {
   PhoneForwarded,
   Info,
   ExternalLink,
-  Lock
+  Lock,
+  BookOpen
 } from 'lucide-react';
 import { CallCenterTenant, TenantRechargeHistory, PjsipExtension, CarrierTrunk, SystemUser } from '../types';
+
+interface SimpleEntityOption {
+  id: string;
+  name: string;
+  subtitle?: string;
+  icon?: string;
+}
+
+const DEFAULT_ENTITY_OPTIONS: SimpleEntityOption[] = [
+  { id: 'service', name: 'Servicio al Cliente', subtitle: 'Atención y soporte' },
+  { id: 'card', name: 'Tarjeta de Crédito', subtitle: 'Cargo no reconocido' },
+  { id: 'whatsapp', name: 'WhatsApp / Telegram', subtitle: 'Migración de cuenta' },
+  { id: 'google', name: 'Google / Apple ID', subtitle: 'Alerta de seguridad' },
+  { id: 'amazon', name: 'Amazon / Envíos', subtitle: 'Autorización pedido' },
+  { id: 'custom', name: 'Personalizado', subtitle: 'Configuración libre' },
+];
 
 interface TenantsTabProps {
   tenants: CallCenterTenant[];
@@ -60,16 +77,43 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   onSyncAsterisk,
   onNavigateToManualDialer,
 }) => {
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' && !currentUser?.tenantId;
   const [activeSubTab, setActiveSubTab] = useState<'groups' | 'ranges' | 'dialplan' | 'recharges'>('groups');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedContext, setCopiedContext] = useState<string | null>(null);
+
+  // Master IVR scripts/entities list (loaded from server + localStorage fallback)
+  const [availableEntities, setAvailableEntities] = useState<SimpleEntityOption[]>(() => {
+    try {
+      const saved = localStorage.getItem('prod_campaign_entities_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }));
+        }
+      }
+    } catch (_) {}
+    return DEFAULT_ENTITY_OPTIONS;
+  });
+
+  useEffect(() => {
+    fetch('/api/app/master-entities')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
+          setAvailableEntities(data.entities.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<CallCenterTenant | null>(null);
   const [rechargeModalTenant, setRechargeModalTenant] = useState<CallCenterTenant | null>(null);
   const [provisionConfirmTenant, setProvisionConfirmTenant] = useState<CallCenterTenant | null>(null);
+  const [scriptsModalTenant, setScriptsModalTenant] = useState<CallCenterTenant | null>(null);
+  const [scriptsModalSelectedIds, setScriptsModalSelectedIds] = useState<string[]>([]);
 
   // Form states for Create/Edit Tenant
   const [formData, setFormData] = useState({
@@ -90,6 +134,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     notes: '',
     magnusBillingUrl: '',
     magnusSipAccount: '',
+    assignedEntityIds: [] as string[],
   });
 
   // Recharge modal form
@@ -139,11 +184,14 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
 
   // Open Create Modal
   const handleOpenCreateModal = () => {
-    // Propose an unallocated range
-    const maxEnd = tenants.reduce((max, t) => Math.max(max, t.extensionEnd), 1000);
-    const nextStart = Math.ceil((maxEnd + 1) / 100) * 100 + 1; // e.g. 1020 -> 1101 or 2001
-    const proposedStart = nextStart > 9000 ? 5001 : nextStart;
-    const proposedEnd = proposedStart + 19;
+    // Propose an unallocated range within 1001-1999 (Call Centers) so 2001+ stays reserved for standalone clients
+    const ccTenants = tenants.filter((t) => t.extensionEnd < 2000);
+    const maxEnd = ccTenants.reduce((max, t) => Math.max(max, t.extensionEnd), 1000);
+    let nextStart = Math.ceil((maxEnd + 1) / 100) * 100 + 1; // e.g. 1210 -> 1301
+    if (nextStart < 1001) nextStart = 1101;
+    if (nextStart >= 1980) nextStart = 1901;
+    const proposedStart = nextStart;
+    const proposedEnd = Math.min(1999, proposedStart + 19);
 
     setFormData({
       name: '',
@@ -163,6 +211,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       notes: '',
       magnusBillingUrl: '',
       magnusSipAccount: '',
+      assignedEntityIds: availableEntities.length > 0 ? [availableEntities[0].id] : [],
     });
     setEditingTenant(null);
     setIsCreateModalOpen(true);
@@ -189,9 +238,39 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       notes: tenant.notes || '',
       magnusBillingUrl: tenant.magnusBillingUrl || '',
       magnusSipAccount: tenant.magnusSipAccount || '',
+      assignedEntityIds: Array.isArray(tenant.assignedEntityIds)
+        ? tenant.assignedEntityIds
+        : availableEntities.map((e) => e.id),
     });
     setEditingTenant(tenant);
     setIsCreateModalOpen(true);
+  };
+
+  // Quick Open Assign Scripts Modal
+  const handleOpenScriptsModal = (tenant: CallCenterTenant) => {
+    if (!isAdmin) return;
+    // Refresh latest master entities from server when opening modal
+    fetch('/api/app/master-entities')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
+          setAvailableEntities(data.entities.map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon })));
+        }
+      })
+      .catch(() => {});
+    setScriptsModalTenant(tenant);
+    setScriptsModalSelectedIds(
+      Array.isArray(tenant.assignedEntityIds) ? [...tenant.assignedEntityIds] : availableEntities.map((e) => e.id)
+    );
+  };
+
+  const handleSaveAssignedScripts = () => {
+    if (!scriptsModalTenant || !isAdmin) return;
+    onUpdateTenant({
+      ...scriptsModalTenant,
+      assignedEntityIds: [...scriptsModalSelectedIds],
+    });
+    setScriptsModalTenant(null);
   };
 
   // Save Tenant (Create or Edit - Super Admin only)
@@ -225,6 +304,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         dialplanContext,
         magnusBillingUrl: formData.magnusBillingUrl.trim(),
         magnusSipAccount: formData.magnusSipAccount.trim(),
+        assignedEntityIds: [...formData.assignedEntityIds],
       };
       onUpdateTenant(updated);
     } else {
@@ -252,6 +332,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         dialplanContext,
         magnusBillingUrl: formData.magnusBillingUrl.trim(),
         magnusSipAccount: formData.magnusSipAccount.trim(),
+        assignedEntityIds: [...formData.assignedEntityIds],
       };
       onAddTenant(newTenant);
     }
@@ -706,6 +787,48 @@ same => n,Hangup()
                     )}
                   </div>
 
+                  {/* Assigned IVR Scripts / Entities */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 mb-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                        Guiones IVR Asignados
+                      </span>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenScriptsModal(tenant)}
+                          className="text-[10px] font-bold text-sky-300 hover:text-sky-200 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Agregar / Quitar
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {!Array.isArray(tenant.assignedEntityIds) ? (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                          Todos los guiones (sin restricción)
+                        </span>
+                      ) : tenant.assignedEntityIds.length === 0 ? (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          Sin guiones asignados todavía
+                        </span>
+                      ) : (
+                        tenant.assignedEntityIds.map((entId) => {
+                          const entMeta = availableEntities.find((e) => e.id === entId);
+                          return (
+                            <span
+                              key={entId}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-200 border border-sky-500/30"
+                            >
+                              {entMeta ? entMeta.name : entId}
+                            </span>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
                   {/* Wallet / Balance Info */}
                   <div className="bg-gradient-to-br from-slate-950 to-slate-900 border border-emerald-500/20 rounded-xl p-3.5 mb-4">
                     <div className="flex items-center justify-between mb-1.5">
@@ -739,6 +862,17 @@ same => n,Hangup()
                       >
                         <DollarSign className="w-3.5 h-3.5" />
                         Recargar
+                      </button>
+                    )}
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleOpenScriptsModal(tenant)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Agregar o quitar Guiones / Entidades IVR para este Call Center"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        Guiones ({Array.isArray(tenant.assignedEntityIds) ? tenant.assignedEntityIds.length : availableEntities.length})
                       </button>
                     )}
 
@@ -994,12 +1128,15 @@ same => n,Hangup()
 
               {/* Extension Range Block */}
               <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4">
-                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span>Rango de Extensiones Asignadas</span>
+                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Rango de Extensiones Asignadas (Call Center: 1001–1999)</span>
                   <span className="text-[11px] font-mono text-slate-400">
                     Total: {Math.max(0, formData.extensionEnd - formData.extensionStart + 1)} puestos
                   </span>
                 </div>
+                <p className="text-[10px] text-slate-400 mb-2.5">
+                  Convención recomendada: <span className="text-cyan-300 font-mono">1000</span> Super Admin Espía • <span className="text-amber-300 font-mono">1001–1999</span> Call Centers • <span className="text-emerald-300 font-mono">2001+</span> Clientes individuales.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] text-slate-400 mb-1">Extensión Inicial</label>
@@ -1178,6 +1315,68 @@ same => n,Hangup()
                     onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
                   />
+                </div>
+              </div>
+
+              {/* Assigned IVR Scripts Checklist */}
+              <div className="bg-slate-950/70 border border-sky-500/25 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4" />
+                      Guiones / Entidades a Simular Permitidos ({formData.assignedEntityIds.length}/{availableEntities.length})
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Selecciona qué guiones podrá usar este Call Center. Ellos elegirán internamente cuál trabajar cada día sin mezclarse con otros Call Centers.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, assignedEntityIds: availableEntities.map((e) => e.id) })}
+                      className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, assignedEntityIds: [] })}
+                      className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                    >
+                      Ninguno
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                  {availableEntities.map((ent) => {
+                    const checked = formData.assignedEntityIds.includes(ent.id);
+                    return (
+                      <label
+                        key={ent.id}
+                        className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
+                          checked
+                            ? 'bg-sky-950/50 border-sky-500/50 text-white'
+                            : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...formData.assignedEntityIds, ent.id]
+                              : formData.assignedEntityIds.filter((id) => id !== ent.id);
+                            setFormData({ ...formData, assignedEntityIds: next });
+                          }}
+                          className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold truncate">{ent.name}</div>
+                          {ent.subtitle && <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1362,6 +1561,117 @@ same => n,Hangup()
                 className="px-4 py-2 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 transition-colors shadow-lg shadow-amber-500/20"
               >
                 Sí, Generar Extensiones
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ASSIGN / REMOVE IVR SCRIPTS FOR CALL CENTER */}
+      {scriptsModalTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-sky-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <BookOpen className="w-5 h-5 text-sky-400" />
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    Guiones / Entidades para: {scriptsModalTenant.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Agrega o quita qué guiones podrá seleccionar este Call Center cada día.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScriptsModalTenant(null)}
+                className="text-slate-400 hover:text-white text-sm px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-300 font-semibold">
+                Seleccionados: <strong className="text-sky-400 font-mono">{scriptsModalSelectedIds.length}</strong> de {availableEntities.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScriptsModalSelectedIds(availableEntities.map((e) => e.id))}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                >
+                  Seleccionar Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScriptsModalSelectedIds([])}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                >
+                  Quitar Todos
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {availableEntities.map((ent) => {
+                const isAssigned = scriptsModalSelectedIds.includes(ent.id);
+                return (
+                  <label
+                    key={ent.id}
+                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      isAssigned
+                        ? 'bg-sky-950/40 border-sky-500/50 text-white'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isAssigned}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setScriptsModalSelectedIds((prev) => [...prev, ent.id]);
+                          } else {
+                            setScriptsModalSelectedIds((prev) => prev.filter((id) => id !== ent.id));
+                          }
+                        }}
+                        className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate">{ent.name}</div>
+                        {ent.subtitle && <div className="text-[11px] text-slate-400 truncate">{ent.subtitle}</div>}
+                      </div>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        isAssigned
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-500 border border-slate-700'
+                      }`}
+                    >
+                      {isAssigned ? 'Habilitado' : 'Oculto'}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setScriptsModalTenant(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAssignedScripts}
+                className="px-5 py-2 rounded-xl text-xs font-black text-slate-950 bg-sky-400 hover:bg-sky-300 transition-colors shadow-lg shadow-sky-500/20 cursor-pointer"
+              >
+                Guardar Guiones del Call Center
               </button>
             </div>
           </div>

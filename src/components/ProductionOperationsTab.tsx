@@ -670,6 +670,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return '';
   }, [activeUser?.tenantId, activeUser?.assignedExtensions, tenants]);
 
+  const [tenantServerAssignedIds, setTenantServerAssignedIds] = useState<string[] | null>(null);
+
   const pushIvrWorkspaceToServer = React.useCallback(
     async (overrides?: {
       campaignEntities?: CampaignEntity[];
@@ -716,6 +718,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         return;
       }
       const data = await res.json();
+      if (Array.isArray(data.assignedEntityIds)) {
+        setTenantServerAssignedIds(data.assignedEntityIds);
+      } else {
+        setTenantServerAssignedIds(null);
+      }
+
       if (data.success && data.workspace) {
         const ws = data.workspace;
         if (ws.lastUpdated && ws.lastUpdated <= lastIvrWsServerTsRef.current && isIvrWsHydratedRef.current) {
@@ -725,13 +733,23 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         isApplyingRemoteIvrWsRef.current = true;
         isIvrWsHydratedRef.current = true;
 
-        if (Array.isArray(ws.campaignEntities) && ws.campaignEntities.length > 0) {
-          setCampaignEntities(ws.campaignEntities);
-          try {
-            localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(ws.campaignEntities));
-          } catch (_) {}
+        if (Array.isArray(ws.campaignEntities)) {
+          if (Array.isArray(data.assignedEntityIds)) {
+            setCampaignEntities((prev) => {
+              const map = new Map<string, CampaignEntity>();
+              for (const e of [...prev, ...ws.campaignEntities]) {
+                if (e?.id) map.set(e.id, e);
+              }
+              return Array.from(map.values());
+            });
+          } else if (ws.campaignEntities.length > 0) {
+            setCampaignEntities(ws.campaignEntities);
+            try {
+              localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(ws.campaignEntities));
+            } catch (_) {}
+          }
         }
-        if (ws.selectedService) {
+        if (ws.selectedService !== undefined) {
           setSelectedService(ws.selectedService as ServiceCampaignKey);
           try {
             localStorage.setItem('prod_selected_service_v3', String(ws.selectedService));
@@ -760,16 +778,25 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           isApplyingRemoteIvrWsRef.current = false;
         }, 400);
       } else {
+        if (Array.isArray(data.assignedEntities) && data.assignedEntities.length > 0) {
+          setCampaignEntities((prev) => {
+            const map = new Map<string, CampaignEntity>();
+            for (const e of [...prev, ...data.assignedEntities]) {
+              if (e?.id) map.set(e.id, e);
+            }
+            return Array.from(map.values());
+          });
+        }
         isIvrWsHydratedRef.current = true;
-        // Bootstrap server with existing local config on first run if admin already customized this browser
-        if (isAdmin) {
+        // Bootstrap server with existing local config on first run if Super Admin already customized this browser
+        if (isSuperAdmin) {
           pushIvrWorkspaceToServer();
         }
       }
     } catch (_) {
       isIvrWsHydratedRef.current = true;
     }
-  }, [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, isAdmin]);
+  }, [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, isSuperAdmin]);
 
   useEffect(() => {
     isIvrWsHydratedRef.current = false;
@@ -903,8 +930,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       localStorage.setItem('prod_selected_service_v3', current.id);
       localStorage.setItem('prod_selected_service_' + targetAgent, current.id);
 
-      // 3. Register manual lock in server API if admin
-      if (isAdmin) {
+      // 3. Register manual lock in server API ONLY if Super Admin
+      if (isSuperAdmin) {
         fetch('/api/asterisk/audio/toggle-lock', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -912,7 +939,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }).catch(() => {});
       }
 
-      // 4. Sync audios to AstDB for Asterisk with agentId
+      // 4. Sync audios to AstDB for Asterisk isolated by Call Center (tenantId) & Agent
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -925,15 +952,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
+          tenantId: resolvedWorkspaceTenantId || undefined,
           isManualSave: true,
-          isAdmin,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
         }),
       });
 
       setIsEntitySaved(true);
-      const feedbackMsg = isAdmin
+      const feedbackMsg = isSuperAdmin
         ? `✓ Guión "${current.name}" guardado y sincronizado (Ext. ${targetAgent} y Sistema). Protegido contra sobreescritura.`
-        : `✓ Guión "${current.name}" guardado y aplicado para tu Extensión ${targetAgent}. Tus llamadas usarán este guión sin interferir con otros operadores.`;
+        : `✓ Guión "${current.name}" seleccionado para trabajar hoy${resolvedWorkspaceTenantId ? ' en tu Call Center' : ''} (Ext. ${targetAgent}) sin cruzarse con otros Call Centers.`;
       setAudioSyncFeedback(feedbackMsg);
       setTimeout(() => {
         setIsEntitySaved(false);
@@ -948,8 +977,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   };
 
   const handleUnlockCurrentEntity = async () => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para desbloquear el guión.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede desbloquear el catálogo de guiones.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
@@ -986,8 +1015,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const handleStartInlineRename = (ent: CampaignEntity, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para editar o renombrar este guión.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede editar o renombrar guiones.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
@@ -998,8 +1027,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const handleSaveInlineRename = (entityId: string, e?: React.MouseEvent | React.KeyboardEvent) => {
     if (e) e.stopPropagation();
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para renombrar guiones.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede renombrar guiones.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       setInlineRenamingId(null);
       return;
@@ -1136,8 +1165,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Save complete entity from modal
   const handleSaveEntity = async (updatedEntity: CampaignEntity) => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Solo usuarios Administradores pueden guardar cambios en este guión.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede guardar cambios en este guión.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       setIsEntityModalOpen(false);
       return;
@@ -1192,7 +1221,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       localStorage.setItem('prod_selected_service_v3', entity.id);
     } catch (_) {}
 
-    // Auto-sync to AstDB so both dialplan 8888 and outgoing calls use its assigned audios for this agent
+    // Auto-sync to AstDB isolated to Call Center & agent (never overwrites global/other Call Centers)
     try {
       await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
@@ -1206,18 +1235,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           holdMusic: entity.holdMusicAudioPath || 'custom/moh_corporate_loop',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
-          isAdmin,
+          tenantId: resolvedWorkspaceTenantId || undefined,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
         }),
       });
-      setAudioSyncFeedback(`✓ Guión seleccionado: "${entity.name}" para tu Extensión ${targetAgent}.`);
+      setAudioSyncFeedback(`✓ Guión seleccionado para hoy: "${entity.name}" (${resolvedWorkspaceTenantId ? 'aislado en tu Call Center' : `Ext. ${targetAgent}`}).`);
       setTimeout(() => setAudioSyncFeedback(null), 3000);
     } catch {}
   };
 
   // Add new entity
   const handleAddNewEntity = () => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Solo usuarios Administradores pueden crear nuevos guiones en el IVR.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede crear nuevos guiones en el IVR.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
@@ -1242,8 +1273,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Delete entity
   const handleDeleteEntity = (entityId: string) => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para eliminar guiones.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede eliminar guiones.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
@@ -1268,8 +1299,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   // Reset to factory defaults
   const handleResetEntities = () => {
-    if (!isAdmin) {
-      setAudioSyncFeedback('🔒 Se requieren privilegios de Administrador para restablecer los guiones.');
+    if (!canEditEntityCatalog) {
+      setAudioSyncFeedback('🔒 Solo el Super Administrador puede restablecer los guiones.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
@@ -1445,6 +1476,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!userTenant) return extensions;
     return extensions.filter((e) => tenantScopedExtensions.includes(e.extension));
   }, [extensions, userTenant, tenantScopedExtensions]);
+
+  // Guiones / Entidades permitidos para este Call Center (sin cruce con otros Call Centers)
+  const effectiveAssignedEntityIds = React.useMemo(() => {
+    if (isSuperAdmin) return null;
+    if (userTenant && Array.isArray(userTenant.assignedEntityIds)) {
+      return userTenant.assignedEntityIds;
+    }
+    if (Array.isArray(tenantServerAssignedIds)) {
+      return tenantServerAssignedIds;
+    }
+    return null;
+  }, [isSuperAdmin, userTenant, tenantServerAssignedIds]);
+
+  const visibleCampaignEntities = React.useMemo(() => {
+    if (!Array.isArray(effectiveAssignedEntityIds)) return campaignEntities;
+    return campaignEntities.filter((ent) => effectiveAssignedEntityIds.includes(ent.id));
+  }, [campaignEntities, effectiveAssignedEntityIds]);
+
+  const canEditEntityCatalog = isSuperAdmin || (isAdmin && !userTenant);
+
+  // Asegurar que la entidad seleccionada pertenezca estrictamente a los guiones asignados al Call Center
+  useEffect(() => {
+    if (!Array.isArray(effectiveAssignedEntityIds)) return;
+    if (visibleCampaignEntities.length > 0 && !visibleCampaignEntities.some((e) => e.id === selectedService)) {
+      const firstValid = visibleCampaignEntities[0];
+      setSelectedService(firstValid.id);
+      try {
+        localStorage.setItem('prod_selected_service_v3', firstValid.id);
+      } catch (_) {}
+    } else if (visibleCampaignEntities.length === 0 && selectedService !== '') {
+      setSelectedService('');
+    }
+  }, [effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
 
   const lockedTenantCarrier = React.useMemo(() => {
     if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
@@ -2275,6 +2339,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       setLaunchFeedback({ text: 'Por favor ingresa un número de teléfono destino', type: 'error' });
       return;
     }
+    if (!isSuperAdmin && Array.isArray(effectiveAssignedEntityIds) && visibleCampaignEntities.length === 0) {
+      setLaunchFeedback({ text: 'Tu Call Center no tiene guiones IVR asignados todavía. Pide al Super Administrador asignarte al menos un guión.', type: 'error' });
+      return;
+    }
 
     setIsLaunching(true);
     setLaunchFeedback(null);
@@ -2527,6 +2595,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!canRunMassCalls) {
       setLaunchFeedback({
         text: 'Solo el Administrador del Call Center o Super Administrador puede ejecutar campañas de Llamadas Masivas.',
+        type: 'error',
+      });
+      return;
+    }
+    if (!isSuperAdmin && Array.isArray(effectiveAssignedEntityIds) && visibleCampaignEntities.length === 0) {
+      setLaunchFeedback({
+        text: 'Tu Call Center no tiene guiones IVR asignados todavía. Pide al Super Administrador asignarte al menos un guión.',
         type: 'error',
       });
       return;
@@ -3902,20 +3977,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                           <span>Desbloqueado</span>
                         </span>
                       )}
-                      {isAdmin ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" title="Tienes privilegios de Administrador para editar y crear guiones">
+                      {canEditEntityCatalog ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" title="Tienes privilegios de Super Administrador para editar, crear y asignar guiones">
                           <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                          <span>Administrador</span>
+                          <span>Super Administrador</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40" title={`Operador asignado a la extensión ${agentExtension}`}>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40" title={`Guiones asignados a ${userTenant?.name || `Ext. ${agentExtension}`}`}>
                           <User className="w-3 h-3 text-sky-400" />
-                          <span>Operador Ext. {agentExtension}</span>
+                          <span>{userTenant ? `${userTenant.name} (${visibleCampaignEntities.length} guiones)` : `Operador Ext. ${agentExtension}`}</span>
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Selecciona la entidad que deseas simular y presiona <strong className="text-emerald-400">"Guardar Guión"</strong> para activarlo en Asterisk de forma aislada para tu extensión {agentExtension} sin interferir con otros operadores.
+                      {userTenant && !isSuperAdmin
+                        ? `Elige qué guión de los asignados a "${userTenant.name}" van a trabajar hoy y presiona "Guardar Guión" sin cruzarse con otros Call Centers.`
+                        : `Selecciona la entidad que deseas simular y presiona "Guardar Guión" para activarlo en Asterisk de forma aislada para tu extensión ${agentExtension}.`}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
@@ -3923,15 +4000,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     <button
                       type="button"
                       onClick={handleSaveAndLockCurrentEntity}
-                      disabled={isEntitySaving}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer"
-                      title={`Guardar y sincronizar este guión en Asterisk para tus llamadas salientes (Ext. ${agentExtension})`}
+                      disabled={isEntitySaving || visibleCampaignEntities.length === 0}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-emerald-600/20 cursor-pointer disabled:opacity-40"
+                      title={`Guardar y sincronizar este guión para trabajar hoy (${userTenant ? userTenant.name : `Ext. ${agentExtension}`})`}
                     >
                       {isEntitySaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isEntitySaving ? 'Guardando...' : `Guardar Guión (Ext. ${agentExtension})`}</span>
+                      <span>{isEntitySaving ? 'Guardando...' : userTenant && !isSuperAdmin ? 'Guardar Guión de Hoy' : `Guardar Guión (Ext. ${agentExtension})`}</span>
                     </button>
 
-                    {isAdmin ? (
+                    {canEditEntityCatalog ? (
                       <>
                         {campaignEntities.find((e) => e.id === selectedService)?.isLocked && (
                           <button
@@ -4009,16 +4086,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </button>
                       </>
                     ) : (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-900/90 border border-sky-500/30 text-sky-300 shadow-sm" title={`Tus llamadas aplicarán este guión de forma aislada a la extensión ${agentExtension}`}>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-900/90 border border-sky-500/30 text-sky-300 shadow-sm" title={`Aislamiento activo sin cruce con otros Call Centers`}>
                         <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Aislamiento Activo (Ext. {agentExtension})</span>
+                        <span>{userTenant ? `Aislamiento ${userTenant.code}` : `Aislamiento Activo (Ext. ${agentExtension})`}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
+                {visibleCampaignEntities.length === 0 ? (
+                  <div className="p-5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-amber-300">Sin Guiones Asignados para este Call Center</div>
+                      <p className="text-amber-200/80 mt-0.5">
+                        El Super Administrador aún no ha habilitado guiones para <strong>{userTenant?.name || 'tu cuenta'}</strong>. Pídele que te asigne al menos un guión en la pestaña <strong>Multi-Call Center</strong>.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {campaignEntities.map((ent) => {
+                  {visibleCampaignEntities.map((ent) => {
                     const isSelected = selectedService === ent.id;
                     const renderIcon = () => {
                       switch (ent.icon) {
@@ -4056,7 +4144,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                             <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-emerald-500/20' : 'bg-slate-800'}`}>
                               {renderIcon()}
                             </div>
-                            {inlineRenamingId === ent.id && isAdmin ? (
+                            {inlineRenamingId === ent.id && canEditEntityCatalog ? (
                               <div className="flex-1 space-y-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="text"
@@ -4100,13 +4188,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               </div>
                             ) : (
                               <div
-                                className={`truncate flex-1 ${isAdmin ? 'cursor-pointer group/title' : ''}`}
+                                className={`truncate flex-1 ${canEditEntityCatalog ? 'cursor-pointer group/title' : ''}`}
                                 onClick={(e) => {
-                                  if (isAdmin) handleStartInlineRename(ent, e);
+                                  if (canEditEntityCatalog) handleStartInlineRename(ent, e);
                                 }}
-                                title={isAdmin ? "Haz clic para renombrar directamente" : ent.name}
+                                title={canEditEntityCatalog ? "Haz clic para renombrar directamente" : ent.name}
                               >
-                                <div className={`text-xs font-bold text-white leading-tight truncate flex items-center gap-1.5 ${isAdmin ? 'hover:text-emerald-400 transition-colors' : ''}`}>
+                                <div className={`text-xs font-bold text-white leading-tight truncate flex items-center gap-1.5 ${canEditEntityCatalog ? 'hover:text-emerald-400 transition-colors' : ''}`}>
                                   <span>{ent.name}</span>
                                   {ent.isLocked && (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
@@ -4114,7 +4202,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                                       <span>Bloqueado</span>
                                     </span>
                                   )}
-                                  {isAdmin && (
+                                  {canEditEntityCatalog && (
                                     <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/title:opacity-100 text-slate-400 transition-opacity" />
                                   )}
                                 </div>
@@ -4122,7 +4210,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               </div>
                             )}
                           </div>
-                          {isAdmin && inlineRenamingId !== ent.id && (
+                          {canEditEntityCatalog && inlineRenamingId !== ent.id && (
                             confirmDeleteId === ent.id ? (
                               <div
                                 className="flex items-center gap-1 bg-rose-950/90 p-1 rounded-lg border border-rose-500/60 shrink-0"
@@ -4279,6 +4367,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     );
                   })}
                 </div>
+                )}
               </div>
 
               {/* Action Buttons: Launch & Hangup */}
@@ -4625,14 +4714,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <select
                     value={selectedService}
                     onChange={(e) => setSelectedService(e.target.value as ServiceCampaignKey)}
-                    disabled={isMassRunning}
+                    disabled={isMassRunning || visibleCampaignEntities.length === 0}
                     className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-sky-400 font-bold focus:outline-none"
                   >
-                    {campaignEntities.map((ent) => (
-                      <option key={ent.id} value={ent.id}>
-                        {ent.name} ({ent.subtitle})
-                      </option>
-                    ))}
+                    {visibleCampaignEntities.length === 0 ? (
+                      <option value="">Sin guiones asignados</option>
+                    ) : (
+                      visibleCampaignEntities.map((ent) => (
+                        <option key={ent.id} value={ent.id}>
+                          {ent.name} ({ent.subtitle})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -6476,7 +6569,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             {/* Footer */}
             <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
               <div>
-                {isAdmin && campaignEntities.length > 1 && (
+                {canEditEntityCatalog && campaignEntities.length > 1 && (
                   confirmDeleteId === editingEntity.id ? (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-rose-400 font-bold">¿Seguro que deseas eliminar este guión?</span>
@@ -6517,9 +6610,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   }}
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
                 >
-                  {isAdmin ? 'Cancelar' : 'Cerrar'}
+                  {canEditEntityCatalog ? 'Cancelar' : 'Cerrar'}
                 </button>
-                {isAdmin ? (
+                {canEditEntityCatalog ? (
                   <>
                     <button
                       type="button"
@@ -6544,7 +6637,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 ) : (
                   <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-amber-500/10 border border-amber-500/30 text-amber-300">
                     <Lock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Solo Administradores pueden guardar cambios</span>
+                    <span>Solo el Super Administrador edita el catálogo global</span>
                   </div>
                 )}
               </div>

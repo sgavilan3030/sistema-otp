@@ -1237,6 +1237,20 @@ app.get('/api/health', (req, res) => {
 // Default extensions with valid credentials and settings for Asterisk 20 (HD Voice prioritized)
 const defaultExtensionsList = [
   {
+    extension: '1000',
+    name: 'Super Admin (Modo Espía)',
+    secret: 'Adm1nSpy#2026!1000',
+    context: 'from-internal',
+    codecs: ['ulaw', 'alaw', 'g722'],
+    maxContacts: 3,
+    transport: 'transport-udp',
+    port: 47923,
+    callerIdNum: '1000',
+    callerIdName: 'Super Admin Spy',
+    isSpyOnly: true,
+    recordCalls: false,
+  },
+  {
     extension: '1001',
     name: 'Operador Principal',
     secret: 'Secr3tP@ssw0rd!1001',
@@ -2358,8 +2372,9 @@ export function generateCleanDialplanConf(
   const extsList = (Array.isArray(extensionsInput) && extensionsInput.length > 0) ? extensionsInput : lastSyncedExtensions;
   const ringAllSet = new Set<string>();
   for (const e of extsList) {
-    if (!e || e.enabled === false) continue;
+    if (!e || e.enabled === false || e.isSpyOnly === true) continue;
     const rawExt = (e.extension || e.id || '').toString().trim();
+    if (rawExt === '1000') continue; // 1000 reservada exclusivamente para Super Admin (Modo Espía)
     if (rawExt && /^[0-9]{2,6}$/.test(rawExt)) {
       ringAllSet.add(`PJSIP/${rawExt}`);
     }
@@ -2370,7 +2385,7 @@ export function generateCleanDialplanConf(
       if (u && Array.isArray(u.assignedExtensions)) {
         for (const ue of u.assignedExtensions) {
           const cleanUe = String(ue || '').trim();
-          if (cleanUe && /^[0-9]{2,6}$/.test(cleanUe)) {
+          if (cleanUe && cleanUe !== '1000' && /^[0-9]{2,6}$/.test(cleanUe)) {
             ringAllSet.add(`PJSIP/${cleanUe}`);
           }
         }
@@ -2476,9 +2491,55 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${ARG1}&status=talking&agent=\${PICKED_EXTEN}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Set(REC_IN_FILE=\${IF($["\${DB(record_ext/\${PICKED_EXTEN})}" = "1"]?/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_IN_\${PICKED_EXTEN}_from_\${FILTER(0-9,\${ARG1})}_\${UNIQUEID}.wav:)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_IN_FILE}" != ""]?NoOp(=== [MIXMONITOR IN] Grabando llamada de extension \${PICKED_EXTEN}: \${REC_IN_FILE} ===))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_IN_FILE}" != ""]?MixMonitor(\${REC_IN_FILE}))\n`;
   dialplanContent += ` same => n,Return()\n\n`;
 
   dialplanContent += `[from-internal]\n`;
+  dialplanContent += `; 0. Códigos de Modo Espía / Supervisión ChanSpy (*55, *56, *57) - Reservado para Ext 1000 (Super Admin) y Supervisores autorizados\n`;
+  dialplanContent += `exten => *55,1,NoOp(=== [CHANSPY ESCANEO] \${CALLERID(num)} iniciando escucha general ===)\n`;
+  dialplanContent += ` same => n,Set(SPY_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${SPY_CALLER}" = "1000" | "\${DB(spy_allowed/\${SPY_CALLER})}" = "1"]?allow_spy_all)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CHANSPY BLOQUEADO] Extension \${SPY_CALLER} no autorizada ===)\n`;
+  dialplanContent += ` same => n,Congestion(21)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_spy_all),Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,ChanSpy(PJSIP,q)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => _*55X.,1,NoOp(=== [CHANSPY SILENCIOSO] \${CALLERID(num)} espiando extension \${EXTEN:3} ===)\n`;
+  dialplanContent += ` same => n,Set(SPY_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${SPY_CALLER}" = "1000" | "\${DB(spy_allowed/\${SPY_CALLER})}" = "1"]?allow_spy_ext)\n`;
+  dialplanContent += ` same => n,NoOp(=== [CHANSPY BLOQUEADO] Extension \${SPY_CALLER} no autorizada ===)\n`;
+  dialplanContent += ` same => n,Congestion(21)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_spy_ext),Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,ChanSpy(PJSIP/\${EXTEN:3},q)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => _*56X.,1,NoOp(=== [CHANSPY SUSURRO] \${CALLERID(num)} susurrando a \${EXTEN:3} ===)\n`;
+  dialplanContent += ` same => n,Set(SPY_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${SPY_CALLER}" = "1000" | "\${DB(spy_allowed/\${SPY_CALLER})}" = "1"]?allow_whisper_ext)\n`;
+  dialplanContent += ` same => n,Congestion(21)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_whisper_ext),Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,ChanSpy(PJSIP/\${EXTEN:3},qw)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `exten => _*57X.,1,NoOp(=== [CHANSPY BARGE] \${CALLERID(num)} interviniendo en \${EXTEN:3} ===)\n`;
+  dialplanContent += ` same => n,Set(SPY_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${SPY_CALLER}" = "1000" | "\${DB(spy_allowed/\${SPY_CALLER})}" = "1"]?allow_barge_ext)\n`;
+  dialplanContent += ` same => n,Congestion(21)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(allow_barge_ext),Answer()\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,ChanSpy(PJSIP/\${EXTEN:3},qB)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
   dialplanContent += `; 1. Llamadas internas exactas para todas las extensiones configuradas (2-6 digitos o nombre) desde MicroSIP\n`;
   const seenInternalExts = new Set<string>();
   for (const ext of extsList) {
@@ -2489,6 +2550,8 @@ export function generateCleanDialplanConf(
     dialplanContent += `exten => ${extNum},1,NoOp(Llamada interna directa a extension ${extNum} desde MicroSIP)\n`;
     dialplanContent += ` same => n,StopMusicOnHold()\n`;
     dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+    dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+    dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/${extNum})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_${extNum}_\${UNIQUEID}.wav,b))\n`;
     dialplanContent += ` same => n,Dial(PJSIP/${extNum},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
     dialplanContent += ` same => n,Hangup()\n\n`;
   }
@@ -2497,6 +2560,8 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _[12356789]XXX,1,NoOp(Llamada interna a extension \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/\${EXTEN})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_\${EXTEN}_\${UNIQUEID}.wav,b))\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -2504,6 +2569,8 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _[a-zA-Z].,1,NoOp(Llamada directa a extension por nombre \${EXTEN} con audio nativo limpio)\n`;
   dialplanContent += ` same => n,StopMusicOnHold()\n`;
   dialplanContent += ` same => n,Set(CHANNEL(musicclass)=default)\n`;
+  dialplanContent += ` same => n,Set(INT_CALLER=\${IF($["\${CHANNEL(channeltype)}" = "PJSIP"]?\${CHANNEL(endpoint)}:\${CALLERID(num)})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${INT_CALLER})}" = "1" | "\${DB(record_ext/\${EXTEN})}" = "1"]?MixMonitor(/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_INT_\${INT_CALLER}_to_\${EXTEN}_\${UNIQUEID}.wav,b))\n`;
   dialplanContent += ` same => n,Dial(PJSIP/\${EXTEN},30,Ttb(sub-audio-quality^s^1^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -2769,6 +2836,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${CALLING_USER})}" = "1"]?Set(REC_OUT_11D=/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_OUT_\${CALLING_USER}_to_\${EXTEN}_\${UNIQUEID}.wav))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_OUT_11D}" != ""]?NoOp(=== [MIXMONITOR OUT] Grabando llamada saliente de \${CALLING_USER}: \${REC_OUT_11D} ===))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_OUT_11D}" != ""]?MixMonitor(\${REC_OUT_11D},b))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, '11d');
 
   dialplanContent += `; 4. Regla Saliente USA 10 digitos (ej. 3055551234) -> Convierte automáticamente a 11 digitos (13055551234) requeridos por el proveedor\n`;
@@ -2803,6 +2873,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DB(record_ext/\${CALLING_USER})}" = "1"]?Set(REC_OUT_UNIV=/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_OUT_\${CALLING_USER}_to_\${EXTEN}_\${UNIQUEID}.wav))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_OUT_UNIV}" != ""]?NoOp(=== [MIXMONITOR OUT] Grabando llamada saliente de \${CALLING_USER}: \${REC_OUT_UNIV} ===))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${REC_OUT_UNIV}" != ""]?MixMonitor(\${REC_OUT_UNIV},b))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
@@ -3005,6 +3078,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
@@ -3056,6 +3130,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=\${PRESSED_DIGIT}&channel=\${CHANNEL}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)}))\n`;
@@ -3139,6 +3214,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
@@ -3151,6 +3227,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
 
   dialplanContent += ` same => n,Set(IVR_PROMPT=\${CALL_PROMPT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_PROMPT=\${DB(ivr_vars/tenant_\${TENANT_ID}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/\${FINAL_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_prompt)}))\n`;
@@ -3163,6 +3240,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_PROMPT}" = ""]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))\n`;
 
   dialplanContent += ` same => n,Set(IVR_WAIT=\${CALL_WAIT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/\${FINAL_AGENT}_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_wait)}))\n`;
@@ -3172,6 +3250,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
 
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${CALL_SUCCESS})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/tenant_\${TENANT_ID}_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/agent_\${FINAL_AGENT}_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/\${FINAL_AGENT}_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)}))\n`;
@@ -3181,6 +3260,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))\n`;
 
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)}))\n`;
@@ -3373,6 +3453,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_PROMPT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${CALL_INTRO}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = "" & "\${TENANT_ID}" != ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
@@ -3404,6 +3485,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = "" & "\${TENANT_ID}" != ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
@@ -3532,7 +3614,14 @@ async function autoRepairAsteriskPjsipOnStartup() {
       }
     } catch (_) {}
 
-    // Initialize default action and clean caller ID in AstDB
+    // Ensure monitor directory exists for per-extension MixMonitor recordings
+    try {
+      if (!fs.existsSync('/var/spool/asterisk/monitor')) {
+        fs.mkdirSync('/var/spool/asterisk/monitor', { recursive: true, mode: 0o775 });
+      }
+    } catch (_) {}
+
+    // Initialize default action, clean caller ID, spy permissions (Ext 1000) & per-extension recording flags in AstDB
     try {
       executeAsteriskCommand('database put ivr_vars default_action "ivr-press1"').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_mode "press1"').catch(() => {});
@@ -3541,6 +3630,29 @@ async function autoRepairAsteriskPjsipOnStartup() {
       executeAsteriskCommand('database del ivr_vars 16104803845_cid_name').catch(() => {});
       executeAsteriskCommand('database del ivr_vars 16104803845_cid_num').catch(() => {});
       executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
+      executeAsteriskCommand('database put spy_allowed 1000 "1"').catch(() => {});
+      for (const ext of storedExts) {
+        const extNum = String(ext?.extension || '').trim();
+        if (!extNum) continue;
+        if (ext.recordCalls === true) {
+          executeAsteriskCommand(`database put record_ext ${extNum} "1"`).catch(() => {});
+        } else {
+          executeAsteriskCommand(`database del record_ext ${extNum}`).catch(() => {});
+        }
+      }
+      for (const u of storedUsers) {
+        const canSpyUser = u?.role === 'admin' || u?.role === 'supervisor' || !!u?.permissions?.canSpy;
+        const targets = [u?.username, ...(Array.isArray(u?.assignedExtensions) ? u.assignedExtensions : [])].filter(Boolean);
+        for (const t of targets) {
+          const cleanT = String(t).trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+          if (!cleanT || cleanT === '1000') continue;
+          if (canSpyUser) {
+            executeAsteriskCommand(`database put spy_allowed ${cleanT} "1"`).catch(() => {});
+          } else {
+            executeAsteriskCommand(`database del spy_allowed ${cleanT}`).catch(() => {});
+          }
+        }
+      }
     } catch (_) {}
 
     // Sincronizar rutas Call Center -> Proveedor SIP en AstDB desde el arranque
@@ -4388,7 +4500,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     // 2. Safe write for PJSIP Configuration
     const pjsipWritten = await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent);
 
-    // 3. Save each extension's assigned Carrier into AstDB (CallerID assigned by carrier)
+    // 3. Save each extension's assigned Carrier and Recording flag into AstDB (CallerID assigned by carrier)
+    executeAsteriskCommand('database put spy_allowed 1000 "1"').catch(() => {});
     if (Array.isArray(extensions)) {
       for (const ext of extensions) {
         const extNum = ext.extension;
@@ -4400,6 +4513,11 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         } else {
           executeAsteriskCommand(`database del user_carrier ${extNum}`).catch(() => {});
         }
+        if (ext.recordCalls === true) {
+          executeAsteriskCommand(`database put record_ext ${extNum} "1"`).catch(() => {});
+        } else {
+          executeAsteriskCommand(`database del record_ext ${extNum}`).catch(() => {});
+        }
       }
     }
 
@@ -4409,6 +4527,17 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         const uCarrier = u.assignedCarrierId || u.carrierId || '';
         if (uName && uCarrier && uCarrier !== 'auto') {
           executeAsteriskCommand(`database put user_carrier ${uName} "${resolveCarrierNameByRef(uCarrier, validCarriers)}"`).catch(() => {});
+        }
+        const canSpyUser = u?.role === 'admin' || u?.role === 'supervisor' || !!u?.permissions?.canSpy;
+        const targets = [u?.username, ...(Array.isArray(u?.assignedExtensions) ? u.assignedExtensions : [])].filter(Boolean);
+        for (const t of targets) {
+          const cleanT = String(t).trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+          if (!cleanT || cleanT === '1000') continue;
+          if (canSpyUser) {
+            executeAsteriskCommand(`database put spy_allowed ${cleanT} "1"`).catch(() => {});
+          } else {
+            executeAsteriskCommand(`database del spy_allowed ${cleanT}`).catch(() => {});
+          }
         }
       }
     }
@@ -4980,9 +5109,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     if (holdMusic) {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_hold_music "${holdMusic}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_hold_music "${holdMusic}"`);
-      astDbCommands.push(`database put ivr_vars default_hold_music "${holdMusic}"`);
-      activeAudioAssignments.hold_music = holdMusic;
-      saveActiveAudioAssignments(activeAudioAssignments);
+      if (tenantResolution.tenant?.id) {
+        astDbCommands.push(`database put ivr_vars tenant_${tenantResolution.tenant.id}_hold_music "${holdMusic}"`);
+      }
+      if (callerIsSuperAdmin) {
+        astDbCommands.push(`database put ivr_vars default_hold_music "${holdMusic}"`);
+        activeAudioAssignments.hold_music = holdMusic;
+        saveActiveAudioAssignments(activeAudioAssignments);
+      }
     }
 
     // Batch sync AstDB variables in background without blocking originate
@@ -5070,11 +5204,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       __IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       CALLING_AGENT: effectiveAgentExten || '1001',
       __CALLING_AGENT: effectiveAgentExten || '1001',
-      ...(req.body.intro ? { CALL_INTRO: String(req.body.intro).trim(), __CALL_INTRO: String(req.body.intro).trim() } : {}),
-      ...(req.body.prompt ? { CALL_PROMPT: String(req.body.prompt).trim(), __CALL_PROMPT: String(req.body.prompt).trim() } : {}),
+      ...(cleanIntro ? { CALL_INTRO: cleanIntro, __CALL_INTRO: cleanIntro } : (req.body.intro ? { CALL_INTRO: String(req.body.intro).trim(), __CALL_INTRO: String(req.body.intro).trim() } : {})),
+      ...(cleanPrompt ? { CALL_PROMPT: cleanPrompt, __CALL_PROMPT: cleanPrompt } : (req.body.prompt ? { CALL_PROMPT: String(req.body.prompt).trim(), __CALL_PROMPT: String(req.body.prompt).trim() } : {})),
       ...(req.body.wait ? { CALL_WAIT: String(req.body.wait).trim(), __CALL_WAIT: String(req.body.wait).trim() } : {}),
-      ...(req.body.success ? { CALL_SUCCESS: String(req.body.success).trim(), __CALL_SUCCESS: String(req.body.success).trim() } : {}),
-      ...(req.body.agentAudio ? { CALL_AGENT: String(req.body.agentAudio).trim(), __CALL_AGENT: String(req.body.agentAudio).trim() } : {}),
+      ...(cleanSuccess ? { CALL_SUCCESS: cleanSuccess, __CALL_SUCCESS: cleanSuccess } : (req.body.success ? { CALL_SUCCESS: String(req.body.success).trim(), __CALL_SUCCESS: String(req.body.success).trim() } : {})),
+      ...(cleanAgent ? { CALL_AGENT: cleanAgent, __CALL_AGENT: cleanAgent } : (req.body.agentAudio ? { CALL_AGENT: String(req.body.agentAudio).trim(), __CALL_AGENT: String(req.body.agentAudio).trim() } : {})),
+      ...(holdMusic ? { CALL_HOLD_MUSIC: holdMusic, __CALL_HOLD_MUSIC: holdMusic } : {}),
       IVR_MODE: mode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -6383,6 +6518,25 @@ app.post('/api/app/state', (req, res) => {
 });
 
 // Persistent IVR Workspace (Guion / Entidad a Simular, Campañas y Modo IVR sincronizados entre navegadores para Admin, Call Centers y Usuarios)
+function getMasterEntitiesFromDisk(): any[] {
+  try {
+    const adminWsPath = getIvrWorkspacePath('user-admin', 'admin');
+    for (const candidate of [adminWsPath, IVR_WORKSPACE_FILE]) {
+      if (candidate && fs.existsSync(candidate)) {
+        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+        if (Array.isArray(parsed?.campaignEntities) && parsed.campaignEntities.length > 0) {
+          return parsed.campaignEntities;
+        }
+      }
+    }
+  } catch (_) {}
+  return [];
+}
+
+app.get('/api/app/master-entities', (req, res) => {
+  return res.json({ success: true, entities: getMasterEntitiesFromDisk() });
+});
+
 app.get('/api/app/ivr-workspace', (req, res) => {
   try {
     const userId = String(req.query.userId || '').trim();
@@ -6393,14 +6547,66 @@ app.get('/api/app/ivr-workspace', (req, res) => {
       const matched = usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === username.toLowerCase())));
       if (matched?.tenantId) tenantId = String(matched.tenantId);
     }
+
+    const masterEntities = getMasterEntitiesFromDisk();
+    let assignedEntityIds: string[] | undefined = undefined;
+    if (tenantId) {
+      const tenantsList = loadStoredTenants();
+      const matchedTenant = tenantsList.find((t: any) => t && t.id === tenantId);
+      if (matchedTenant && Array.isArray(matchedTenant.assignedEntityIds)) {
+        assignedEntityIds = matchedTenant.assignedEntityIds.map((id: any) => String(id));
+      }
+    }
+
+    const filterEntitiesForTenant = (entities: any[]) => {
+      if (!Array.isArray(assignedEntityIds)) return entities;
+      const byId = new Map<string, any>();
+      for (const e of [...entities, ...masterEntities]) {
+        if (e?.id && !byId.has(e.id)) byId.set(e.id, e);
+      }
+      return assignedEntityIds.map((id) => byId.get(id)).filter(Boolean);
+    };
+
     const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     if (fs.existsSync(userWsPath)) {
-      const data = fs.readFileSync(userWsPath, 'utf8');
-      return res.json({ success: true, workspace: JSON.parse(data), source: tenantId ? 'tenant_workspace' : 'user_workspace' });
+      const ws = JSON.parse(fs.readFileSync(userWsPath, 'utf8'));
+      if (Array.isArray(assignedEntityIds)) {
+        ws.campaignEntities = filterEntitiesForTenant(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
+        if (ws.selectedService && !assignedEntityIds.includes(ws.selectedService)) {
+          ws.selectedService = assignedEntityIds[0] || '';
+        }
+      }
+      return res.json({
+        success: true,
+        workspace: ws,
+        assignedEntityIds,
+        masterEntities: tenantId ? undefined : masterEntities,
+        source: tenantId ? 'tenant_workspace' : 'user_workspace',
+      });
     }
     if (fs.existsSync(IVR_WORKSPACE_FILE)) {
-      const data = fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8');
-      return res.json({ success: true, workspace: JSON.parse(data), source: 'global_template' });
+      const ws = JSON.parse(fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8'));
+      if (Array.isArray(assignedEntityIds)) {
+        ws.campaignEntities = filterEntitiesForTenant(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
+        if (ws.selectedService && !assignedEntityIds.includes(ws.selectedService)) {
+          ws.selectedService = assignedEntityIds[0] || '';
+        }
+      }
+      return res.json({
+        success: true,
+        workspace: ws,
+        assignedEntityIds,
+        masterEntities: tenantId ? undefined : masterEntities,
+        source: 'global_template',
+      });
+    }
+    if (Array.isArray(assignedEntityIds)) {
+      return res.json({
+        success: true,
+        workspace: null,
+        assignedEntityIds,
+        assignedEntities: filterEntitiesForTenant([]),
+      });
     }
   } catch (err: any) {
     console.error('[IVR-WORKSPACE] Error leyendo:', err);
@@ -6506,12 +6712,16 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       holdMusic,
       destination,
       agentId,
+      tenantId,
       isManualSave,
       isAdmin,
+      isSuperAdmin,
     } = req.body;
 
-    // Check if IVR entity / script is manually locked globally (only blocks auto-sync when no agentId is specified)
-    if (manualAudioLocks.ivr_entity && !isManualSave && !agentId) {
+    const effectiveSuperAdmin = Boolean(isSuperAdmin || (isAdmin && !tenantId));
+
+    // Check if IVR entity / script is manually locked globally (only blocks auto-sync when no agentId/tenantId is specified)
+    if (manualAudioLocks.ivr_entity && !isManualSave && !agentId && !tenantId) {
       console.log('[AstDB LOCK] Guión / Entidad de IVR está bloqueada manualmente (isLocked: true). Sincronización automática ignorada.');
       return res.json({
         success: true,
@@ -6522,7 +6732,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       });
     }
 
-    if (isManualSave && isAdmin) {
+    if (isManualSave && effectiveSuperAdmin) {
       manualAudioLocks.ivr_entity = true;
       saveManualAudioLocks(manualAudioLocks);
     }
@@ -6538,8 +6748,16 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const primaryTargets = new Set<string>();
     const secondaryTargets = new Set<string>();
 
-    // 1. Agent-specific targets for complete multi-agent isolation (prioritized & awaited)
-    if (agentId) {
+    // 1. Tenant-isolated target (guarantees zero cross-talk between Call Centers)
+    if (tenantId) {
+      const cleanTenantId = String(tenantId).trim().replace(/[^0-9a-zA-Z_-]/g, '');
+      if (cleanTenantId) {
+        primaryTargets.add(`tenant_${cleanTenantId}`);
+      }
+    }
+
+    // 2. Agent-specific targets (skip shared placeholders like 'ringall' or 'all')
+    if (agentId && String(agentId).trim() !== 'ringall' && String(agentId).trim() !== 'all') {
       const cleanAgentId = String(agentId).trim().replace(/[^0-9a-zA-Z_]/g, '');
       if (cleanAgentId) {
         primaryTargets.add(`agent_${cleanAgentId}`);
@@ -6547,8 +6765,8 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       }
     }
 
-    // 2. Specific destination target if dialing a customer
-    if (destination) {
+    // 3. Specific destination target if dialing a customer
+    if (destination && !tenantId) {
       const clean = String(destination).trim().replace(/[^0-9]/g, '');
       if (clean) {
         primaryTargets.add(clean);
@@ -6557,8 +6775,8 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       }
     }
 
-    // 3. System defaults ONLY if no agentId is given or user is admin (never let non-admin overwrite shared 8888/default)
-    if (!agentId || isAdmin) {
+    // 4. System defaults ONLY for Super Admin without tenant isolation
+    if (effectiveSuperAdmin && (!agentId || agentId === 'ringall')) {
       secondaryTargets.add('default');
       secondaryTargets.add('8888');
       secondaryTargets.add('*8888');
@@ -6584,14 +6802,12 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const primaryCommands = buildCommands(primaryTargets);
     const secondaryCommands = buildCommands(secondaryTargets);
 
-    if (cleanMoh) {
-      if (!agentId || isAdmin) {
-        secondaryCommands.push(`database put ivr_vars default_hold_music ${cleanMoh}`);
-        if (cleanMoh !== activeAudioAssignments.hold_music) {
-          applyHoldMusicToAsteriskMoh(cleanMoh);
-          activeAudioAssignments.hold_music = cleanMoh;
-          saveActiveAudioAssignments(activeAudioAssignments);
-        }
+    if (cleanMoh && effectiveSuperAdmin) {
+      secondaryCommands.push(`database put ivr_vars default_hold_music ${cleanMoh}`);
+      if (cleanMoh !== activeAudioAssignments.hold_music) {
+        applyHoldMusicToAsteriskMoh(cleanMoh);
+        activeAudioAssignments.hold_music = cleanMoh;
+        saveActiveAudioAssignments(activeAudioAssignments);
       }
     }
 
@@ -8502,18 +8718,73 @@ const activeSpySessions = new Map<string, {
   startedAt: number;
 }>();
 
-// Endpoint to originate live ChanSpy monitoring call to supervisor's softphone/extension
+// Helper to originate ChanSpy directly via AMI Action: Originate (supports CallerID & Application)
+function sendAmiOriginateApplication(
+  channel: string,
+  application: string,
+  data: string,
+  callerId: string
+): Promise<{ success: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let buffer = '';
+    let sent = false;
+    let settled = false;
+    const done = (ok: boolean, msg: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { socket.destroy(); } catch (_) {}
+      resolve({ success: ok, message: msg });
+    };
+    const timer = setTimeout(() => done(false, 'Timeout AMI Originate ChanSpy'), 4000);
+    socket.connect(5038, ASTERISK_HOST, () => {
+      socket.write(`Action: Login\r\nUsername: sammy\r\nSecret: Robert2026RDTGcvgbsg\r\nEvents: off\r\n\r\n`);
+    });
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString();
+      if (!sent && (buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success'))) {
+        sent = true;
+        const payload =
+          `Action: Originate\r\n` +
+          `Channel: ${channel}\r\n` +
+          `Application: ${application}\r\n` +
+          `Data: ${data}\r\n` +
+          `CallerID: ${callerId}\r\n` +
+          `Timeout: 30000\r\n` +
+          `Async: true\r\n\r\n`;
+        socket.write(payload);
+        return;
+      }
+      if (sent) {
+        if (buffer.includes('Originate successfully queued') || buffer.includes('Response: Success')) {
+          try { socket.write('Action: Logoff\r\n\r\n'); } catch (_) {}
+          done(true, 'Llamada ChanSpy encolada vía AMI');
+        } else if (buffer.includes('Response: Error')) {
+          try { socket.write('Action: Logoff\r\n\r\n'); } catch (_) {}
+          done(false, buffer);
+        }
+      }
+    });
+    socket.on('error', (err) => done(false, err.message));
+  });
+}
+
+// Endpoint to originate live ChanSpy monitoring call to supervisor's softphone/extension (default 1000)
 app.post('/api/asterisk/spy/originate', async (req, res) => {
   try {
     const {
-      supervisorExten = '1001',
-      targetExten = '1001',
+      supervisorExten = '1000',
+      targetExten = '',
       targetChannel,
       targetNumber,
       mode = 'spy', // 'spy' (silent listen: 'q'), 'whisper' (coach agent: 'qw'), 'barge' (3-way talk: 'qB')
     } = req.body;
 
-    const cleanSup = String(supervisorExten).trim().replace(/[^0-9]/g, '') || '1001';
+    const cleanSup = String(supervisorExten).trim().replace(/[^a-zA-Z0-9_\-]/g, '') || '1000';
+    const cleanTargetExten = String(targetExten || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const isRealAgentExten = cleanTargetExten && cleanTargetExten !== 'ringall' && cleanTargetExten !== 'all' && cleanTargetExten !== 'hunt';
+
     let spyOptions = 'q';
     if (mode === 'whisper') {
       spyOptions = 'qw';
@@ -8521,51 +8792,75 @@ app.post('/api/asterisk/spy/originate', async (req, res) => {
       spyOptions = 'qB';
     }
 
-    // Determine target channel/prefix for ChanSpy application
-    let chanPrefix = '';
-    if (targetChannel && typeof targetChannel === 'string' && targetChannel.trim()) {
-      chanPrefix = targetChannel.split('-')[0] || targetChannel;
-    } else if (targetExten) {
-      chanPrefix = `PJSIP/${String(targetExten).replace(/[^0-9]/g, '')}`;
-    } else {
-      chanPrefix = 'PJSIP';
+    // For whisper/barge always target agent's PJSIP leg so customer never hears coach whisper;
+    // for silent spy, exact channel prefix lets supervisor listen even while customer is still in IVR.
+    let chanPrefix = 'PJSIP';
+    if ((mode === 'whisper' || mode === 'barge') && isRealAgentExten) {
+      chanPrefix = `PJSIP/${cleanTargetExten}`;
+    } else if (targetChannel && typeof targetChannel === 'string' && targetChannel.trim()) {
+      chanPrefix = targetChannel.trim().replace(/;[0-9]+$/, '');
+    } else if (isRealAgentExten) {
+      chanPrefix = `PJSIP/${cleanTargetExten}`;
     }
 
-    console.log(`[CHANSPY ORIGINATE] Supervisor: ${cleanSup} -> Target: ${chanPrefix} (Modo: ${mode}, Opciones: ${spyOptions})`);
+    const cleanTargetNum = String(targetNumber || cleanTargetExten || 'LLAMADA').replace(/[^a-zA-Z0-9+_\-]/g, '');
+    const spyCallerId = `"ESPIA ${cleanTargetNum}" <${cleanTargetNum}>`;
+
+    console.log(`[CHANSPY ORIGINATE] Supervisor Ext: ${cleanSup} -> Target: ${chanPrefix} (Modo: ${mode}, Opciones: ${spyOptions})`);
 
     let originateSuccess = false;
     let message = '';
 
-    // 1. Try AMI Action: Originate
-    try {
-      const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
-        `originate PJSIP/${cleanSup} application ChanSpy ${chanPrefix},${spyOptions}`
-      ]);
-      if (amiRes && !amiRes.toLowerCase().includes('error') && !amiRes.toLowerCase().includes('failed')) {
-        originateSuccess = true;
-        message = `Llamando a tu extensión ${cleanSup} para conectar escucha (${mode})`;
-      }
-    } catch (_) {}
-
-    // 2. Fallback to CLI command
-    if (!originateSuccess) {
+    if (hasLocalAsterisk) {
+      // Verify supervisor extension is reachable/registered first
       try {
-        const cliCmd = `channel originate PJSIP/${cleanSup} application ChanSpy ${chanPrefix},${spyOptions}`;
-        await executeAsteriskCommand(cliCmd);
+        const epOut = await executeAsteriskCommand(`pjsip show endpoint ${cleanSup}`);
+        if (epOut && epOut.includes('Unavailable')) {
+          return res.status(400).json({
+            success: false,
+            error: `La extensión ${cleanSup} no está registrada/conectada en MicroSIP. Conecta MicroSIP con la extensión ${cleanSup} primero.`,
+          });
+        }
+      } catch (_) {}
+
+      // 1. Try direct AMI Action: Originate
+      const amiResult = await sendAmiOriginateApplication(
+        `PJSIP/${cleanSup}`,
+        'ChanSpy',
+        `${chanPrefix},${spyOptions}`,
+        spyCallerId
+      );
+      if (amiResult.success) {
         originateSuccess = true;
-        message = `Comando ChanSpy ejecutado en Asterisk para extensión ${cleanSup}`;
-      } catch (err: any) {
-        // Fallback simulation mode
-        originateSuccess = true;
-        message = `Supervisión en vivo iniciada para extensión ${cleanSup} (${mode})`;
+        message = `Llamando a tu extensión ${cleanSup} en MicroSIP para escuchar (${mode}). ¡Descuelga para oír en vivo!`;
+      } else {
+        // 2. Fallback to Asterisk CLI channel originate
+        try {
+          const cliCmd = `channel originate PJSIP/${cleanSup} application ChanSpy ${chanPrefix},${spyOptions}`;
+          const cliRes = await executeAsteriskCommand(cliCmd);
+          if (!cliRes || (!cliRes.toLowerCase().includes('error') && !cliRes.toLowerCase().includes('unable'))) {
+            originateSuccess = true;
+            message = `Llamando a tu extensión ${cleanSup} en MicroSIP (${mode})`;
+          }
+        } catch (_) {}
       }
+
+      if (!originateSuccess) {
+        return res.status(500).json({
+          success: false,
+          error: `No se pudo timbrar la extensión ${cleanSup}. Verifica que esté registrada en MicroSIP y en línea en Asterisk.`,
+        });
+      }
+    } else {
+      originateSuccess = true;
+      message = `Supervisión en vivo iniciada para extensión ${cleanSup} (${mode})`;
     }
 
     const sessionId = `spy-${cleanSup}-${Date.now()}`;
     const sessionData = {
       id: sessionId,
       supervisorExten: cleanSup,
-      targetExten: String(targetExten),
+      targetExten: cleanTargetExten || String(targetExten || ''),
       targetChannel: targetChannel || chanPrefix,
       targetNumber: targetNumber || '',
       mode: mode as 'spy' | 'whisper' | 'barge',
@@ -8587,12 +8882,21 @@ app.post('/api/asterisk/spy/originate', async (req, res) => {
 // Endpoint to stop ChanSpy listening for supervisor
 app.post('/api/asterisk/spy/stop', async (req, res) => {
   try {
-    const { supervisorExten = '1001' } = req.body;
-    const cleanSup = String(supervisorExten).trim().replace(/[^0-9]/g, '') || '1001';
+    const { supervisorExten = '1000' } = req.body;
+    const cleanSup = String(supervisorExten).trim().replace(/[^a-zA-Z0-9_\-]/g, '') || '1000';
 
     try {
-      // Hangup only supervisor's spy channel, leaving target call intact
-      await executeAsteriskCommand(`channel request hangup PJSIP/${cleanSup}`);
+      // Find active channels belonging to supervisor's spy phone and hang up ONLY those channels
+      const chansOut = await executeAsteriskCommand('core show channels concise');
+      if (chansOut) {
+        const lines = chansOut.split('\n');
+        for (const line of lines) {
+          const chName = line.trim().split('!')[0];
+          if (chName && (chName.startsWith(`PJSIP/${cleanSup}-`) || chName === `PJSIP/${cleanSup}`)) {
+            await executeAsteriskCommand(`channel request hangup ${chName}`).catch(() => {});
+          }
+        }
+      }
     } catch (_) {}
 
     activeSpySessions.delete(cleanSup);
@@ -8607,6 +8911,172 @@ app.post('/api/asterisk/spy/stop', async (req, res) => {
 app.get('/api/asterisk/spy/active', (req, res) => {
   const sessions = Array.from(activeSpySessions.values());
   res.json({ success: true, sessions });
+});
+
+// ==========================================
+// PER-EXTENSION RECORDING (MIXMONITOR) APIs
+// ==========================================
+const MONITOR_DIR = '/var/spool/asterisk/monitor';
+
+app.post('/api/asterisk/extensions/recording', async (req, res) => {
+  try {
+    const { extension, enabled } = req.body || {};
+    const cleanExt = String(extension || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+    if (!cleanExt) {
+      return res.status(400).json({ success: false, error: 'Extensión requerida' });
+    }
+    const isEnabled = Boolean(enabled);
+
+    try {
+      if (!fs.existsSync(MONITOR_DIR)) {
+        fs.mkdirSync(MONITOR_DIR, { recursive: true, mode: 0o775 });
+      }
+    } catch (_) {}
+
+    // Update persisted extensions list on server
+    const currentExts = lastSyncedExtensions.length > 0 ? [...lastSyncedExtensions] : [...loadStoredExtensions()];
+    const updatedExts = currentExts.map((ext: any) =>
+      String(ext?.extension || '').toLowerCase() === cleanExt.toLowerCase()
+        ? { ...ext, recordCalls: isEnabled }
+        : ext
+    );
+    lastSyncedExtensions = updatedExts;
+    saveStoredExtensions(updatedExts);
+
+    // Update AstDB immediately (no call drops, takes effect on next call instantly)
+    if (isEnabled) {
+      await executeAsteriskCommand(`database put record_ext ${cleanExt} "1"`).catch(() => {});
+    } else {
+      await executeAsteriskCommand(`database del record_ext ${cleanExt}`).catch(() => {});
+    }
+
+    console.log(`[MIXMONITOR] Grabación para extensión ${cleanExt}: ${isEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
+    return res.json({
+      success: true,
+      extension: cleanExt,
+      recordCalls: isEnabled,
+      message: isEnabled
+        ? `Grabación automática activada para la extensión ${cleanExt}.`
+        : `Grabación automática desactivada para la extensión ${cleanExt}.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/asterisk/recordings', (req, res) => {
+  try {
+    const filterExt = String(req.query.extension || '').trim().toLowerCase();
+    const search = String(req.query.search || '').trim().toLowerCase();
+    if (!fs.existsSync(MONITOR_DIR)) {
+      return res.json({ success: true, recordings: [], monitorDir: MONITOR_DIR });
+    }
+    const files = fs.readdirSync(MONITOR_DIR).filter((f) => /\.(wav|mp3|gsm)$/i.test(f));
+    const recordings = files
+      .map((filename) => {
+        const fullPath = path.join(MONITOR_DIR, filename);
+        const stat = fs.statSync(fullPath);
+        // Format: YYYYMMDD-HHMMSS_(IN|OUT|INT)_<ext>_(from|to)_<dest>_<uniqueid>.wav
+        const m = filename.match(/^(\d{8})-(\d{6})_(IN|OUT|INT)_([a-zA-Z0-9_\-]+)_(from|to)_([a-zA-Z0-9_\-+]+)_([^.]+)\.(wav|mp3|gsm)$/i);
+        const dateRaw = m ? m[1] : '';
+        const timeRaw = m ? m[2] : '';
+        const direction = m ? (m[3] as 'IN' | 'OUT' | 'INT') : 'OUT';
+        const extension = m ? m[4] : 'N/A';
+        const remoteParty = m ? m[6] : filename.replace(/\.(wav|mp3|gsm)$/i, '');
+        const formattedDate = dateRaw && timeRaw
+          ? `${dateRaw.slice(0, 4)}-${dateRaw.slice(4, 6)}-${dateRaw.slice(6, 8)} ${timeRaw.slice(0, 2)}:${timeRaw.slice(2, 4)}:${timeRaw.slice(4, 6)}`
+          : new Date(stat.mtimeMs).toISOString().replace('T', ' ').slice(0, 19);
+        // Estimate duration for standard 8kHz 16-bit PCM mono WAV (~16000 bytes/sec)
+        const durationSec = filename.toLowerCase().endsWith('.wav') && stat.size > 44
+          ? Math.max(1, Math.round((stat.size - 44) / 16000))
+          : 0;
+        return {
+          filename,
+          direction,
+          extension,
+          remoteParty,
+          date: formattedDate,
+          sizeBytes: stat.size,
+          durationSec,
+          mtimeMs: stat.mtimeMs,
+          playUrl: `/api/asterisk/recordings/play/${encodeURIComponent(filename)}`,
+        };
+      })
+      .filter((r) => {
+        if (filterExt && filterExt !== 'all' && r.extension.toLowerCase() !== filterExt) return false;
+        if (search) {
+          return (
+            r.filename.toLowerCase().includes(search) ||
+            r.extension.toLowerCase().includes(search) ||
+            r.remoteParty.toLowerCase().includes(search) ||
+            r.date.toLowerCase().includes(search)
+          );
+        }
+        return true;
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    return res.json({ success: true, recordings, monitorDir: MONITOR_DIR });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, recordings: [], error: err.message });
+  }
+});
+
+app.get('/api/asterisk/recordings/play/:filename', (req, res) => {
+  try {
+    const safeName = path.basename(String(req.params.filename || ''));
+    if (!safeName || safeName.includes('..') || !/\.(wav|mp3|gsm)$/i.test(safeName)) {
+      return res.status(400).json({ success: false, error: 'Nombre de archivo inválido' });
+    }
+    const fullPath = path.join(MONITOR_DIR, safeName);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, error: 'Grabación no encontrada' });
+    }
+    const stat = fs.statSync(fullPath);
+    const mime = safeName.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
+    if (req.query.download === '1') {
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    }
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      const chunksize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': mime,
+      });
+      fs.createReadStream(fullPath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': stat.size,
+        'Content-Type': mime,
+        'Accept-Ranges': 'bytes',
+      });
+      fs.createReadStream(fullPath).pipe(res);
+    }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/asterisk/recordings/:filename', (req, res) => {
+  try {
+    const safeName = path.basename(String(req.params.filename || ''));
+    if (!safeName || safeName.includes('..')) {
+      return res.status(400).json({ success: false, error: 'Archivo inválido' });
+    }
+    const fullPath = path.join(MONITOR_DIR, safeName);
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+    return res.json({ success: true, message: `Grabación ${safeName} eliminada.` });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Endpoint to serve live audio stream or active recording for in-browser listening
@@ -8984,14 +9454,49 @@ app.post('/api/users/sync-sip', async (req, res) => {
       defaultExtensionsList.push(extObj as any);
     }
 
-    // 3. If user has assigned numeric extensions (e.g. 1001), also sync password of 1001 to matching password
+    // 3. If user has assigned numeric extensions (e.g. 2001+ for clients, 1001+ for agents), sync/upsert into stored extensions too
     if (Array.isArray(targetUser.assignedExtensions)) {
+      const currentStoredExts = lastSyncedExtensions.length > 0 ? [...lastSyncedExtensions] : [...loadStoredExtensions()];
+      let changedStoredExts = false;
       for (const assigned of targetUser.assignedExtensions) {
         const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+        if (!cleanAssigned) continue;
         const matched = defaultExtensionsList.find((e) => String(e.extension).toLowerCase() === cleanAssigned);
         if (matched) {
           matched.secret = password;
         }
+        const storedIdx = currentStoredExts.findIndex((e: any) => String(e?.extension || '').toLowerCase() === cleanAssigned);
+        if (storedIdx >= 0) {
+          currentStoredExts[storedIdx] = {
+            ...currentStoredExts[storedIdx],
+            secret: password,
+            name: currentStoredExts[storedIdx].name || targetUser.name || cleanAssigned,
+          };
+          changedStoredExts = true;
+        } else {
+          currentStoredExts.push({
+            id: `ext-${cleanAssigned}`,
+            extension: cleanAssigned,
+            name: targetUser.name || `Cliente ${cleanAssigned}`,
+            secret: password,
+            context: 'from-internal',
+            transport: 'transport-udp',
+            port: 47923,
+            maxContacts: 3,
+            codecs: ['ulaw', 'alaw', 'g722'],
+            callerId: `"${targetUser.name || cleanAssigned}" <${cleanAssigned}>`,
+            callerIdNum: cleanAssigned,
+            callerIdName: targetUser.name || cleanAssigned,
+            status: 'registered',
+            lastSeen: 'Auto-creada desde Usuarios (2001+)',
+            recordCalls: false,
+          });
+          changedStoredExts = true;
+        }
+      }
+      if (changedStoredExts) {
+        lastSyncedExtensions = currentStoredExts;
+        saveStoredExtensions(currentStoredExts);
       }
     }
 

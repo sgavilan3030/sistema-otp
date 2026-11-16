@@ -1049,8 +1049,8 @@ export default function App() {
     try {
       localStorage.setItem('ast20_extensions', JSON.stringify(initialExtensions));
     } catch (e) {}
-    showToast('Extensiones oficiales (1001, 1002, 1003, 1004) restauradas con éxito.', 'success');
-    addLog('PJSIP', 'Cargadas extensiones 1001, 1002, 1003 y 1004 en memoria y sincronizadas.');
+    showToast('Extensiones oficiales (1000 Espía, 1001, 1002, 1003) restauradas con éxito.', 'success');
+    addLog('PJSIP', 'Cargadas extensiones 1000 (Espía Admin), 1001, 1002 y 1003 en memoria y sincronizadas.');
     handleQuickSync(initialExtensions);
   };
 
@@ -1782,7 +1782,9 @@ export default function App() {
             extensions={extensions}
             carriers={carriers}
             users={users}
+            tenants={tenants}
             currentUser={currentUser}
+            onUpdateExtension={handleUpdateExtension}
             onTriggerSync={handleQuickSync}
             onNavigateToLiveCalls={() => setActiveTab('live-calls')}
             onNavigateToProduction={() => setActiveTab('production')}
@@ -1881,6 +1883,7 @@ export default function App() {
             onAddUser={handleAddUser}
             onUpdateUser={handleUpdateUser}
             onDeleteUser={handleDeleteUser}
+            onAddExtension={handleAddExtension}
             onNavigateToProduction={() => setActiveTab('production')}
           />
         )}

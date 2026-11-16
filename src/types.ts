@@ -14,6 +14,8 @@ export interface PjsipExtension {
   callerIdName?: string;
   ipAddress?: string;
   lastSeen?: string;
+  recordCalls?: boolean; // Grabar llamadas de esta extensión con MixMonitor
+  isSpyOnly?: boolean;   // Extensión exclusiva de escucha / supervisión (excluida de Ring-All)
 }
 
 export interface CarrierTrunk {
@@ -251,6 +253,7 @@ export interface UserPermissions {
   canUseSoftphone: boolean;
   canManageUsers: boolean;
   canExportConfigs?: boolean;
+  canSpy?: boolean;
 }
 
 export interface CapturedOtpRecord {
@@ -583,6 +586,7 @@ export interface CallCenterTenant {
   dialplanContext: string; // e.g. "tenant_alpha"
   magnusBillingUrl?: string; // URL del portal MagnusBilling para consultar minutos
   magnusSipAccount?: string; // Nombre de cuenta SIP en MagnusBilling (ej. cc_mario)
+  assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos para este Call Center
 }
 
 export interface TenantRechargeHistory {

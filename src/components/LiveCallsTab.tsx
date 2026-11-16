@@ -288,7 +288,9 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   // Start ChanSpy monitoring call to supervisor's extension
   const handleStartSpy = async (call: LiveCallItem) => {
     try {
-      const supervisorExten = localStorage.getItem('ast20_supervisor_exten') || '1001';
+      const isSuperAdmin = !currentUser || (currentUser.role === 'admin' && !currentUser.tenantId);
+      const defaultSup = isSuperAdmin ? '1000' : (currentUser?.assignedExtensions?.[0] || '1000');
+      const supervisorExten = localStorage.getItem('ast20_supervisor_exten') || defaultSup;
       const res = await fetch('/api/asterisk/spy/originate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +309,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           type: 'success',
         });
       } else {
-        setFeedbackMsg({ text: 'Error al iniciar escucha ChanSpy.', type: 'error' });
+        setFeedbackMsg({ text: data.error || 'Error al iniciar escucha ChanSpy.', type: 'error' });
       }
     } catch (_) {
       setFeedbackMsg({ text: 'Error de conexión con Asterisk.', type: 'error' });
