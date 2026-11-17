@@ -375,7 +375,7 @@ export interface HoldMusicPreset {
   category?: string;
 }
 
-export type CallFlowMode = 'otp' | 'press1' | 'hybrid' | 'cancel_code';
+export type CallFlowMode = 'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1';
 
 export interface CampaignEntity {
   id: string;
@@ -389,6 +389,7 @@ export interface CampaignEntity {
   promptAudioPath: string;   // Solicitud OTP / Código de Cancelación
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
   cancelCodeAudioPath?: string; // Audio al marcar 1: "Un momento por favor, le estamos enviando un código de cancelación"
+  otpVerifyWaitAudioPath?: string; // Audio al marcar 1 (IVR Captura OTP): "Un momento por favor, le estamos enviando su código de verificación"
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
@@ -426,7 +427,7 @@ export interface LiveCall {
   agent: string;             // Extensión ej: "1001"
   agentName?: string;        // Nombre ej: "Juan Pérez"
   agentAvatar?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'machine' | 'machine_detected' | 'retrying' | 'ended';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'otp_valid' | 'otp_invalid' | 'machine' | 'machine_detected' | 'retrying' | 'ended';
   statusText?: string;
   startTime: number;
   answeredAt?: number;
@@ -443,6 +444,13 @@ export interface LiveCall {
   holdStartedAt?: number;
   callerId?: string;
   notes?: string;
+  mode?: string;
+  tenantId?: string;
+  capturedOtp?: string;
+  otpStatus?: 'pending' | 'valid' | 'invalid';
+  otpRecordId?: string;
+  otpService?: string;
+  otpTimestamp?: string;
 }
 
 export interface ResellerClient {

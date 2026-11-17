@@ -251,31 +251,57 @@ export default function App() {
   };
 
   // Global OTP Alert monitor across all tabs
-  const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string; agent?: string } | null>(null);
+  const [globalOtpAlert, setGlobalOtpAlert] = useState<{ id: string; number: string; otp: string; status: string; timestamp: string; agent?: string; service?: string } | null>(null);
+  const [globalOtpRecords, setGlobalOtpRecords] = useState<Array<{ id: string; number: string; otp: string; status: 'pending' | 'valid' | 'invalid'; timestamp: string; agent?: string; service?: string; tenantId?: string; channel?: string; createdAt?: number }>>([]);
   const [dismissedOtpKey, setDismissedOtpKey] = useState<string>('');
   const [copiedOtp, setCopiedOtp] = useState<boolean>(false);
 
-  useEffect(() => {
-    const pollGlobalOtp = async () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      try {
-        const activeU = users.find((u) => u.id === currentUserId) || users[0];
-        const assignedExts = Array.isArray(activeU?.assignedExtensions)
-          ? activeU.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
-          : [];
-        const params = new URLSearchParams();
-        if (activeU?.tenantId) params.set('tenantId', activeU.tenantId);
-        if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
-        const qs = params.toString();
+  // Centralized live active calls & OTP telemetry monitor across tabs (single polling loop, scoped by tenant & extensions)
+  const [globalLiveCalls, setGlobalLiveCalls] = useState<any[]>([]);
+  const [globalLiveCallsUpdatedAt, setGlobalLiveCallsUpdatedAt] = useState<number>(Date.now());
+  const [activeCallCount, setActiveCallCount] = useState<number>(0);
 
-        const res = await fetch(qs ? `/api/asterisk/otp/records?${qs}` : '/api/asterisk/otp/records');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.records)) {
-          let recs = data.records;
+  const getActiveIsolationScope = useCallback(() => {
+    const activeU = users.find((u) => u.id === currentUserId) || users[0];
+    const assignedExts = Array.isArray(activeU?.assignedExtensions)
+      ? activeU.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+      : [];
+    const params = new URLSearchParams();
+    if (activeU?.tenantId) params.set('tenantId', activeU.tenantId);
+    if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+    const qs = params.toString();
+    return {
+      activeU,
+      assignedExts,
+      queryString: qs ? `?${qs}` : '',
+    };
+  }, [users, currentUserId]);
+
+  const refreshLiveTelemetry = useCallback(async () => {
+    try {
+      const { activeU, assignedExts, queryString } = getActiveIsolationScope();
+      const [callsRes, otpRes] = await Promise.all([
+        fetch(`/api/asterisk/live/calls${queryString}`),
+        fetch(`/api/asterisk/otp/records${queryString}`),
+      ]);
+
+      if (callsRes.ok) {
+        const data = await callsRes.json();
+        if (data.success && Array.isArray(data.calls)) {
+          setGlobalLiveCalls(data.calls);
+          setGlobalLiveCallsUpdatedAt(Date.now());
+          const running = data.calls.filter((c: any) => c.status !== 'ended').length;
+          setActiveCallCount(running);
+        }
+      }
+
+      if (otpRes.ok) {
+        const otpData = await otpRes.json();
+        if (otpData.success && Array.isArray(otpData.records)) {
+          let recs = otpData.records;
           if (activeU?.tenantId) {
             recs = recs.filter((r: any) => !r.tenantId || r.tenantId === activeU.tenantId);
           }
-          // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
           if (assignedExts.length > 0) {
             recs = recs.filter((r: any) => {
               const recAgent = r.agent ? String(r.agent).trim() : '';
@@ -284,6 +310,7 @@ export default function App() {
               return recNum ? assignedExts.includes(recNum) : false;
             });
           }
+          setGlobalOtpRecords(recs);
           if (recs.length > 0) {
             const newest = recs[0];
             const alertKey = `${newest.id}_${newest.otp}`;
@@ -294,34 +321,20 @@ export default function App() {
             setGlobalOtpAlert(null);
           }
         }
-      } catch (err) {}
-    };
+      }
+    } catch (_) {}
+  }, [getActiveIsolationScope, dismissedOtpKey]);
 
-    pollGlobalOtp();
-    const interval = setInterval(pollGlobalOtp, 4000);
-    return () => clearInterval(interval);
-  }, [dismissedOtpKey, users, currentUserId]);
-
-  // Live active calls monitor across tabs
-  const [activeCallCount, setActiveCallCount] = useState<number>(0);
   useEffect(() => {
-    const pollLiveCalls = async () => {
+    const poll = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      try {
-        const res = await fetch('/api/asterisk/live/calls');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.calls)) {
-            const running = data.calls.filter((c: any) => c.status !== 'ended').length;
-            setActiveCallCount(running);
-          }
-        }
-      } catch (_) {}
+      refreshLiveTelemetry();
     };
-    pollLiveCalls();
-    const interval = setInterval(pollLiveCalls, 4000);
+    poll();
+    const intervalMs = activeTab === 'live-calls' || activeTab === 'call-spy' ? 2500 : 4000;
+    const interval = setInterval(poll, intervalMs);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshLiveTelemetry, activeTab]);
 
   const handleCopyOtp = (otp: string) => {
     navigator.clipboard.writeText(otp);
@@ -329,26 +342,55 @@ export default function App() {
     setTimeout(() => setCopiedOtp(false), 2000);
   };
 
-  const handleQuickOtpDecision = async (status: 'valid' | 'invalid') => {
-    if (!globalOtpAlert) return;
+  const handleQuickOtpDecision = async (
+    status: 'valid' | 'invalid',
+    target?: { id?: string; number: string; otp: string; agent?: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    const resolved = target || globalOtpAlert;
+    if (!resolved) return { success: false, error: 'No hay código OTP seleccionado.' };
+
+    const cleanAgent = resolved.agent && resolved.agent !== 'ringall' ? resolved.agent : undefined;
+    const matchRecord = (r: { id?: string; number: string; otp: string }) =>
+      (resolved.id && r.id === resolved.id) || (r.number === resolved.number && r.otp === resolved.otp);
+
+    // Immediate optimistic update of global state (banner + global records)
+    setGlobalOtpRecords((prev) =>
+      prev.map((r) => (matchRecord(r) ? { ...r, status } : r))
+    );
+    setGlobalOtpAlert((prev) => {
+      if (!prev) return null;
+      return matchRecord(prev) ? { ...prev, status } : prev;
+    });
+
     try {
-      await fetch('/api/asterisk/otp/decision', {
+      const res = await fetch('/api/asterisk/otp/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: globalOtpAlert.id,
-          number: globalOtpAlert.number,
-          otp: globalOtpAlert.otp,
-          agent: globalOtpAlert.agent,
+          id: resolved.id,
+          number: resolved.number,
+          otp: resolved.otp,
+          agent: cleanAgent,
           status,
+          action: status === 'invalid' ? 'request_retry' : undefined,
         }),
       });
-      setGlobalOtpAlert((prev) => (prev ? { ...prev, status } : null));
-      if (status === 'valid') {
-        setTimeout(() => setGlobalOtpAlert(null), 1800);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        return { success: false, error: data.error || 'Error al registrar decisión OTP.' };
       }
-    } catch (e) {
+
+      if (status === 'valid' && globalOtpAlert && matchRecord(globalOtpAlert)) {
+        const alertKey = `${globalOtpAlert.id}_${globalOtpAlert.otp}`;
+        setTimeout(() => {
+          setDismissedOtpKey(alertKey);
+          setGlobalOtpAlert((curr) => (curr && `${curr.id}_${curr.otp}` === alertKey ? null : curr));
+        }, 1800);
+      }
+      return { success: true };
+    } catch (e: any) {
       console.warn('Error sending quick OTP decision:', e);
+      return { success: false, error: e?.message || 'Error de conexión con el servidor.' };
     }
   };
 
@@ -1769,13 +1811,14 @@ export default function App() {
         {activeTab === 'live-calls' && isTabAllowedForUser('live-calls', currentUser) && (
           <LiveCallsTab
             extensions={extensions}
-            carriers={carriers}
-            users={users}
             currentUser={currentUser}
-            audios={audios}
-            onTriggerSync={handleQuickSync}
+            globalLiveCalls={globalLiveCalls}
+            globalLiveCallsUpdatedAt={globalLiveCallsUpdatedAt}
+            globalOtpAlert={globalOtpAlert}
+            globalOtpRecords={globalOtpRecords}
+            onGlobalOtpDecision={handleQuickOtpDecision}
+            onRefreshLiveTelemetry={refreshLiveTelemetry}
             onNavigateToProduction={() => setActiveTab('production')}
-            onNavigateToSpy={currentUser.role === 'agent' ? undefined : () => setActiveTab('call-spy')}
           />
         )}
 
@@ -1902,8 +1945,8 @@ export default function App() {
       </main>
       </div>
 
-      {/* Floating OTP Notification Banner (Visible when user is browsing other tabs) */}
-      {globalOtpAlert && activeTab !== 'production' && (
+      {/* Floating OTP Notification Banner (Hidden in production & live-calls since both render dedicated OTP consoles) */}
+      {globalOtpAlert && activeTab !== 'production' && activeTab !== 'live-calls' && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-950 border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl shadow-emerald-500/30 text-white">
           <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-emerald-500/20">
             <div className="flex items-center gap-2">

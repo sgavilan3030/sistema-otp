@@ -8,7 +8,6 @@ import {
   PhoneCall,
   PhoneOff,
   Radio,
-  Zap,
   RefreshCw,
   Clock,
   User,
@@ -475,40 +474,6 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
     setTimeout(() => setFeedbackMsg(null), 3000);
   };
 
-  // Simulate test active call
-  const handleSimulateCall = async () => {
-    setIsLoading(true);
-    try {
-      const testPhones = ['18494386040', '18095550199', '18293334455', '16104803845'];
-      const randomPhone = testPhones[Math.floor(Math.random() * testPhones.length)];
-      const pool = recordableExtensions.length > 0 ? recordableExtensions : extensions;
-      const randomExten = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)].extension : '1001';
-      const extenObj = extensions.find((e) => e.extension === randomExten);
-
-      await fetch('/api/asterisk/call/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: randomPhone,
-          clientName: 'Cliente Activo en Línea',
-          agent: randomExten,
-          agentName: extenObj?.name || 'Operador Asignado',
-          entityId: 'customer_service',
-          entityName: 'Atención y Servicio al Cliente',
-          trunk: carriers[0]?.name || 'televox',
-        }),
-      });
-
-      await fetchActiveCalls();
-      setFeedbackMsg({
-        text: `✓ Llamada simulada creada para Ext ${randomExten} con cliente ${randomPhone}.`,
-        type: 'success',
-      });
-    } catch (_) {}
-    setIsLoading(false);
-    setTimeout(() => setFeedbackMsg(null), 4000);
-  };
-
   // Copy helper
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -613,19 +578,6 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
                 <span>Grabaciones ({recordedExtensionsCount} ext. activas)</span>
               </button>
             </div>
-
-            {subTab === 'spy' && (
-              <button
-                type="button"
-                onClick={handleSimulateCall}
-                disabled={isLoading}
-                className="px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-                title="Generar llamada simulada para probar la escucha"
-              >
-                <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Simular Llamada</span>
-              </button>
-            )}
 
             <button
               type="button"
@@ -870,16 +822,6 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
                     Cuando un agente (1001–1999) o cliente (2001+) esté en llamada, aparecerá aquí con los botones <strong>Espiar</strong>, <strong>Susurrar</strong> e <strong>Intervenir</strong> para tu extensión <strong>{supervisorExten}</strong>.
                   </p>
-                  <div className="pt-2 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSimulateCall}
-                      className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-bold flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
-                    >
-                      <Zap className="w-4 h-4" />
-                      <span>Crear Llamada Simulada para Probar</span>
-                    </button>
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">

@@ -1,34 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PjsipExtension, CarrierTrunk, SystemUser, AudioPrompt, CampaignEntity } from '../types';
+import { PjsipExtension, SystemUser } from '../types';
 import {
   PhoneCall,
   PhoneOff,
-  PhoneForwarded,
   Music,
   Clock,
   User,
-  ShieldCheck,
   Building2,
   RefreshCw,
-  Play,
-  Pause,
   AlertCircle,
   CheckCircle2,
   Volume2,
-  Radio,
-  Sliders,
-  Sparkles,
-  Zap,
   Users,
   Search,
-  Filter,
-  Plus,
   Headphones,
   Check,
-  Activity,
   ArrowRight,
+  KeyRound,
+  Copy,
+  XCircle,
+  BellRing,
 } from 'lucide-react';
-import { presetHoldMusics } from '../data/defaultConfig';
 
 export interface LiveCallItem {
   id: string;
@@ -36,11 +28,22 @@ export interface LiveCallItem {
   clientName?: string;
   agent: string;
   agentName?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'transferred' | 'machine' | 'ended';
+  status:
+    | 'dialing'
+    | 'ringing'
+    | 'in_ivr'
+    | 'talking'
+    | 'on_hold'
+    | 'pressed_1'
+    | 'otp_valid'
+    | 'otp_invalid'
+    | 'transferred'
+    | 'machine'
+    | 'ended';
   statusText?: string;
   startTime: number;
   answeredAt?: number;
-  duration: number; // in seconds
+  duration: number;
   entityId?: string;
   entityName?: string;
   holdMusic?: string;
@@ -52,150 +55,197 @@ export interface LiveCallItem {
   isOnHold?: boolean;
   holdStartedAt?: number;
   callerId?: string;
+  mode?: string;
+  tenantId?: string;
+  capturedOtp?: string;
+  otpStatus?: 'pending' | 'valid' | 'invalid';
+  otpRecordId?: string;
+  otpService?: string;
+  otpTimestamp?: string;
+}
+
+export interface OtpRecordItem {
+  id: string;
+  number: string;
+  otp: string;
+  timestamp: string;
+  createdAt?: number;
+  channel?: string;
+  service?: string;
+  status: 'pending' | 'valid' | 'invalid';
+  agent?: string;
+  tenantId?: string;
 }
 
 interface LiveCallsTabProps {
   extensions: PjsipExtension[];
-  carriers: CarrierTrunk[];
-  users: SystemUser[];
   currentUser?: SystemUser;
-  audios?: AudioPrompt[];
-  onTriggerSync?: () => void;
+  globalLiveCalls?: LiveCallItem[];
+  globalLiveCallsUpdatedAt?: number;
+  globalOtpAlert?: {
+    id: string;
+    number: string;
+    otp: string;
+    status: string;
+    timestamp: string;
+    agent?: string;
+    service?: string;
+  } | null;
+  globalOtpRecords?: OtpRecordItem[];
+  onGlobalOtpDecision?: (
+    status: 'valid' | 'invalid',
+    target?: { id?: string; number: string; otp: string; agent?: string }
+  ) => Promise<{ success: boolean; error?: string } | void>;
+  onRefreshLiveTelemetry?: () => Promise<void> | void;
   onNavigateToProduction?: () => void;
-  onNavigateToSpy?: () => void;
 }
 
 export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   extensions,
-  carriers,
-  users,
   currentUser,
-  audios = [],
-  onTriggerSync,
+  globalLiveCalls,
+  globalLiveCallsUpdatedAt,
+  globalOtpAlert,
+  globalOtpRecords,
+  onGlobalOtpDecision,
+  onRefreshLiveTelemetry,
   onNavigateToProduction,
-  onNavigateToSpy,
 }) => {
-  const canSpy = currentUser ? (currentUser.role === 'admin' || currentUser.role === 'supervisor' || !!currentUser.permissions?.canSpy) : true;
-  const [liveCalls, setLiveCalls] = useState<LiveCallItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const isSuperAdmin = !currentUser || (currentUser.role === 'admin' && !currentUser.tenantId);
+  const canSpy = currentUser
+    ? currentUser.role === 'admin' || currentUser.role === 'supervisor' || !!currentUser.permissions?.canSpy
+    : true;
+
+  const [liveCalls, setLiveCalls] = useState<LiveCallItem[]>(() => globalLiveCalls || []);
+  const [otpRecords, setOtpRecords] = useState<OtpRecordItem[]>(() => globalOtpRecords || []);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(() =>
+    globalLiveCallsUpdatedAt ? new Date(globalLiveCallsUpdatedAt) : new Date()
+  );
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [decidingKey, setDecidingKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [showAllOtpHistory, setShowAllOtpHistory] = useState<boolean>(false);
 
-  // Entities stored in localStorage for Hold Music mapping
-  const [entities, setEntities] = useState<CampaignEntity[]>(() => {
+  const seenPendingKeysRef = useRef<Set<string>>(new Set());
+  const initialOtpLoadRef = useRef<boolean>(true);
+
+  const playOtpAlertChime = () => {
+    if (!soundEnabled || typeof window === 'undefined') return;
     try {
-      const saved = localStorage.getItem('prod_campaign_entities_v3');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (_) {}
-    return [
-      {
-        id: 'customer_service',
-        name: 'Servicio al Cliente',
-        subtitle: 'Atención y soporte',
-        icon: 'building',
-        color: 'emerald',
-        introAudioPath: 'custom/bienvenida_corporativa',
-        promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor',
-        successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
-      },
-      {
-        id: 'card',
-        name: 'Tarjeta de Crédito',
-        subtitle: 'Cargo no reconocido',
-        icon: 'card',
-        color: 'sky',
-        introAudioPath: 'custom/alerta_cargo_tarjeta',
-        promptAudioPath: 'custom/solicitar_otp_tarjeta',
-        agentAudioPath: 'custom/conectar_asesor_tarjetas',
-        successAudioPath: 'custom/tarjeta_protegida',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
-      },
-      {
-        id: 'whatsapp',
-        name: 'WhatsApp / Telegram',
-        subtitle: 'Migración de cuenta',
-        icon: 'message',
-        color: 'emerald',
-        introAudioPath: 'custom/alerta_migracion_whatsapp',
-        promptAudioPath: 'custom/solicitar_codigo_sms',
-        agentAudioPath: 'custom/conectar_soporte_tecnico',
-        successAudioPath: 'custom/verificacion_exitosa',
-        holdMusicAudioPath: 'custom/moh_digital_hold',
-      },
-      {
-        id: 'google',
-        name: 'Google / Apple ID',
-        subtitle: 'Alerta de seguridad',
-        icon: 'lock',
-        color: 'amber',
-        introAudioPath: 'custom/alerta_seguridad_google',
-        promptAudioPath: 'custom/solicitar_codigo_google',
-        agentAudioPath: 'custom/conectar_soporte_cuentas',
-        successAudioPath: 'custom/acceso_restringido_exito',
-        holdMusicAudioPath: 'custom/moh_digital_hold',
-      },
-      {
-        id: 'amazon',
-        name: 'Amazon / Envíos',
-        subtitle: 'Autorización pedido',
-        icon: 'shopping',
-        color: 'orange',
-        introAudioPath: 'custom/alerta_compra_amazon',
-        promptAudioPath: 'custom/solicitar_codigo_amazon',
-        agentAudioPath: 'custom/conectar_soporte_pedidos',
-        successAudioPath: 'custom/pedido_cancelado_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
-      },
-      {
-        id: 'custom',
-        name: 'Personalizado',
-        subtitle: 'Configuración libre',
-        icon: 'sliders',
-        color: 'purple',
-        introAudioPath: 'custom/bienvenida_corporativa',
-        promptAudioPath: 'custom/solicitar_codigo_otp',
-        agentAudioPath: 'custom/conectar_asesor',
-        successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
-      },
-    ];
-  });
-
-  // Hold music audio preview state
-  const [playingHoldMusicPath, setPlayingHoldMusicPath] = useState<string | null>(null);
-  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
-
-  // Poll live calls from Asterisk server
-  const fetchLiveCalls = async () => {
-    if (typeof document !== 'undefined' && document.hidden) return;
-    try {
-      const res = await fetch('/api/asterisk/live/calls');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.calls)) {
-          setLiveCalls(data.calls);
-          setLastUpdated(new Date());
-        }
-      }
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      [660, 880].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.11);
+        gain.gain.setValueAtTime(0.06, now + idx * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.11);
+        osc.stop(now + idx * 0.11 + 0.18);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 600);
     } catch (_) {}
   };
 
+  // Sync live calls directly from centralized polling in App.tsx
   useEffect(() => {
-    fetchLiveCalls();
-    // Poll Asterisk every 3.5 seconds
-    const interval = setInterval(fetchLiveCalls, 3500);
-    return () => clearInterval(interval);
-  }, []);
+    if (Array.isArray(globalLiveCalls)) {
+      setLiveCalls(globalLiveCalls);
+      setLastUpdated(globalLiveCallsUpdatedAt ? new Date(globalLiveCallsUpdatedAt) : new Date());
+    }
+  }, [globalLiveCalls, globalLiveCallsUpdatedAt]);
 
-  // Live timer ticking every second on existing active calls so duration updates continuously
+  // Sync OTP records & play chime only on newly arrived pending codes
+  useEffect(() => {
+    if (!Array.isArray(globalOtpRecords)) return;
+    const pendingNow = globalOtpRecords.filter((r) => r.status === 'pending');
+    if (!initialOtpLoadRef.current) {
+      const hasNewPending = pendingNow.some((r) => !seenPendingKeysRef.current.has(`${r.id}_${r.otp}`));
+      if (hasNewPending) playOtpAlertChime();
+    }
+    pendingNow.forEach((r) => seenPendingKeysRef.current.add(`${r.id}_${r.otp}`));
+    initialOtpLoadRef.current = false;
+    setOtpRecords(globalOtpRecords);
+  }, [globalOtpRecords]);
+
+  // Reflect immediate decisions triggered from the floating notification banner
+  useEffect(() => {
+    if (!globalOtpAlert) return;
+    const alertStatus = globalOtpAlert.status as 'pending' | 'valid' | 'invalid';
+    setOtpRecords((prev) =>
+      prev.map((r) =>
+        (globalOtpAlert.id && r.id === globalOtpAlert.id) ||
+        (r.number === globalOtpAlert.number && r.otp === globalOtpAlert.otp)
+          ? { ...r, status: alertStatus }
+          : r
+      )
+    );
+    setLiveCalls((prev) =>
+      prev.map((c) => {
+        const c10 = c.number.replace(/[^0-9]/g, '').slice(-10);
+        const a10 = globalOtpAlert.number.replace(/[^0-9]/g, '').slice(-10);
+        if (c.number === globalOtpAlert.number || (c10 && c10 === a10)) {
+          return {
+            ...c,
+            capturedOtp: c.capturedOtp || globalOtpAlert.otp,
+            otpStatus: alertStatus,
+            status:
+              alertStatus === 'valid'
+                ? 'otp_valid'
+                : alertStatus === 'invalid'
+                ? 'otp_invalid'
+                : c.status,
+          };
+        }
+        return c;
+      })
+    );
+  }, [globalOtpAlert?.id, globalOtpAlert?.otp, globalOtpAlert?.status]);
+
+  // Manual refresh (uses centralized App.tsx refresher or direct fallback)
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      if (onRefreshLiveTelemetry) {
+        await onRefreshLiveTelemetry();
+      } else {
+        const params = new URLSearchParams();
+        if (currentUser?.tenantId) params.set('tenantId', currentUser.tenantId);
+        const assignedExts = Array.isArray(currentUser?.assignedExtensions)
+          ? currentUser.assignedExtensions.map((x) => String(x).trim()).filter(Boolean)
+          : [];
+        if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const [callsRes, otpRes] = await Promise.all([
+          fetch(`/api/asterisk/live/calls${qs}`),
+          fetch(`/api/asterisk/otp/records${qs}`),
+        ]);
+        if (callsRes.ok) {
+          const data = await callsRes.json();
+          if (data.success && Array.isArray(data.calls)) setLiveCalls(data.calls);
+        }
+        if (otpRes.ok) {
+          const otpData = await otpRes.json();
+          if (otpData.success && Array.isArray(otpData.records)) setOtpRecords(otpData.records);
+        }
+        setLastUpdated(new Date());
+      }
+    } catch (_) {
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Live 1-second timer tick on active calls
   useEffect(() => {
     const timer = setInterval(() => {
       setLiveCalls((prev) =>
@@ -213,7 +263,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Helper to format seconds to MM:SS or HH:MM:SS
   const formatDuration = (seconds: number) => {
     const s = Math.max(0, Math.floor(seconds));
     const hrs = Math.floor(s / 3600);
@@ -225,7 +274,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // Toggle Music On Hold for a call
   const handleToggleHold = async (call: LiveCallItem) => {
     try {
       const isCurrentlyOnHold = !!call.isOnHold;
@@ -259,14 +307,14 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
             : `Cliente ${call.number} reconectado con el agente.`,
           type: 'success',
         });
+        if (onRefreshLiveTelemetry) onRefreshLiveTelemetry();
       }
-    } catch (e: any) {
+    } catch (_) {
       setFeedbackMsg({ text: 'Error al cambiar estado de Hold.', type: 'error' });
     }
     setTimeout(() => setFeedbackMsg(null), 4000);
   };
 
-  // Hangup call
   const handleHangupCall = async (call: LiveCallItem) => {
     try {
       await fetch('/api/asterisk/call/hangup', {
@@ -279,17 +327,16 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       });
       setLiveCalls((prev) => prev.filter((c) => c.id !== call.id && c.number !== call.number));
       setFeedbackMsg({ text: `Llamada con ${call.number} finalizada correctamente.`, type: 'info' });
+      if (onRefreshLiveTelemetry) onRefreshLiveTelemetry();
     } catch (_) {
       setFeedbackMsg({ text: 'Error al colgar canal en Asterisk.', type: 'error' });
     }
     setTimeout(() => setFeedbackMsg(null), 3000);
   };
 
-  // Start ChanSpy monitoring call to supervisor's extension
   const handleStartSpy = async (call: LiveCallItem) => {
     try {
-      const isSuperAdmin = !currentUser || (currentUser.role === 'admin' && !currentUser.tenantId);
-      const defaultSup = isSuperAdmin ? '1000' : (currentUser?.assignedExtensions?.[0] || '1000');
+      const defaultSup = isSuperAdmin ? '1000' : currentUser?.assignedExtensions?.[0] || '1000';
       const supervisorExten = localStorage.getItem('ast20_supervisor_exten') || defaultSup;
       const res = await fetch('/api/asterisk/spy/originate', {
         method: 'POST',
@@ -317,96 +364,151 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     setTimeout(() => setFeedbackMsg(null), 5000);
   };
 
-  // Simulate a test active call for instant verification
-  const handleSimulateCall = async () => {
-    setIsLoading(true);
-    try {
-      const randomPhone = '1' + Math.floor(2000000000 + Math.random() * 7000000000).toString();
-      const randomEntity = entities[Math.floor(Math.random() * entities.length)];
-      const randomExten = extensions[Math.floor(Math.random() * extensions.length)]?.extension || '1001';
-      const extenObj = extensions.find((e) => e.extension === randomExten);
+  // Validate or reject captured OTP in real-time (optimistic UI + global state + API persistence)
+  const handleValidateOtp = async (
+    decision: 'valid' | 'invalid',
+    payload: { id?: string; number: string; otp: string; agent?: string },
+    itemKey: string
+  ) => {
+    setDecidingKey(itemKey);
 
-      const res = await fetch('/api/asterisk/call/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: randomPhone,
-          clientName: 'Cliente Simulado en Vivo',
-          agent: randomExten,
-          agentName: extenObj?.name || 'Operador Asignado',
-          entityId: randomEntity.id,
-          entityName: randomEntity.name,
-          holdMusic: randomEntity.holdMusicAudioPath || 'custom/moh_corporate_loop',
-          trunk: carriers[0]?.name || 'televox',
-        }),
-      });
-      if (res.ok) {
-        await fetchLiveCalls();
-        setFeedbackMsg({ text: `Llamada simulada iniciada para ${randomPhone} con agente ${randomExten}.`, type: 'success' });
-      }
-    } catch (_) {}
-    setIsLoading(false);
-    setTimeout(() => setFeedbackMsg(null), 3500);
-  };
-
-  // Update an entity's hold music
-  const handleUpdateEntityHoldMusic = (entityId: string, holdMusicPath: string) => {
-    setEntities((prev) => {
-      const next = prev.map((ent) =>
-        ent.id === entityId ? { ...ent, holdMusicAudioPath: holdMusicPath } : ent
+    // 1. Immediate optimistic UI update (mirrors floating notification banner responsiveness)
+    setOtpRecords((prev) => {
+      const exists = prev.some(
+        (r) => (payload.id && r.id === payload.id) || (r.number === payload.number && r.otp === payload.otp)
       );
-      try {
-        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
-
-    // Also sync to Asterisk AstDB
-    fetch('/api/asterisk/audio/sync-hold-music', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entityId, holdMusicPath }),
-    }).catch(() => {});
-
-    setFeedbackMsg({ text: '✓ Música de Hold actualizada para el guión.', type: 'success' });
-    setTimeout(() => setFeedbackMsg(null), 3000);
-  };
-
-  // Play / Pause Hold Music Audio preview
-  const handleTogglePlayHoldMusic = (audioPath: string) => {
-    if (playingHoldMusicPath === audioPath) {
-      if (audioPreviewRef.current) {
-        audioPreviewRef.current.pause();
+      if (!exists) {
+        return [
+          {
+            id: payload.id || `otp_${Date.now()}`,
+            number: payload.number,
+            otp: payload.otp,
+            agent: payload.agent,
+            status: decision,
+            timestamp: new Date().toLocaleTimeString(),
+            createdAt: Date.now(),
+            service: 'IVR Captura OTP',
+          },
+          ...prev,
+        ];
       }
-      setPlayingHoldMusicPath(null);
-      return;
-    }
-
-    if (audioPreviewRef.current) {
-      audioPreviewRef.current.pause();
-    }
-
-    const clean = audioPath.replace(/^\/+/, '');
-    const audioUrl = `/api/asterisk/audio/raw?file=${encodeURIComponent(clean)}`;
-    const audio = new Audio(audioUrl);
-    audioPreviewRef.current = audio;
-    setPlayingHoldMusicPath(audioPath);
-
-    audio.play().catch(() => {
-      // Fallback tone for simulation
-      setFeedbackMsg({ text: `Reproduciendo vista previa de ${audioPath}...`, type: 'info' });
+      return prev.map((r) =>
+        (payload.id && r.id === payload.id) || (r.number === payload.number && r.otp === payload.otp)
+          ? { ...r, status: decision }
+          : r
+      );
     });
 
-    audio.onended = () => {
-      setPlayingHoldMusicPath(null);
-    };
+    setLiveCalls((prev) =>
+      prev.map((c) => {
+        const c10 = c.number.replace(/[^0-9]/g, '').slice(-10);
+        const p10 = payload.number.replace(/[^0-9]/g, '').slice(-10);
+        if (c.number === payload.number || (c10 && c10 === p10)) {
+          return {
+            ...c,
+            otpStatus: decision,
+            status: decision === 'valid' ? 'otp_valid' : 'otp_invalid',
+            statusText:
+              decision === 'valid'
+                ? 'Código OTP Validado'
+                : 'Código OTP Rechazado (Reintentando)',
+          };
+        }
+        return c;
+      })
+    );
+
+    setFeedbackMsg({
+      text:
+        decision === 'valid'
+          ? `✓ Código ${payload.otp} (${payload.number}) validado — Reproduciendo audio de confirmación en la llamada.`
+          : `✕ Código ${payload.otp} (${payload.number}) rechazado — Solicitando nuevo código de verificación al cliente.`,
+      type: decision === 'valid' ? 'success' : 'info',
+    });
+
+    try {
+      let ok = false;
+      let errMsg = '';
+
+      if (onGlobalOtpDecision) {
+        const result = await onGlobalOtpDecision(decision, payload);
+        ok = !result || result.success !== false;
+        errMsg = (result && result.error) || '';
+      } else {
+        const res = await fetch('/api/asterisk/otp/decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: payload.id,
+            number: payload.number,
+            otp: payload.otp,
+            agent: payload.agent && payload.agent !== 'ringall' ? payload.agent : undefined,
+            status: decision,
+            action: decision === 'invalid' ? 'request_retry' : undefined,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        ok = res.ok && data.success !== false;
+        errMsg = data.error || '';
+      }
+
+      if (ok) {
+        await handleManualRefresh();
+      } else {
+        setFeedbackMsg({
+          text: errMsg || 'Error al registrar decisión del código OTP.',
+          type: 'error',
+        });
+      }
+    } catch (_) {
+      setFeedbackMsg({ text: 'Error de conexión al validar código OTP.', type: 'error' });
+    } finally {
+      setDecidingKey(null);
+      setTimeout(() => setFeedbackMsg(null), 4500);
+    }
   };
+
+  const handleCopyOtp = async (otp: string, key: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(otp);
+      }
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1800);
+    } catch (_) {}
+  };
+
+  // Scope visible extensions by tenant / assignedExtensions when not SuperAdmin
+  const visibleExtensions = extensions.filter((ext) => {
+    if (isSuperAdmin) return true;
+    const assigned = currentUser?.assignedExtensions || [];
+    if (assigned.length > 0 && currentUser?.role === 'agent') {
+      return assigned.includes(ext.extension);
+    }
+    if (currentUser?.tenantId && ext.tenantId) {
+      return ext.tenantId === currentUser.tenantId;
+    }
+    return true;
+  });
 
   // Filtered calls
   const filteredCalls = liveCalls.filter((c) => {
     if (filterStatus === 'talking' && c.status !== 'talking' && c.status !== 'transferred') return false;
     if (filterStatus === 'hold' && !c.isOnHold && c.status !== 'on_hold') return false;
-    if (filterStatus === 'ivr' && c.status !== 'in_ivr' && c.status !== 'pressed_1') return false;
+    if (
+      filterStatus === 'ivr' &&
+      c.status !== 'in_ivr' &&
+      c.status !== 'pressed_1' &&
+      c.status !== 'otp_valid' &&
+      c.status !== 'otp_invalid'
+    )
+      return false;
+    if (
+      filterStatus === 'otp_pending' &&
+      !(c.capturedOtp && c.otpStatus === 'pending') &&
+      !(c.mode === 'otp_press1' && c.status === 'pressed_1')
+    )
+      return false;
     if (filterStatus === 'ringing' && c.status !== 'ringing' && c.status !== 'dialing') return false;
 
     if (searchTerm) {
@@ -414,16 +516,23 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       const matchNum = c.number.toLowerCase().includes(q);
       const matchAgent = (c.agent || '').toLowerCase().includes(q) || (c.agentName || '').toLowerCase().includes(q);
       const matchEntity = (c.entityName || '').toLowerCase().includes(q);
-      return matchNum || matchAgent || matchEntity;
+      const matchOtp = (c.capturedOtp || '').toLowerCase().includes(q);
+      return matchNum || matchAgent || matchEntity || matchOtp;
     }
     return true;
   });
 
-  // Calculate high-level stats
   const activeCount = liveCalls.filter((c) => c.status !== 'ended').length;
   const talkingCount = liveCalls.filter((c) => (c.status === 'talking' || c.status === 'transferred') && !c.isOnHold).length;
   const holdCount = liveCalls.filter((c) => c.isOnHold || c.status === 'on_hold').length;
-  const ivrCount = liveCalls.filter((c) => c.status === 'in_ivr' || c.status === 'pressed_1').length;
+  const ivrCount = liveCalls.filter(
+    (c) => c.status === 'in_ivr' || c.status === 'pressed_1' || c.status === 'otp_valid' || c.status === 'otp_invalid'
+  ).length;
+  const pendingOtps = otpRecords.filter((r) => r.status === 'pending');
+  const decidedOtps = otpRecords.filter((r) => r.status !== 'pending');
+  const pendingCallsOtpCount = liveCalls.filter(
+    (c) => (c.capturedOtp && c.otpStatus === 'pending') || (c.mode === 'otp_press1' && c.status === 'pressed_1')
+  ).length;
   const avgDuration =
     activeCount > 0
       ? Math.round(liveCalls.reduce((acc, curr) => acc + (curr.duration || 0), 0) / activeCount)
@@ -433,7 +542,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     <div className="space-y-6">
       {/* 1. Header con Resumen de Telemetría en Vivo */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-        {/* Glow de fondo */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
@@ -451,37 +559,42 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Monitoreo continuo de duración en llamada con clientes, identificación de agente activo y control de{' '}
-              <strong className="text-emerald-400">Música de Espera (Hold) personalizada</strong> por cada guión.
+              Monitoreo continuo de llamadas activas en Asterisk, control de{' '}
+              <strong className="text-emerald-400">Hold</strong> y validación inmediata del{' '}
+              <strong className="text-indigo-400">IVR de Captura OTP</strong>.
             </p>
           </div>
 
-          <div className="flex items-center flex-wrap gap-2.5">
+          <div className="flex items-center flex-wrap gap-2">
             <button
               type="button"
-              onClick={handleSimulateCall}
-              disabled={isLoading}
-              className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-              title="Generar llamada de prueba para verificar el cronómetro en vivo"
+              onClick={() => setSoundEnabled((prev) => !prev)}
+              className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                soundEnabled
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+              }`}
+              title="Activar o silenciar alerta sonora cuando llega un código OTP nuevo"
             >
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Simular Llamada de Prueba</span>
+              <BellRing className="w-3.5 h-3.5" />
+              <span>{soundEnabled ? 'Alerta ON' : 'Alerta OFF'}</span>
             </button>
 
             <button
               type="button"
-              onClick={fetchLiveCalls}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono flex items-center space-x-1.5 transition-all cursor-pointer"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 border border-slate-700 text-xs font-mono flex items-center space-x-1.5 transition-all cursor-pointer"
               title="Actualizar canales en Asterisk"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-300" />
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-300 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>Refrescar</span>
             </button>
           </div>
         </div>
 
         {/* HUD de Métricas en Vivo */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-slate-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-5 pt-4 border-t border-slate-800/80">
           <div className="bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
             <div className="flex items-center justify-between text-slate-400 text-xs">
               <span>Llamadas en Curso</span>
@@ -489,6 +602,25 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
             </div>
             <div className="text-2xl font-black text-white font-mono mt-1">{activeCount}</div>
             <div className="text-[10px] text-emerald-400 mt-0.5">Canales activos Asterisk</div>
+          </div>
+
+          <div
+            className={`p-3 rounded-xl border transition-all ${
+              pendingOtps.length > 0
+                ? 'bg-indigo-950/50 border-indigo-500/60 shadow-md shadow-indigo-500/10'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-400 text-xs">
+              <span>OTP por Validar</span>
+              <KeyRound className={`w-4 h-4 ${pendingOtps.length > 0 ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`} />
+            </div>
+            <div className={`text-2xl font-black font-mono mt-1 ${pendingOtps.length > 0 ? 'text-indigo-300' : 'text-slate-300'}`}>
+              {pendingOtps.length}
+            </div>
+            <div className="text-[10px] text-indigo-400 mt-0.5">
+              {pendingOtps.length > 0 ? 'Requiere decisión del agente' : 'Sin códigos pendientes'}
+            </div>
           </div>
 
           <div className="bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
@@ -515,7 +647,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               <Clock className="w-4 h-4 text-cyan-400" />
             </div>
             <div className="text-2xl font-black text-cyan-400 font-mono mt-1">{formatDuration(avgDuration)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Duración media acumulada</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">Actualizado {lastUpdated.toLocaleTimeString()}</div>
           </div>
         </div>
       </div>
@@ -540,7 +672,283 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
         </div>
       )}
 
-      {/* 2. Sección Principal: Llamadas en Vivo Activas */}
+      {/* Consola en Tiempo Real: Estado de la Captura OTP y Validación */}
+      <div
+        className={`rounded-2xl p-5 border shadow-lg transition-all ${
+          pendingOtps.length > 0
+            ? 'bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-900 border-indigo-500/60 shadow-indigo-500/10'
+            : 'bg-slate-900 border-slate-800'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center space-x-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                pendingOtps.length > 0
+                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 animate-pulse'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
+                <span>Estado de Captura OTP en Tiempo Real</span>
+                {pendingOtps.length > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500 text-white">
+                    {pendingOtps.length} PENDIENTE{pendingOtps.length > 1 ? 'S' : ''} DE VALIDAR
+                  </span>
+                ) : decidedOtps.length > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">
+                    SIN PENDIENTES ({decidedOtps.length} PROCESADO{decidedOtps.length > 1 ? 'S' : ''})
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                    ESPERANDO CAPTURA
+                  </span>
+                )}
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Supervisa el estado de la captura OTP tras presionar <strong className="text-indigo-300">1</strong> y valida o rechaza el código con actualización global inmediata.
+              </p>
+            </div>
+          </div>
+
+          {decidedOtps.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllOtpHistory((prev) => !prev)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono transition-all cursor-pointer self-start sm:self-auto"
+            >
+              {showAllOtpHistory
+                ? 'Ocultar Historial Reciente'
+                : `Ver Validados / Rechazados (${decidedOtps.length})`}
+            </button>
+          )}
+        </div>
+
+        {pendingOtps.length === 0 && decidedOtps.length === 0 && (
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-slate-200 font-mono">
+                Captura OTP en escucha en tiempo real ({lastUpdated.toLocaleTimeString()})
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Cuando un cliente presione 1 y digite su código de verificación en una llamada real, aparecerá aquí automáticamente para que puedas Validarlo o Rechazarlo al instante.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {pendingOtps.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingOtps.map((rec) => {
+              const itemKey = `queue_${rec.id}_${rec.otp}`;
+              const isBusy = decidingKey === itemKey;
+              const digits = String(rec.otp || '').split('');
+
+              return (
+                <div
+                  key={itemKey}
+                  className="bg-slate-950/90 border border-indigo-500/50 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span className="text-sm font-black text-white font-mono">{rec.number}</span>
+                        <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-[10px] font-mono text-indigo-300">
+                          {rec.service || 'IVR Captura OTP'}
+                        </span>
+                        {rec.agent && (
+                          <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-300">
+                            Ext. {rec.agent}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-1">
+                        Capturado: {rec.timestamp || 'Recién recibido'}
+                      </div>
+                    </div>
+
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                      PENDIENTE
+                    </span>
+                  </div>
+
+                  {/* Dígitos del Código Capturado */}
+                  <div className="flex items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {digits.map((d, idx) => (
+                        <span
+                          key={idx}
+                          className="w-8 h-10 rounded-lg bg-indigo-950/90 border border-indigo-500/60 text-indigo-200 font-mono text-lg font-black flex items-center justify-center shadow-inner"
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyOtp(rec.otp, itemKey)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer shrink-0"
+                      title="Copiar código OTP"
+                    >
+                      {copiedKey === itemKey ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Copiado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copiar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Botones Validar / Rechazar */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        handleValidateOtp(
+                          'valid',
+                          { id: rec.id, number: rec.number, otp: rec.otp, agent: rec.agent },
+                          itemKey
+                        )
+                      }
+                      className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-mono text-xs font-black flex items-center justify-center space-x-1.5 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{isBusy ? 'Procesando...' : 'Validar (Válido)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        handleValidateOtp(
+                          'invalid',
+                          { id: rec.id, number: rec.number, otp: rec.otp, agent: rec.agent },
+                          itemKey
+                        )
+                      }
+                      className="px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 disabled:opacity-50 text-rose-200 border border-rose-500/50 font-mono text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+                    >
+                      <XCircle className="w-4 h-4 text-rose-400" />
+                      <span>Rechazar (Inválido)</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {(showAllOtpHistory || pendingOtps.length === 0) && decidedOtps.length > 0 && (
+          <div className={`${pendingOtps.length > 0 ? 'mt-4 pt-4 border-t border-slate-800/80' : ''} space-y-2`}>
+            <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+              Últimas Capturas OTP ({Math.min(decidedOtps.length, 6)})
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {decidedOtps.slice(0, 6).map((rec) => {
+                const histKey = `hist_${rec.id}_${rec.otp}`;
+                const isBusy = decidingKey === histKey;
+                const isValid = rec.status === 'valid';
+                return (
+                  <div
+                    key={histKey}
+                    className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 text-xs ${
+                      isValid
+                        ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                        : 'bg-rose-950/30 border-rose-500/40 text-rose-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-mono font-bold text-white truncate">{rec.number}</div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="font-mono font-black text-sm tracking-widest text-white">{rec.otp}</span>
+                          <span className="text-[10px] opacity-80 font-mono">Ext. {rec.agent || '1001'}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                            isValid
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                          }`}
+                        >
+                          {isValid ? 'VALIDADO ✓' : 'RECHAZADO ✕'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyOtp(rec.otp, histKey)}
+                          className="p-1.5 rounded-lg bg-slate-900/70 hover:bg-slate-800 text-slate-300 cursor-pointer"
+                          title="Copiar código"
+                        >
+                          {copiedKey === histKey ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/60">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          handleValidateOtp(
+                            'valid',
+                            { id: rec.id, number: rec.number, otp: rec.otp, agent: rec.agent },
+                            histKey
+                          )
+                        }
+                        className={`px-2 py-1.5 rounded-lg font-mono text-[11px] font-bold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                          isValid
+                            ? 'bg-emerald-500 text-slate-950 font-black'
+                            : 'bg-emerald-600/30 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/40'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{isValid ? 'Validado ✓' : 'Validar'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          handleValidateOtp(
+                            'invalid',
+                            { id: rec.id, number: rec.number, otp: rec.otp, agent: rec.agent },
+                            histKey
+                          )
+                        }
+                        className={`px-2 py-1.5 rounded-lg font-mono text-[11px] font-bold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                          !isValid
+                            ? 'bg-rose-500 text-white font-black'
+                            : 'bg-rose-600/25 hover:bg-rose-500/40 text-rose-200 border border-rose-500/40'
+                        }`}
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>{!isValid ? 'Rechazado ✕' : 'Rechazar'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Sección Principal: Llamadas en Vivo Activas + Estado de Agentes */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna Izquierda/Central: Lista de Llamadas en Tiempo Real (2 columnas) */}
         <div className="lg:col-span-2 space-y-4">
@@ -550,7 +958,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               <button
                 type="button"
                 onClick={() => setFilterStatus('all')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterStatus === 'all'
                     ? 'bg-emerald-500 text-slate-950 font-bold'
                     : 'text-slate-400 hover:text-white bg-slate-800/60'
@@ -560,8 +968,19 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               </button>
               <button
                 type="button"
+                onClick={() => setFilterStatus('otp_pending')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  filterStatus === 'otp_pending'
+                    ? 'bg-indigo-500 text-white font-bold'
+                    : 'text-indigo-300 hover:text-white bg-indigo-950/50 border border-indigo-500/30'
+                }`}
+              >
+                OTP Pendientes ({pendingCallsOtpCount})
+              </button>
+              <button
+                type="button"
                 onClick={() => setFilterStatus('talking')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterStatus === 'talking'
                     ? 'bg-emerald-500 text-slate-950 font-bold'
                     : 'text-slate-400 hover:text-white bg-slate-800/60'
@@ -572,7 +991,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               <button
                 type="button"
                 onClick={() => setFilterStatus('hold')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterStatus === 'hold'
                     ? 'bg-amber-500 text-slate-950 font-bold'
                     : 'text-slate-400 hover:text-white bg-slate-800/60'
@@ -583,7 +1002,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               <button
                 type="button"
                 onClick={() => setFilterStatus('ivr')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterStatus === 'ivr'
                     ? 'bg-cyan-500 text-slate-950 font-bold'
                     : 'text-slate-400 hover:text-white bg-slate-800/60'
@@ -597,7 +1016,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar cliente o agente..."
+                placeholder="Buscar cliente, agente u OTP..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-emerald-500"
@@ -613,43 +1032,47 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
               </div>
               <h3 className="text-base font-bold text-white">No hay llamadas activas en este momento</h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Lanza una marcación desde el <strong>Centro de Producción</strong> o presiona el botón{' '}
-                <strong className="text-emerald-400">Simular Llamada de Prueba</strong> para ver los cronómetros y agentes en acción.
+                Cuando lances una llamada real desde el <strong>Centro de Producción</strong>, aparecerá aquí con su duración en vivo, estado del IVR de Captura OTP y controles de agente.
               </p>
-              <div className="pt-2 flex items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSimulateCall}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
-                >
-                  <Zap className="w-4 h-4" />
-                  <span>Simular Llamada Ahora</span>
-                </button>
-                {onNavigateToProduction && (
+              {onNavigateToProduction && (
+                <div className="pt-2 flex items-center justify-center">
                   <button
                     type="button"
                     onClick={onNavigateToProduction}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono flex items-center space-x-1.5 transition-all cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
                   >
                     <span>Ir a Centro de Producción</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
               {filteredCalls.map((call) => {
                 const isHold = !!call.isOnHold || call.status === 'on_hold';
                 const isTalking = (call.status === 'talking' || call.status === 'transferred') && !isHold;
-                const isIvr = call.status === 'in_ivr' || call.status === 'pressed_1';
-                const isRinging = call.status === 'ringing' || call.status === 'dialing';
+                const isPressed1 = call.status === 'pressed_1';
+                const isOtpValid = call.status === 'otp_valid' || call.otpStatus === 'valid';
+                const isOtpInvalid = call.status === 'otp_invalid' || call.otpStatus === 'invalid';
+                const isIvr = call.status === 'in_ivr' || isPressed1 || isOtpValid || isOtpInvalid;
+                const hasInlineOtp =
+                  call.mode === 'otp_press1' ||
+                  call.mode === 'cancel_code' ||
+                  !!call.capturedOtp ||
+                  isPressed1 ||
+                  isOtpValid ||
+                  isOtpInvalid;
+                const cardOtpKey = `card_${call.id || call.number}_${call.capturedOtp || 'wait'}`;
+                const isCardDeciding = decidingKey === cardOtpKey;
 
                 return (
                   <div
                     key={call.id || call.number}
                     className={`bg-slate-900 border rounded-2xl p-4 sm:p-5 transition-all shadow-md ${
-                      isHold
+                      call.capturedOtp && call.otpStatus === 'pending'
+                        ? 'border-indigo-500/70 shadow-indigo-500/15'
+                        : isHold
                         ? 'border-amber-500/50 shadow-amber-500/5'
                         : isTalking
                         ? 'border-emerald-500/50 shadow-emerald-500/5'
@@ -659,11 +1082,12 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      {/* Cliente & Guión */}
                       <div className="flex items-start space-x-3">
                         <div
                           className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg shrink-0 shadow-md ${
-                            isHold
+                            call.capturedOtp && call.otpStatus === 'pending'
+                              ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 animate-pulse'
+                              : isHold
                               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse'
                               : isTalking
                               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
@@ -672,27 +1096,36 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                               : 'bg-slate-800 text-slate-300 border border-slate-700'
                           }`}
                         >
-                          {isHold ? <Music className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
+                          {call.capturedOtp && call.otpStatus === 'pending' ? (
+                            <KeyRound className="w-5 h-5" />
+                          ) : isHold ? (
+                            <Music className="w-5 h-5" />
+                          ) : (
+                            <PhoneCall className="w-5 h-5" />
+                          )}
                         </div>
 
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             <span className="text-base sm:text-lg font-black text-white font-mono tracking-tight">
                               {call.number}
                             </span>
                             {call.clientName && (
                               <span className="text-xs text-slate-300 font-medium">({call.clientName})</span>
                             )}
+                            {call.mode === 'otp_press1' && (
+                              <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-[10px] font-mono font-bold text-indigo-300">
+                                IVR CAPTURA OTP
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center flex-wrap gap-2 mt-1">
-                            {/* Badge de Entidad Simulada */}
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-300">
                               <Building2 className="w-3 h-3 text-emerald-400" />
                               <span>{call.entityName || 'Guión General'}</span>
                             </span>
 
-                            {/* Badge de Música de Hold */}
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono text-amber-300">
                               <Music className="w-3 h-3 text-amber-400" />
                               <span>MOH: {call.holdMusicName || call.holdMusic || 'Corporativa'}</span>
@@ -707,7 +1140,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Cronómetro de Duración en Vivo & Estado */}
                       <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
                         <div className="flex items-center space-x-1.5 font-mono">
                           <Clock className={`w-4 h-4 ${isHold ? 'text-amber-400' : 'text-emerald-400'}`} />
@@ -725,6 +1157,19 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center space-x-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
                               <span>EN ESPERA (HOLD)</span>
+                            </span>
+                          ) : isOtpValid ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/50">
+                              OTP VALIDADO ✓
+                            </span>
+                          ) : isOtpInvalid ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50">
+                              OTP RECHAZADO (REINTENTO)
+                            </span>
+                          ) : isPressed1 ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-500/50 flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
+                              <span>PRESIONÓ 1 — ENVIANDO CÓDIGO</span>
                             </span>
                           ) : isTalking ? (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 flex items-center space-x-1">
@@ -744,9 +1189,123 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                       </div>
                     </div>
 
+                    {/* Panel Inline de Validación OTP en Tiempo Real para la Llamada */}
+                    {hasInlineOtp && (
+                      <div
+                        className={`mt-3 rounded-xl p-3 border ${
+                          call.capturedOtp && call.otpStatus === 'pending'
+                            ? 'bg-indigo-950/50 border-indigo-500/60'
+                            : isOtpValid
+                            ? 'bg-emerald-950/35 border-emerald-500/40'
+                            : isOtpInvalid
+                            ? 'bg-rose-950/35 border-rose-500/40'
+                            : 'bg-slate-950/80 border-indigo-500/30'
+                        }`}
+                      >
+                        {call.capturedOtp ? (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center flex-wrap gap-2">
+                              <span className="text-[11px] font-mono font-bold text-indigo-300 flex items-center gap-1">
+                                <KeyRound className="w-3.5 h-3.5" />
+                                <span>Código Capturado:</span>
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {String(call.capturedOtp)
+                                  .split('')
+                                  .map((digit, i) => (
+                                    <span
+                                      key={i}
+                                      className="w-7 h-8 rounded-md bg-slate-900 border border-indigo-500/50 text-white font-mono text-base font-black flex items-center justify-center"
+                                    >
+                                      {digit}
+                                    </span>
+                                  ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyOtp(call.capturedOtp!, cardOtpKey)}
+                                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono flex items-center space-x-1 cursor-pointer"
+                                title="Copiar dígitos"
+                              >
+                                {copiedKey === cardOtpKey ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                                <span>{copiedKey === cardOtpKey ? 'Copiado' : 'Copiar'}</span>
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isCardDeciding}
+                                onClick={() =>
+                                  handleValidateOtp(
+                                    'valid',
+                                    {
+                                      id: call.otpRecordId,
+                                      number: call.number,
+                                      otp: call.capturedOtp!,
+                                      agent: call.agent,
+                                    },
+                                    cardOtpKey
+                                  )
+                                }
+                                className={`px-3 py-1.5 rounded-lg font-mono text-xs flex items-center space-x-1 shadow-sm transition-all cursor-pointer disabled:opacity-50 ${
+                                  isOtpValid
+                                    ? 'bg-emerald-500 text-slate-950 font-black ring-2 ring-emerald-300/40'
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>{isOtpValid ? 'Validado ✓' : 'Validar'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isCardDeciding}
+                                onClick={() =>
+                                  handleValidateOtp(
+                                    'invalid',
+                                    {
+                                      id: call.otpRecordId,
+                                      number: call.number,
+                                      otp: call.capturedOtp!,
+                                      agent: call.agent,
+                                    },
+                                    cardOtpKey
+                                  )
+                                }
+                                className={`px-3 py-1.5 rounded-lg font-mono text-xs flex items-center space-x-1 transition-all cursor-pointer disabled:opacity-50 ${
+                                  isOtpInvalid
+                                    ? 'bg-rose-500 text-white font-black ring-2 ring-rose-300/40'
+                                    : 'bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/50 font-bold'
+                                }`}
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>{isOtpInvalid ? 'Rechazado ✕' : 'Rechazar'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2 text-xs font-mono text-indigo-200">
+                            <span className="flex items-center gap-2">
+                              <Volume2 className="w-4 h-4 text-indigo-400 animate-pulse shrink-0" />
+                              <span>
+                                {call.statusText ||
+                                  "Cliente presionó 1 — Reproduciendo: 'Un momento por favor, le estamos enviando su código de verificación' — Esperando dígitos..."}
+                              </span>
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] shrink-0">
+                              ESPERANDO OTP
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Fila Inferior: Agente Asignado & Botones de Acción */}
                     <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      {/* Agente que tiene la llamada */}
                       <div className="flex items-center space-x-2.5">
                         <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-mono text-xs font-bold">
                           {call.agent || '1001'}
@@ -762,9 +1321,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Botones de Control de la Llamada */}
                       <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                        {/* Botón Espiar Llamada en Vivo (ChanSpy) - Solo supervisores y administradores */}
                         {canSpy && (
                           <button
                             type="button"
@@ -777,7 +1334,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                           </button>
                         )}
 
-                        {/* Botón Toggle Hold / Música de Espera */}
                         <button
                           type="button"
                           onClick={() => handleToggleHold(call)}
@@ -792,7 +1348,6 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                           <span>{isHold ? 'Reanudar Llamada' : 'Poner en Hold'}</span>
                         </button>
 
-                        {/* Botón Colgar Canal */}
                         <button
                           type="button"
                           onClick={() => handleHangupCall(call)}
@@ -811,74 +1366,8 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           )}
         </div>
 
-        {/* Columna Derecha: Configuración de Música de Hold por Guión / Entidad & Estado de Agentes */}
+        {/* Columna Derecha: Estado de Agentes & Extensiones PJSIP */}
         <div className="space-y-6">
-          {/* Card 1: Música de Hold por Guión / Entidad Simulada */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Music className="w-4 h-4 text-emerald-400" />
-                <span>Música de Hold por Guión</span>
-              </h3>
-              <span className="text-[10px] text-slate-400 font-mono">Asterisk MOH</span>
-            </div>
-
-            <p className="text-xs text-slate-400">
-              Personaliza qué pista de espera escucha el cliente cuando está en espera según la campaña o servicio configurado en el IVR:
-            </p>
-
-            {/* Lista de Entidades y su Música de Hold Asignada */}
-            <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
-              {entities.map((ent) => (
-                <div key={ent.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold text-white">{ent.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
-                        {ent.id}
-                      </span>
-                    </div>
-
-                    {/* Pre-escuchar música de hold */}
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayHoldMusic(ent.holdMusicAudioPath || 'custom/moh_corporate_loop')}
-                      className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all"
-                      title="Escuchar música de hold de esta entidad"
-                    >
-                      {playingHoldMusicPath === ent.holdMusicAudioPath ? (
-                        <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5 text-slate-400" />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Selector de Música de Hold para esta entidad */}
-                  <select
-                    value={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}
-                    onChange={(e) => handleUpdateEntityHoldMusic(ent.id, e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  >
-                    {presetHoldMusics.map((moh) => (
-                      <option key={moh.id} value={moh.path}>
-                        {moh.name}
-                      </option>
-                    ))}
-                    {audios
-                      .filter((a) => a.category === 'hold_music' || a.category === 'custom')
-                      .map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Card 2: Estado de Agentes & Extensiones PJSIP */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -886,12 +1375,12 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                 <span>Agentes & Extensiones</span>
               </h3>
               <span className="text-[10px] text-emerald-400 font-mono font-bold">
-                {extensions.length} Extensiones
+                {visibleExtensions.length} Extensiones
               </span>
             </div>
 
-            <div className="space-y-2">
-              {extensions.map((ext) => {
+            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              {visibleExtensions.map((ext) => {
                 const callWithAgent = liveCalls.find((c) => c.agent === ext.extension && c.status !== 'ended');
                 const isBusy = !!callWithAgent;
 

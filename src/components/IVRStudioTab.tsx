@@ -1239,6 +1239,156 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         </div>
       </div>
 
+      {/* NUEVA SECCIÓN DE FLUJO: IVR de Captura OTP (Press-1 + Audio de Espera Verificación + LiveCallsTab) */}
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-cyan-950/20 to-slate-950 border border-cyan-500/40 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-white">
+                  Flujo de Llamadas: IVR de Captura OTP (Press-1 + Código de Verificación)
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-cyan-500/20 text-cyan-300 rounded-full border border-cyan-500/30">
+                  Contexto: ivr-otp-verify
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Al presionar <strong>1</strong> en la llamada, Asterisk reproduce automáticamente el audio de espera configurado y envía los dígitos capturados a <strong>Llamadas en Vivo (LiveCallsTab)</strong> para su validación o rechazo en tiempo real.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                const waitPath = currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion';
+                try {
+                  localStorage.setItem('ast20_call_flow_mode', 'otp_press1');
+                  await fetch('/api/asterisk/action/set-default', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'otp_press1' }),
+                  });
+                  await fetch('/api/asterisk/audio/sync-defaults', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      intro: currentSelectedEntity?.introAudioPath || 'custom/bienvenida_press1',
+                      prompt: currentSelectedEntity?.promptAudioPath || 'custom/digite_codigo_verificacion',
+                      otpVerifyWait: waitPath,
+                      agentId: userExtension,
+                      isManualSave: true,
+                      isAdmin,
+                    }),
+                  });
+                  setSavedFeedback('✓ Flujo "IVR de Captura OTP" (Press-1 + Código de Verificación) activado y sincronizado en Asterisk.');
+                  setTimeout(() => setSavedFeedback(null), 4500);
+                } catch (_) {
+                  setSavedFeedback('✓ Flujo "IVR de Captura OTP" guardado localmente.');
+                  setTimeout(() => setSavedFeedback(null), 3500);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/20 transition-all cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Activar Flujo IVR Captura OTP</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-center">
+          <div className="lg:col-span-2 p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <Volume2 className="w-4 h-4 text-cyan-400" />
+                <span>Audio de Espera al Presionar 1:</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => speakText('Un momento por favor, le estamos enviando su código de verificación.', 'ivr-otp-verify-tts')}
+                  className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  <span>{isPlayingTTS === 'ivr-otp-verify-tts' ? 'Detener TTS' : 'Probar Voz TTS'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePlayHoldMusic(currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion')}
+                  className="px-2.5 py-1 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  {playingHoldMusicPath === (currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion') ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                  <span>Escuchar WAV</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-cyan-500/20 text-xs text-slate-200 italic">
+              "Un momento por favor, le estamos enviando su código de verificación."
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Audio asignado al Guión ({currentSelectedEntity?.name}):</label>
+                <select
+                  value={currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEntities((prev) => {
+                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, otpVerifyWaitAudioPath: val } : ent);
+                      try { localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next)); } catch (_) {}
+                      return next;
+                    });
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
+                >
+                  <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion (Predeterminado)</option>
+                  {audios.map((a) => (
+                    <option key={a.id} value={a.asteriskPath}>
+                      {a.name} ({a.asteriskPath})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Ruta física en Asterisk:</label>
+                <input
+                  type="text"
+                  value={currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEntities((prev) => {
+                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, otpVerifyWaitAudioPath: val } : ent);
+                      try { localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next)); } catch (_) {}
+                      return next;
+                    });
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-cyan-300 font-mono focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2 text-xs">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <Monitor className="w-4 h-4 text-emerald-400" />
+              <span>Secuencia Automática</span>
+            </div>
+            <ol className="space-y-1.5 text-[11px] text-slate-300 list-decimal list-inside">
+              <li>Cliente contesta y escucha la alerta.</li>
+              <li>Cliente presiona la tecla <strong className="text-amber-300">1</strong>.</li>
+              <li>Reproduce: <em>"Un momento por favor, le estamos enviando su código de verificación"</em>.</li>
+              <li>Cliente digita el código OTP recibido.</li>
+              <li>En <strong className="text-emerald-400">LiveCallsTab</strong> el agente pulsa <strong>Validar</strong> o <strong>Rechazar</strong> en tiempo real.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
       {/* Visual Flow Representation */}
       <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
