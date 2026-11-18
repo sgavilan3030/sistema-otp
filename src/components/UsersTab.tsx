@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { authFetch as fetch } from '../utils/authClient';
 import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk, CallCenterTenant } from '../types';
 import {
   Users,
@@ -250,7 +251,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 
   const handleCopyCredentials = (user: SystemUser) => {
     const cleanUser = String(user.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
-    const text = `Servidor SIP: ${window.location.hostname || 'IP_DEL_VPS'}:47923\nUsuario: ${cleanUser}\nDominio: ${window.location.hostname || 'IP_DEL_VPS'}\nLogin: ${cleanUser}\nContraseña: ${user.password || 'password123'}\nExtensiones: ${user.assignedExtensions.join(', ') || cleanUser}`;
+    const passLabel = user.password || '(gestionada en servidor — usa "Descargar microsip.ini")';
+    const text = `Servidor SIP: ${window.location.hostname || 'IP_DEL_VPS'}:47923\nUsuario: ${cleanUser}\nDominio: ${window.location.hostname || 'IP_DEL_VPS'}\nLogin: ${cleanUser}\nContraseña: ${passLabel}\nExtensiones: ${user.assignedExtensions.join(', ') || cleanUser}`;
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(text);
     }
@@ -258,55 +260,31 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setTimeout(() => setCopiedUserId(null), 2500);
   };
 
-  // Helper to generate and download microsip.ini directly
-  const downloadMicrosipIni = (user: SystemUser) => {
+  // Helper to download microsip.ini directly from authenticated backend endpoint
+  const downloadMicrosipIni = async (user: SystemUser) => {
     const cleanUser = String(user.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
-    const pass = user.password || 'password123';
-    const host = window.location.hostname || '127.0.0.1';
-    const port = 47923;
-
-    const content = `[Settings]
-autoAnswer=0
-denyIncoming=0
-directory=
-disableLocalRing=0
-enableLocalDTMF=1
-enableLog=0
-enableSTUN=0
-forceCodec=
-hideCallerId=0
-localPort=0
-ringtone=
-server=${host}:${port}
-singleMode=0
-volumeIn=100
-volumeOut=100
-
-[Account1]
-accountName=${user.name || cleanUser}
-server=${host}:${port}
-proxy=
-user=${cleanUser}
-domain=${host}:${port}
-login=${cleanUser}
-password=${pass}
-displayName=${user.name || cleanUser}
-authID=${cleanUser}
-transport=UDP
-mediaEncryption=
-publish=0
-regInterval=300
-`;
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `microsip_${cleanUser}.ini`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const res = await fetch(`/api/reseller/microsip-ini/${encodeURIComponent(cleanUser)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSyncFeedback(`⚠ No se pudo descargar microsip.ini: ${err.error || 'Error de autorización'}`);
+        setTimeout(() => setSyncFeedback(null), 4000);
+        return;
+      }
+      const content = await res.text();
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `microsip_${cleanUser}.ini`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setSyncFeedback(`⚠ Error al descargar microsip.ini: ${err?.message || 'Sin conexión'}`);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    }
   };
 
   const handleOpenCreateModal = () => {
@@ -339,7 +317,7 @@ regInterval=300
     setFormName(user.name);
     setFormEmail(user.email);
     setFormUsername(user.username || user.email.split('@')[0]);
-    setFormPassword(user.password || '');
+    setFormPassword('');
     setShowPassword(false);
     setFormRole(user.role);
     setFormAccountType(user.accountType || (user.role === 'reseller_client' ? 'reseller_client' : 'agent'));
@@ -439,7 +417,16 @@ regInterval=300
 
     const rawUsername = formUsername.trim() || formEmail.split('@')[0] || formName.toLowerCase().replace(/\s+/g, '.');
     const usernameFinal = rawUsername.toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
-    const passwordFinal = formPassword.trim() || editingUser?.password || 'password123';
+    const trimmedPass = formPassword.trim();
+    const generatedPass = !editingUser && !trimmedPass
+      ? (() => {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+          let p = '';
+          for (let i = 0; i < 12; i++) p += chars.charAt(Math.floor(Math.random() * chars.length));
+          return p;
+        })()
+      : undefined;
+    const passwordFinal = trimmedPass || generatedPass;
 
     const colors = [
       'from-emerald-500 to-teal-700',
@@ -459,7 +446,7 @@ regInterval=300
       name: formName,
       email: formEmail,
       username: usernameFinal,
-      password: passwordFinal,
+      ...(passwordFinal ? { password: passwordFinal } : {}),
       role: finalRole,
       accountType: formAccountType,
       balance: formBalance,
@@ -496,7 +483,7 @@ regInterval=300
             id: `ext-${cleanNum}`,
             extension: cleanNum,
             name: `${formName} (Cliente ${cleanNum})`,
-            secret: passwordFinal,
+            secret: passwordFinal || '',
             context: 'from-internal',
             transport: 'transport-udp',
             port: 47923,
@@ -779,7 +766,7 @@ regInterval=300
                       <span className="text-slate-400">Clave:</span>
                       <span className="text-emerald-300 font-bold">
                         {revealedPasswords[user.id]
-                          ? user.password || 'password123'
+                          ? user.password || '(oculta en servidor)'
                           : '••••••••'}
                       </span>
                     </div>
@@ -1205,7 +1192,7 @@ regInterval=300
                     </div>
                     <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
                       <span className="text-slate-500 block text-[9px] uppercase">Contraseña SIP:</span>
-                      <span className="text-emerald-300 font-bold">{formPassword || (editingUser?.password ? '(mantener actual)' : 'Introduce clave')}</span>
+                      <span className="text-emerald-300 font-bold">{formPassword || (editingUser ? '(mantener actual)' : 'Introduce clave')}</span>
                     </div>
                     <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800">
                       <span className="text-slate-500 block text-[9px] uppercase">Extensión Alterna:</span>
@@ -1724,7 +1711,7 @@ regInterval=300
                 </div>
                 <div className="flex justify-between py-1.5 px-3 bg-slate-900 border-b border-slate-800">
                   <span className="text-slate-400">Contraseña:</span>
-                  <span className="text-emerald-300 font-bold">{microsipModalUser.password || 'password123'}</span>
+                  <span className="text-emerald-300 font-bold">{microsipModalUser.password || '(usa "Descargar microsip.ini" para obtenerla)'}</span>
                 </div>
                 <div className="flex justify-between py-1.5 px-3 bg-slate-950 border-b border-slate-800">
                   <span className="text-slate-400">Extensión Alterna:</span>

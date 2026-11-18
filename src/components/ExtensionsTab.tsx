@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch as fetch } from '../utils/authClient';
 import { PjsipExtension } from '../types';
 import { Plus, Trash2, Edit2, Key, Check, Wifi, AlertCircle, Phone, Eye, EyeOff, Shield, ShieldCheck, RefreshCw, CheckCircle2, Zap, Copy, Server, HelpCircle, Wrench, ShieldAlert, Disc, Headphones } from 'lucide-react';
 
@@ -656,11 +657,9 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
             </div>
 
             <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
-              <div className="font-bold text-sky-400">2. Copia la Contraseña Exacta</div>
+              <div className="font-bold text-sky-400">2. Copia el Secret de tu Extensión</div>
               <p className="text-slate-400 text-[10px]">
-                Ext 1001: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">Secr3tP@ssw0rd!1001</code><br />
-                Ext 1002: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1002</code><br />
-                Ext 1003: <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono select-all">S0p0rte#2026@1003</code>
+                En la tarjeta de tu extensión (ej. <b className="text-white">1001</b>, <b className="text-white">1002</b>, <b className="text-white">1003</b>), haz clic en copiar <b className="text-emerald-300">Secret / Contraseña SIP</b> para obtener la credencial activa sin espacios extra.
               </p>
             </div>
 

@@ -38,6 +38,7 @@ import { UsersTab } from './components/UsersTab';
 import { ServerTelemetryTab } from './components/ServerTelemetryTab';
 import { AmdConfigModal } from './components/AmdConfigModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
+import { getAuthToken, clearAuthToken, authFetch as fetch } from './utils/authClient';
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -133,7 +134,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialAudios;
   });
 
-  // Users & Permissions State
+  // Users & Permissions State (sin credenciales embebidas; autenticadas vía servidor)
   const [users, setUsers] = useState<SystemUser[]>(() => {
     try {
       const saved = localStorage.getItem('ast20_users');
@@ -141,13 +142,8 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((u: SystemUser) => {
-            if (u.username === 'admin' || u.id === 'user-admin') {
-              return { ...u, password: 'Robert012026@' };
-            }
-            if (u.username === 'sgavilan30' || u.id === 'user-televox') {
-              return { ...u, password: 'Robert012026@' };
-            }
-            return u;
+            const { password: _removed, ...rest } = u;
+            return rest as SystemUser;
           });
         }
       }
@@ -216,6 +212,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetch('/api/asterisk/amd/status')
       .then((r) => r.json())
       .then((data) => {
@@ -224,7 +221,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   const handleToggleAmd = async () => {
     setIsTogglingAmd(true);
@@ -326,6 +323,7 @@ export default function App() {
   }, [getActiveIsolationScope, dismissedOtpKey]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     const poll = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       refreshLiveTelemetry();
@@ -334,7 +332,7 @@ export default function App() {
     const intervalMs = activeTab === 'live-calls' || activeTab === 'call-spy' ? 2500 : 4000;
     const interval = setInterval(poll, intervalMs);
     return () => clearInterval(interval);
-  }, [refreshLiveTelemetry, activeTab]);
+  }, [isAuthenticated, refreshLiveTelemetry, activeTab]);
 
   const handleCopyOtp = (otp: string) => {
     navigator.clipboard.writeText(otp);
@@ -526,6 +524,7 @@ export default function App() {
 
   // Poll server state every 4.5s and on window focus
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchUserState();
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -537,7 +536,7 @@ export default function App() {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchUserState]);
+  }, [isAuthenticated, fetchUserState]);
 
   // Synchronize changes made in other tabs of the same browser via storage event
   useEffect(() => {
@@ -566,7 +565,7 @@ export default function App() {
 
   // Debounced push to server when user modifies local state - ONLY after initial state loaded to avoid clobbering with defaults
   useEffect(() => {
-    if (isApplyingRemoteUpdateRef.current || !isStateLoadedRef.current) return;
+    if (!isAuthenticated || isApplyingRemoteUpdateRef.current || !isStateLoadedRef.current) return;
     const timer = setTimeout(async () => {
       try {
         const payload = {
@@ -598,9 +597,10 @@ export default function App() {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, theme, currentUser.id, currentUser.username]);
+  }, [isAuthenticated, extensions, carriers, press1Config, otpConfig, audios, users, connectionSettings, theme, currentUser.id, currentUser.username]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetch('/api/asterisk/audio/active-assignments')
       .then((r) => r.json())
       .then((data) => {
@@ -636,7 +636,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   const handleAssignRole = async (role: AudioRole, asteriskPath: string) => {
     setActiveAudioAssignments((prev) => ({ ...prev, [role]: asteriskPath }));
@@ -727,12 +727,16 @@ export default function App() {
   const isTenantsHydratedRef = useRef(false);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      isTenantsHydratedRef.current = false;
+      return;
+    }
     fetch('/api/tenants')
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.tenants) && data.tenants.length > 0) {
           setTenants(data.tenants);
-        } else {
+        } else if (currentUser?.role === 'admin' && !currentUser?.tenantId) {
           fetch('/api/tenants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -744,18 +748,18 @@ export default function App() {
       .finally(() => {
         isTenantsHydratedRef.current = true;
       });
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     localStorage.setItem('ast20_tenants', JSON.stringify(tenants));
-    if (isTenantsHydratedRef.current) {
+    if (isAuthenticated && isTenantsHydratedRef.current && currentUser?.role === 'admin' && !currentUser?.tenantId) {
       fetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenants, carriers, extensions }),
       }).catch(() => {});
     }
-  }, [tenants]);
+  }, [tenants, isAuthenticated]);
 
   // Call Center Tenants Handlers
   const handleAddTenant = (newTenant: CallCenterTenant) => {
@@ -1563,8 +1567,8 @@ export default function App() {
         body: JSON.stringify({
           host: connectionSettings.amiHost || '127.0.0.1',
           port: connectionSettings.amiPort || 5038,
-          user: connectionSettings.amiUser || 'sammy',
-          secret: connectionSettings.amiSecret || 'Robert2026RDTGcvgbsg',
+          user: connectionSettings.amiUser || undefined,
+          secret: connectionSettings.amiSecret || undefined,
           command,
         }),
         signal: controller.signal,
@@ -1621,6 +1625,7 @@ export default function App() {
 
   // Periodic AMI Health Synchronizer with Strict Backoff & Document Visibility
   useEffect(() => {
+    if (!isAuthenticated) return;
     const checkAmiHealth = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
 
@@ -1655,9 +1660,13 @@ export default function App() {
 
     const interval = setInterval(checkAmiHealth, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleLogout = () => {
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    clearAuthToken();
+    isStateLoadedRef.current = false;
+    isTenantsHydratedRef.current = false;
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem('ast_session_active');
@@ -1668,6 +1677,12 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (user: SystemUser) => {
+    setUsers((prev) => {
+      const exists = prev.some((u) => u.id === user.id || u.username === user.username);
+      return exists
+        ? prev.map((u) => (u.id === user.id || u.username === user.username ? { ...u, ...user } : u))
+        : [user, ...prev];
+    });
     setCurrentUserId(user.id);
     setIsAuthenticated(true);
     setActiveTab(getDefaultTabForUser(user));
@@ -1680,6 +1695,40 @@ export default function App() {
     showToast(`¡Bienvenido, ${user.name}! Configuración exclusiva cargada.`);
     addLog('SYSTEM', `[LOGIN] Configuración cargada para usuario: ${user.name} (${user.username || user.id})`);
   };
+
+  // Restaurar sesión activa si hay token válido y escuchar expiraciones 401
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      fetch('/api/auth/me')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.success && data.user) {
+            setUsers((prev) => {
+              const exists = prev.some((u) => u.id === data.user.id || u.username === data.user.username);
+              return exists
+                ? prev.map((u) => (u.id === data.user.id || u.username === data.user.username ? { ...u, ...data.user } : u))
+                : [data.user, ...prev];
+            });
+            setCurrentUserId(data.user.id);
+            setIsAuthenticated(true);
+            setActiveTab(getDefaultTabForUser(data.user));
+          } else {
+            clearAuthToken();
+          }
+        })
+        .catch(() => {});
+    }
+
+    const onUnauthorized = () => {
+      clearAuthToken();
+      isStateLoadedRef.current = false;
+      isTenantsHydratedRef.current = false;
+      setIsAuthenticated(false);
+    };
+    window.addEventListener('ast:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('ast:unauthorized', onUnauthorized);
+  }, []);
 
   // --------------------------------------------------------------------------
   // PANTALLA DE LOGIN: PRIMERA PANTALLA MOSTRADA PARA ACCEDER AL SISTEMA

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PjsipExtension, CarrierTrunk, CapturedOtpRecord, AudioPrompt, SystemUser, DialingCampaign, CampaignLead, CallCenterTenant, CallFlowMode } from '../types';
+import { appendAuthTokenToUrl, authFetch as fetch } from '../utils/authClient';
 import {
   Rocket,
   PhoneCall,
@@ -1396,7 +1397,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } else {
       // Audio is on server disk, stream via API
       const cleanName = audioPath.replace(/^custom\//, '').replace(/\.wav$/, '');
-      const player = new Audio(`/api/asterisk/audio/stream/${cleanName}`);
+      const player = new Audio(appendAuthTokenToUrl(`/api/asterisk/audio/stream/${cleanName}`));
       audioPlayerRef.current = player;
       setPlayingAudioKey(keyIdentifier);
       player.play().catch(() => {

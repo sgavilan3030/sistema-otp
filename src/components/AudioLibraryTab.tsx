@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { authFetch as fetch } from '../utils/authClient';
 import { AudioPrompt, AudioRole, ActiveAudioAssignments, CallCenterTenant, SystemUser, DynamicOtpExtension } from '../types';
 import {
   UploadCloud,

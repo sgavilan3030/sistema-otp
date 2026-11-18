@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch as fetch } from '../utils/authClient';
 import { CarrierTrunk } from '../types';
 import {
   Plus,
@@ -1279,7 +1280,7 @@ ${cidLines} same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
                       required={authType === 'registration'}
                       value={secret}
                       onChange={(e) => setSecret(e.target.value)}
-                      placeholder={authType === 'ip_auth' ? 'Sin contraseña en IP a IP' : 'Robert2026'}
+                      placeholder={authType === 'ip_auth' ? 'Sin contraseña en IP a IP' : 'Ingresa contraseña SIP'}
                       className={`w-full px-3 py-2 rounded-md border text-white font-mono focus:outline-none ${
                         authType === 'ip_auth'
                           ? 'bg-slate-900/50 border-slate-800/80 text-slate-400 focus:border-cyan-500'

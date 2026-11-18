@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Press1Config, OtpCaptureConfig, PjsipExtension, AudioPrompt, CampaignEntity } from '../types';
 import { presetHoldMusics } from '../data/defaultConfig';
+import { appendAuthTokenToUrl, authFetch as fetch } from '../utils/authClient';
 import {
   Volume2,
   ShieldCheck,
@@ -235,7 +236,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
       holdMusicAudioRef.current.pause();
     }
     const clean = audioPath.replace(/^\/+/, '');
-    const audioUrl = `/api/asterisk/audio/raw?file=${encodeURIComponent(clean)}`;
+    const audioUrl = appendAuthTokenToUrl(`/api/asterisk/audio/raw?file=${encodeURIComponent(clean)}`);
     const audio = new Audio(audioUrl);
     holdMusicAudioRef.current = audio;
     setPlayingHoldMusicPath(audioPath);

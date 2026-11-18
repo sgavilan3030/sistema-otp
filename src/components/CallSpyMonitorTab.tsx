@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PjsipExtension, CarrierTrunk, SystemUser, CallCenterTenant } from '../types';
+import { appendAuthTokenToUrl, authFetch as fetch } from '../utils/authClient';
 import {
   Headphones,
   Mic,
@@ -420,7 +421,7 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
     }
 
     setWebAudioListeningCallId(callId);
-    const audioUrl = `/api/asterisk/spy/stream?channel=${encodeURIComponent(channelName || '')}&t=${Date.now()}`;
+    const audioUrl = appendAuthTokenToUrl(`/api/asterisk/spy/stream?channel=${encodeURIComponent(channelName || '')}&t=${Date.now()}`);
     if (!audioPlayerRef.current) {
       audioPlayerRef.current = new Audio();
     }
@@ -1347,11 +1348,11 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
                       <audio
                         controls
                         preload="none"
-                        src={rec.playUrl}
+                        src={appendAuthTokenToUrl(rec.playUrl)}
                         className="h-8 w-56 sm:w-64"
                       />
                       <a
-                        href={`${rec.playUrl}?download=1`}
+                        href={appendAuthTokenToUrl(`${rec.playUrl}?download=1`)}
                         download={rec.filename}
                         className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition-colors"
                         title="Descargar WAV"

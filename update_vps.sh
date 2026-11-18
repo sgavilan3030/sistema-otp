@@ -28,8 +28,9 @@ echo "=== [1/6] Directorio de la aplicacion: $APP_DIR ==="
 cd "$APP_DIR"
 
 echo "=== [2/6] Descargando ultimos cambios de GitHub (git pull) ==="
-# Preservar bases de datos de clientes, saldos y configuraciones activas
+# Preservar bases de datos de clientes, saldos, .env y configuraciones activas
 mkdir -p /tmp/ast20_db_backup
+[ -f .env ] && cp -f .env /tmp/ast20_db_backup/.env 2>/dev/null || true
 [ -f reseller_data.json ] && cp -f reseller_data.json /tmp/ast20_db_backup/reseller_data.json 2>/dev/null || true
 [ -d data ] && cp -rf data /tmp/ast20_db_backup/ 2>/dev/null || true
 
@@ -44,7 +45,10 @@ else
   echo "Aviso: No se detectó repositorio .git directo, usando archivos locales actuales."
 fi
 
-# Restaurar bases de datos de clientes y saldos para que ninguna actualización sobreescriba datos
+# Restaurar .env, bases de datos de clientes y saldos para que ninguna actualización sobreescriba datos
+if [ -f /tmp/ast20_db_backup/.env ]; then
+  cp -f /tmp/ast20_db_backup/.env ./.env 2>/dev/null || true
+fi
 if [ -f /tmp/ast20_db_backup/reseller_data.json ]; then
   cp -f /tmp/ast20_db_backup/reseller_data.json ./reseller_data.json 2>/dev/null || true
 fi
@@ -53,6 +57,28 @@ if [ -d /tmp/ast20_db_backup/data ]; then
   cp -rn /tmp/ast20_db_backup/data/* ./data/ 2>/dev/null || true
 fi
 
+# Asegurar archivo .env con claves aleatorias de produccion si faltan
+touch .env
+chmod 600 .env 2>/dev/null || true
+if ! grep -q "^AUTH_SECRET=" .env || grep -q '^AUTH_SECRET=""' .env; then
+  GEN_AUTH=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+  sed -i '/^AUTH_SECRET=/d' .env 2>/dev/null || true
+  echo "AUTH_SECRET=\"${GEN_AUTH}\"" >> .env
+  echo "-> AUTH_SECRET generado automáticamente en .env"
+fi
+if ! grep -q "^INTERNAL_WEBHOOK_KEY=" .env || grep -q '^INTERNAL_WEBHOOK_KEY=""' .env; then
+  GEN_WHK=$(openssl rand -hex 24 2>/dev/null || node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
+  sed -i '/^INTERNAL_WEBHOOK_KEY=/d' .env 2>/dev/null || true
+  echo "INTERNAL_WEBHOOK_KEY=\"${GEN_WHK}\"" >> .env
+  echo "-> INTERNAL_WEBHOOK_KEY generada automáticamente en .env"
+fi
+chmod 750 data 2>/dev/null || true
+
+# Verificar herramienta ffmpeg / sox para conversión de audios 8kHz
+if ! command -v ffmpeg >/dev/null 2>&1 && ! command -v sox >/dev/null 2>&1; then
+  echo "-> Instalando ffmpeg para conversión de audios Asterisk..."
+  (apt-get update -qq && apt-get install -y -qq ffmpeg) 2>/dev/null || (yum install -y -q ffmpeg) 2>/dev/null || true
+fi
 
 echo "=== [3/6] Instalando/verificando dependencias de Node.js ==="
 npm install --prefer-offline --no-audit 2>/dev/null || npm install || true
@@ -63,15 +89,19 @@ npm run build
 echo "=== [5/6] Sincronizando configuracion pura Asterisk 20 y Audios ==="
 mkdir -p /etc/asterisk
 mkdir -p /var/spool/asterisk/outgoing
-chmod 777 /var/spool/asterisk/outgoing 2>/dev/null || true
+chmod 750 /var/spool/asterisk/outgoing 2>/dev/null || true
+chown -R asterisk:asterisk /var/spool/asterisk/outgoing 2>/dev/null || true
 
 # Detectar IP pública real del VPS para NAT y RTP bidireccional
 PUBLIC_IP=$(curl -s -m 3 https://api.ipify.org || curl -s -m 3 https://ifconfig.me || curl -s -m 3 https://icanhazip.com || hostname -I | awk '{print $1}')
 echo "-> IP Pública del VPS para RTP/NAT: $PUBLIC_IP"
 
-# Copiar configuraciones locales si existen
+# Copiar configuraciones locales si existen (manager.conf solo en 127.0.0.1 y sin secreto débil)
 [ -f rtp.conf ] && cp -f rtp.conf /etc/asterisk/rtp.conf || true
-[ -f manager.conf ] && cp -f manager.conf /etc/asterisk/manager.conf || true
+if [ -f /etc/asterisk/manager.conf ]; then
+  sed -i 's/bindaddr = 0.0.0.0/bindaddr = 127.0.0.1/g' /etc/asterisk/manager.conf 2>/dev/null || true
+  chmod 640 /etc/asterisk/manager.conf 2>/dev/null || true
+fi
 [ -f amd.conf ] && cp -f amd.conf /etc/asterisk/amd.conf || true
 [ -f extensions.conf ] && cp -f extensions.conf /etc/asterisk/extensions.conf || true
 if [ -f pjsip.conf ]; then
@@ -81,7 +111,7 @@ if [ -f pjsip.conf ]; then
   fi
 fi
 
-# Copiar audios a todos los directorios estándar de Asterisk
+# Copiar audios a todos los directorios estándar de Asterisk con permisos seguros (775)
 mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
 mkdir -p /usr/share/asterisk/sounds/custom /usr/share/asterisk/sounds/es/custom /usr/share/asterisk/sounds/en/custom
 if [ -d "public/assets" ]; then
@@ -98,7 +128,7 @@ if [ -d "public/assets" ]; then
   cp -f public/assets/*.wav /usr/share/asterisk/sounds/ 2>/dev/null || true
   cp -f public/assets/*.gsm /usr/share/asterisk/sounds/ 2>/dev/null || true
 fi
-chmod -R 777 /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
+chmod -R 775 /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
 chown -R asterisk:asterisk /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
 
 # Recargar Asterisk

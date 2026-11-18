@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import os from 'os';
 import path from 'path';
@@ -5,21 +6,44 @@ import fs from 'fs';
 import net from 'net';
 import http from 'http';
 import https from 'https';
-import { exec } from 'child_process';
+import crypto from 'crypto';
+import { exec, execFile } from 'child_process';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
 const PORT = 3000;
+app.disable('x-powered-by');
+app.set('trust proxy', false);
 
-// Enable gzip/deflate compression for fast asset transfer
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+const DATA_DIR = path.join(process.cwd(), 'data');
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+  }
+} catch (_) {}
 
-// Helper to execute AMI Action via raw TCP socket :5038 with connection pooling / debounce to prevent login/logout churn
-let amiCachedResult: { data: string; timestamp: number } | null = null;
-let isAmiExecuting = false;
+function loadOrCreateSecret(envVarName: string, fileName: string, byteLen = 32): string {
+  const fromEnv = String(process.env[envVarName] || '').trim();
+  if (fromEnv && fromEnv.length >= 16) return fromEnv;
+  const secretPath = path.join(DATA_DIR, fileName);
+  try {
+    if (fs.existsSync(secretPath)) {
+      const val = fs.readFileSync(secretPath, 'utf8').trim();
+      if (val && val.length >= 16) return val;
+    }
+    const generated = crypto.randomBytes(byteLen).toString('hex');
+    fs.writeFileSync(secretPath, generated, { encoding: 'utf8', mode: 0o600 });
+    return generated;
+  } catch (_) {
+    return crypto.randomBytes(byteLen).toString('hex');
+  }
+}
+
+const AUTH_SECRET = loadOrCreateSecret('AUTH_SECRET', '.auth_secret', 32);
+const INTERNAL_WEBHOOK_KEY = loadOrCreateSecret('INTERNAL_WEBHOOK_KEY', '.webhook_key', 24);
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const revokedTokenIds = new Map<string, number>();
 
 export const hasLocalAsterisk =
   fs.existsSync('/usr/sbin/asterisk') ||
@@ -37,12 +61,311 @@ export function getAsteriskBinary(): string {
 
 const REMOTE_ASTERISK_HTTP = process.env.ASTERISK_REMOTE_HTTP || (hasLocalAsterisk ? '' : 'http://169.58.66.206:3000');
 export const ASTERISK_HOST = process.env.ASTERISK_HOST || (hasLocalAsterisk ? '127.0.0.1' : '169.58.66.206');
+const AMI_HOST = process.env.AMI_HOST || ASTERISK_HOST;
+const AMI_PORT = Number(process.env.AMI_PORT) || 5038;
+const AMI_USER = process.env.AMI_USER || 'sammy';
+const AMI_SECRET = process.env.AMI_SECRET || 'Robert2026RDTGcvgbsg';
+const AMI_ADMIN_SECRET =
+  String(process.env.AMI_ADMIN_SECRET || '').trim() ||
+  crypto.createHash('sha256').update(`${AMI_SECRET}:ami_admin`).digest('hex').slice(0, 24);
+
 let remoteConsecutiveFailures = 0;
 let remoteLastFailureTime = 0;
 let remoteLastSuccessTime = 0;
 
+// Security headers (preserve iframe preview compatibility by omitting X-Frame-Options: DENY)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  res.setHeader('Permissions-Policy', 'microphone=(self), camera=(), geolocation=()');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// Enable gzip/deflate compression for fast asset transfer
+app.use(compression());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Helper to execute AMI Action via raw TCP socket :5038 with connection pooling / debounce to prevent login/logout churn
+let amiCachedResult: { data: string; timestamp: number } | null = null;
+let isAmiExecuting = false;
+
+function isLoopbackIp(rawIp?: string | string[]): boolean {
+  const ip = Array.isArray(rawIp) ? rawIp[0] : String(rawIp || '').trim();
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+function isDirectLoopback(req: express.Request): boolean {
+  if (
+    req.headers['x-forwarded-for'] ||
+    req.headers['x-real-ip'] ||
+    req.headers['cf-connecting-ip'] ||
+    req.headers['forwarded']
+  ) {
+    return false;
+  }
+  return isLoopbackIp(req.socket?.remoteAddress);
+}
+
+function safeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function isInternalAsteriskWebhook(req: express.Request): boolean {
+  const headerKey = String(req.headers['x-internal-webhook-key'] || '').trim();
+  if (headerKey && safeEqualStrings(headerKey, INTERNAL_WEBHOOK_KEY)) {
+    return true;
+  }
+  return isDirectLoopback(req);
+}
+
+function getClientRateLimitKey(req: express.Request): string {
+  const xReal = String(req.headers['x-real-ip'] || '').trim();
+  const xFwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xReal || xFwd || String(req.socket?.remoteAddress || 'unknown');
+}
+
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateBuckets.entries()) {
+    if (now > v.resetAt) rateBuckets.delete(k);
+  }
+  for (const [jti, exp] of revokedTokenIds.entries()) {
+    if (now > exp) revokedTokenIds.delete(jti);
+  }
+}, 5 * 60 * 1000).unref();
+
+function checkRateLimit(bucketKey: string, maxRequests: number, windowMs: number): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const entry = rateBuckets.get(bucketKey);
+  if (!entry || now > entry.resetAt) {
+    rateBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  entry.count += 1;
+  if (entry.count > maxRequests) {
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)) };
+  }
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function loginRateLimiter(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const clientIp = getClientRateLimitKey(req);
+  const identifier = String(req.body?.identifier || req.body?.username || '').trim().toLowerCase().slice(0, 64);
+  const ipLimit = checkRateLimit(`login:ip:${clientIp}`, 15, 15 * 60 * 1000);
+  if (!ipLimit.allowed) {
+    res.setHeader('Retry-After', String(ipLimit.retryAfterSec));
+    return res.status(429).json({
+      success: false,
+      error: `Demasiados intentos de inicio de sesión. Intenta nuevamente en ${ipLimit.retryAfterSec}s.`,
+    });
+  }
+  if (identifier) {
+    const userLimit = checkRateLimit(`login:user:${clientIp}:${identifier}`, 10, 15 * 60 * 1000);
+    if (!userLimit.allowed) {
+      res.setHeader('Retry-After', String(userLimit.retryAfterSec));
+      return res.status(429).json({
+        success: false,
+        error: `Cuenta temporalmente bloqueada por seguridad. Espera ${userLimit.retryAfterSec}s.`,
+      });
+    }
+  }
+  next();
+}
+
+function apiRateLimiter(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (isDirectLoopback(req)) return next();
+  const key = `api:${getClientRateLimitKey(req)}`;
+  const check = checkRateLimit(key, 300, 60 * 1000);
+  if (!check.allowed) {
+    res.setHeader('Retry-After', String(check.retryAfterSec));
+    return res.status(429).json({ success: false, error: 'Límite de solicitudes excedido. Espera un momento.' });
+  }
+  next();
+}
+
+function hashPassword(plain: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(plain, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+function verifyPassword(plain: string, storedHash?: string): boolean {
+  if (!plain || !storedHash) return false;
+  if (!storedHash.startsWith('scrypt$')) {
+    return safeEqualStrings(plain, storedHash);
+  }
+  const parts = storedHash.split('$');
+  if (parts.length !== 3) return false;
+  const [, salt, hexDigest] = parts;
+  try {
+    const derived = crypto.scryptSync(plain, salt, 64);
+    const expected = Buffer.from(hexDigest, 'hex');
+    if (derived.length !== expected.length) return false;
+    return crypto.timingSafeEqual(derived, expected);
+  } catch (_) {
+    return false;
+  }
+}
+
+interface AuthTokenPayload {
+  sub: string;
+  username: string;
+  role: string;
+  tenantId?: string;
+  assignedExtensions?: string[];
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
+function createAuthToken(user: any): string {
+  const now = Date.now();
+  const payload: AuthTokenPayload = {
+    sub: String(user.id || user.username),
+    username: String(user.username || ''),
+    role: String(user.role || 'agent'),
+    tenantId: user.tenantId ? String(user.tenantId) : undefined,
+    assignedExtensions: Array.isArray(user.assignedExtensions) ? user.assignedExtensions.map(String) : [],
+    jti: crypto.randomBytes(12).toString('hex'),
+    iat: now,
+    exp: now + TOKEN_TTL_MS,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const signature = crypto.createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyAuthToken(token?: string): AuthTokenPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const dotIdx = token.indexOf('.');
+  if (dotIdx <= 0) return null;
+  const encodedPayload = token.slice(0, dotIdx);
+  const signature = token.slice(dotIdx + 1);
+  if (!encodedPayload || !signature) return null;
+  const expectedSig = crypto.createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  if (!safeEqualStrings(signature, expectedSig)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as AuthTokenPayload;
+    if (!payload || !payload.sub || !payload.exp || Date.now() > payload.exp) return null;
+    if (payload.jti && revokedTokenIds.has(payload.jti)) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function sanitizeUserForClient(u: any) {
+  if (!u || typeof u !== 'object') return u;
+  const { password: _p, passwordHash: _ph, sipSecret: _ss, ...rest } = u;
+  return rest;
+}
+
+function buildRemoteAuthHeaders(req?: express.Request, extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    'x-governor-fwd': 'true',
+    ...extra,
+  };
+  const reqAuth = req?.headers?.authorization ? String(req.headers.authorization) : '';
+  const envToken = String(process.env.REMOTE_ASTERISK_TOKEN || '').trim();
+  if (reqAuth) {
+    headers['Authorization'] = reqAuth;
+  } else if (envToken) {
+    headers['Authorization'] = envToken.startsWith('Bearer ') ? envToken : `Bearer ${envToken}`;
+  }
+  return headers;
+}
+
+function extractTokenFromRequest(req: express.Request): string {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  const queryToken = typeof req.query?.token === 'string' ? req.query.token.trim() : '';
+  return queryToken;
+}
+
+function resolveAuthenticatedUser(req: express.Request): any | null {
+  const token = extractTokenFromRequest(req);
+  const payload = verifyAuthToken(token);
+  if (!payload) return null;
+  const users = loadStoredUsers();
+  const matched = users.find(
+    (u: any) =>
+      u &&
+      (String(u.id) === String(payload.sub) ||
+        String(u.username || '').toLowerCase() === String(payload.username || '').toLowerCase())
+  );
+  if (matched) {
+    if (matched.status === 'inactive') return null;
+    return matched;
+  }
+  return {
+    id: payload.sub,
+    username: payload.username,
+    role: payload.role,
+    tenantId: payload.tenantId,
+    assignedExtensions: payload.assignedExtensions || [],
+    status: 'active',
+  };
+}
+
+function isGlobalAdminUser(user: any): boolean {
+  return Boolean(user && user.role === 'admin' && !user.tenantId);
+}
+
+function isAdminUser(user: any): boolean {
+  return Boolean(user && (user.role === 'admin' || user.role === 'supervisor'));
+}
+
+function requireApiAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = resolveAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Sesión requerida o expirada. Inicia sesión nuevamente.' });
+  }
+  (req as any).authUser = user;
+  next();
+}
+
+function requireAdminRole(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = (req as any).authUser || resolveAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Autenticación requerida.' });
+  }
+  if (!isAdminUser(user)) {
+    return res.status(403).json({ success: false, error: 'Permisos insuficientes (requiere Administrador o Supervisor).' });
+  }
+  next();
+}
+
+function requireGlobalAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = (req as any).authUser || resolveAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Autenticación requerida.' });
+  }
+  if (!isGlobalAdminUser(user)) {
+    return res.status(403).json({ success: false, error: 'Acceso restringido al Super Administrador global.' });
+  }
+  next();
+}
+
+function requireInternalOrGlobalAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (isInternalAsteriskWebhook(req) || isGlobalAdminUser((req as any).authUser)) {
+    return next();
+  }
+  return res.status(403).json({ success: false, error: 'Endpoint interno restringido a webhooks de Asterisk o Super Administrador Global.' });
+}
+
 // Native AMI Action: Hangup directly to Asterisk socket
-export function amiHangupChannel(channelName: string, host = ASTERISK_HOST, port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg'): Promise<boolean> {
+export function amiHangupChannel(channelName: string, host = AMI_HOST, port = AMI_PORT, user = AMI_USER, secret = AMI_SECRET): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let settled = false;
@@ -253,28 +576,33 @@ export function invalidateCliCache(pattern?: string) {
 }
 
 export async function executeAsteriskCommand(cmd: string): Promise<string> {
-  const isChannelsCheck = cmd.includes('core show channels');
+  const cleanCmd = String(cmd || '').trim();
+  if (!cleanCmd || /^\s*!/.test(cleanCmd) || /[\r\n\0`]|;\s*!/.test(cleanCmd)) {
+    return '';
+  }
+
+  const isChannelsCheck = cleanCmd.includes('core show channels');
   const isReadOnly =
-    cmd.startsWith('show') ||
-    cmd.startsWith('core show') ||
-    cmd.startsWith('pjsip show') ||
-    cmd.startsWith('database show') ||
-    cmd.startsWith('moh show') ||
-    cmd.startsWith('manager show') ||
-    cmd.startsWith('ari show') ||
-    cmd.includes('show channels');
+    cleanCmd.startsWith('show') ||
+    cleanCmd.startsWith('core show') ||
+    cleanCmd.startsWith('pjsip show') ||
+    cleanCmd.startsWith('database show') ||
+    cleanCmd.startsWith('moh show') ||
+    cleanCmd.startsWith('manager show') ||
+    cleanCmd.startsWith('ari show') ||
+    cleanCmd.includes('show channels');
   const now = Date.now();
 
   // Dynamic TTL based on query type to maintain real-time responsiveness without hammering Asterisk CLI
   const ttl = isChannelsCheck
     ? 3500
-    : (cmd.startsWith('pjsip show')
+    : (cleanCmd.startsWith('pjsip show')
       ? 6000
-      : (cmd.startsWith('database show') ? 5000 : 4000));
+      : (cleanCmd.startsWith('database show') ? 5000 : 4000));
 
   // 0. Return cached read-only result immediately (0ms) if within TTL
   if (isReadOnly) {
-    const cached = cliCommandCache.get(cmd);
+    const cached = cliCommandCache.get(cleanCmd);
     if (cached && (now - cached.timestamp < ttl)) {
       return cached.output;
     }
@@ -284,13 +612,13 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
   if (hasLocalAsterisk) {
     // If Asterisk daemon socket does not exist, Asterisk is stopped - do NOT spawn useless failing subprocesses
     if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
-      return isReadOnly ? (cliCommandCache.get(cmd)?.output || '') : '';
+      return isReadOnly ? (cliCommandCache.get(cleanCmd)?.output || '') : '';
     }
 
     // If local CLI is currently busy running a command and this is a read request, return cached (or empty)
     // to strictly prevent concurrent UNIX socket collisions that choke Asterisk PJSIP
     if (isLocalCliRunning && isReadOnly) {
-      const existing = cliCommandCache.get(cmd);
+      const existing = cliCommandCache.get(cleanCmd);
       if (existing) return existing.output;
     }
 
@@ -298,9 +626,9 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
       isLocalCliRunning = true;
       const bin = getAsteriskBinary();
       const localRes = await new Promise<string>((resolve) => {
-        exec(`${bin} -rx "${cmd.replace(/"/g, '\\"')}"`, { timeout: 2500 }, (err, stdout) => {
+        execFile(bin, ['-rx', cleanCmd], { timeout: 2500 }, (err, stdout) => {
           if (!err && stdout !== undefined && stdout !== null) {
-            resolve(stdout.trim());
+            resolve(String(stdout).trim());
           } else {
             resolve('');
           }
@@ -309,10 +637,10 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
 
       // Cache the result even if empty (0 channels or empty AstDB is a valid result that MUST be cached to prevent polling loops!)
       if (isReadOnly) {
-        cliCommandCache.set(cmd, { output: localRes, timestamp: Date.now() });
+        cliCommandCache.set(cleanCmd, { output: localRes, timestamp: Date.now() });
       } else {
         invalidateCliCache();
-        addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
+        addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cleanCmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
       }
 
       return localRes;
@@ -325,7 +653,7 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     // Do NOT fall through to AMI on read-only queries if CLI returned empty; that was causing
     // constant login/logout storms in the Asterisk console.
     if (isReadOnly) {
-      return cliCommandCache.get(cmd)?.output || '';
+      return cliCommandCache.get(cleanCmd)?.output || '';
     }
   }
 
@@ -334,58 +662,63 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
 
   // If remote VPS is down/timing out, skip read-only requests immediately so UI never hangs
   if (isCircuitOpen && isReadOnly) {
-    return cliCommandCache.get(cmd)?.output || '';
+    return cliCommandCache.get(cleanCmd)?.output || '';
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutMs = isCircuitOpen ? 800 : (isReadOnly ? 1200 : 2500);
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: cmd }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (resp.ok) {
-      const data = (await resp.json()) as any;
-      if (data && data.output !== undefined) {
-        remoteConsecutiveFailures = 0;
-        remoteLastSuccessTime = Date.now();
-        if (isReadOnly) {
-          cliCommandCache.set(cmd, { output: data.output, timestamp: Date.now() });
+  if (REMOTE_ASTERISK_HTTP) {
+    try {
+      const controller = new AbortController();
+      const timeoutMs = isCircuitOpen ? 800 : (isReadOnly ? 1200 : 2500);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildRemoteAuthHeaders(undefined, { 'x-internal-webhook-key': INTERNAL_WEBHOOK_KEY }),
+        },
+        body: JSON.stringify({ command: cleanCmd }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (resp.ok) {
+        const data = (await resp.json()) as any;
+        if (data && data.output !== undefined) {
+          remoteConsecutiveFailures = 0;
+          remoteLastSuccessTime = Date.now();
+          if (isReadOnly) {
+            cliCommandCache.set(cleanCmd, { output: data.output, timestamp: Date.now() });
+          }
+          return data.output;
         }
-        return data.output;
+      } else {
+        remoteConsecutiveFailures++;
+        remoteLastFailureTime = Date.now();
       }
-    } else {
+    } catch (_) {
       remoteConsecutiveFailures++;
       remoteLastFailureTime = Date.now();
     }
-  } catch (_) {
-    remoteConsecutiveFailures++;
-    remoteLastFailureTime = Date.now();
   }
 
   // 3. Fallback to raw local AMI socket only if local Asterisk might exist and local ctl wasn't reachable
   if (hasLocalAsterisk && !fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
     try {
-      const amiRes = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [cmd]);
+      const amiRes = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [cleanCmd]);
       if (amiRes && !amiRes.startsWith('AMI Error') && !amiRes.startsWith('AMI Backoff')) {
         if (isReadOnly) {
-          cliCommandCache.set(cmd, { output: amiRes, timestamp: Date.now() });
+          cliCommandCache.set(cleanCmd, { output: amiRes, timestamp: Date.now() });
         }
         return amiRes;
       }
     } catch (_) {}
   }
 
-  return cliCommandCache.get(cmd)?.output || '';
+  return cliCommandCache.get(cleanCmd)?.output || '';
 }
 
 const amiQueryCache = new Map<string, { output: string; timestamp: number }>();
 
-function sendAmiAction(host = ASTERISK_HOST, port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', commands: string[]): Promise<string> {
+function sendAmiAction(host = AMI_HOST, port = AMI_PORT, user = AMI_USER, secret = AMI_SECRET, commands: string[]): Promise<string> {
   const isChannelsCheck = commands.length === 1 && commands[0].includes('core show channels');
   const isReadOnly = commands.length === 1 && (
     commands[0].startsWith('core show') ||
@@ -685,19 +1018,18 @@ icesupport=no
     try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
     console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
     const mgrPath = '/etc/asterisk/manager.conf';
-    const mgrContent = `[general]\nenabled = yes\nport = 5038\nbindaddr = 127.0.0.1\n\n[sammy]\nsecret = Robert2026RDTGcvgbsg\nread = all\nwrite = all\n\n[admin]\nsecret = mysecretpass\nread = all\nwrite = all\n`;
+    const mgrContent = `[general]\nenabled = yes\nport = ${AMI_PORT}\nbindaddr = 127.0.0.1\n\n[${AMI_USER}]\nsecret = ${AMI_SECRET}\nread = all\nwrite = all\n\n[admin]\nsecret = ${AMI_ADMIN_SECRET}\nread = all\nwrite = all\n`;
     let shouldWriteMgr = !fs.existsSync(mgrPath);
     if (!shouldWriteMgr) {
       try {
         const curMgr = fs.readFileSync(mgrPath, 'utf8');
-        if (curMgr.includes('bindaddr = 0.0.0.0') || curMgr.includes('bindaddr=0.0.0.0')) {
+        if (curMgr.includes('bindaddr = 0.0.0.0') || curMgr.includes('bindaddr=0.0.0.0') || curMgr.includes('mysecretpass')) {
           shouldWriteMgr = true;
         }
       } catch (_) {}
     }
     if (shouldWriteMgr) {
       writeAsteriskConfigFile(mgrPath, mgrContent);
-      writeAsteriskConfigFile(path.join(process.cwd(), 'manager.conf'), mgrContent);
       console.log('✓ Configuración /etc/asterisk/manager.conf asegurada en 127.0.0.1 para AMI');
       if (hasLocalAsterisk) {
         exec('asterisk -rx "manager reload"', () => {});
@@ -777,8 +1109,8 @@ function amiFastOriginate(
       }
     }, 2500);
 
-    socket.connect(5038, ASTERISK_HOST, () => {
-      const loginPayload = `Action: Login\r\nUsername: sammy\r\nSecret: Robert2026RDTGcvgbsg\r\nEvents: off\r\n\r\n`;
+    socket.connect(AMI_PORT, AMI_HOST, () => {
+      const loginPayload = `Action: Login\r\nUsername: ${AMI_USER}\r\nSecret: ${AMI_SECRET}\r\nEvents: off\r\n\r\n`;
       socket.write(loginPayload);
     });
 
@@ -884,9 +1216,14 @@ ${varLines}
       const tempPath = `/tmp/ast_call_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.call`;
       fs.writeFileSync(tempPath, callContent, 'utf8');
       const targetPath = path.join(spoolDir, path.basename(tempPath));
-      exec(`mv "${tempPath}" "${targetPath}" || sudo mv "${tempPath}" "${targetPath}" || cp "${tempPath}" "${targetPath}"`, () => {
+      try {
+        fs.renameSync(tempPath, targetPath);
+      } catch (_) {
+        try {
+          fs.copyFileSync(tempPath, targetPath);
+        } catch (_) {}
         try { fs.unlinkSync(tempPath); } catch (_) {}
-      });
+      }
       console.log(`[SPOOL ORIGINATE] Archivo .call enviado a ${spoolDir} para ${channel}`);
       return true;
     }
@@ -937,26 +1274,19 @@ function writeAsteriskConfigFile(filePath: string, content: string): Promise<boo
       console.warn(`[ASTERISK-SYNC] Escritura directa no disponible en ${filePath} (${err.message}). Intentando fallback...`);
       const tempPath = `/tmp/${fileName}_${Date.now()}`;
       try {
-        fs.writeFileSync(tempPath, content, 'utf8');
-        const hasSudo = (() => {
-          try {
-            return fs.existsSync('/usr/bin/sudo') || fs.existsSync('/bin/sudo');
-          } catch (_) { return false; }
-        })();
-        const copyCmd = hasSudo
-          ? `mkdir -p "${dir}" && (cp "${tempPath}" "${filePath}" || sudo cp "${tempPath}" "${filePath}")`
-          : `mkdir -p "${dir}" && cp "${tempPath}" "${filePath}"`;
-
-        exec(copyCmd, (e) => {
-          try { fs.unlinkSync(tempPath); } catch (_) {}
-          if (!e) {
-            console.log(`[ASTERISK-SYNC] ✓ Archivo actualizado vía copia fallback: ${filePath}`);
-            resolve(true);
-          } else {
-            console.log(`[ASTERISK-SYNC] Nota: ${filePath} sincronizado localmente en ${localCopy} (sistema de archivos protegido o sin PBX local).`);
-            resolve(true);
+        fs.writeFileSync(tempPath, content, { encoding: 'utf8', mode: 0o640 });
+        try {
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
           }
-        });
+          fs.copyFileSync(tempPath, filePath);
+          console.log(`[ASTERISK-SYNC] ✓ Archivo actualizado vía copia fallback: ${filePath}`);
+        } catch (_) {
+          console.log(`[ASTERISK-SYNC] Nota: ${filePath} sincronizado localmente en ${localCopy} (sistema de archivos protegido o sin PBX local).`);
+        } finally {
+          try { fs.unlinkSync(tempPath); } catch (_) {}
+        }
+        resolve(true);
       } catch (subErr) {
         resolve(true);
       }
@@ -1056,7 +1386,7 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
       exec(`ffmpeg -y -i "concat:${concatList}" -ar 8000 -ac 1 -c:a pcm_s16le "${destWavPath}"`, (err) => {
         validTmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
         if (!err && fs.existsSync(destWavPath) && fs.statSync(destWavPath).size > 1000) {
-          try { fs.chmodSync(destWavPath, 0o777); } catch (_) {}
+          try { fs.chmodSync(destWavPath, 0o644); } catch (_) {}
           try { fs.copyFileSync(destWavPath, esWavPath); } catch (_) {}
           try { fs.copyFileSync(destWavPath, enWavPath); } catch (_) {}
           try { fs.copyFileSync(destWavPath, rootWavPath); } catch (_) {}
@@ -1065,7 +1395,7 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
           // Also generate native 8kHz GSM format for zero-transcoding playback
           exec(`ffmpeg -y -i "${destWavPath}" -ar 8000 -ac 1 -c:a libgsm "${destGsmPath}"`, (gsmErr) => {
             if (!gsmErr && fs.existsSync(destGsmPath)) {
-              try { fs.chmodSync(destGsmPath, 0o777); } catch (_) {}
+              try { fs.chmodSync(destGsmPath, 0o644); } catch (_) {}
               try { fs.copyFileSync(destGsmPath, esGsmPath); } catch (_) {}
               try { fs.copyFileSync(destGsmPath, enGsmPath); } catch (_) {}
               try { fs.copyFileSync(destGsmPath, rootGsmPath); } catch (_) {}
@@ -1091,12 +1421,12 @@ function ensureCustomAudioFilesExist() {
   try {
     for (const d of [customDir, esCustomDir, enCustomDir, '/var/lib/asterisk/sounds/es', '/var/lib/asterisk/sounds/en', path.join(process.cwd(), 'public/assets')]) {
       if (!fs.existsSync(d)) {
-        try { fs.mkdirSync(d, { recursive: true, mode: 0o777 }); } catch (_) {}
+        try { fs.mkdirSync(d, { recursive: true, mode: 0o755 }); } catch (_) {}
       }
     }
-    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 755 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
   } catch (e) {
-    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 777 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
+    exec(`mkdir -p "${customDir}" "${esCustomDir}" "${enCustomDir}" && chmod -R 755 /var/lib/asterisk/sounds 2>/dev/null || true`, () => {});
   }
 
   const audios = [
@@ -1171,9 +1501,9 @@ function ensureCustomAudioFilesExist() {
         fs.copyFileSync(localAssetWav, esWavPath);
         fs.copyFileSync(localAssetWav, enWavPath);
         try { fs.copyFileSync(localAssetWav, rootWavPath); } catch (_) {}
-        try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
-        try { fs.chmodSync(esWavPath, 0o777); } catch (_) {}
-        try { fs.chmodSync(enWavPath, 0o777); } catch (_) {}
+        try { fs.chmodSync(wavPath, 0o644); } catch (_) {}
+        try { fs.chmodSync(esWavPath, 0o644); } catch (_) {}
+        try { fs.chmodSync(enWavPath, 0o644); } catch (_) {}
       } catch (_) {}
 
       if (fs.existsSync(localAssetGsm)) {
@@ -1182,7 +1512,7 @@ function ensureCustomAudioFilesExist() {
           fs.copyFileSync(localAssetGsm, path.join(esCustomDir, `${aud.name}.gsm`));
           fs.copyFileSync(localAssetGsm, path.join(enCustomDir, `${aud.name}.gsm`));
           try { fs.copyFileSync(localAssetGsm, rootGsmPath); } catch (_) {}
-          try { fs.chmodSync(gsmPath, 0o777); } catch (_) {}
+          try { fs.chmodSync(gsmPath, 0o644); } catch (_) {}
         } catch (_) {}
       }
       continue;
@@ -1209,7 +1539,7 @@ function ensureCustomAudioFilesExist() {
         try {
           const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
           fs.writeFileSync(wavPath, buf);
-          try { fs.chmodSync(wavPath, 0o777); } catch (_) {}
+          try { fs.chmodSync(wavPath, 0o644); } catch (_) {}
         } catch (_) {}
       }
     } else {
@@ -1231,17 +1561,112 @@ function ensureCustomAudioFilesExist() {
 }
 
 // ==========================================
-// API ROUTES FIRST
+// API ROUTES, AUTHENTICATION & SECURITY GATE
 // ==========================================
 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     system: 'Asterisk 20 Governor Backend',
-    amiPort: 5038,
+    amiPort: AMI_PORT,
     ariPort: 8088,
     time: new Date().toISOString(),
   });
+});
+
+app.post('/api/auth/login', loginRateLimiter, (req, res) => {
+  try {
+    const identifier = String(req.body?.identifier || req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, error: 'Usuario y contraseña requeridos.' });
+    }
+
+    const users = loadStoredUsers();
+    const idLower = identifier.toLowerCase();
+    const idx = users.findIndex(
+      (u: any) =>
+        u &&
+        (String(u.username || '').toLowerCase() === idLower || String(u.email || '').toLowerCase() === idLower)
+    );
+
+    const matched = idx >= 0 ? users[idx] : null;
+    if (!matched) {
+      return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos.' });
+    }
+    if (matched.status === 'inactive') {
+      return res.status(403).json({ success: false, error: 'Usuario inactivo o suspendido.' });
+    }
+
+    const storedSecret = matched.passwordHash || matched.password;
+    if (!verifyPassword(password, storedSecret)) {
+      return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos.' });
+    }
+
+    // Ensure scrypt migration & strip any plaintext password
+    if (!matched.passwordHash || matched.password) {
+      matched.passwordHash = hashPassword(password);
+      matched.sipSecret = matched.sipSecret || password;
+      delete matched.password;
+    }
+    matched.lastLogin = new Date().toLocaleString();
+    users[idx] = matched;
+    saveStoredUsers(users);
+    lastSyncedUsers = users;
+
+    const token = createAuthToken(matched);
+    return res.json({
+      success: true,
+      token,
+      user: sanitizeUserForClient(matched),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/auth/me', requireApiAuth, (req, res) => {
+  const authUser = (req as any).authUser;
+  return res.json({
+    success: true,
+    user: sanitizeUserForClient(authUser),
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = extractTokenFromRequest(req);
+  const payload = verifyAuthToken(token);
+  if (payload?.jti && payload?.exp) {
+    revokedTokenIds.set(payload.jti, payload.exp);
+  }
+  return res.json({ success: true });
+});
+
+const INTERNAL_WEBHOOK_PATHS = new Set([
+  '/asterisk/call/status/update',
+  '/asterisk/call/retry',
+  '/asterisk/otp/capture',
+  '/reseller/deduct',
+  '/asterisk/config/extensions.conf',
+  '/asterisk/config/pjsip.conf',
+]);
+
+app.use('/api', apiRateLimiter, (req, res, next) => {
+  if (req.path === '/health' || req.path === '/auth/login' || req.path === '/auth/logout') {
+    return next();
+  }
+  if (INTERNAL_WEBHOOK_PATHS.has(req.path)) {
+    if (isInternalAsteriskWebhook(req)) {
+      return next();
+    }
+    const authUser = resolveAuthenticatedUser(req);
+    if (authUser) {
+      (req as any).authUser = authUser;
+      return next();
+    }
+    return res.status(401).json({ success: false, error: 'Webhook interno no autorizado.' });
+  }
+  return requireApiAuth(req, res, next);
 });
 
 // Default extensions with valid credentials and settings for Asterisk 20 (HD Voice prioritized)
@@ -1360,11 +1785,11 @@ export const defaultCarriersList = [
 ];
 
 // Centralized Application State & Users Persistence (Sync across browsers, devices and MicroSIP)
-const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const USER_CONFIGS_DIR = path.join(DATA_DIR, 'user_configs');
 const APP_STATE_FILE = path.join(DATA_DIR, 'app_state.json');
 const IVR_WORKSPACE_FILE = path.join(DATA_DIR, 'ivr_workspace.json');
+const OTP_HISTORY_FILE = path.join(DATA_DIR, 'otp_history.json');
 
 function getIvrWorkspacePath(userId?: string, username?: string, tenantId?: string): string {
   const cleanTenant = String(tenantId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
@@ -1383,38 +1808,169 @@ function getIvrWorkspacePath(userId?: string, username?: string, tenantId?: stri
 
 try {
   if (!fs.existsSync(USER_CONFIGS_DIR)) {
-    fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+    fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
   }
 } catch (_) {}
 
+function createDefaultBootstrapUsers(): any[] {
+  const adminPass = String(process.env.ADMIN_DEFAULT_PASSWORD || 'Robert012026@');
+  const televoxPass = String(process.env.TELEVOX_DEFAULT_PASSWORD || 'Robert012026@');
+  return [
+    {
+      id: 'user-admin',
+      name: 'Administrador Telecom',
+      username: 'admin',
+      email: 'admin.asterisk@empresa.com',
+      passwordHash: hashPassword(adminPass),
+      sipSecret: adminPass,
+      role: 'admin',
+      assignedExtensions: ['1001', '1002', '1003', '1004'],
+      status: 'active',
+      avatarColor: 'from-emerald-500 to-teal-700',
+      createdAt: '2026-09-01',
+      lastLogin: 'Disponible',
+      permissions: {
+        canManageExtensions: true,
+        canManageCarriers: true,
+        canManageIVR: true,
+        canUploadAudio: true,
+        canSyncAsterisk: true,
+        canUseSoftphone: true,
+        canManageUsers: true,
+        canExportConfigs: true,
+      },
+    },
+    {
+      id: 'user-televox',
+      name: 'Operador Televox',
+      username: 'sgavilan30',
+      email: 'sgavilan30@televox.net',
+      passwordHash: hashPassword(televoxPass),
+      sipSecret: televoxPass,
+      role: 'admin',
+      assignedExtensions: ['1001', '1002'],
+      status: 'active',
+      avatarColor: 'from-emerald-600 to-green-700',
+      createdAt: '2026-09-02',
+      lastLogin: 'Disponible',
+      permissions: {
+        canManageExtensions: true,
+        canManageCarriers: true,
+        canManageIVR: true,
+        canUploadAudio: true,
+        canSyncAsterisk: true,
+        canUseSoftphone: true,
+        canManageUsers: true,
+        canExportConfigs: true,
+      },
+    },
+  ];
+}
+
+function normalizeUserRecordForStorage(u: any, prev?: any): any {
+  const merged = prev ? { ...prev, ...u } : { ...u };
+  const incomingPlain = typeof u?.password === 'string' && u.password.length > 0 ? u.password : '';
+  if (incomingPlain) {
+    merged.passwordHash = hashPassword(incomingPlain);
+    merged.sipSecret = incomingPlain;
+  } else {
+    merged.passwordHash = merged.passwordHash || prev?.passwordHash || (prev?.password ? hashPassword(prev.password) : undefined);
+    merged.sipSecret = merged.sipSecret || prev?.sipSecret || prev?.password;
+  }
+  delete merged.password;
+  return merged;
+}
+
 function loadStoredUsers(): any[] {
+  let list: any[] = [];
+  let needsSave = false;
+
   try {
     if (fs.existsSync(USERS_FILE)) {
       const raw = fs.readFileSync(USERS_FILE, 'utf8');
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) return list;
-    }
-  } catch (_) {}
-  try {
-    if (fs.existsSync(APP_STATE_FILE)) {
-      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.users) && parsed.users.length > 0) return parsed.users;
+      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
     }
   } catch (_) {}
-  return [];
+
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(APP_STATE_FILE)) {
+        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.users) && parsed.users.length > 0) {
+          list = parsed.users;
+          needsSave = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const defaults = createDefaultBootstrapUsers();
+  if (list.length === 0) {
+    list = defaults;
+    needsSave = true;
+  } else {
+    for (const def of defaults) {
+      const matchIdx = list.findIndex(
+        (u: any) =>
+          u &&
+          (u.id === def.id || String(u.username || '').toLowerCase() === String(def.username || '').toLowerCase())
+      );
+      if (matchIdx === -1) {
+        list.push(def);
+        needsSave = true;
+      } else if (!list[matchIdx].username && def.username) {
+        list[matchIdx] = { ...list[matchIdx], username: def.username };
+        needsSave = true;
+      }
+    }
+  }
+
+  const normalized = list.map((u: any) => {
+    if (u && (u.password || !u.passwordHash)) {
+      needsSave = true;
+      return normalizeUserRecordForStorage(u);
+    }
+    return u;
+  });
+
+  if (needsSave) {
+    saveStoredUsers(normalized);
+  }
+  return normalized;
 }
 
 function saveStoredUsers(users: any[]) {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-    // Also keep app_state.json users in sync
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+    let existingList: any[] = [];
+    try {
+      if (fs.existsSync(USERS_FILE)) {
+        const parsed = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+        if (Array.isArray(parsed)) existingList = parsed;
+      }
+    } catch (_) {}
+    const prevByKey = new Map<string, any>();
+    for (const prev of existingList) {
+      if (prev?.id) prevByKey.set(String(prev.id).toLowerCase(), prev);
+      if (prev?.username) prevByKey.set(String(prev.username).toLowerCase(), prev);
+    }
+
+    const securedUsers = (Array.isArray(users) ? users : []).map((u: any) => {
+      const prev =
+        (u?.id && prevByKey.get(String(u.id).toLowerCase())) ||
+        (u?.username && prevByKey.get(String(u.username).toLowerCase()));
+      return normalizeUserRecordForStorage(u, prev);
+    });
+
+    fs.writeFileSync(USERS_FILE, JSON.stringify(securedUsers, null, 2), { encoding: 'utf8', mode: 0o600 });
+    // Keep app_state.json users sanitized (never plaintext passwords)
     if (fs.existsSync(APP_STATE_FILE)) {
       try {
         const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        parsed.users = users;
+        parsed.users = securedUsers.map(sanitizeUserForClient);
         parsed.lastUpdated = Date.now();
         fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
       } catch (_) {}
@@ -1673,11 +2229,18 @@ function saveStoredAudios(audios: any[]) {
 }
 
 app.get('/api/tenants', (req, res) => {
+  const authUser = (req as any).authUser;
   const tenants = loadStoredTenants();
-  res.json({ success: true, tenants });
+  if (isGlobalAdminUser(authUser)) {
+    return res.json({ success: true, tenants });
+  }
+  const scoped = authUser?.tenantId
+    ? tenants.filter((t: any) => String(t.id) === String(authUser.tenantId))
+    : [];
+  res.json({ success: true, tenants: scoped });
 });
 
-app.post('/api/tenants', async (req, res) => {
+app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
   try {
     const { tenants, carriers, extensions } = req.body;
     if (Array.isArray(tenants)) {
@@ -1707,7 +2270,7 @@ app.post('/api/tenants', async (req, res) => {
         if (hasLocalAsterisk) {
           exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
         }
-        sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload', 'dialplan reload']).catch(() => {});
+        sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']).catch(() => {});
       } catch (_) {}
       return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas en PJSIP + Dialplan.', count: tenants.length });
     }
@@ -1722,7 +2285,7 @@ app.get('/api/audios/metadata', (req, res) => {
   res.json({ success: true, audios });
 });
 
-app.post('/api/audios/metadata', (req, res) => {
+app.post('/api/audios/metadata', requireAdminRole, (req, res) => {
   try {
     const { audios } = req.body;
     if (Array.isArray(audios)) {
@@ -1861,7 +2424,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     if (!u) continue;
     const rawU = String(u.username || (u.email ? u.email.split('@')[0] : '') || u.name || '').trim();
     const cleanU = rawU.toLowerCase().replace(/[^a-z0-9_\-]/g, '');
-    const userPassword = u.password || 'Secr3t#Pass2026';
+    const userPassword = u.sipSecret || u.password || crypto.randomBytes(8).toString('hex');
     if (cleanU) {
       const uKey = cleanU;
       if (!mergedExtsMap.has(uKey)) {
@@ -2506,7 +3069,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__FINAL_AGENT=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(__CALLING_AGENT=\${PICKED_EXTEN})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${ARG1}&status=talking&agent=\${PICKED_EXTEN}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${ARG1})}&status=talking&agent=\${URIENCODE(\${PICKED_EXTEN})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(REC_IN_FILE=\${IF($["\${DB(record_ext/\${PICKED_EXTEN})}" = "1"]?/var/spool/asterisk/monitor/\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}_IN_\${PICKED_EXTEN}_from_\${FILTER(0-9,\${ARG1})}_\${UNIQUEID}.wav:)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${REC_IN_FILE}" != ""]?NoOp(=== [MIXMONITOR IN] Grabando llamada de extension \${PICKED_EXTEN}: \${REC_IN_FILE} ===))\n`;
   dialplanContent += ` same => n,ExecIf($["\${REC_IN_FILE}" != ""]?MixMonitor(\${REC_IN_FILE}))\n`;
@@ -2738,7 +3301,7 @@ export function generateCleanDialplanConf(
     block += ` same => n,Hangup()\n`;
     block += ` same => n(skip_tenant_bal_${tag}),NoOp()\n`;
     // Register live direct MicroSIP outbound calls into Monitor & concurrency tracker
-    block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${DIAL_NUM}&status=talking&agent=\${CALLING_USER_CHAN}&tenant=\${TENANT_ID}&channel=\${CHANNEL}" &))\n`;
+    block += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${DIAL_NUM})}&status=talking&agent=\${URIENCODE(\${CALLING_USER_CHAN})}&tenant=\${URIENCODE(\${TENANT_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &))\n`;
 
     block += ` same => n,GotoIf($["\${ASSIGNED_CARRIER}" = "" || "\${ASSIGNED_CARRIER}" = "auto" || "\${ASSIGNED_CARRIER}" = "pool"]?standard_carriers_${tag})\n`;
     block += ` same => n,NoOp(=== [CARRIER DEDICADO] Intentando troncal exclusiva asignada: \${ASSIGNED_CARRIER} para destino \${DIAL_NUM} ===)\n`;
@@ -2828,7 +3391,7 @@ export function generateCleanDialplanConf(
     block += ` same => n(${labelEnd}),NoOp(=== [CALL END] Destino: ${destVar} | DIALSTATUS=\${DIALSTATUS} | HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
     block += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_${tag})\n`;
     block += ` same => n,GotoIf($["\${DB(call_status/${destVar})}" = "operator_hangup" | "\${DB(call_status/${destVar})}" = "ended" | "\${DB(ivr_vars/${destVar}_cancelled)}" = "1"]?no_retry_${tag})\n`;
-    block += ` same => n,ExecIf($["\${DIALSTATUS}" = "NOANSWER" | "\${DIALSTATUS}" = "TIMEOUT" | "\${DIALSTATUS}" = "BUSY"]?System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=${destVar}&cause=\${DIALSTATUS}" &))\n`;
+    block += ` same => n,ExecIf($["\${DIALSTATUS}" = "NOANSWER" | "\${DIALSTATUS}" = "TIMEOUT" | "\${DIALSTATUS}" = "BUSY"]?System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(${destVar})}&cause=\${URIENCODE(\${DIALSTATUS})}" &))\n`;
     block += ` same => n(no_retry_${tag}),NoOp(=== [RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
     block += ` same => n,Hangup()\n\n`;
     return block;
@@ -2911,8 +3474,8 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/reseller/deduct?client=\${CALLING_AGENT}&secs=\${CDR(billsec)}&dest=\${TARGET_NUM}&tenant=\${TENANT_ID}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/reseller/deduct?client=\${URIENCODE(\${CALLING_AGENT})}&secs=\${CDR(billsec)}&dest=\${URIENCODE(\${TARGET_NUM})}&tenant=\${URIENCODE(\${TENANT_ID})}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
@@ -3017,7 +3580,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "\${TARGET_DEST}"]?Set(DB(otp_status/\${CALLERID(num)})=pending))\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending,Extension=\${CURR_EXT},Agent=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&callerid=\${CALLERID(num)}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&exten=\${CURR_EXT}&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_DEST})}&callerid=\${URIENCODE(\${CALLERID(num)})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&exten=\${URIENCODE(\${CURR_EXT})}&channel=\${URIENCODE(\${CHANNEL})}&status=pending" &)\n`;
 
   dialplanContent += ` ; Reproducir audio de espera 'Un momento por favor, estamos validando...'\n`;
   dialplanContent += ` same => n(espera_validacion),NoOp(=== [CAPTURA-\${CURR_EXT}] Reproduciendo audio de espera: \${AUDIO_WAIT} ===)\n`;
@@ -3076,7 +3639,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [CAPTURA-DINAMICA HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
 
 
   dialplanContent += `; ========================================================\n`;
@@ -3101,7 +3664,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Inicio rápido de IVR ===)\n`;
   dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n(amd_ok_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
@@ -3135,10 +3698,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
   dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_press1)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_press1)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${TARGET_DEST}&cause=\${AMDCAUSE}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
   dialplanContent += ` same => n(no_retry_amd_press1),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -3163,7 +3726,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=\${PRESSED_DIGIT})\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=\${PRESSED_DIGIT},Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=\${PRESSED_DIGIT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=\${URIENCODE(\${PRESSED_DIGIT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
@@ -3185,7 +3748,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
   dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
@@ -3217,7 +3780,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
@@ -3238,7 +3801,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Inicio rápido de IVR ===)\n`;
   dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n(amd_ok_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
@@ -3344,10 +3907,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(1,1)\n\n`;
   dialplanContent += ` same => n(amd_machine_otp),NoOp(=== [AMD OPERADORA DETECTADA] Grabadora o contestador en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_otp)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_otp)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${TARGET_DEST}&cause=\${AMDCAUSE}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
   dialplanContent += ` same => n(no_retry_amd_otp),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
@@ -3358,7 +3921,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${CALLERID(num)})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_DEST},Digits=\${USER_DIGITS},Status=pending,Agent=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_DEST}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_DEST})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}&status=pending" &)\n`;
 
   dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
@@ -3429,7 +3992,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_agent)}))\n`;
@@ -3448,7 +4011,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=transferred&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
   dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando a: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
@@ -3477,7 +4040,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO MARCACION 1-CLIC: REPRODUCCION DE AUDIO DIRECTO AL DESCOLGAR\n`;
@@ -3488,7 +4051,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=playing_audio&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_PROMPT})\n`;
@@ -3507,7 +4070,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=audio_completed)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=audio_completed&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=audio_completed&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -3559,13 +4122,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(all,i)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=talking_agent)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=talking_agent&agent=\${FINAL_AGENT}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=talking_agent&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n`;
   dialplanContent += ` same => n(amd_machine_ata),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -3590,7 +4153,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_p1c),Wait(0.3)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&mode=cancel_code&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1-cancel,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
@@ -3643,7 +4206,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_p1c),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; CLIENTE MARCA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO UN CODIGO DE CANCELACION" Y PIDE/VALIDA EL CODIGO\n`;
@@ -3658,7 +4221,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=cancel_code,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&mode=cancel_code&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_CANCEL_WAIT})\n`;
   dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
@@ -3682,7 +4245,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_NUM},Digits=\${USER_DIGITS},Status=pending,Mode=cancel_code,Agent=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_NUM}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&service=C%C3%B3digo%20Cancelaci%C3%B3n&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_NUM})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&service=C%C3%B3digo%20Cancelaci%C3%B3n&channel=\${URIENCODE(\${CHANNEL})}&status=pending" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
   dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(wait_cancel_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
@@ -3700,7 +4263,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=cancel_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=cancel_valid&mode=cancel_code&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_valid&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -3708,7 +4271,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=cancel_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=cancel_invalid&mode=cancel_code&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_invalid&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(ask_cancel_code)\n\n`;
   dialplanContent += ` same => n(cancel_timeout),Playback(custom/intentos_superados)\n`;
@@ -3720,7 +4283,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1-CANCEL HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO IVR DE CAPTURA OTP (PRESS 1 -> AUDIO ESPERA -> CAPTURA Y VALIDACION EN VIVO)\n`;
@@ -3744,7 +4307,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_otp_v),Wait(0.3)\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=in_ivr&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp-verify,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
@@ -3797,7 +4360,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_otp_v),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_DEST}&status=machine_detected&cause=\${AMDCAUSE}&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO SU CODIGO DE VERIFICACION" -> CAPTURA Y VALIDACION EN LIVECALLSTAB\n`;
@@ -3812,7 +4375,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=otp_press1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=pressed_1&digit=1&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_OTP_VERIFY_WAIT})\n`;
   dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
@@ -3836,7 +4399,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_NUM},Digits=\${USER_DIGITS},Status=pending,Mode=otp_press1,Agent=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${TARGET_NUM}&otp=\${USER_DIGITS}&agent=\${FINAL_AGENT}&service=IVR%20Captura%20OTP&channel=\${CHANNEL}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_NUM})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&service=IVR%20Captura%20OTP&channel=\${URIENCODE(\${CHANNEL})}&status=pending" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
   dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(wait_otp_verify_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
@@ -3854,7 +4417,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=otp_valid&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_valid&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -3862,7 +4425,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=otp_invalid&mode=otp_press1&channel=\${CHANNEL}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_invalid&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(ask_otp_verify)\n\n`;
   dialplanContent += ` same => n(otp_verify_timeout),Playback(custom/intentos_superados)\n`;
@@ -3874,7 +4437,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP-VERIFY HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${TARGET_NUM}&status=ended&cause=\${HANGUPCAUSE}&channel=\${CHANNEL}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
 
   dialplanContent += `; Alias de compatibilidad para modo hybrid hacia ivr-otp\n`;
   dialplanContent += `[ivr-hybrid]\n`;
@@ -3958,7 +4521,7 @@ async function autoRepairAsteriskPjsipOnStartup() {
       exec('asterisk -rx "pjsip reload"', () => {});
     }
     try {
-      await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
+      await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
     } catch (_) {}
     console.log('[PJSIP-INIT] ✓ /etc/asterisk/pjsip.conf sincronizado y recargado con éxito con todos los usuarios y carriers.');
 
@@ -4297,12 +4860,16 @@ function parseExtensionsFromPjsip(content: string): any[] {
 // Endpoint to get live extensions and passwords currently governing Asterisk
 app.get('/api/asterisk/extensions', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const allowSecrets = isGlobalAdminUser(authUser);
     let pjsipContent = '';
     if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
       pjsipContent = fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8');
     } else if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
       try {
-        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`);
+        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`, {
+          headers: buildRemoteAuthHeaders(req),
+        });
         if (resp.ok) {
           pjsipContent = await resp.text();
         }
@@ -4314,9 +4881,16 @@ app.get('/api/asterisk/extensions', async (req, res) => {
     }
 
     const parsedExtensions = parseExtensionsFromPjsip(pjsipContent);
+    const rawExtensions = parsedExtensions.length > 0 ? parsedExtensions : defaultExtensionsList;
+    const safeExtensions = allowSecrets
+      ? rawExtensions
+      : rawExtensions.map((ext: any) => {
+          const { secret: _secret, ...rest } = ext || {};
+          return rest;
+        });
     res.json({
       success: true,
-      extensions: parsedExtensions.length > 0 ? parsedExtensions : defaultExtensionsList,
+      extensions: safeExtensions,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -4324,7 +4898,7 @@ app.get('/api/asterisk/extensions', async (req, res) => {
 });
 
 // Diagnostic endpoint specifically analyzing extensions 1001, 1002, 1003, 1004
-app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], async (req, res) => {
+app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], requireGlobalAdmin, async (req, res) => {
   try {
     const live = await queryAsteriskPjsipEndpoints();
     let currentConfig = '';
@@ -4332,7 +4906,9 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], asy
       currentConfig = fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8');
     } else if (REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1')) {
       try {
-        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`);
+        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/config/pjsip.conf`, {
+          headers: buildRemoteAuthHeaders(req),
+        });
         if (resp.ok) {
           currentConfig = await resp.text();
         }
@@ -4357,7 +4933,7 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], asy
         username: ext.extension,
         authorizationName: ext.extension,
         password: ext.secret,
-        domain: '169.58.66.206',
+        domain: ASTERISK_HOST,
         proxy: '',
         transport: 'UDP',
       },
@@ -4376,7 +4952,7 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], asy
 });
 
 // Dedicated one-click repair and re-register endpoint
-app.post('/api/asterisk/extensions/repair', async (req, res) => {
+app.post('/api/asterisk/extensions/repair', requireGlobalAdmin, async (req, res) => {
   try {
     const extensionsToUse = (Array.isArray(req.body.extensions) && req.body.extensions.length > 0)
       ? req.body.extensions
@@ -4384,8 +4960,9 @@ app.post('/api/asterisk/extensions/repair', async (req, res) => {
     const carriersToUse = (Array.isArray(req.body.carriers) && req.body.carriers.length > 0)
       ? req.body.carriers
       : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers());
+    const storedUsers = loadStoredUsers();
 
-    const cleanPjsip = generateCleanPjsipConf(extensionsToUse, carriersToUse);
+    const cleanPjsip = generateCleanPjsipConf(extensionsToUse, carriersToUse, storedUsers);
     const pjsipPath = '/etc/asterisk/pjsip.conf';
     const written = await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
     fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
@@ -4405,7 +4982,7 @@ app.post('/api/asterisk/extensions/repair', async (req, res) => {
 
     let amiReload = '';
     try {
-      amiReload = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload']);
+      amiReload = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
     } catch (_) {}
 
     // Wait briefly then read back state
@@ -4431,7 +5008,7 @@ let lastGeneratedPjsip = '';
 let lastGeneratedDialplan = '';
 
 // Serve raw generated configuration files for easy curl / wget update on VPS
-app.get('/api/asterisk/config/extensions.conf', (req, res) => {
+app.get('/api/asterisk/config/extensions.conf', requireInternalOrGlobalAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
   const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
@@ -4447,11 +5024,12 @@ app.get('/api/asterisk/config/extensions.conf', (req, res) => {
   return res.send(cleanDialplan);
 });
 
-app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
+app.get('/api/asterisk/config/pjsip.conf', requireInternalOrGlobalAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
   const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
-  const cleanPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
+  const activeUsers = loadStoredUsers();
+  const cleanPjsip = generateCleanPjsipConf(activeExts, activeCarriers, activeUsers);
   lastGeneratedPjsip = cleanPjsip;
   try {
     fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
@@ -4462,11 +5040,30 @@ app.get('/api/asterisk/config/pjsip.conf', (req, res) => {
   return res.send(cleanPjsip);
 });
 
+const AMI_SAFE_CMD_REGEX = /^(core show|pjsip show|pjsip send register|database (show|get|put|del|deltree)|dialplan (show|reload)|pjsip reload|manager show|moh (show|reload)|ari show|module (show|load|reload)|core reload)\b/i;
+
 // Test AMI connection in real-time
 app.post('/api/asterisk/ami/test', async (req, res) => {
-  const { host = '127.0.0.1', port = 5038, user = 'sammy', secret = 'Robert2026RDTGcvgbsg', command = 'core show version' } = req.body;
+  if (!isInternalAsteriskWebhook(req) && !isGlobalAdminUser((req as any).authUser)) {
+    return res.status(403).json({ success: false, error: 'Solo el Super Administrador Global puede ejecutar comandos AMI.' });
+  }
+  const {
+    host = AMI_HOST,
+    port = AMI_PORT,
+    user = AMI_USER,
+    secret = AMI_SECRET,
+    command = 'core show version',
+  } = req.body || {};
+
+  const cleanCmd = String(command || '').trim();
+  if (!cleanCmd || /[!\`\r\n\0;|&$<>()]/.test(cleanCmd) || !AMI_SAFE_CMD_REGEX.test(cleanCmd)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Comando AMI bloqueado por política de seguridad.',
+    });
+  }
   try {
-    const output = await sendAmiAction(host, port, user, secret, [command]);
+    const output = await sendAmiAction(String(host || AMI_HOST), Number(port) || AMI_PORT, String(user || AMI_USER), String(secret || AMI_SECRET), [cleanCmd]);
     res.json({ success: true, output });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -4474,7 +5071,7 @@ app.post('/api/asterisk/ami/test', async (req, res) => {
 });
 
 // Telemetry and Health monitor endpoint
-app.get('/api/asterisk/telemetry/logs', (req, res) => {
+app.get('/api/asterisk/telemetry/logs', requireAdminRole, (req, res) => {
   const now = Date.now();
   const remainingCooldownSec =
     amiHealthState.isCircuitOpen && amiHealthState.nextAllowedAttemptTime > now
@@ -4496,7 +5093,7 @@ app.get('/api/asterisk/telemetry/logs', (req, res) => {
 });
 
 // Endpoint to reset AMI exponential backoff circuit breaker manually
-app.post('/api/asterisk/ami/reset-backoff', (req, res) => {
+app.post('/api/asterisk/ami/reset-backoff', requireAdminRole, (req, res) => {
   resetAmiBackoff();
   res.json({
     success: true,
@@ -4506,7 +5103,7 @@ app.post('/api/asterisk/ami/reset-backoff', (req, res) => {
 });
 
 // Endpoint to clear server telemetry logs
-app.post('/api/asterisk/telemetry/clear', (req, res) => {
+app.post('/api/asterisk/telemetry/clear', requireAdminRole, (req, res) => {
   serverTelemetryLogs.length = 0;
   addServerTelemetryLog('SYSTEM', 'Historial de logs de telemetría limpiado por el operador.', undefined, 'success');
   res.json({ success: true, message: 'Logs de telemetría limpiados.' });
@@ -4612,10 +5209,10 @@ function getRealMemoryStats() {
 }
 
 function measureAmiPingLatency(
-  host = ASTERISK_HOST,
-  port = 5038,
-  user = 'sammy',
-  secret = 'Robert2026RDTGcvgbsg'
+  host = AMI_HOST,
+  port = AMI_PORT,
+  user = AMI_USER,
+  secret = AMI_SECRET
 ): Promise<{ connected: boolean; latencyMs: number | null; error?: string; asteriskHost: string }> {
   const now = Date.now();
   if (amiHealthState.isCircuitOpen && now < amiHealthState.nextAllowedAttemptTime) {
@@ -4697,7 +5294,7 @@ function measureAmiPingLatency(
   });
 }
 
-app.get('/api/system/telemetry', async (req, res) => {
+app.get('/api/system/telemetry', requireAdminRole, async (req, res) => {
   const localOnly = req.headers['x-telemetry-local-only'] === '1' || req.query.local === '1';
 
   // If running outside the VPS (e.g. AI Studio preview) and REMOTE_ASTERISK_HTTP is configured,
@@ -4708,7 +5305,7 @@ app.get('/api/system/telemetry', async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 2200);
       const remoteStart = performance.now();
       const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/system/telemetry?local=1`, {
-        headers: { 'x-telemetry-local-only': '1' },
+        headers: buildRemoteAuthHeaders(req, { 'x-telemetry-local-only': '1' }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -4741,10 +5338,10 @@ app.get('/api/system/telemetry', async (req, res) => {
         asteriskHost: '127.0.0.1',
       };
     } else {
-      amiProbe = await measureAmiPingLatency('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg');
+      amiProbe = await measureAmiPingLatency('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET);
     }
   } else {
-    amiProbe = await measureAmiPingLatency(ASTERISK_HOST, 5038, 'sammy', 'Robert2026RDTGcvgbsg');
+    amiProbe = await measureAmiPingLatency(AMI_HOST, AMI_PORT, AMI_USER, AMI_SECRET);
   }
 
   // Deduplicate active calls in callStatusStore (since both cleanDest and formattedDest may point to same active call)
@@ -4799,7 +5396,7 @@ app.get('/api/system/telemetry', async (req, res) => {
 });
 
 // Endpoint to sync all extensions directly into /etc/asterisk/pjsip.conf and reload
-app.post('/api/asterisk/sync/extensions', async (req, res) => {
+app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) => {
   try {
     const { extensions, carriers } = req.body;
 
@@ -4838,8 +5435,8 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
           mergedMap.set(k, { ...(mergedMap.get(k) || {}), ...u });
         }
       }
-      usersToInclude = Array.from(mergedMap.values());
-      saveStoredUsers(usersToInclude);
+      saveStoredUsers(Array.from(mergedMap.values()));
+      usersToInclude = loadStoredUsers();
       lastSyncedUsers = usersToInclude;
     }
 
@@ -4962,7 +5559,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     // 6. Send Hot Reload to Asterisk AMI immediately
     let amiOutput = '';
     try {
-      amiOutput = await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+      amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [
         'pjsip reload',
         'dialplan reload',
         'pjsip show endpoints',
@@ -4990,7 +5587,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         const timeoutId = setTimeout(() => controller.abort(), 3500);
         const remoteSyncResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/sync/extensions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify(req.body),
           signal: controller.signal,
         });
@@ -5027,7 +5624,7 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 });
 
 // Endpoint to cleanly restart Asterisk to bind new ports (e.g. 47923)
-app.post('/api/asterisk/restart', async (req, res) => {
+app.post('/api/asterisk/restart', requireGlobalAdmin, async (req, res) => {
   try {
     if (hasLocalAsterisk) {
       exec('asterisk -rx "core restart now"', (err, stdout, stderr) => {
@@ -5048,7 +5645,7 @@ app.post('/api/asterisk/restart', async (req, res) => {
 });
 
 // Endpoint to sync Dialplan (extensions.conf) and reload
-app.post('/api/asterisk/sync/dialplan', async (req, res) => {
+app.post('/api/asterisk/sync/dialplan', requireGlobalAdmin, async (req, res) => {
   try {
     ensureCustomAudioFilesExist();
     let contentToWrite = req.body?.dialplan || lastGeneratedDialplan;
@@ -5080,7 +5677,7 @@ app.post('/api/asterisk/sync/dialplan', async (req, res) => {
         const timeoutId = setTimeout(() => controller.abort(), 4000);
         await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/sync/dialplan`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({ dialplan: contentToWrite }),
           signal: controller.signal,
         });
@@ -5174,7 +5771,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         const timeoutId = setTimeout(() => controller.abort(), 6000);
         const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/originate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify(req.body),
           signal: controller.signal,
         });
@@ -5249,7 +5846,30 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ? ((agentExten === 'ringall' || agentExten === 'all') ? 'ringall' : String(agentExten).trim())
       : (press1DestinationMode === 'ringall' ? 'ringall' : press1SelectedExtensions.join('&'));
 
-    const explicitSuperAdminWithoutTenant = req.body.isSuperAdmin === true && !req.body.tenantId;
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const effectiveTenantId = authIsGlobalAdmin
+      ? req.body.tenantId
+      : (authUser?.tenantId ? String(authUser.tenantId) : undefined);
+    const effectiveUserId = authIsGlobalAdmin
+      ? req.body.userId
+      : (authUser?.id ? String(authUser.id) : undefined);
+
+    if (!authIsGlobalAdmin && authUser && !isAdminUser(authUser) && Array.isArray(authUser.assignedExtensions) && authUser.assignedExtensions.length > 0) {
+      const allowedSet = new Set(authUser.assignedExtensions.map((x: any) => String(x).trim()));
+      if (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all') {
+        const requestedParts = effectiveAgentExten.split('&').map((s: string) => s.trim()).filter(Boolean);
+        const unauthorized = requestedParts.some((ext: string) => !allowedSet.has(ext));
+        if (unauthorized) {
+          return res.status(403).json({
+            success: false,
+            error: 'No tienes permiso para originar llamadas hacia esa extensión.',
+          });
+        }
+      }
+    }
+
+    const explicitSuperAdminWithoutTenant = authIsGlobalAdmin && !effectiveTenantId;
     const activeCarriersForResolve = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
 
     // Resolve Call Center Tenant & enforce its assigned SIP carrier + isolated extension range
@@ -5257,7 +5877,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ? { tenant: null, carrierName: '' }
       : resolveTenantCarrierForCall(
           {
-            tenantId: req.body.tenantId,
+            tenantId: effectiveTenantId,
             agentExten: (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
               ? effectiveAgentExten
               : (req.body.callerExtension || req.body.agent),
@@ -5269,16 +5889,14 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ? { user: null, carrierName: '' }
       : resolveUserCarrierForCall(
           {
-            userId: req.body.userId,
+            userId: effectiveUserId,
             agentExten: effectiveAgentExten,
             callerExtension: req.body.callerExtension || req.body.agent,
           },
           activeCarriersForResolve
         );
 
-    const callerIsSuperAdmin =
-      req.body.isSuperAdmin === true ||
-      (req.body.isAdmin === true && !tenantResolution.tenant && !req.body.tenantId);
+    const callerIsSuperAdmin = authIsGlobalAdmin;
 
     if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && !callerIsSuperAdmin) {
       return res.status(403).json({
@@ -5686,9 +6304,21 @@ app.post('/api/asterisk/otp/verify', (req, res) => {
       return res.status(400).json({ success: false, error: 'Status debe ser valid, invalid o pending' });
     }
 
+    const authUser = (req as any).authUser;
     const item = capturedOtpHistory.find((r) => r.id === id || (number && r.number === number));
     if (item) {
+      if (!isGlobalAdminUser(authUser)) {
+        if (authUser?.tenantId && item.tenantId && String(item.tenantId) !== String(authUser.tenantId)) {
+          return res.status(403).json({ success: false, error: 'No autorizado para modificar OTP de otro Call Center.' });
+        }
+        if (!isAdminUser(authUser) && Array.isArray(authUser?.assignedExtensions) && authUser.assignedExtensions.length > 0 && item.agent) {
+          if (!authUser.assignedExtensions.map(String).includes(String(item.agent))) {
+            return res.status(403).json({ success: false, error: 'No autorizado para modificar OTP de otra extensión.' });
+          }
+        }
+      }
       item.status = status;
+      saveStoredOtpHistory(capturedOtpHistory);
       console.log(`[VERIFICACIÓN AGENTE] OTP ${item.otp} de ${item.number} marcado como ${status.toUpperCase()}`);
       return res.json({ success: true, item, message: `Código ${item.otp} marcado como ${status}` });
     }
@@ -5701,35 +6331,29 @@ app.post('/api/asterisk/otp/verify', (req, res) => {
 });
 
 // Endpoint for direct 1-click update of Agent Extension CallerID (Num & Name) into AstDB
-app.post('/api/asterisk/extension/callerid', (req, res) => {
+app.post('/api/asterisk/extension/callerid', requireAdminRole, (req, res) => {
   try {
-    const { extension, callerIdNum, callerIdName } = req.body;
+    const { extension, callerIdNum, callerIdName } = req.body || {};
     if (!extension || !callerIdNum) {
       return res.status(400).json({ success: false, error: 'Faltan parámetros: extension y callerIdNum son requeridos.' });
     }
 
-    const cleanExt = String(extension).trim();
-    const cleanNum = String(callerIdNum).trim();
-    const cleanName = String(callerIdName || cleanExt).trim();
+    const cleanExt = String(extension).trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+    const cleanNum = String(callerIdNum).trim().replace(/[^0-9+*#]/g, '');
+    const cleanName = String(callerIdName || cleanExt).trim().replace(/[^a-zA-Z0-9 _\-.]/g, '').slice(0, 40) || cleanExt;
 
-    // Store in Asterisk DB directly via CLI and AMI
+    if (!cleanExt || !cleanNum) {
+      return res.status(400).json({ success: false, error: 'Parámetros de extensión o CallerID inválidos.' });
+    }
+
+    // Store in Asterisk DB safely via execFile and AMI
     const putNumCmd = `database put extension_cid ${cleanExt}/number "${cleanNum}"`;
     const putNameCmd = `database put extension_cid ${cleanExt}/name "${cleanName}"`;
 
-    if (hasLocalAsterisk) {
-      exec(`asterisk -rx '${putNumCmd}' && asterisk -rx '${putNameCmd}'`, (err, stdout) => {
-        if (err) {
-          console.warn(`[AstDB Extension Notice] ${err.message}`);
-        } else {
-          console.log(`[AstDB SUCCESS] Extension ${cleanExt} CallerID actualizado en Asterisk DB: "${cleanName}" <${cleanNum}>`);
-        }
-      });
-    } else {
-      executeAsteriskCommand(putNumCmd).catch(() => {});
-      executeAsteriskCommand(putNameCmd).catch(() => {});
-    }
+    executeAsteriskCommand(putNumCmd).catch(() => {});
+    executeAsteriskCommand(putNameCmd).catch(() => {});
 
-    sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', [
+    sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [
       putNumCmd,
       putNameCmd,
     ]).catch(() => {});
@@ -5786,6 +6410,10 @@ app.get('/api/asterisk/audio/list', (req, res) => {
 // Upload and convert audio file to Asterisk format (WAV 8000Hz PCM 16-bit Mono)
 app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    if (!isAdminUser(authUser) && !authUser?.permissions?.canUploadAudio) {
+      return res.status(403).json({ success: false, error: 'No tienes permiso para subir audios IVR.' });
+    }
     const { name, fileName, category, dataUrl } = req.body;
 
     if (!dataUrl) {
@@ -5809,22 +6437,16 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
       ? Buffer.from(matches[2], 'base64')
       : Buffer.from(dataUrl, 'base64');
 
-    // Ensure custom sounds directory exists
+    // Ensure custom sounds directory exists without insecure 777 permissions
     try {
       if (!fs.existsSync(SOUNDS_CUSTOM_DIR)) {
-        fs.mkdirSync(SOUNDS_CUSTOM_DIR, { recursive: true });
+        fs.mkdirSync(SOUNDS_CUSTOM_DIR, { recursive: true, mode: 0o775 });
       }
-    } catch (e) {
-      exec(`sudo mkdir -p ${SOUNDS_CUSTOM_DIR} && sudo chmod 777 ${SOUNDS_CUSTOM_DIR}`, () => {});
-    }
+    } catch (_) {}
 
     // Save temporary raw file
     const tempRawPath = `/tmp/raw_${cleanBaseName}_${Date.now()}`;
-    fs.writeFileSync(tempRawPath, buffer);
-
-    // Convert to Asterisk native PCM 8000Hz 16-bit Mono using ffmpeg or sox
-    const ffmpegCmd = `ffmpeg -y -i "${tempRawPath}" -ar 8000 -ac 1 -c:a pcm_s16le "${targetPath}"`;
-    const soxCmd = `sox "${tempRawPath}" -r 8000 -c 1 -b 16 "${targetPath}"`;
+    fs.writeFileSync(tempRawPath, buffer, { mode: 0o600 });
 
     const onAudioSavedSuccess = (method: string) => {
       console.log(`[AUDIO SAVED via ${method}] custom/${cleanBaseName}.wav`);
@@ -5839,14 +6461,14 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
         try {
           fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/upload`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+            headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
             body: JSON.stringify(req.body),
           }).catch(() => {});
         } catch (_) {}
       }
     };
 
-    exec(ffmpegCmd, (ffmpegErr) => {
+    execFile('ffmpeg', ['-y', '-i', tempRawPath, '-ar', '8000', '-ac', '1', '-c:a', 'pcm_s16le', targetPath], (ffmpegErr) => {
       if (!ffmpegErr) {
         try { fs.unlinkSync(tempRawPath); } catch (e) {}
         console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath}`);
@@ -5861,7 +6483,7 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
       }
 
       // Try with Sox if ffmpeg failed
-      exec(soxCmd, (soxErr) => {
+      execFile('sox', [tempRawPath, '-r', '8000', '-c', '1', '-b', '16', targetPath], (soxErr) => {
         if (!soxErr) {
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
           console.log(`[AUDIO OK - sox] Convertido a ${targetPath}`);
@@ -5877,7 +6499,7 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
 
         // Fallback: direct write of the buffer
         try {
-          fs.writeFileSync(targetPath, buffer);
+          fs.writeFileSync(targetPath, buffer, { mode: 0o644 });
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
           onAudioSavedSuccess('direct');
           return res.json({
@@ -5888,20 +6510,8 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
             message: `Audio guardado en custom/${cleanBaseName}`,
           });
         } catch (directErr: any) {
-          // If permission issue, try sudo cp
-          exec(`sudo cp "${tempRawPath}" "${targetPath}" && sudo chmod 644 "${targetPath}"`, (sudoErr) => {
-            try { fs.unlinkSync(tempRawPath); } catch (e) {}
-            if (sudoErr) {
-              return res.status(500).json({ success: false, error: sudoErr.message });
-            }
-            onAudioSavedSuccess('sudo');
-            res.json({
-              success: true,
-              asteriskPath: `custom/${cleanBaseName}`,
-              fileName: targetWavName,
-              message: `Audio guardado via sudo en custom/${cleanBaseName}`,
-            });
-          });
+          try { fs.unlinkSync(tempRawPath); } catch (e) {}
+          return res.status(500).json({ success: false, error: directErr.message });
         }
       });
     });
@@ -6031,14 +6641,12 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${baseName}.wav`);
   const mohDir = '/var/lib/asterisk/moh';
 
-  // 1. Ensure local MOH directory exists
+  // 1. Ensure local MOH directory exists with safe permissions
   try {
     if (!fs.existsSync(mohDir)) {
-      fs.mkdirSync(mohDir, { recursive: true, mode: 0o777 });
+      fs.mkdirSync(mohDir, { recursive: true, mode: 0o775 });
     }
-  } catch (e) {
-    exec(`mkdir -p "${mohDir}" && chmod 777 "${mohDir}"`, () => {});
-  }
+  } catch (_) {}
 
   // 2. Overwrite all demo, default and previously tested tracks in MOH directory so no other audio ever leaks or crosses
   const mohTargets = [
@@ -6401,7 +7009,7 @@ app.get('/api/asterisk/audio/active-assignments', (req, res) => {
 });
 
 // Explicit endpoint to toggle manual lock on an audio role or ivr_entity
-app.post('/api/asterisk/audio/toggle-lock', (req, res) => {
+app.post('/api/asterisk/audio/toggle-lock', requireAdminRole, (req, res) => {
   try {
     const { role, isLocked } = req.body;
     if (!role) {
@@ -6426,7 +7034,7 @@ app.post('/api/asterisk/audio/toggle-lock', (req, res) => {
 });
 
 // Explicit endpoint to assign an existing audio to an IVR role in Asterisk AstDB
-app.post('/api/asterisk/audio/assign', (req, res) => {
+app.post('/api/asterisk/audio/assign', requireAdminRole, (req, res) => {
   try {
     const { asteriskPath, role = 'agent_transfer', isManualSave } = req.body;
     if (!asteriskPath) {
@@ -6499,7 +7107,7 @@ app.get('/api/asterisk/audio/current-7777', (req, res) => {
 });
 
 // Endpoint to save and lock individual audio configuration for a specific OTP extension (7777, 6666, 5555, 4444, 3333, etc.)
-app.post('/api/asterisk/audio/save-extension-config', (req, res) => {
+app.post('/api/asterisk/audio/save-extension-config', requireAdminRole, (req, res) => {
   try {
     const { extension, prompt, wait, success, failure, isLocked = true } = req.body;
     if (!extension) {
@@ -6540,7 +7148,7 @@ app.post('/api/asterisk/audio/save-extension-config', (req, res) => {
 });
 
 // Endpoint to explicitly save & lock audio configurations for OTP extensions (3333, 4444, 5555, 6666, 7777)
-app.post('/api/asterisk/audio/save-otp-extensions', (req, res) => {
+app.post('/api/asterisk/audio/save-otp-extensions', requireAdminRole, (req, res) => {
   try {
     const {
       welcome_3333, wait_3333, success_3333, failure_3333,
@@ -6607,7 +7215,7 @@ app.post('/api/asterisk/audio/save-otp-extensions', (req, res) => {
 });
 
 // Endpoint to unassign / deactivate an audio from a specific role
-app.post('/api/asterisk/audio/unassign', (req, res) => {
+app.post('/api/asterisk/audio/unassign', requireAdminRole, (req, res) => {
   try {
     const { role } = req.body;
     if (!role) {
@@ -6628,7 +7236,7 @@ app.post('/api/asterisk/audio/unassign', (req, res) => {
 });
 
 // Endpoint to set default IVR answer action (press1 by default)
-app.post('/api/asterisk/action/set-default', (req, res) => {
+app.post('/api/asterisk/action/set-default', requireAdminRole, (req, res) => {
   try {
     const { mode = 'press1' } = req.body;
     const targetContext =
@@ -6662,7 +7270,7 @@ app.get('/api/asterisk/otp-extensions', (req, res) => {
   }
 });
 
-app.post('/api/asterisk/otp-extensions', async (req, res) => {
+app.post('/api/asterisk/otp-extensions', requireAdminRole, async (req, res) => {
   try {
     const { extension, name, purpose, badge, colorName, promptAudio, waitAudio, successAudio, failureAudio, targetAgent } = req.body;
     if (!extension || isNaN(Number(extension))) {
@@ -6726,7 +7334,7 @@ app.post('/api/asterisk/otp-extensions', async (req, res) => {
   }
 });
 
-app.delete('/api/asterisk/otp-extensions/:ext', async (req, res) => {
+app.delete('/api/asterisk/otp-extensions/:ext', requireAdminRole, async (req, res) => {
   try {
     const ext = req.params.ext;
     let list = loadStoredOtpExtensions();
@@ -6775,11 +7383,22 @@ function stripHeavyBlobs(state: any) {
   return clone;
 }
 
+function sanitizeStateForClient(state: any) {
+  if (!state || typeof state !== 'object') return state;
+  const stripped = stripHeavyBlobs(state);
+  if (Array.isArray(stripped.users)) {
+    stripped.users = stripped.users.map(sanitizeUserForClient);
+  }
+  return stripped;
+}
+
 // Lightweight version check: returns version timestamp (30 bytes) so clients don't poll 1.7MB payloads
 app.get('/api/app/user-state/version', (req, res) => {
   try {
-    const userId = String(req.query.userId || '').trim();
-    const username = String(req.query.username || '').trim();
+    const authUser = (req as any).authUser;
+    const isMaster = isGlobalAdminUser(authUser);
+    const userId = isMaster ? String(req.query.userId || authUser?.id || '').trim() : String(authUser?.id || '').trim();
+    const username = isMaster ? String(req.query.username || authUser?.username || '').trim() : String(authUser?.username || '').trim();
     const userPath = getUserConfigPath(userId, username);
     if (fs.existsSync(userPath)) {
       const stats = fs.statSync(userPath);
@@ -6792,18 +7411,24 @@ app.get('/api/app/user-state/version', (req, res) => {
 // User-exclusive state retrieval: guarantees that each user (e.g. admin) always loads their exact configuration across any browser
 app.get('/api/app/user-state', (req, res) => {
   try {
-    const userId = String(req.query.userId || '').trim();
-    const username = String(req.query.username || '').trim();
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const userId = authIsGlobalAdmin
+      ? String(req.query.userId || authUser?.id || '').trim()
+      : String(authUser?.id || '').trim();
+    const username = authIsGlobalAdmin
+      ? String(req.query.username || authUser?.username || '').trim()
+      : String(authUser?.username || '').trim();
     const userPath = getUserConfigPath(userId, username);
 
-    const isMasterUser = !userId || userId === 'user-admin' || username.toLowerCase() === 'admin';
+    const isMasterUser = authIsGlobalAdmin && (!userId || userId === 'user-admin' || username.toLowerCase() === 'admin');
 
     if (fs.existsSync(userPath)) {
       const data = fs.readFileSync(userPath, 'utf-8');
-      const parsedUserState = stripHeavyBlobs(JSON.parse(data));
+      const parsedUserState = sanitizeStateForClient(JSON.parse(data));
       if (!isMasterUser && fs.existsSync(APP_STATE_FILE)) {
         try {
-          const globalState = stripHeavyBlobs(JSON.parse(fs.readFileSync(APP_STATE_FILE, 'utf-8')));
+          const globalState = sanitizeStateForClient(JSON.parse(fs.readFileSync(APP_STATE_FILE, 'utf-8')));
           if (Array.isArray(globalState.carriers) && globalState.carriers.length > 0) {
             parsedUserState.carriers = globalState.carriers;
           }
@@ -6814,7 +7439,13 @@ app.get('/api/app/user-state', (req, res) => {
             parsedUserState.extensions = globalState.extensions;
           }
           if (Array.isArray(globalState.users) && globalState.users.length > 0) {
-            parsedUserState.users = globalState.users;
+            parsedUserState.users = authIsGlobalAdmin
+              ? globalState.users
+              : globalState.users.filter((u: any) =>
+                  authUser?.tenantId
+                    ? String(u.tenantId || '') === String(authUser.tenantId)
+                    : String(u.id) === String(authUser?.id)
+                );
           }
           parsedUserState.lastUpdated = Math.max(Number(parsedUserState.lastUpdated || 0), Number(globalState.lastUpdated || 0));
         } catch (_) {}
@@ -6826,14 +7457,14 @@ app.get('/api/app/user-state', (req, res) => {
       const fallbackPath = getUserConfigPath(`user-${username}`);
       if (fs.existsSync(fallbackPath)) {
         const data = fs.readFileSync(fallbackPath, 'utf-8');
-        return res.json({ success: true, state: stripHeavyBlobs(JSON.parse(data)), source: 'user_fallback' });
+        return res.json({ success: true, state: sanitizeStateForClient(JSON.parse(data)), source: 'user_fallback' });
       }
     }
 
     // Fallback to global app_state.json and initialize user's profile
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
-      const parsed = stripHeavyBlobs(JSON.parse(data));
+      const parsed = sanitizeStateForClient(JSON.parse(data));
       try {
         fs.writeFileSync(userPath, JSON.stringify(parsed, null, 2), 'utf-8');
       } catch (_) {}
@@ -6848,15 +7479,20 @@ app.get('/api/app/user-state', (req, res) => {
 // User-exclusive state save: saves changes specifically to this user's profile
 app.post('/api/app/user-state', (req, res) => {
   try {
-    const { userId, username, state } = req.body;
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const { state } = req.body;
+    const userId = authIsGlobalAdmin ? (req.body.userId || authUser?.id) : authUser?.id;
+    const username = authIsGlobalAdmin ? (req.body.username || authUser?.username) : authUser?.username;
     if (!state || typeof state !== 'object') {
       return res.status(400).json({ success: false, error: 'Objeto de estado requerido' });
     }
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
-      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
     }
+    const sanitizedIncoming = sanitizeStateForClient(state);
     const stateWithTimestamp = {
-      ...stripHeavyBlobs(state),
+      ...sanitizedIncoming,
       lastUpdated: Date.now(),
       savedByUserId: userId || 'unknown',
       savedByUsername: username || 'unknown',
@@ -6870,9 +7506,9 @@ app.post('/api/app/user-state', (req, res) => {
       fs.writeFileSync(userByNamePath, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
     }
 
-    // Keep global app_state.json in sync
-    const isMasterUser = !userId || userId === 'user-admin' || username === 'admin';
-    if (isMasterUser || !fs.existsSync(APP_STATE_FILE)) {
+    // Only global admins may overwrite global app_state.json
+    const isMasterUser = authIsGlobalAdmin && (!userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin');
+    if (isMasterUser) {
       fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
     }
 
@@ -6885,19 +7521,33 @@ app.post('/api/app/user-state', (req, res) => {
 
 app.get('/api/app/state', (req, res) => {
   try {
-    const userId = String(req.query.userId || '').trim();
-    const username = String(req.query.username || '').trim();
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const userId = authIsGlobalAdmin
+      ? String(req.query.userId || authUser?.id || '').trim()
+      : String(authUser?.id || '').trim();
+    const username = authIsGlobalAdmin
+      ? String(req.query.username || authUser?.username || '').trim()
+      : String(authUser?.username || '').trim();
     if (userId || username) {
       const userPath = getUserConfigPath(userId, username);
       if (fs.existsSync(userPath)) {
         const data = fs.readFileSync(userPath, 'utf-8');
-        return res.json({ success: true, state: JSON.parse(data), source: 'user_file' });
+        return res.json({ success: true, state: sanitizeStateForClient(JSON.parse(data)), source: 'user_file' });
       }
     }
 
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
-      return res.json({ success: true, state: JSON.parse(data) });
+      const parsed = sanitizeStateForClient(JSON.parse(data));
+      if (!authIsGlobalAdmin && Array.isArray(parsed.users)) {
+        parsed.users = parsed.users.filter((u: any) =>
+          authUser?.tenantId
+            ? String(u.tenantId || '') === String(authUser.tenantId)
+            : String(u.id) === String(authUser?.id)
+        );
+      }
+      return res.json({ success: true, state: parsed });
     }
   } catch (err: any) {
     console.error('[STATE] Error leyendo app_state.json:', err);
@@ -6907,25 +7557,32 @@ app.get('/api/app/state', (req, res) => {
 
 app.post('/api/app/state', (req, res) => {
   try {
-    const { state, userId, username } = req.body;
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const { state } = req.body;
+    const userId = authIsGlobalAdmin ? (req.body.userId || authUser?.id) : authUser?.id;
+    const username = authIsGlobalAdmin ? (req.body.username || authUser?.username) : authUser?.username;
     if (!state || typeof state !== 'object') {
       return res.status(400).json({ success: false, error: 'Objeto de estado requerido' });
     }
     const dataDir = path.join(process.cwd(), 'data');
     if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+      fs.mkdirSync(dataDir, { recursive: true, mode: 0o750 });
     }
+    const sanitizedForStorage = sanitizeStateForClient(state);
     const stateWithTimestamp = {
-      ...state,
+      ...sanitizedForStorage,
       lastUpdated: Date.now(),
       savedByUserId: userId || 'unknown',
       savedByUsername: username || 'unknown',
     };
-    fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
 
-    if (Array.isArray(state.users) && state.users.length > 0) {
-      saveStoredUsers(state.users);
-      lastSyncedUsers = state.users;
+    if (authIsGlobalAdmin) {
+      fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
+      if (Array.isArray(state.users) && state.users.length > 0) {
+        saveStoredUsers(state.users);
+        lastSyncedUsers = loadStoredUsers();
+      }
     }
 
     if (userId || username) {
@@ -6963,13 +7620,21 @@ app.get('/api/app/master-entities', (req, res) => {
 
 app.get('/api/app/ivr-workspace', (req, res) => {
   try {
-    const userId = String(req.query.userId || '').trim();
-    const username = String(req.query.username || '').trim();
-    let tenantId = String(req.query.tenantId || '').trim();
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const userId = authIsGlobalAdmin
+      ? String(req.query.userId || authUser?.id || '').trim()
+      : String(authUser?.id || '').trim();
+    const username = authIsGlobalAdmin
+      ? String(req.query.username || authUser?.username || '').trim()
+      : String(authUser?.username || '').trim();
+    let tenantId = authIsGlobalAdmin
+      ? String(req.query.tenantId || '').trim()
+      : String(authUser?.tenantId || '').trim();
     const usersList = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
     const matchedUser = (userId || username)
       ? usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === username.toLowerCase())))
-      : null;
+      : authUser;
     if (!tenantId && matchedUser?.tenantId) {
       tenantId = String(matchedUser.tenantId);
     }
@@ -6977,7 +7642,7 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     const isSuperAdminReq = Boolean(
       matchedUser
         ? matchedUser.role === 'admin' && !matchedUser.tenantId && !tenantId
-        : (!tenantId && (!userId || userId === 'user-admin' || username.toLowerCase() === 'admin'))
+        : authIsGlobalAdmin
     );
 
     const masterEntities = getMasterEntitiesFromDisk();
@@ -7073,8 +7738,14 @@ app.get('/api/app/ivr-workspace', (req, res) => {
 
 app.post('/api/app/ivr-workspace', (req, res) => {
   try {
-    const { userId, username, workspace } = req.body;
-    let tenantId = String(req.body.tenantId || '').trim();
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const { workspace } = req.body;
+    const userId = authIsGlobalAdmin ? (req.body.userId || authUser?.id) : authUser?.id;
+    const username = authIsGlobalAdmin ? (req.body.username || authUser?.username) : authUser?.username;
+    let tenantId = authIsGlobalAdmin
+      ? String(req.body.tenantId || '').trim()
+      : String(authUser?.tenantId || '').trim();
     if (!workspace || typeof workspace !== 'object') {
       return res.status(400).json({ success: false, error: 'workspace requerido' });
     }
@@ -7084,7 +7755,7 @@ app.post('/api/app/ivr-workspace', (req, res) => {
       if (matched?.tenantId) tenantId = String(matched.tenantId);
     }
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
-      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true });
+      fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
     }
     const payloadWithTs = {
       ...workspace,
@@ -7095,8 +7766,8 @@ app.post('/api/app/ivr-workspace', (req, res) => {
     };
     const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     fs.writeFileSync(userWsPath, JSON.stringify(payloadWithTs, null, 2), 'utf8');
-    const isMaster = !tenantId && (!userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin');
-    if (isMaster || !fs.existsSync(IVR_WORKSPACE_FILE)) {
+    const isMaster = authIsGlobalAdmin && !tenantId && (!userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin');
+    if (isMaster) {
       fs.writeFileSync(IVR_WORKSPACE_FILE, JSON.stringify(payloadWithTs, null, 2), 'utf8');
     }
     return res.json({ success: true, lastUpdated: payloadWithTs.lastUpdated });
@@ -7107,21 +7778,26 @@ app.post('/api/app/ivr-workspace', (req, res) => {
 });
 
 // Delete an audio file
-app.post('/api/asterisk/audio/delete', (req, res) => {
+app.post('/api/asterisk/audio/delete', requireAdminRole, (req, res) => {
   try {
-    const { asteriskPath, fileName } = req.body;
-    const base = (fileName || asteriskPath?.replace('custom/', ''))?.replace(/\.[^/.]+$/, '');
+    const { asteriskPath, fileName } = req.body || {};
+    const rawInput = String(fileName || (asteriskPath ? String(asteriskPath).replace(/^custom\//, '') : '') || '');
+    const base = path.basename(rawInput).replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_\-]/g, '');
     if (!base) {
-      return res.status(400).json({ success: false, error: 'Nombre de archivo requerido' });
+      return res.status(400).json({ success: false, error: 'Nombre de archivo requerido o inválido' });
     }
 
-    const filePath = path.join(SOUNDS_CUSTOM_DIR, `${base}.wav`);
+    const customRoot = path.resolve(SOUNDS_CUSTOM_DIR);
+    const filePath = path.resolve(customRoot, `${base}.wav`);
+    if (!filePath.startsWith(customRoot + path.sep)) {
+      return res.status(400).json({ success: false, error: 'Ruta de archivo no permitida' });
+    }
+
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return res.json({ success: true, message: `Archivo ${base}.wav eliminado` });
     }
-    exec(`sudo rm -f "${SOUNDS_CUSTOM_DIR}/${base}.wav"`, () => {});
-    res.json({ success: true, message: `Orden de eliminación enviada para ${base}.wav` });
+    return res.status(404).json({ success: false, error: `Archivo ${base}.wav no encontrado` });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -7173,14 +7849,14 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       agentId,
       tenantId,
       isManualSave,
-      isAdmin,
-      isSuperAdmin,
     } = req.body;
 
-    const effectiveSuperAdmin = Boolean(isSuperAdmin || (isAdmin && !tenantId));
+    const authUser = (req as any).authUser;
+    const effectiveSuperAdmin = isGlobalAdminUser(authUser);
+    const scopedTenantId = effectiveSuperAdmin ? tenantId : (authUser?.tenantId || tenantId);
 
     // Check if IVR entity / script is manually locked globally (only blocks auto-sync when no agentId/tenantId is specified)
-    if (manualAudioLocks.ivr_entity && !isManualSave && !agentId && !tenantId) {
+    if (manualAudioLocks.ivr_entity && !isManualSave && !agentId && !scopedTenantId) {
       console.log('[AstDB LOCK] Guión / Entidad de IVR está bloqueada manualmente (isLocked: true). Sincronización automática ignorada.');
       return res.json({
         success: true,
@@ -7210,8 +7886,8 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const secondaryTargets = new Set<string>();
 
     // 1. Tenant-isolated target (guarantees zero cross-talk between Call Centers)
-    if (tenantId) {
-      const cleanTenantId = String(tenantId).trim().replace(/[^0-9a-zA-Z_-]/g, '');
+    if (scopedTenantId) {
+      const cleanTenantId = String(scopedTenantId).trim().replace(/[^0-9a-zA-Z_-]/g, '');
       if (cleanTenantId) {
         primaryTargets.add(`tenant_${cleanTenantId}`);
       }
@@ -7227,7 +7903,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     }
 
     // 3. Specific destination target if dialing a customer
-    if (destination && !tenantId) {
+    if (destination && !scopedTenantId) {
       const clean = String(destination).trim().replace(/[^0-9]/g, '');
       if (clean) {
         primaryTargets.add(clean);
@@ -7364,7 +8040,14 @@ app.all('/api/asterisk/audio/verify', (req, res) => {
   }
 
   // Asterisk sounds typically reside in SOUNDS_CUSTOM_DIR or /var/lib/asterisk/sounds/
-  const cleanName = audioPath.replace(/^custom\//, '').replace(/\.[^/.]+$/, '').trim();
+  const cleanName = path
+    .basename(String(audioPath).replace(/^custom\//, ''))
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9_\-]/g, '')
+    .trim();
+  if (!cleanName) {
+    return res.status(400).json({ success: false, exists: false, error: 'Nombre de audio inválido' });
+  }
   const candidates = [
     path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.wav`),
     path.join(SOUNDS_CUSTOM_DIR, `${cleanName}.gsm`),
@@ -7407,8 +8090,12 @@ app.all('/api/asterisk/audio/verify', (req, res) => {
 });
 
 // Download raw audio file for Asterisk sounds directory (/var/lib/asterisk/sounds/custom/...)
-app.get('/api/asterisk/audio/raw/:name', (req, res) => {
-  const rawName = req.params.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+app.get(['/api/asterisk/audio/raw', '/api/asterisk/audio/raw/:name'], (req, res) => {
+  const inputName = String(req.params.name || req.query.file || '');
+  const rawName = path.basename(inputName).replace(/^custom\//, '').replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!rawName) {
+    return res.status(400).json({ success: false, error: 'Nombre de archivo inválido' });
+  }
   const assetWav = path.join(process.cwd(), 'public/assets', `${rawName}.wav`);
   const assetGsm = path.join(process.cwd(), 'public/assets', `${rawName}.gsm`);
   const wavPath = path.join(SOUNDS_CUSTOM_DIR, `${rawName}.wav`);
@@ -7457,7 +8144,7 @@ app.get('/api/asterisk/audio/raw/:name', (req, res) => {
 });
 
 // Universal 1-liner bash updater for remote VPS
-app.get('/api/vps/update.sh', (req, res) => {
+app.get('/api/vps/update.sh', requireInternalOrGlobalAdmin, (req, res) => {
   const host = req.get('host') || 'localhost:3000';
   const proto = req.protocol || 'http';
   const baseUrl = `${proto}://${host}`;
@@ -7491,6 +8178,7 @@ if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
 
   echo "=== [2/6] Descargando ultimos cambios de GitHub (git pull) ==="
   mkdir -p /tmp/ast20_db_backup
+  [ -f .env ] && cp -f .env /tmp/ast20_db_backup/.env 2>/dev/null || true
   [ -f reseller_data.json ] && cp -f reseller_data.json /tmp/ast20_db_backup/reseller_data.json 2>/dev/null || true
   [ -d data ] && cp -rf data /tmp/ast20_db_backup/ 2>/dev/null || true
 
@@ -7501,7 +8189,10 @@ if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
     git reset --hard "origin/$BRANCH" 2>/dev/null || git reset --hard origin/main 2>/dev/null || git pull --force || true
   fi
 
-  # Restaurar base de datos de clientes y saldos para que ninguna actualizacion los sobreescriba
+  # Restaurar .env, bases de datos de clientes y saldos para que ninguna actualizacion los sobreescriba
+  if [ -f /tmp/ast20_db_backup/.env ]; then
+    cp -f /tmp/ast20_db_backup/.env ./.env 2>/dev/null || true
+  fi
   if [ -f /tmp/ast20_db_backup/reseller_data.json ]; then
     cp -f /tmp/ast20_db_backup/reseller_data.json ./reseller_data.json 2>/dev/null || true
   fi
@@ -7521,27 +8212,28 @@ echo "=== [5/6] Sincronizando configuracion pura Asterisk 20 ==="
 mkdir -p /etc/asterisk
 mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
 mkdir -p /var/spool/asterisk/outgoing
-chmod 777 /var/spool/asterisk/outgoing 2>/dev/null || true
+chmod 750 /var/spool/asterisk/outgoing 2>/dev/null || true
 
-curl -sSLk "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf || true
-curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf || true
+curl -sSLk -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf || true
+curl -sSLk -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf || true
 
 cat << 'EOF_MGR' > /etc/asterisk/manager.conf
 [general]
 enabled = yes
-port = 5038
-bindaddr = 0.0.0.0
+port = ${AMI_PORT}
+bindaddr = 127.0.0.1
 
-[sammy]
-secret = Robert2026RDTGcvgbsg
+[${AMI_USER}]
+secret = ${AMI_SECRET}
 read = all
 write = all
 
 [admin]
-secret = mysecretpass
+secret = ${AMI_ADMIN_SECRET}
 read = all
 write = all
 EOF_MGR
+chmod 640 /etc/asterisk/manager.conf 2>/dev/null || true
 
 echo "Recargando Asterisk PJSIP, Dialplan y Audio Natural..."
 asterisk -rx "database deltree voice_changer" 2>/dev/null || true
@@ -7594,7 +8286,7 @@ echo "=========================================================="
 });
 
 // Universal 1-liner bash installer for remote VPS vmi3461829
-app.get('/api/asterisk/install.sh', (req, res) => {
+app.get('/api/asterisk/install.sh', requireInternalOrGlobalAdmin, (req, res) => {
   const host = req.get('host') || 'localhost:3000';
   const proto = req.protocol || 'http';
   const baseUrl = `${proto}://${host}`;
@@ -7614,30 +8306,31 @@ echo "=== [2/5] Descargando dialplan extensions.conf y pjsip.conf actualizado ==
 if [ -f /etc/asterisk/extensions.conf ]; then
   cp /etc/asterisk/extensions.conf /etc/asterisk/extensions.conf.bak_$(date +%s)
 fi
-curl -sSLk "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
+curl -sSLk -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "${baseUrl}/api/asterisk/config/extensions.conf" -o /etc/asterisk/extensions.conf
 
 if [ -f /etc/asterisk/pjsip.conf ]; then
   cp /etc/asterisk/pjsip.conf /etc/asterisk/pjsip.conf.bak_$(date +%s)
 fi
-curl -sSLk "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf
+curl -sSLk -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "${baseUrl}/api/asterisk/config/pjsip.conf" -o /etc/asterisk/pjsip.conf
 
-# Configuración segura de AMI para sammy y admin
+# Configuración segura de AMI (solo loopback)
 cat << 'EOF_MGR' > /etc/asterisk/manager.conf
 [general]
 enabled = yes
-port = 5038
-bindaddr = 0.0.0.0
+port = ${AMI_PORT}
+bindaddr = 127.0.0.1
 
-[sammy]
-secret = Robert2026RDTGcvgbsg
+[${AMI_USER}]
+secret = ${AMI_SECRET}
 read = all
 write = all
 
 [admin]
-secret = mysecretpass
+secret = ${AMI_ADMIN_SECRET}
 read = all
 write = all
 EOF_MGR
+chmod 640 /etc/asterisk/manager.conf 2>/dev/null || true
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
 AUDIOS=("banrearreglado" "alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777" "bienvenida_6666" "bienvenida_5555" "bienvenida_4444" "bienvenida_3333")
@@ -7651,7 +8344,7 @@ for aud in "\${AUDIOS[@]}"; do
     curl -sSLk "\${baseUrl}/api/asterisk/audio/raw/\${aud}" -o "/var/lib/asterisk/sounds/custom/\${aud}.wav" || true
   fi
 done
-chmod -R 777 /var/lib/asterisk/sounds
+chmod -R 775 /var/lib/asterisk/sounds 2>/dev/null || true
 
 echo "=== [4/5] Configurando base de datos interna AstDB ==="
 asterisk -rx 'database put ivr_vars default_intro custom/banrearreglado' || true
@@ -7735,12 +8428,29 @@ interface CapturedOtpItem {
   tenantId?: string; // Call Center / Tenant ID para partición de base de datos
 }
 
-let capturedOtpHistory: CapturedOtpItem[] = [];
+function loadStoredOtpHistory(): CapturedOtpItem[] {
+  try {
+    if (fs.existsSync(OTP_HISTORY_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(OTP_HISTORY_FILE, 'utf8'));
+      if (Array.isArray(parsed)) return parsed.slice(0, 300);
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveStoredOtpHistory(list: CapturedOtpItem[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+    fs.writeFileSync(OTP_HISTORY_FILE, JSON.stringify((list || []).slice(0, 300), null, 2), { encoding: 'utf8', mode: 0o600 });
+  } catch (_) {}
+}
+
+let capturedOtpHistory: CapturedOtpItem[] = loadStoredOtpHistory();
 let lastAstDbSyncTime = 0;
 let isSyncingAstDb = false;
 
 // Endpoint to receive OTP captures from Asterisk curl (GET or POST) or AMI
-app.all('/api/asterisk/otp/capture', (req, res) => {
+app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) => {
   const number = req.body?.number || req.query?.number;
   const callerid = req.body?.callerid || req.query?.callerid;
   const otp = req.body?.otp || req.query?.otp;
@@ -7816,6 +8526,7 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
     }
     capturedOtpHistory.unshift(record);
     if (capturedOtpHistory.length > 300) capturedOtpHistory.pop();
+    saveStoredOtpHistory(capturedOtpHistory);
     lastAstDbSyncTime = 0; // Invalidate cache so polling gets updated immediately
 
     console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${cleanOtp}] - Tel: ${cleanNumber} (Agente: ${record.agent || 'pendiente'}, Call Center Tenant: ${record.tenantId || 'Global'})`);
@@ -7836,6 +8547,7 @@ app.all('/api/asterisk/otp/capture', (req, res) => {
 // Endpoint for agent to decide if captured OTP is valid or invalid
 app.post('/api/asterisk/otp/decision', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const { id, otp, number, status, action, agent } = req.body;
     if (!status || (status !== 'valid' && status !== 'invalid')) {
       return res.status(400).json({ success: false, error: 'El estado debe ser "valid" o "invalid"' });
@@ -7844,16 +8556,28 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
     let targetRecord: CapturedOtpItem | undefined;
     if (id) {
       targetRecord = capturedOtpHistory.find((r) => r.id === id);
-      if (targetRecord) targetRecord.status = status;
     } else if (number && otp) {
       targetRecord = capturedOtpHistory.find((r) => r.number === number && r.otp === otp);
-      if (targetRecord) targetRecord.status = status;
     } else if (number) {
       targetRecord = capturedOtpHistory.find((r) => r.number === number);
-      if (targetRecord) targetRecord.status = status;
     } else if (otp) {
       targetRecord = capturedOtpHistory.find((r) => r.otp === otp);
-      if (targetRecord) targetRecord.status = status;
+    }
+
+    if (targetRecord && !isGlobalAdminUser(authUser)) {
+      if (authUser?.tenantId && targetRecord.tenantId && String(targetRecord.tenantId) !== String(authUser.tenantId)) {
+        return res.status(403).json({ success: false, error: 'No autorizado para validar códigos de otro Call Center.' });
+      }
+      if (!isAdminUser(authUser) && Array.isArray(authUser?.assignedExtensions) && authUser.assignedExtensions.length > 0 && targetRecord.agent) {
+        if (!authUser.assignedExtensions.map(String).includes(String(targetRecord.agent))) {
+          return res.status(403).json({ success: false, error: 'No autorizado para validar códigos de otra extensión.' });
+        }
+      }
+    }
+
+    if (targetRecord) {
+      targetRecord.status = status;
+      saveStoredOtpHistory(capturedOtpHistory);
     }
 
     lastAstDbSyncTime = 0; // Force immediate refresh
@@ -7936,27 +8660,46 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', async (req, res) => {
+  const authUser = (req as any).authUser;
+  const authIsGlobalAdmin = isGlobalAdminUser(authUser);
   const forceFresh = req.query.fresh === '1' || req.query.fresh === 'true';
   const shouldClear = req.query.clear === '1' || req.query.clear === 'true';
-  const queryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : undefined;
+  const rawQueryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : undefined;
+  const queryTenantId = authIsGlobalAdmin
+    ? rawQueryTenantId
+    : (authUser?.tenantId ? String(authUser.tenantId) : rawQueryTenantId);
   const queryExtensionsRaw = req.query.extensions ? String(req.query.extensions).trim() : '';
-  const allowedExts = queryExtensionsRaw
+  const requestedExts = queryExtensionsRaw
     ? queryExtensionsRaw.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
+  const userAssignedExts = Array.isArray(authUser?.assignedExtensions)
+    ? authUser.assignedExtensions.map((s: any) => String(s).trim()).filter(Boolean)
+    : [];
+  const allowedExts = authIsGlobalAdmin || isAdminUser(authUser)
+    ? requestedExts
+    : (requestedExts.length > 0 && userAssignedExts.length > 0
+        ? requestedExts.filter((e) => userAssignedExts.includes(e))
+        : userAssignedExts);
 
   if (shouldClear) {
     if (allowedExts.length > 0) {
       capturedOtpHistory = capturedOtpHistory.filter(
         (r) => !r.agent || !allowedExts.includes(String(r.agent).trim())
       );
+      saveStoredOtpHistory(capturedOtpHistory);
       for (const ext of allowedExts) {
         executeAsteriskCommand(`database del otp_codes "${ext}"`).catch(() => {});
         executeAsteriskCommand(`database del otp_status "${ext}"`).catch(() => {});
       }
     } else if (queryTenantId && queryTenantId !== 'all') {
       capturedOtpHistory = capturedOtpHistory.filter((r) => r.tenantId !== queryTenantId);
+      saveStoredOtpHistory(capturedOtpHistory);
     } else {
+      if (!authIsGlobalAdmin) {
+        return res.status(403).json({ success: false, error: 'Solo el Super Administrador Global puede borrar todo el historial.' });
+      }
       capturedOtpHistory = [];
+      saveStoredOtpHistory(capturedOtpHistory);
       lastAstDbSyncTime = Date.now();
       try {
         await executeAsteriskCommand('database deltree otp_codes');
@@ -7984,9 +8727,11 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
       if (recAgent) return allowedExts.includes(recAgent);
       return allowedExts.includes(String(r.number).trim());
     });
+  } else if (!authIsGlobalAdmin && authUser?.tenantId) {
+    filteredRecords = filteredRecords.filter((r) => String(r.tenantId || '') === String(authUser.tenantId));
   }
 
-  res.json({ success: true, records: filteredRecords, totalAllTenants: capturedOtpHistory.length });
+  res.json({ success: true, records: filteredRecords, totalAllTenants: authIsGlobalAdmin ? capturedOtpHistory.length : filteredRecords.length });
 
   // Optional background sync with Asterisk AstDB every 10 seconds without blocking response
   if (!isSyncingAstDb && (forceFresh || now - lastAstDbSyncTime >= 10000)) {
@@ -8095,6 +8840,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
           }
         }
         lastAstDbSyncTime = Date.now();
+        saveStoredOtpHistory(capturedOtpHistory);
       } catch (err: any) {
         console.warn('AstDB sync warning:', err.message);
       } finally {
@@ -8109,7 +8855,11 @@ app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async 
   if (req.method !== 'DELETE' && req.path !== '/api/asterisk/otp/records/clear') {
     return next();
   }
+  if (!isGlobalAdminUser((req as any).authUser)) {
+    return res.status(403).json({ success: false, error: 'Solo el Super Administrador Global puede limpiar todos los registros OTP.' });
+  }
   capturedOtpHistory = [];
+  saveStoredOtpHistory(capturedOtpHistory);
   lastAstDbSyncTime = Date.now();
   try {
     await executeAsteriskCommand('database deltree otp_codes');
@@ -8123,9 +8873,30 @@ app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async 
   res.json({ success: true, message: 'Historial y registros de pruebas anteriores eliminados de memoria y de Asterisk.' });
 });
 
+function canUserAccessCall(authUser: any, call: any): boolean {
+  if (!authUser) return false;
+  if (isGlobalAdminUser(authUser)) return true;
+  if (authUser.tenantId && call?.tenantId && String(call.tenantId) !== String(authUser.tenantId)) {
+    return false;
+  }
+  if (!isAdminUser(authUser) && Array.isArray(authUser.assignedExtensions) && authUser.assignedExtensions.length > 0) {
+    const allowed = new Set(authUser.assignedExtensions.map(String));
+    const callAgent = String(call?.agent || '').trim();
+    if (callAgent && callAgent !== 'ringall' && callAgent !== 'all') {
+      const parts = callAgent.split('&').map((s: string) => s.trim()).filter(Boolean);
+      if (parts.length > 0 && !parts.some((ext: string) => allowed.has(ext))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Endpoint to inspect live channels on Asterisk with structured channel parsing
 app.get('/api/asterisk/live/channels', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
     let amiOutput = await executeAsteriskCommand('core show channels concise');
 
     const parsedChannels: any[] = [];
@@ -8156,6 +8927,7 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
     if (parsedChannels.length === 0) {
       const now = Date.now();
       for (const call of callStatusStore.values()) {
+        if (!canUserAccessCall(authUser, call)) continue;
         if (call.status !== 'ended' && call.status !== 'machine' && (now - call.timestamp < 1800000)) {
           const liveDuration = Math.max(0, Math.floor((now - (call.answeredAt || call.startTime || call.timestamp)) / 1000));
           parsedChannels.push({
@@ -8174,7 +8946,16 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
       }
     }
 
-    res.json({ success: true, channels: parsedChannels, raw: amiOutput });
+    const filteredChannels = authIsGlobalAdmin
+      ? parsedChannels
+      : parsedChannels.filter((ch) => {
+          if (isAdminUser(authUser)) return true;
+          const allowedExts = Array.isArray(authUser?.assignedExtensions) ? authUser.assignedExtensions.map(String) : [];
+          if (allowedExts.length === 0) return true;
+          return allowedExts.some((ext: string) => ch.channel.includes(`/${ext}`) || ch.extension === ext || ch.data.includes(ext));
+        });
+
+    res.json({ success: true, channels: filteredChannels, raw: authIsGlobalAdmin ? amiOutput : '' });
   } catch (err: any) {
     res.json({ success: false, channels: [], raw: '', error: err.message });
   }
@@ -8182,20 +8963,23 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
 
 // Endpoint to query current state of a destination number
 app.get('/api/asterisk/call/status', (req, res) => {
+  const authUser = (req as any).authUser;
   const number = String(req.query.number || '').trim().replace(/[^0-9]/g, '');
   if (!number) {
-    const list = Array.from(callStatusStore.values()).map((c) => {
-      const isAlive = c.status !== 'ended' && c.status !== 'machine';
-      const liveDuration = isAlive
-        ? Math.max(0, Math.floor((Date.now() - (c.answeredAt || c.startTime || c.timestamp)) / 1000))
-        : (c.duration || 0);
-      return { ...c, duration: liveDuration };
-    });
+    const list = Array.from(callStatusStore.values())
+      .filter((c) => canUserAccessCall(authUser, c))
+      .map((c) => {
+        const isAlive = c.status !== 'ended' && c.status !== 'machine';
+        const liveDuration = isAlive
+          ? Math.max(0, Math.floor((Date.now() - (c.answeredAt || c.startTime || c.timestamp)) / 1000))
+          : (c.duration || 0);
+        return { ...c, duration: liveDuration };
+      });
     return res.json({ success: true, calls: list });
   }
   const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
   const state = callStatusStore.get(number) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
-  if (state) {
+  if (state && canUserAccessCall(authUser, state)) {
     const isAlive = state.status !== 'ended' && state.status !== 'machine';
     const liveDuration = isAlive
       ? Math.max(0, Math.floor((Date.now() - (state.answeredAt || state.startTime || state.timestamp)) / 1000))
@@ -8207,7 +8991,8 @@ app.get('/api/asterisk/call/status', (req, res) => {
 
 // Endpoint to get the currently running active call across all tabs
 app.get('/api/asterisk/call/latest-active', (req, res) => {
-  const allCalls = Array.from(callStatusStore.values());
+  const authUser = (req as any).authUser;
+  const allCalls = Array.from(callStatusStore.values()).filter((c) => canUserAccessCall(authUser, c));
   const active = allCalls.reverse().find(
     (c) => c.status !== 'ended' && c.status !== 'machine' && Date.now() - c.timestamp < 1800000
   );
@@ -8222,7 +9007,7 @@ app.get('/api/asterisk/call/latest-active', (req, res) => {
 });
 
 // Real-time status update from dialplan (e.g. press 1, answered, transfer, hangup 'h' or AMD answering machine detected)
-app.all('/api/asterisk/call/status/update', (req, res) => {
+app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, res) => {
   const number = String(req.query.number || req.body?.number || '').trim().replace(/[^0-9]/g, '');
   const status = String(req.query.status || req.body?.status || 'ended').trim();
   const cause = String(req.query.cause || req.body?.cause || '').trim();
@@ -8285,7 +9070,7 @@ app.all('/api/asterisk/call/status/update', (req, res) => {
 
 // Endpoint to handle automatic redial when client does not answer or recording (AMD) is detected
 // STRICT LIMIT: The system will dial a maximum of 2 times in total (1 initial dial + 1 retry). No more!
-app.all('/api/asterisk/call/retry', async (req, res) => {
+app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, res) => {
   try {
     const number = String(req.query.number || req.body?.number || '').trim().replace(/[^0-9]/g, '');
     const cause = String(req.query.cause || req.body?.cause || 'AMD_MACHINE').trim();
@@ -8488,7 +9273,7 @@ app.get('/api/asterisk/amd/status', async (req, res) => {
 });
 
 // Endpoint to toggle AMD detection on or off
-app.post('/api/asterisk/amd/toggle', async (req, res) => {
+app.post('/api/asterisk/amd/toggle', requireAdminRole, async (req, res) => {
   try {
     const { enabled } = req.body;
     isAmdEnabled = enabled !== undefined ? !!enabled : !isAmdEnabled;
@@ -8505,7 +9290,7 @@ app.post('/api/asterisk/amd/toggle', async (req, res) => {
       try {
         fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/amd/toggle`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({ enabled: isAmdEnabled }),
         }).catch(() => {});
       } catch (_) {}
@@ -8555,7 +9340,7 @@ app.get('/api/asterisk/press1-destination', async (req, res) => {
 });
 
 // Endpoint to save Press 1 destination settings persistently to AstDB and server memory
-app.post('/api/asterisk/press1-destination/save', async (req, res) => {
+app.post('/api/asterisk/press1-destination/save', requireAdminRole, async (req, res) => {
   try {
     const { mode, extensions } = req.body;
     if (mode === 'specific') {
@@ -8581,7 +9366,7 @@ app.post('/api/asterisk/press1-destination/save', async (req, res) => {
       try {
         fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/press1-destination/save`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify(req.body),
         }).catch(() => {});
       } catch (_) {}
@@ -8612,7 +9397,7 @@ app.get('/api/asterisk/callerid', async (req, res) => {
   });
 });
 
-app.post('/api/asterisk/callerid', async (req, res) => {
+app.post('/api/asterisk/callerid', requireAdminRole, async (req, res) => {
   res.json({
     success: true,
     message: 'El identificador de llamada (CallerID y Nombre Visible) es gestionado directamente por el carrier.',
@@ -8632,7 +9417,7 @@ app.get('/api/asterisk/voice-changer', (req, res) => {
   });
 });
 
-app.post('/api/asterisk/voice-changer', async (req, res) => {
+app.post('/api/asterisk/voice-changer', requireAdminRole, async (req, res) => {
   await executeAsteriskCommand('database deltree voice_changer').catch(() => {});
   res.json({
     success: true,
@@ -8650,13 +9435,26 @@ app.get('/api/asterisk/voice-changer/diagnostic', async (req, res) => {
 // Endpoint to list live calls for LiveCallsTab monitoring in real-time
 app.get('/api/asterisk/live/calls', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
     const list: any[] = [];
     const now = Date.now();
-    const queryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : '';
+    const rawQueryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : '';
+    const queryTenantId = authIsGlobalAdmin
+      ? rawQueryTenantId
+      : (authUser?.tenantId ? String(authUser.tenantId) : rawQueryTenantId);
     const queryExtensionsRaw = req.query.extensions ? String(req.query.extensions).trim() : '';
-    const allowedExts = queryExtensionsRaw
+    const requestedExts = queryExtensionsRaw
       ? queryExtensionsRaw.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
+    const userAssignedExts = Array.isArray(authUser?.assignedExtensions)
+      ? authUser.assignedExtensions.map((s: any) => String(s).trim()).filter(Boolean)
+      : [];
+    const allowedExts = authIsGlobalAdmin || isAdminUser(authUser)
+      ? requestedExts
+      : (requestedExts.length > 0 && userAssignedExts.length > 0
+          ? requestedExts.filter((e) => userAssignedExts.includes(e))
+          : userAssignedExts);
 
     const norm10 = (val?: string) => {
       const digits = String(val || '').replace(/[^0-9]/g, '');
@@ -8850,8 +9648,17 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
 // Endpoint to toggle Hold (Music on Hold) for a live call
 app.post('/api/asterisk/call/hold', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const { number, channel, hold = true, holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_' } = req.body;
     const cleanNum = String(number || '').trim().replace(/[^0-9]/g, '');
+
+    if (cleanNum) {
+      const c10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
+      const targetCall = callStatusStore.get(cleanNum) || callStatusStore.get(c10) || callStatusStore.get(`1${c10}`);
+      if (targetCall && !canUserAccessCall(authUser, targetCall)) {
+        return res.status(403).json({ success: false, error: 'No autorizado para poner en espera llamadas de otro Call Center o extensión.' });
+      }
+    }
 
     const updateState = (state: CallState) => {
       state.isOnHold = !!hold;
@@ -8903,7 +9710,7 @@ app.post('/api/asterisk/call/hold', async (req, res) => {
 });
 
 // Endpoint to synchronize Hold Music per entity into Asterisk
-app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
+app.post('/api/asterisk/audio/sync-hold-music', requireAdminRole, async (req, res) => {
   try {
     const { entityId, holdMusicPath } = req.body;
     if (!entityId || !holdMusicPath) {
@@ -8925,7 +9732,7 @@ app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
       try {
         fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/audio/sync-hold-music`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
           body: JSON.stringify(req.body),
         }).catch(() => {});
       } catch (_) {}
@@ -8940,11 +9747,22 @@ app.post('/api/asterisk/audio/sync-hold-music', async (req, res) => {
 
 // Endpoint to hangup an active call (individual or all mass campaign calls)
 app.post('/api/asterisk/call/hangup', async (req, res) => {
+  const authUser = (req as any).authUser;
   const { channel, number, destination, all } = req.body;
   try {
+    if (all && !isAdminUser(authUser)) {
+      return res.status(403).json({ success: false, error: 'Solo administradores o supervisores pueden colgar todas las llamadas.' });
+    }
     const rawNum = String(number || destination || '').trim().replace(/[^0-9]/g, '');
     const clean10 = rawNum.length === 11 && rawNum.startsWith('1') ? rawNum.substring(1) : rawNum;
     const formattedDest = clean10.length === 10 ? `1${clean10}` : clean10;
+
+    if (!all && rawNum) {
+      const ownedCheck = callStatusStore.get(clean10) || callStatusStore.get(formattedDest) || callStatusStore.get(rawNum);
+      if (ownedCheck && !canUserAccessCall(authUser, ownedCheck)) {
+        return res.status(403).json({ success: false, error: 'No autorizado para colgar llamadas de otro Call Center o extensión.' });
+      }
+    }
 
     // 1. Immediately register cancellation to permanently block any retry from dialplan
     const now = Date.now();
@@ -8990,8 +9808,8 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
       try {
         await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/hangup`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-governor-fwd': 'true' },
-          body: JSON.stringify({ ...req.body, all: true }),
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(all ? { ...req.body, all: true } : req.body),
         }).catch(() => {});
       } catch (_) {}
     }
@@ -9143,7 +9961,7 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
 });
 
 // Endpoint to purge zombie or orphan Local channels stuck in infinite loops
-app.post('/api/asterisk/call/purge-zombies', async (req, res) => {
+app.post('/api/asterisk/call/purge-zombies', requireAdminRole, async (req, res) => {
   try {
     cliCommandCache.delete('core show channels concise');
     const amiOutput = await executeAsteriskCommand('core show channels concise');
@@ -9187,30 +10005,44 @@ app.post('/api/asterisk/call/purge-zombies', async (req, res) => {
 // Endpoint to transfer an active live call directly to the automated OTP capture system (Ext. 3333)
 app.post('/api/asterisk/call/transfer-otp', async (req, res) => {
   try {
-    const { channel, number, exten = '3333', agent } = req.body;
-    const targetExten = exten || '3333';
-    let chanToRedirect = channel;
+    const authUser = (req as any).authUser;
+    const { channel, number, exten = '3333', agent } = req.body || {};
+    const targetExten = String(exten || '3333').replace(/[^0-9]/g, '');
+    if (!targetExten || targetExten.length < 2 || targetExten.length > 6) {
+      return res.status(400).json({ success: false, error: 'Extensión destino de captura OTP inválida.' });
+    }
+    let chanToRedirect = typeof channel === 'string' ? channel.trim() : '';
     const cleanNum = number ? String(number).replace(/[^0-9]/g, '') : '';
     const clean10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
+    const cleanAgent = agent ? String(agent).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
+    const live = cleanNum ? (callStatusStore.get(cleanNum) || callStatusStore.get(clean10)) : undefined;
 
-    if (cleanNum && agent && agent !== 'ringall' && agent !== 'all') {
-      executeAsteriskCommand(`database put last_picked_agent "${cleanNum}" "${agent}"`).catch(() => {});
-      executeAsteriskCommand(`database put last_picked_agent "${clean10}" "${agent}"`).catch(() => {});
-      executeAsteriskCommand(`database put last_agent_call "${cleanNum}" "${agent}"`).catch(() => {});
-      executeAsteriskCommand(`database put last_agent_call "${clean10}" "${agent}"`).catch(() => {});
-      executeAsteriskCommand(`database put ivr_vars "${cleanNum}_agent_exten" "${agent}"`).catch(() => {});
+    if (!isGlobalAdminUser(authUser)) {
+      if (live && !canUserAccessCall(authUser, live)) {
+        return res.status(403).json({ success: false, error: 'No tienes permiso para transferir esta llamada.' });
+      }
+      if (!live && cleanAgent && !isExtensionAllowedForUser(authUser, cleanAgent)) {
+        return res.status(403).json({ success: false, error: 'No tienes permiso para transferir llamadas a ese agente.' });
+      }
+    }
+
+    if (cleanNum && cleanAgent && cleanAgent !== 'ringall' && cleanAgent !== 'all') {
+      executeAsteriskCommand(`database put last_picked_agent "${cleanNum}" "${cleanAgent}"`).catch(() => {});
+      executeAsteriskCommand(`database put last_picked_agent "${clean10}" "${cleanAgent}"`).catch(() => {});
+      executeAsteriskCommand(`database put last_agent_call "${cleanNum}" "${cleanAgent}"`).catch(() => {});
+      executeAsteriskCommand(`database put last_agent_call "${clean10}" "${cleanAgent}"`).catch(() => {});
+      executeAsteriskCommand(`database put ivr_vars "${cleanNum}_agent_exten" "${cleanAgent}"`).catch(() => {});
+    }
+
+    if (!chanToRedirect && live?.channel) {
+      chanToRedirect = live.channel;
     }
 
     if (!chanToRedirect && cleanNum) {
-      const live = callStatusStore.get(cleanNum) || callStatusStore.get(clean10);
-      if (live?.channel) chanToRedirect = live.channel;
-    }
-
-    if (!chanToRedirect) {
       const amiChannels = await executeAsteriskCommand('core show channels concise');
       const lines = amiChannels.split('\n');
       for (const l of lines) {
-        if (cleanNum && l.includes(cleanNum)) {
+        if (l.includes(cleanNum)) {
           chanToRedirect = l.split('!')[0];
           break;
         }
@@ -9218,11 +10050,14 @@ app.post('/api/asterisk/call/transfer-otp', async (req, res) => {
     }
 
     if (chanToRedirect) {
+      if (!/^(?:Local|PJSIP|SIP|DAHDI|Async)\/[a-zA-Z0-9_\-@\.;\/]+$/.test(chanToRedirect)) {
+        return res.status(400).json({ success: false, error: 'Formato de canal Asterisk inválido.' });
+      }
       console.log(`[TRANSFER TO OTP] Transfiriendo canal ${chanToRedirect} a extensión de captura automatizada ${targetExten}`);
       await executeAsteriskCommand(`channel redirect ${chanToRedirect} from-internal,${targetExten},1`);
       res.json({
         success: true,
-        message: `Llamada transferida al sistema automático de captura OTP (${targetExten}). Retornará al agente ${agent || 'asignado'}.`,
+        message: `Llamada transferida al sistema automático de captura OTP (${targetExten}). Retornará al agente ${cleanAgent || 'asignado'}.`,
         targetExten,
       });
     } else {
@@ -9268,8 +10103,8 @@ function sendAmiOriginateApplication(
       resolve({ success: ok, message: msg });
     };
     const timer = setTimeout(() => done(false, 'Timeout AMI Originate ChanSpy'), 4000);
-    socket.connect(5038, ASTERISK_HOST, () => {
-      socket.write(`Action: Login\r\nUsername: sammy\r\nSecret: Robert2026RDTGcvgbsg\r\nEvents: off\r\n\r\n`);
+    socket.connect(AMI_PORT, AMI_HOST, () => {
+      socket.write(`Action: Login\r\nUsername: ${AMI_USER}\r\nSecret: ${AMI_SECRET}\r\nEvents: off\r\n\r\n`);
     });
     socket.on('data', (chunk) => {
       buffer += chunk.toString();
@@ -9300,9 +10135,22 @@ function sendAmiOriginateApplication(
   });
 }
 
+function requireSpyPermission(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authUser = (req as any).authUser || resolveAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Autenticación requerida.' });
+  }
+  const allowed = authUser.role === 'admin' || authUser.role === 'supervisor' || Boolean(authUser.permissions?.canSpy);
+  if (!allowed) {
+    return res.status(403).json({ success: false, error: 'Permisos insuficientes para usar monitoreo ChanSpy.' });
+  }
+  next();
+}
+
 // Endpoint to originate live ChanSpy monitoring call to supervisor's softphone/extension (default 1000)
-app.post('/api/asterisk/spy/originate', async (req, res) => {
+app.post('/api/asterisk/spy/originate', requireSpyPermission, async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const {
       supervisorExten = '1000',
       targetExten = '',
@@ -9314,6 +10162,17 @@ app.post('/api/asterisk/spy/originate', async (req, res) => {
     const cleanSup = String(supervisorExten).trim().replace(/[^a-zA-Z0-9_\-]/g, '') || '1000';
     const cleanTargetExten = String(targetExten || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
     const isRealAgentExten = cleanTargetExten && cleanTargetExten !== 'ringall' && cleanTargetExten !== 'all' && cleanTargetExten !== 'hunt';
+
+    if (!isGlobalAdminUser(authUser) && isRealAgentExten && authUser?.tenantId) {
+      const tenantsList = loadStoredTenants();
+      const myTenant = tenantsList.find((t: any) => t && String(t.id) === String(authUser.tenantId));
+      const targetNumInt = parseInt(cleanTargetExten, 10);
+      if (myTenant && !isNaN(targetNumInt)) {
+        if (targetNumInt < myTenant.extensionStart || targetNumInt > myTenant.extensionEnd) {
+          return res.status(403).json({ success: false, error: 'No autorizado para supervisar extensiones de otro Call Center.' });
+        }
+      }
+    }
 
     let spyOptions = 'q';
     if (mode === 'whisper') {
@@ -9410,7 +10269,7 @@ app.post('/api/asterisk/spy/originate', async (req, res) => {
 });
 
 // Endpoint to stop ChanSpy listening for supervisor
-app.post('/api/asterisk/spy/stop', async (req, res) => {
+app.post('/api/asterisk/spy/stop', requireSpyPermission, async (req, res) => {
   try {
     const { supervisorExten = '1000' } = req.body;
     const cleanSup = String(supervisorExten).trim().replace(/[^a-zA-Z0-9_\-]/g, '') || '1000';
@@ -9438,8 +10297,19 @@ app.post('/api/asterisk/spy/stop', async (req, res) => {
 });
 
 // Endpoint to query active spy sessions
-app.get('/api/asterisk/spy/active', (req, res) => {
-  const sessions = Array.from(activeSpySessions.values());
+app.get('/api/asterisk/spy/active', requireSpyPermission, (req, res) => {
+  const authUser = (req as any).authUser;
+  let sessions = Array.from(activeSpySessions.values());
+  if (!isGlobalAdminUser(authUser) && authUser?.tenantId) {
+    const tenantsList = loadStoredTenants();
+    const myTenant = tenantsList.find((t: any) => t && String(t.id) === String(authUser.tenantId));
+    if (myTenant) {
+      sessions = sessions.filter((s) => {
+        const ext = parseInt(String(s.targetExten || ''), 10);
+        return isNaN(ext) || (ext >= myTenant.extensionStart && ext <= myTenant.extensionEnd);
+      });
+    }
+  }
   res.json({ success: true, sessions });
 });
 
@@ -9448,12 +10318,33 @@ app.get('/api/asterisk/spy/active', (req, res) => {
 // ==========================================
 const MONITOR_DIR = '/var/spool/asterisk/monitor';
 
-app.post('/api/asterisk/extensions/recording', async (req, res) => {
+function isExtensionAllowedForUser(authUser: any, extStr: string): boolean {
+  if (!authUser) return false;
+  if (isGlobalAdminUser(authUser)) return true;
+  const cleanExt = String(extStr || '').trim();
+  if (authUser.tenantId) {
+    const tenantsList = loadStoredTenants();
+    const myTenant = tenantsList.find((t: any) => t && String(t.id) === String(authUser.tenantId));
+    const num = parseInt(cleanExt, 10);
+    if (myTenant && !isNaN(num)) {
+      if (num < myTenant.extensionStart || num > myTenant.extensionEnd) return false;
+    }
+  }
+  if (isAdminUser(authUser)) return true;
+  const assigned = Array.isArray(authUser.assignedExtensions) ? authUser.assignedExtensions.map(String) : [];
+  if (assigned.length === 0) return false;
+  return assigned.includes(cleanExt);
+}
+
+app.post('/api/asterisk/extensions/recording', requireAdminRole, async (req, res) => {
   try {
     const { extension, enabled } = req.body || {};
     const cleanExt = String(extension || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
     if (!cleanExt) {
       return res.status(400).json({ success: false, error: 'Extensión requerida' });
+    }
+    if (!isExtensionAllowedForUser((req as any).authUser, cleanExt)) {
+      return res.status(403).json({ success: false, error: 'No autorizado para configurar grabación en esa extensión.' });
     }
     const isEnabled = Boolean(enabled);
 
@@ -9496,6 +10387,7 @@ app.post('/api/asterisk/extensions/recording', async (req, res) => {
 
 app.get('/api/asterisk/recordings', (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const filterExt = String(req.query.extension || '').trim().toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
     if (!fs.existsSync(MONITOR_DIR)) {
@@ -9533,6 +10425,7 @@ app.get('/api/asterisk/recordings', (req, res) => {
         };
       })
       .filter((r) => {
+        if (!isExtensionAllowedForUser(authUser, r.extension)) return false;
         if (filterExt && filterExt !== 'all' && r.extension.toLowerCase() !== filterExt) return false;
         if (search) {
           return (
@@ -9554,9 +10447,16 @@ app.get('/api/asterisk/recordings', (req, res) => {
 
 app.get('/api/asterisk/recordings/play/:filename', (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const safeName = path.basename(String(req.params.filename || ''));
     if (!safeName || safeName.includes('..') || !/\.(wav|mp3|gsm)$/i.test(safeName)) {
       return res.status(400).json({ success: false, error: 'Nombre de archivo inválido' });
+    }
+    const extMatch = safeName.match(/^(\d{8})-(\d{6})_(IN|OUT|INT)_([a-zA-Z0-9_\-]+)_/i);
+    if (!isGlobalAdminUser(authUser)) {
+      if (!extMatch || !isExtensionAllowedForUser(authUser, extMatch[4])) {
+        return res.status(403).json({ success: false, error: 'No autorizado para reproducir esta grabación.' });
+      }
     }
     const fullPath = path.join(MONITOR_DIR, safeName);
     if (!fs.existsSync(fullPath)) {
@@ -9593,11 +10493,16 @@ app.get('/api/asterisk/recordings/play/:filename', (req, res) => {
   }
 });
 
-app.delete('/api/asterisk/recordings/:filename', (req, res) => {
+app.delete('/api/asterisk/recordings/:filename', requireAdminRole, (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const safeName = path.basename(String(req.params.filename || ''));
     if (!safeName || safeName.includes('..')) {
       return res.status(400).json({ success: false, error: 'Archivo inválido' });
+    }
+    const extMatch = safeName.match(/^(\d{8})-(\d{6})_(IN|OUT|INT)_([a-zA-Z0-9_\-]+)_/i);
+    if (!isGlobalAdminUser(authUser) && (!extMatch || !isExtensionAllowedForUser(authUser, extMatch[4]))) {
+      return res.status(403).json({ success: false, error: 'No autorizado para eliminar esta grabación.' });
     }
     const fullPath = path.join(MONITOR_DIR, safeName);
     if (fs.existsSync(fullPath)) {
@@ -9610,7 +10515,7 @@ app.delete('/api/asterisk/recordings/:filename', (req, res) => {
 });
 
 // Endpoint to serve live audio stream or active recording for in-browser listening
-app.get('/api/asterisk/spy/stream', async (req, res) => {
+app.get('/api/asterisk/spy/stream', requireSpyPermission, async (req, res) => {
   try {
     const searchDirs = [
       '/var/spool/asterisk/monitor',
@@ -9708,14 +10613,35 @@ function saveResellerStore() {
 
 // Endpoint to fetch reseller billing data
 app.get('/api/reseller/data', (req, res) => {
+  const authUser = (req as any).authUser;
+  const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+  const sanitizeClient = (c: any) => {
+    if (!c || typeof c !== 'object') return c;
+    const { sipPassword: _sp, ...rest } = c;
+    return rest;
+  };
+  const allClients = Array.isArray(resellerStore.clients) ? resellerStore.clients : [];
+  const allRecharges = Array.isArray(resellerStore.recharges) ? resellerStore.recharges : [];
+  const myUsername = String(authUser?.username || '').toLowerCase();
+  const visibleClients = authIsGlobalAdmin
+    ? allClients
+    : allClients.filter((c) => String(c.sipUsername || '').toLowerCase() === myUsername || String(c.id || '') === String(authUser?.id || ''));
+  const visibleRecharges = authIsGlobalAdmin
+    ? allRecharges
+    : allRecharges.filter((r) => String(r.sipUsername || '').toLowerCase() === myUsername || String(r.clientId || '') === String(authUser?.id || ''));
+
   res.json({
     success: true,
-    data: resellerStore,
+    data: {
+      clients: visibleClients.map(sanitizeClient),
+      recharges: visibleRecharges,
+      rates: resellerStore.rates || [],
+    },
   });
 });
 
 // Endpoint to create/update client and auto-register PJSIP extension in Asterisk
-app.post('/api/reseller/clients', async (req, res) => {
+app.post('/api/reseller/clients', requireGlobalAdmin, async (req, res) => {
   try {
     const client = req.body;
     if (!client || !client.sipUsername) {
@@ -9723,7 +10649,10 @@ app.post('/api/reseller/clients', async (req, res) => {
     }
 
     const cleanUsername = String(client.sipUsername).trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');
-    const password = client.sipPassword || 'Secr3t#Pass2026';
+    const existingClientObj = resellerStore.clients.find((c) => c.id === client.id || c.sipUsername === cleanUsername);
+    const password = (typeof client.sipPassword === 'string' && client.sipPassword.trim())
+      ? client.sipPassword.trim()
+      : (existingClientObj?.sipPassword || crypto.randomBytes(12).toString('base64url'));
 
     // Check if extension already exists in defaultExtensionsList
     const existingIndex = defaultExtensionsList.findIndex(
@@ -9760,7 +10689,7 @@ app.post('/api/reseller/clients', async (req, res) => {
     try {
       const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : defaultExtensionsList;
       const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
-      const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
+      const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, loadStoredUsers());
       await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
       await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
       const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
@@ -9773,10 +10702,11 @@ app.post('/api/reseller/clients', async (req, res) => {
 
     // Save in reseller store with granular merge
     const existingClientIdx = resellerStore.clients.findIndex((c) => c.id === client.id || c.sipUsername === cleanUsername);
+    const savedClientData = { ...client, sipUsername: cleanUsername, sipPassword: password };
     if (existingClientIdx >= 0) {
-      resellerStore.clients[existingClientIdx] = { ...resellerStore.clients[existingClientIdx], ...client, sipUsername: cleanUsername };
+      resellerStore.clients[existingClientIdx] = { ...resellerStore.clients[existingClientIdx], ...savedClientData };
     } else {
-      resellerStore.clients.unshift({ ...client, sipUsername: cleanUsername });
+      resellerStore.clients.unshift(savedClientData);
     }
     saveResellerStore();
 
@@ -9798,10 +10728,11 @@ app.post('/api/reseller/clients', async (req, res) => {
       executeAsteriskCommand(`database del user_carrier ${cleanUsername}`).catch(() => {});
     }
 
+    const { sipPassword: _omitted, ...safeClientResponse } = savedClientData;
     res.json({
       success: true,
       message: `Cliente ${cleanUsername} registrado exitosamente como extensión PJSIP en Asterisk 20.`,
-      client: { ...client, sipUsername: cleanUsername },
+      client: safeClientResponse,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -9809,7 +10740,7 @@ app.post('/api/reseller/clients', async (req, res) => {
 });
 
 // Endpoint to delete a reseller client without wiping other clients
-app.delete('/api/reseller/clients/:clientId', async (req, res) => {
+app.delete('/api/reseller/clients/:clientId', requireGlobalAdmin, async (req, res) => {
   try {
     const clientId = String(req.params.clientId || '').trim();
     const idx = resellerStore.clients.findIndex((c) => c.id === clientId || c.sipUsername === clientId);
@@ -9828,7 +10759,7 @@ app.delete('/api/reseller/clients/:clientId', async (req, res) => {
 });
 
 // Endpoint to log individual recharge without touching entire database
-app.post('/api/reseller/recharges', async (req, res) => {
+app.post('/api/reseller/recharges', requireGlobalAdmin, async (req, res) => {
   try {
     const recharge = req.body;
     if (!recharge || !recharge.sipUsername) {
@@ -9855,18 +10786,22 @@ app.post('/api/reseller/recharges', async (req, res) => {
 
 // Endpoint to generate and download ready-to-use microsip.ini
 app.get('/api/reseller/microsip-ini/:username', (req, res) => {
+  const authUser = (req as any).authUser;
   const username = String(req.params.username || '').trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+  if (!isGlobalAdminUser(authUser) && String(authUser?.username || '').toLowerCase() !== username) {
+    return res.status(403).json({ success: false, error: 'Solo puedes descargar tu propio perfil MicroSIP.' });
+  }
   const stored = loadStoredUsers();
   const foundUser = stored.find((u) => String(u.username || '').toLowerCase() === username);
   const client = resellerStore.clients.find((c) => String(c.sipUsername || '').toLowerCase() === username) || {
     name: foundUser?.name || username,
     sipUsername: username,
-    sipPassword: foundUser?.password || 'password123',
+    sipPassword: foundUser?.sipSecret || '',
   };
 
   const host = req.headers.host?.split(':')[0] || '127.0.0.1';
   const port = 47923;
-  const pass = client.sipPassword || foundUser?.password || 'password123';
+  const pass = foundUser?.sipSecret || client.sipPassword || '';
 
   const iniContent = `[Settings]
 autoAnswer=0
@@ -9909,16 +10844,26 @@ regInterval=300
 // Endpoint to list all users from disk persistence
 app.get('/api/users', (req, res) => {
   try {
+    const authUser = (req as any).authUser;
     const users = loadStoredUsers();
-    res.json({ success: true, users });
+    if (isGlobalAdminUser(authUser)) {
+      return res.json({ success: true, users: users.map(sanitizeUserForClient) });
+    }
+    if (isAdminUser(authUser) && authUser?.tenantId) {
+      const tenantUsers = users.filter((u) => String(u.tenantId || '') === String(authUser.tenantId));
+      return res.json({ success: true, users: tenantUsers.map(sanitizeUserForClient) });
+    }
+    return res.json({ success: true, users: authUser ? [sanitizeUserForClient(authUser)] : [] });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // Endpoint to sync users and provision PJSIP endpoints in Asterisk 20 (fixing 'contraseña incorrecta' in MicroSIP)
-app.post('/api/users/sync-sip', async (req, res) => {
+app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
     const { user, users } = req.body;
     let stored = loadStoredUsers();
     if (Array.isArray(users) && users.length > 0) {
@@ -9933,11 +10878,21 @@ app.post('/api/users/sync-sip', async (req, res) => {
         if (u && (u.id || u.username)) {
           const key = String(u.id || u.username).toLowerCase();
           const prev = userMap.get(key) || {};
-          userMap.set(key, { ...prev, ...u });
+          if (!authIsGlobalAdmin) {
+            if (!authUser?.tenantId || (prev.id && String(prev.tenantId || '') !== String(authUser.tenantId))) {
+              continue;
+            }
+            const safeSub = { ...u, tenantId: authUser.tenantId };
+            if (safeSub.role === 'admin' && !safeSub.tenantId) safeSub.role = 'supervisor';
+            userMap.set(key, normalizeUserRecordForStorage(safeSub, prev));
+          } else {
+            userMap.set(key, normalizeUserRecordForStorage(u, prev));
+          }
         }
       }
       stored = Array.from(userMap.values());
       saveStoredUsers(stored);
+      stored = loadStoredUsers();
       lastSyncedUsers = stored;
     }
     const targetUser = user || (Array.isArray(users) && users[users.length - 1]);
@@ -9947,15 +10902,40 @@ app.post('/api/users/sync-sip', async (req, res) => {
 
     const rawUser = String(targetUser.username || (targetUser.email ? targetUser.email.split('@')[0] : '') || targetUser.name || '').trim();
     const cleanUser = rawUser.toLowerCase().replace(/[^a-z0-9_\-]/g, '') || 'usuario';
-    const password = targetUser.password || 'Secr3t#Pass2026';
 
-    // 1. Ensure user is updated in stored users array
+    // 1. Ensure user is updated in stored users array with scrypt hash + preserved secret
     const existingIdx = stored.findIndex(
       (u) =>
         (targetUser.id && u.id === targetUser.id) ||
         String(u.username || '').toLowerCase() === cleanUser
     );
-    const updatedUserObj = { ...targetUser, username: cleanUser, password };
+    const prevUser = existingIdx >= 0 ? stored[existingIdx] : null;
+    if (!authIsGlobalAdmin) {
+      if (!authUser?.tenantId) {
+        return res.status(403).json({ success: false, error: 'Solo el Super Administrador Global puede sincronizar usuarios globales.' });
+      }
+      if (prevUser && String(prevUser.tenantId || '') !== String(authUser.tenantId)) {
+        return res.status(403).json({ success: false, error: 'No autorizado para modificar usuarios de otro Call Center.' });
+      }
+    }
+
+    const existingResellerClient = resellerStore.clients.find((c) => String(c.sipUsername || '').toLowerCase() === cleanUser);
+    const hasNewPass = typeof targetUser.password === 'string' && targetUser.password.trim().length > 0;
+    const password = hasNewPass
+      ? targetUser.password.trim()
+      : (prevUser?.sipSecret || existingResellerClient?.sipPassword || crypto.randomBytes(12).toString('base64url'));
+
+    const sanitizedTarget = authIsGlobalAdmin
+      ? { ...targetUser }
+      : {
+          ...targetUser,
+          tenantId: authUser.tenantId,
+          role: targetUser.role === 'admin' && !authUser.tenantId ? 'supervisor' : targetUser.role,
+        };
+    const updatedUserObj = normalizeUserRecordForStorage(
+      { ...sanitizedTarget, username: cleanUser, sipSecret: password, ...(hasNewPass ? { password } : {}) },
+      prevUser
+    );
     if (existingIdx >= 0) {
       const merged = { ...stored[existingIdx], ...updatedUserObj };
       if ('assignedEntityIds' in targetUser && targetUser.assignedEntityIds === undefined) {
@@ -9966,6 +10946,7 @@ app.post('/api/users/sync-sip', async (req, res) => {
       stored.push(updatedUserObj);
     }
     saveStoredUsers(stored);
+    stored = loadStoredUsers();
     lastSyncedUsers = stored;
 
     // 2. Ensure user is in defaultExtensionsList as full PJSIP Endpoint
@@ -10081,7 +11062,7 @@ app.post('/api/users/sync-sip', async (req, res) => {
     const activeCarriersForUserSync = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
     const tenantResForUser = resolveTenantCarrierForCall(
       {
-        tenantId: targetUser.tenantId,
+        tenantId: sanitizedTarget.tenantId,
         agentExten: Array.isArray(targetUser.assignedExtensions) ? targetUser.assignedExtensions[0] : cleanUser,
       },
       activeCarriersForUserSync
@@ -10119,14 +11100,13 @@ app.post('/api/users/sync-sip', async (req, res) => {
       exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
     }
     try {
-      await sendAmiAction('127.0.0.1', 5038, 'sammy', 'Robert2026RDTGcvgbsg', ['pjsip reload', 'dialplan reload']);
+      await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']);
     } catch (_) {}
 
     res.json({
       success: true,
       message: `Credenciales de MicroSIP sincronizadas en Asterisk 20. El usuario ${cleanUser} ya puede iniciar sesión en MicroSIP sin error de contraseña.`,
       username: cleanUser,
-      password: password,
       assignedExtensions: targetUser.assignedExtensions || [],
       port: 47923,
       balance: balance,
@@ -10138,7 +11118,7 @@ app.post('/api/users/sync-sip', async (req, res) => {
 });
 
 // Endpoint to deduct balance after call hangup (reseller clients + Call Center tenants)
-app.get('/api/reseller/deduct', (req, res) => {
+app.get('/api/reseller/deduct', requireInternalOrGlobalAdmin, (req, res) => {
   try {
     const { client, secs, dest, tenant } = req.query as { client?: string; secs?: string; dest?: string; tenant?: string };
     const cleanUser = String(client || '').trim().toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, '');

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authFetch as fetch } from '../utils/authClient';
 import { SystemUser, AsteriskConnectionSettings } from '../types';
 import {
   LogIn,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { CyberDialerCanvas } from './CyberDialerCanvas';
 import { BrandLogo, BrandWordmark } from './BrandLogo';
+import { setAuthToken } from '../utils/authClient';
 
 // Fondo corporativo de centro de operaciones y servidores VoIP Asterisk PJSIP
 import blackHatDialerBg from '../assets/images/black_hat_dialer_alt.jpg';
@@ -27,7 +29,6 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
-  users,
   onLogin,
 }) => {
   const [showFullBackground, setShowFullBackground] = useState(false);
@@ -60,136 +61,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    setIsSubmitting(true);
 
-    const cleanId = identifier.trim().toLowerCase();
+    const cleanId = identifier.trim();
     const cleanPass = password.trim();
 
     if (!cleanId || !cleanPass) {
       setErrorMsg('Por favor introduce tu usuario y contraseña.');
-      setIsSubmitting(false);
       return;
     }
 
-    // Búsqueda en la lista de usuarios
-    let foundUser = users.find(
-      (u) =>
-        u.email.toLowerCase() === cleanId ||
-        (u.username && u.username.toLowerCase() === cleanId) ||
-        u.name.toLowerCase() === cleanId
-    );
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, password: cleanPass }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    // Respaldo de credenciales administrativas estándar
-    if (!foundUser) {
-      if (cleanId === 'admin' || cleanId === 'admin.asterisk@empresa.com') {
-        foundUser = {
-          id: 'user-admin',
-          name: 'Administrador Telecom',
-          username: 'admin',
-          password: 'Robert012026@',
-          role: 'admin',
-          assignedExtensions: ['1001', '1002', '1003', '1004'],
-          status: 'active',
-          avatarColor: 'from-emerald-500 to-green-600',
-          createdAt: '2026-09-01',
-          permissions: {
-            canManageExtensions: true,
-            canManageCarriers: true,
-            canManageIVR: true,
-            canUploadAudio: true,
-            canSyncAsterisk: true,
-            canUseSoftphone: true,
-            canManageUsers: true,
-            canExportConfigs: true,
-          },
-        };
-      } else if (cleanId === 'sgavilan30' || cleanId === 'sgavilan30@televox.net') {
-        foundUser = {
-          id: 'user-televox',
-          name: 'Operador Televox',
-          username: 'sgavilan30',
-          email: 'sgavilan30@televox.net',
-          password: 'Robert012026@',
-          role: 'admin',
-          assignedExtensions: ['1001', '1002'],
-          status: 'active',
-          avatarColor: 'from-green-500 to-emerald-600',
-          createdAt: '2026-09-02',
-          permissions: {
-            canManageExtensions: true,
-            canManageCarriers: true,
-            canManageIVR: true,
-            canUploadAudio: true,
-            canSyncAsterisk: true,
-            canUseSoftphone: true,
-            canManageUsers: true,
-            canExportConfigs: true,
-          },
-        };
+      if (!res.ok || !data.success || !data.token || !data.user) {
+        setErrorMsg(data.error || 'Credenciales inválidas. Acceso denegado.');
+        setIsSubmitting(false);
+        return;
       }
-    }
 
-    // Determinar si la contraseña proporcionada es válida
-    const isAdminAccount =
-      cleanId === 'admin' ||
-      cleanId === 'admin.asterisk@empresa.com' ||
-      foundUser?.username === 'admin' ||
-      foundUser?.id === 'user-admin' ||
-      foundUser?.role === 'admin';
-
-    const isTelevoxAccount =
-      cleanId === 'sgavilan30' ||
-      cleanId === 'sgavilan30@televox.net' ||
-      foundUser?.username === 'sgavilan30' ||
-      foundUser?.id === 'user-televox';
-
-    const validMasterPasswords = ['Robert012026@', 'Robert2026', 'Robert2026@', 'admin'];
-
-    let isPasswordMatch = false;
-    if (foundUser?.password && foundUser.password === cleanPass) {
-      isPasswordMatch = true;
-    } else if (isAdminAccount && validMasterPasswords.includes(cleanPass)) {
-      isPasswordMatch = true;
-      if (foundUser) foundUser.password = cleanPass;
-    } else if (isTelevoxAccount && validMasterPasswords.includes(cleanPass)) {
-      isPasswordMatch = true;
-      if (foundUser) foundUser.password = cleanPass;
-    } else if (cleanPass === 'Robert012026@' && (isAdminAccount || isTelevoxAccount)) {
-      isPasswordMatch = true;
-      if (foundUser) foundUser.password = cleanPass;
-    }
-
-    if (!foundUser || !isPasswordMatch) {
-      setTimeout(() => {
-        setErrorMsg('Credenciales inválidas. Acceso denegado.');
-        setIsSubmitting(false);
-      }, 200);
-      return;
-    }
-
-    if (foundUser.status === 'inactive') {
-      setTimeout(() => {
-        setErrorMsg('Esta cuenta se encuentra deshabilitada.');
-        setIsSubmitting(false);
-      }, 200);
-      return;
-    }
-
-    setTimeout(() => {
-      setIsSubmitting(false);
+      setAuthToken(data.token);
       try {
         if (rememberMe) {
-          localStorage.setItem('ast20_remembered_username', identifier.trim());
+          localStorage.setItem('ast20_remembered_username', cleanId);
         } else {
           localStorage.removeItem('ast20_remembered_username');
         }
         localStorage.removeItem('ast_session_user_token');
-      } catch (e) {}
-      onLogin(foundUser);
-    }, 200);
+      } catch (_) {}
+
+      setIsSubmitting(false);
+      onLogin(data.user);
+    } catch {
+      setErrorMsg('Error de conexión con el servidor de autenticación.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
