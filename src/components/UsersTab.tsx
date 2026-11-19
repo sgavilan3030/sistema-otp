@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { authFetch as fetch } from '../utils/authClient';
-import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk, CallCenterTenant } from '../types';
+import { SystemUser, PjsipExtension, UserPermissions, CarrierTrunk, CallCenterTenant, CallFlowMode } from '../types';
+
+const CALL_FLOW_MODE_OPTIONS: { id: CallFlowMode; label: string }[] = [
+  { id: 'otp', label: '1. Captura OTP' },
+  { id: 'press1', label: '2. Press-1 (Asesor)' },
+  { id: 'hybrid', label: '3. Híbrido (OTP + Asesor)' },
+  { id: 'cancel_code', label: '4. Código de Cancelación' },
+  { id: 'otp_press1', label: '5. IVR de Captura OTP' },
+];
 import {
   Users,
   UserPlus,
@@ -80,6 +88,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [formStatus, setFormStatus] = useState<SystemUser['status']>('active');
   const [selectedExts, setSelectedExts] = useState<string[]>([]);
   const [formAssignedEntityIds, setFormAssignedEntityIds] = useState<string[]>([]);
+  const [formAssignedCallFlowMode, setFormAssignedCallFlowMode] = useState<CallFlowMode>('press1');
+  const [formAllowedCallFlowModes, setFormAllowedCallFlowModes] = useState<CallFlowMode[]>(['press1']);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
@@ -304,6 +314,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormTenantId('');
     setFormStatus('active');
     setFormAssignedEntityIds([]);
+    setFormAssignedCallFlowMode('press1');
+    setFormAllowedCallFlowModes(['press1']);
     // Standalone non-Call-Center clients default to next free 2001+ extension
     const nextClientExt = getNextClientExtension2001();
     setSelectedExts([nextClientExt]);
@@ -354,6 +366,17 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     } else {
       setFormAssignedEntityIds(availableEntities.map((e) => e.id));
     }
+    const tenantForUser = user.tenantId ? tenants.find((t) => t.id === user.tenantId) : null;
+    const primaryFlow: CallFlowMode =
+      user.assignedCallFlowMode || tenantForUser?.assignedCallFlowMode || 'press1';
+    const rawAllowedFlows =
+      Array.isArray(user.allowedCallFlowModes) && user.allowedCallFlowModes.length > 0
+        ? user.allowedCallFlowModes
+        : Array.isArray(tenantForUser?.allowedCallFlowModes) && tenantForUser.allowedCallFlowModes.length > 0
+        ? tenantForUser.allowedCallFlowModes
+        : [primaryFlow];
+    setFormAssignedCallFlowMode(primaryFlow);
+    setFormAllowedCallFlowModes(Array.from(new Set<CallFlowMode>([primaryFlow, ...rawAllowedFlows])));
     setIsModalOpen(true);
   };
 
@@ -439,6 +462,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 
     const finalRole = formAccountType === 'reseller_client' ? 'reseller_client' : formRole;
     const isGlobalSuperAdmin = finalRole === 'admin' && !formTenantId;
+    const normalizedAllowedFlows: CallFlowMode[] = Array.from(
+      new Set<CallFlowMode>([formAssignedCallFlowMode, ...formAllowedCallFlowModes])
+    );
 
     const userObj: SystemUser = {
       ...(editingUser || {}),
@@ -459,6 +485,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       tenantId: formTenantId ? formTenantId : undefined,
       assignedExtensions: selectedExts,
       assignedEntityIds: isGlobalSuperAdmin ? undefined : [...formAssignedEntityIds],
+      assignedCallFlowMode: isGlobalSuperAdmin ? undefined : formAssignedCallFlowMode,
+      allowedCallFlowModes: isGlobalSuperAdmin ? undefined : normalizedAllowedFlows,
       permissions,
       status: formStatus,
       avatarColor: editingUser?.avatarColor || randomColor,
@@ -855,19 +883,46 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   </div>
                 </div>
 
-                {/* Assigned Carrier Badge */}
+                {/* Assigned Dialing Plan Badge */}
+                <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Plan de Marcación:</span>
+                  </span>
+                  {user.role === 'admin' && !user.tenantId ? (
+                    <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30">
+                      Todos (Admin)
+                    </span>
+                  ) : (() => {
+                    const tObj = user.tenantId ? tenants.find((t) => t.id === user.tenantId) : null;
+                    const primary = user.assignedCallFlowMode || tObj?.assignedCallFlowMode || 'press1';
+                    const allowed = Array.isArray(user.allowedCallFlowModes) && user.allowedCallFlowModes.length > 0
+                      ? user.allowedCallFlowModes
+                      : Array.isArray(tObj?.allowedCallFlowModes) && tObj.allowedCallFlowModes.length > 0
+                      ? tObj.allowedCallFlowModes
+                      : [primary];
+                    const optLabel = CALL_FLOW_MODE_OPTIONS.find((m) => m.id === primary)?.label || primary;
+                    return (
+                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-500/30">
+                        {optLabel}{allowed.length > 1 ? ` (+${allowed.length - 1})` : ''}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Default Carrier Badge */}
                 <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
                   <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
                     <Network className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Troncal Saliente:</span>
+                    <span>Ruta Predeterminada:</span>
                   </span>
                   {user.carrierId ? (
                     <span className="text-[10px] font-mono font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/40">
-                      📡 {user.carrierId}
+                      📡 {user.carrierId} (libre)
                     </span>
                   ) : (
-                    <span className="text-[10px] text-slate-500 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                      🌐 Pool General
+                    <span className="text-[10px] text-emerald-300 font-medium bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                      🌐 Selección Libre de Ruta
                     </span>
                   )}
                 </div>
@@ -1341,19 +1396,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 </div>
               )}
 
-              {/* Dedicated Carrier / Trunk Selector */}
+              {/* Default Carrier / Trunk Selector */}
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-slate-200 font-semibold flex items-center gap-1.5 text-xs">
                     <Network className="w-4 h-4 text-sky-400" />
-                    <span>Carrier / Troncal SIP Saliente Asignada</span>
+                    <span>Ruta Saliente Predeterminada (Opcional)</span>
                   </label>
                   <span className="text-[10px] text-sky-300 font-mono bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
-                    Ruta Dedicada
+                    El cliente elige ruta
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Define por cuál troncal SIP saldrán las llamadas de este usuario cuando marque desde MicroSIP o el marcador web.
+                  Ruta inicial sugerida; el cliente podrá elegir libremente entre las rutas salientes activas al lanzar llamadas.
                 </p>
 
                 <select
@@ -1373,7 +1428,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 </select>
                 {formCarrierId !== 'auto' && (
                   <p className="text-[10px] text-emerald-400 font-medium">
-                    ✓ Asterisk enrutará prioritariamente las llamadas de este usuario por la troncal <strong className="font-mono text-white">{formCarrierId}</strong>.
+                    ✓ Ruta predeterminada sugerida: <strong className="font-mono text-white">{formCarrierId}</strong> (el cliente puede cambiarla en el marcador).
                   </p>
                 )}
               </div>
@@ -1406,6 +1461,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                           t.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
                         );
                       }
+                      if (t?.assignedCallFlowMode) {
+                        const primary = t.assignedCallFlowMode;
+                        const allowed =
+                          Array.isArray(t.allowedCallFlowModes) && t.allowedCallFlowModes.length > 0
+                            ? Array.from(new Set<CallFlowMode>([primary, ...t.allowedCallFlowModes]))
+                            : [primary];
+                        setFormAssignedCallFlowMode(primary);
+                        setFormAllowedCallFlowModes(allowed);
+                      }
                     }
                   }}
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-indigo-500/30 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 font-mono"
@@ -1429,6 +1493,100 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   <p className="text-[10px] text-slate-400">
                     💡 Sin Call Center: Ideal para Clientes Individuales (extensión 2001+) o Super Administrador Global.
                   </p>
+                )}
+              </div>
+
+              {/* Plan de Marcación Asignado (Solo Administrador) */}
+              <div className="p-3.5 rounded-lg bg-slate-950 border border-amber-500/35 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label className="text-amber-300 font-bold flex items-center gap-1.5 text-xs">
+                      <Lock className="w-4 h-4 text-amber-400" />
+                      <span>Plan de Marcación Asignado (Solo Administrador)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {formRole === 'admin' && !formTenantId
+                        ? 'El Super Administrador Global tiene acceso completo para asignar y configurar todos los planes de marcación.'
+                        : 'Solo el Administrador puede asignar qué plan(es) de marcación ejecutará este cliente.'}
+                    </p>
+                  </div>
+                </div>
+
+                {formRole === 'admin' && !formTenantId ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/25 border border-emerald-500/30 text-[11px] text-emerald-300">
+                    ✓ Acceso completo a todos los planes de marcación para Super Administrador Global.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                        Plan Principal Asignado
+                      </label>
+                      <select
+                        value={formAssignedCallFlowMode}
+                        onChange={(e) => {
+                          const nextPrimary = e.target.value as CallFlowMode;
+                          setFormAssignedCallFlowMode(nextPrimary);
+                          setFormAllowedCallFlowModes((prev) =>
+                            Array.from(new Set<CallFlowMode>([nextPrimary, ...prev]))
+                          );
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-bold text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {CALL_FLOW_MODE_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                        Planes Permitidos ({formAllowedCallFlowModes.length}/{CALL_FLOW_MODE_OPTIONS.length})
+                      </label>
+                      <div className="space-y-1">
+                        {CALL_FLOW_MODE_OPTIONS.map((opt) => {
+                          const isPrimary = formAssignedCallFlowMode === opt.id;
+                          const isChecked = isPrimary || formAllowedCallFlowModes.includes(opt.id);
+                          return (
+                            <label
+                              key={opt.id}
+                              className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                isChecked
+                                  ? 'bg-amber-950/40 border-amber-500/50 text-white'
+                                  : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  disabled={isPrimary}
+                                  onChange={(e) => {
+                                    if (isPrimary) return;
+                                    setFormAllowedCallFlowModes((prev) => {
+                                      const next = e.target.checked
+                                        ? Array.from(new Set<CallFlowMode>([...prev, opt.id]))
+                                        : prev.filter((m) => m !== opt.id);
+                                      return next.length > 0 ? next : [formAssignedCallFlowMode];
+                                    });
+                                  }}
+                                  className="rounded border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-950"
+                                />
+                                <span className="truncate font-semibold">{opt.label}</span>
+                              </div>
+                              {isPrimary && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                                  Principal
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 

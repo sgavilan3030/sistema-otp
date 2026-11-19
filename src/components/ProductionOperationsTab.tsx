@@ -208,7 +208,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!canRunMassCalls && productionMode === 'mass_campaign') {
       setProductionMode('single');
     }
-  }, [canRunMassCalls, productionMode]);
+    if (!isSuperAdmin && productionMode === 'ivr_action') {
+      setProductionMode('single');
+    }
+  }, [canRunMassCalls, isSuperAdmin, productionMode]);
+
+  const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['otp', 'press1', 'hybrid', 'cancel_code', 'otp_press1'];
+  const [serverAssignedFlowMode, setServerAssignedFlowMode] = useState<CallFlowMode | null>(null);
+  const [serverAllowedFlowModes, setServerAllowedFlowModes] = useState<CallFlowMode[] | null>(null);
+  const allowedFlowModesRef = useRef<CallFlowMode[]>(ALL_CALL_FLOW_MODES);
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -235,14 +243,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   });
 
   const setCallFlowMode = (mode: CallFlowMode) => {
+    if (!isSuperAdmin && !allowedFlowModesRef.current.includes(mode)) {
+      return;
+    }
     setCallFlowModeState(mode);
     try {
       localStorage.setItem('ast20_call_flow_mode', mode);
-      fetch('/api/asterisk/action/set-default', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      }).catch(() => {});
+      if (isSuperAdmin) {
+        fetch('/api/asterisk/action/set-default', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        }).catch(() => {});
+      }
     } catch (_) {}
   };
 
@@ -736,6 +749,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         setTenantServerAssignedIds(null);
       }
 
+      if (data.assignedCallFlowMode && ALL_CALL_FLOW_MODES.includes(data.assignedCallFlowMode)) {
+        setServerAssignedFlowMode(data.assignedCallFlowMode);
+      }
+      if (Array.isArray(data.allowedCallFlowModes) && data.allowedCallFlowModes.length > 0) {
+        const cleanAllowed = data.allowedCallFlowModes.filter((m: any) => ALL_CALL_FLOW_MODES.includes(m));
+        if (cleanAllowed.length > 0) {
+          setServerAllowedFlowModes(cleanAllowed);
+        }
+      }
+
       if (data.success && data.workspace) {
         const ws = data.workspace;
         if (ws.lastUpdated && ws.lastUpdated <= lastIvrWsServerTsRef.current && isIvrWsHydratedRef.current) {
@@ -780,9 +803,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           } catch (_) {}
         }
         if (ws.callFlowMode === 'otp' || ws.callFlowMode === 'press1' || ws.callFlowMode === 'hybrid' || ws.callFlowMode === 'cancel_code' || ws.callFlowMode === 'otp_press1') {
-          setCallFlowModeState(ws.callFlowMode);
+          const allowedFromServer: CallFlowMode[] =
+            Array.isArray(data.allowedCallFlowModes) && data.allowedCallFlowModes.length > 0
+              ? data.allowedCallFlowModes
+              : ALL_CALL_FLOW_MODES;
+          const resolvedMode: CallFlowMode =
+            isSuperAdmin || allowedFromServer.includes(ws.callFlowMode)
+              ? ws.callFlowMode
+              : (data.assignedCallFlowMode || allowedFromServer[0] || 'press1');
+          setCallFlowModeState(resolvedMode);
           try {
-            localStorage.setItem('ast20_call_flow_mode', ws.callFlowMode);
+            localStorage.setItem('ast20_call_flow_mode', resolvedMode);
           } catch (_) {}
         }
 
@@ -1559,6 +1590,66 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const canEditEntityCatalog = isSuperAdmin || (isAdmin && !userTenant);
 
+  // Planes de marcación asignados por el Super Administrador (el cliente solo puede usar los autorizados)
+  const adminAllowedCallFlowModes = React.useMemo<CallFlowMode[]>(() => {
+    if (isSuperAdmin) return ALL_CALL_FLOW_MODES;
+    const fromUser =
+      Array.isArray(activeUser?.allowedCallFlowModes) && activeUser.allowedCallFlowModes.length > 0
+        ? activeUser.allowedCallFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
+        : null;
+    const fromTenant =
+      Array.isArray(userTenant?.allowedCallFlowModes) && userTenant.allowedCallFlowModes.length > 0
+        ? userTenant.allowedCallFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
+        : null;
+    const fromServer =
+      Array.isArray(serverAllowedFlowModes) && serverAllowedFlowModes.length > 0
+        ? serverAllowedFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
+        : null;
+    const primary =
+      activeUser?.assignedCallFlowMode ||
+      userTenant?.assignedCallFlowMode ||
+      serverAssignedFlowMode ||
+      'press1';
+    const baseList = fromUser || fromTenant || fromServer || [primary];
+    return Array.from(new Set<CallFlowMode>([primary, ...baseList]));
+  }, [
+    isSuperAdmin,
+    activeUser?.allowedCallFlowModes,
+    activeUser?.assignedCallFlowMode,
+    userTenant?.allowedCallFlowModes,
+    userTenant?.assignedCallFlowMode,
+    serverAllowedFlowModes,
+    serverAssignedFlowMode,
+  ]);
+
+  const adminAssignedCallFlowMode: CallFlowMode = React.useMemo(() => {
+    if (isSuperAdmin) return callFlowMode;
+    return (
+      activeUser?.assignedCallFlowMode ||
+      userTenant?.assignedCallFlowMode ||
+      serverAssignedFlowMode ||
+      adminAllowedCallFlowModes[0] ||
+      'press1'
+    );
+  }, [
+    isSuperAdmin,
+    callFlowMode,
+    activeUser?.assignedCallFlowMode,
+    userTenant?.assignedCallFlowMode,
+    serverAssignedFlowMode,
+    adminAllowedCallFlowModes,
+  ]);
+
+  useEffect(() => {
+    allowedFlowModesRef.current = adminAllowedCallFlowModes;
+    if (!isSuperAdmin && !adminAllowedCallFlowModes.includes(callFlowMode)) {
+      setCallFlowModeState(adminAssignedCallFlowMode);
+      try {
+        localStorage.setItem('ast20_call_flow_mode', adminAssignedCallFlowMode);
+      } catch (_) {}
+    }
+  }, [isSuperAdmin, adminAllowedCallFlowModes, adminAssignedCallFlowMode, callFlowMode]);
+
   // Asegurar que la entidad seleccionada pertenezca estrictamente a los guiones asignados al Call Center
   useEffect(() => {
     if (!Array.isArray(effectiveAssignedEntityIds)) return;
@@ -1573,7 +1664,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
 
-  const lockedTenantCarrier = React.useMemo(() => {
+  const defaultAssignedCarrier = React.useMemo(() => {
     if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
       const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const byTenant = carriers.find(
@@ -1599,24 +1690,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return null;
   }, [userTenant, carriers, activeUser?.carrierId, activeUser?.assignedCarrierId]);
 
-  const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
-
   const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
+  const lastCarrierInitUserRef = useRef<string>('');
 
   useEffect(() => {
-    if (!isSuperAdmin) {
-      if (lockedTenantCarrier) {
-        setSelectedCarrierName(lockedTenantCarrier.name);
+    const uid = activeUser?.id || '';
+    if (uid && lastCarrierInitUserRef.current !== uid) {
+      lastCarrierInitUserRef.current = uid;
+      if (
+        defaultAssignedCarrier &&
+        defaultAssignedCarrier.enabled !== false &&
+        defaultAssignedCarrier.status !== 'disabled'
+      ) {
+        setSelectedCarrierName(defaultAssignedCarrier.name);
       } else {
         setSelectedCarrierName('auto');
       }
     }
-  }, [isSuperAdmin, lockedTenantCarrier]);
+  }, [activeUser?.id, defaultAssignedCarrier]);
 
-  const userCarrierFallback = activeUser?.carrierId || activeUser?.assignedCarrierId;
-  const effectiveSelectedCarrier = !isSuperAdmin
-    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (userCarrierFallback && userCarrierFallback !== 'auto' ? userCarrierFallback : 'auto'))
-    : selectedCarrierName;
+  const effectiveSelectedCarrier = selectedCarrierName || 'auto';
   const activeCarrierObj =
     (effectiveSelectedCarrier !== 'auto'
       ? carriers.find(
@@ -1626,7 +1719,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === String(effectiveSelectedCarrier).toLowerCase().replace(/[^a-z0-9_]/g, '_')
         )
       : null) ||
-    lockedTenantCarrier ||
+    defaultAssignedCarrier ||
     enabledCarriers[0] ||
     carriers[0];
   const activeCarrier = effectiveSelectedCarrier !== 'auto' ? effectiveSelectedCarrier : (activeCarrierObj ? activeCarrierObj.name : 'carrier_default');
@@ -1698,14 +1791,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
   }, []);
 
-  // Ensure default action is synced to Asterisk on mount
+  // Ensure default action is synced to Asterisk on mount (Super Admin only)
   useEffect(() => {
+    if (!isSuperAdmin) return;
     fetch('/api/asterisk/action/set-default', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: callFlowMode }),
     }).catch(() => {});
-  }, []);
+  }, [isSuperAdmin]);
 
   const activeSelectedEntity = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
   const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Servicio al Cliente';
@@ -2496,7 +2590,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
       if (data.success) {
         setLaunchFeedback({
-          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando por ${isSuperAdmin ? `la troncal ${activeCarrier}` : 'Canal Seguro Asignado'} (${effectiveCallerIdNum ? `CID: ${effectiveCallerIdNum}` : 'Caller ID asignado por el proveedor SIP'}).`,
+          text: `¡Llamada lanzada instantáneamente a ${targetNumber}! Conectando por la ruta ${effectiveSelectedCarrier === 'auto' ? `Pool Automático (${activeCarrier})` : activeCarrier} (${effectiveCallerIdNum ? `CID: ${effectiveCallerIdNum}` : 'Caller ID asignado por el proveedor SIP'}).`,
           type: 'success',
         });
 
@@ -3057,38 +3151,28 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
-            {isSuperAdmin ? (
-              <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-                <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Troncal SIP Saliente</span>
-                </div>
-                <select
-                  id="select-banner-carrier"
-                  value={selectedCarrierName}
-                  onChange={(e) => setSelectedCarrierName(e.target.value)}
-                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-                >
-                  <option value="auto">🔄 Pool Automático</option>
-                  {enabledCarriers.map((c, idx) => (
-                    <option key={c.id} value={c.name}>
-                      {idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}{c.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+              <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>{isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente'}</span>
               </div>
-            ) : (
-              <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-                <div className="text-[10px] text-slate-400 uppercase font-mono font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Ruta Saliente</span>
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400" title="Troncal bloqueada exclusivamente para tu Call Center">
-                  <Lock className="w-3 h-3 shrink-0" />
-                  <span>Canal Seguro Asignado{userTenant?.code ? ` (${userTenant.code})` : ''}</span>
-                </div>
-              </div>
-            )}
+              <select
+                id="select-banner-carrier"
+                value={selectedCarrierName}
+                onChange={(e) => setSelectedCarrierName(e.target.value)}
+                className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
+                title="Selecciona la ruta saliente que deseas utilizar para emitir tus llamadas"
+              >
+                <option value="auto">🔄 Pool Automático</option>
+                {enabledCarriers.map((c, idx) => (
+                  <option key={c.id} value={c.name}>
+                    {isSuperAdmin
+                      ? `${idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}${c.name}`
+                      : `${idx === 0 ? '⭐ ' : ''}${c.name}`}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {userTenant?.magnusBillingUrl && (
               <a
@@ -3309,7 +3393,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </button>
         )}
 
-        {!isAgent && (
+        {isSuperAdmin && (
           <button
             id="btn-tab-ivr-action"
             onClick={() => setProductionMode('ivr_action')}
@@ -3987,16 +4071,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* CARD 1.5: FLUJO AL CONTESTAR (MODO DE LLAMADA DIRECTO EN DISPARADOR) */}
+              {/* CARD 1.5: FLUJO AL CONTESTAR (PLAN DE MARCACIÓN ASIGNADO POR ADMINISTRADOR) */}
               <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Zap className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      Flujo al Contestar (Modo de Llamada)
+                      Plan de Marcación (Flujo al Contestar)
                     </span>
+                    {!isSuperAdmin && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[10px] font-bold text-amber-300">
+                        <Lock className="w-3 h-3" />
+                        Asignado por Administrador
+                      </span>
+                    )}
                   </div>
-                  {!isAgent && (
+                  {isSuperAdmin && (
                     <button
                       type="button"
                       onClick={() => setProductionMode('ivr_action')}
@@ -4007,14 +4097,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   )}
                 </div>
 
+                {!isSuperAdmin && (
+                  <p className="text-[11px] text-slate-400">
+                    {adminAllowedCallFlowModes.length <= 1
+                      ? 'Solo el Administrador puede asignar o cambiar tu plan de marcación. Puedes seleccionar libremente la ruta saliente en el selector superior.'
+                      : 'Solo puedes usar los planes de marcación autorizados para tu cuenta por el Administrador. Puedes seleccionar libremente tu ruta saliente.'}
+                  </p>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
                   <button
                     type="button"
+                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp')}
                     onClick={() => setCallFlowMode('otp')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       callFlowMode === 'otp'
-                        ? 'bg-emerald-500/15 border-emerald-500 text-white ring-1 ring-emerald-500/50 shadow'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white ring-1 ring-emerald-500/50 shadow cursor-pointer'
+                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('otp')
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -4022,18 +4124,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
                         <span>1. Captura OTP</span>
                       </span>
-                      {callFlowMode === 'otp' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                      {callFlowMode === 'otp' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp')) ? (
+                        <Lock className="w-3 h-3 text-slate-500" />
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">Pide dígitos OTP al contestar</p>
                   </button>
 
                   <button
                     type="button"
+                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('press1')}
                     onClick={() => setCallFlowMode('press1')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('press1') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       callFlowMode === 'press1'
-                        ? 'bg-sky-500/15 border-sky-500 text-white ring-1 ring-sky-500/50 shadow'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        ? 'bg-sky-500/15 border-sky-500 text-white ring-1 ring-sky-500/50 shadow cursor-pointer'
+                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('press1')
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -4041,18 +4151,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <PhoneForwarded className="w-3.5 h-3.5 text-sky-400" />
                         <span>2. Press-1 (Asesor)</span>
                       </span>
-                      {callFlowMode === 'press1' && <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />}
+                      {callFlowMode === 'press1' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
+                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('press1')) ? (
+                        <Lock className="w-3 h-3 text-slate-500" />
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">Al marcar 1 transfiere a Softphone</p>
                   </button>
 
                   <button
                     type="button"
+                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('hybrid')}
                     onClick={() => setCallFlowMode('hybrid')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('hybrid') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       callFlowMode === 'hybrid'
-                        ? 'bg-purple-500/15 border-purple-500 text-white ring-1 ring-purple-500/50 shadow'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        ? 'bg-purple-500/15 border-purple-500 text-white ring-1 ring-purple-500/50 shadow cursor-pointer'
+                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('hybrid')
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -4060,7 +4178,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <Radio className="w-3.5 h-3.5 text-purple-400" />
                         <span>3. Híbrido</span>
                       </span>
-                      {callFlowMode === 'hybrid' && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}
+                      {callFlowMode === 'hybrid' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('hybrid')) ? (
+                        <Lock className="w-3 h-3 text-slate-500" />
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">OTP automático o Press-1</p>
                   </button>
@@ -4068,11 +4190,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <button
                     id="btn-single-mode-cancel-code"
                     type="button"
+                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('cancel_code')}
                     onClick={() => setCallFlowMode('cancel_code')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('cancel_code') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       callFlowMode === 'cancel_code'
-                        ? 'bg-amber-500/20 border-amber-400 text-white ring-2 ring-amber-400/50 shadow-lg shadow-amber-500/10'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40'
+                        ? 'bg-amber-500/20 border-amber-400 text-white ring-2 ring-amber-400/50 shadow-lg shadow-amber-500/10 cursor-pointer'
+                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('cancel_code')
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -4080,7 +4206,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
                         <span>4. Código Cancelación</span>
                       </span>
-                      {callFlowMode === 'cancel_code' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
+                      {callFlowMode === 'cancel_code' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('cancel_code')) ? (
+                        <Lock className="w-3 h-3 text-slate-500" />
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-amber-300/90 mt-1">Marca 1 → Envía código + Válido/Inválido</p>
                   </button>
@@ -4088,11 +4218,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <button
                     id="btn-single-mode-otp-press1"
                     type="button"
+                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')}
                     onClick={() => setCallFlowMode('otp_press1')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       callFlowMode === 'otp_press1'
-                        ? 'bg-cyan-500/20 border-cyan-400 text-white ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-500/10'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40'
+                        ? 'bg-cyan-500/20 border-cyan-400 text-white ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-500/10 cursor-pointer'
+                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -4100,7 +4234,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
                         <span>5. IVR Captura OTP</span>
                       </span>
-                      {callFlowMode === 'otp_press1' && <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />}
+                      {callFlowMode === 'otp_press1' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')) ? (
+                        <Lock className="w-3 h-3 text-slate-500" />
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-cyan-300/90 mt-1">Marca 1 → Audio espera + Validar en LiveCalls</p>
                   </button>
@@ -5067,28 +5205,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">
-                    {isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente'}
+                    {isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente (Selección del Cliente)'}
                   </div>
-                  {isSuperAdmin ? (
-                    <select
-                      value={selectedCarrierName}
-                      onChange={(e) => setSelectedCarrierName(e.target.value)}
-                      disabled={isMassRunning}
-                      className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none"
-                    >
-                      <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
-                      {enabledCarriers.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name} ({c.host})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="w-full bg-slate-950 border border-emerald-500/30 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 shrink-0" />
-                      <span>Canal Seguro Asignado{userTenant?.name ? ` (${userTenant.name})` : ''}</span>
-                    </div>
-                  )}
+                  <select
+                    value={selectedCarrierName}
+                    onChange={(e) => setSelectedCarrierName(e.target.value)}
+                    disabled={isMassRunning}
+                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
+                    {enabledCarriers.map((c, idx) => (
+                      <option key={c.id} value={c.name}>
+                        {isSuperAdmin ? `${c.name} (${c.host})` : `${idx === 0 ? '⭐ ' : ''}${c.name}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -5112,7 +5243,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                  <div className="text-[10px] text-slate-400 font-mono font-bold">Flujo al Contestar (Modo IVR)</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] text-slate-400 font-mono font-bold">Plan de Marcación (Modo IVR)</div>
+                    {!isSuperAdmin && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                        <Lock className="w-2.5 h-2.5" />
+                        Solo Admin
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
                       { id: 'otp' as CallFlowMode, label: '1. Captura OTP' },
@@ -5120,25 +5259,32 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       { id: 'hybrid' as CallFlowMode, label: '3. Híbrido' },
                       { id: 'cancel_code' as CallFlowMode, label: '4. Cód. Cancelación' },
                       { id: 'otp_press1' as CallFlowMode, label: '5. IVR Captura OTP' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        disabled={isMassRunning}
-                        onClick={() => setCallFlowMode(opt.id)}
-                        className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border text-left transition-all cursor-pointer disabled:opacity-50 ${
-                          callFlowMode === opt.id
-                            ? opt.id === 'cancel_code'
-                              ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                              : opt.id === 'otp_press1'
-                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                              : 'bg-purple-500/20 border-purple-400 text-white'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    ].map((opt) => {
+                      const isAllowed = isSuperAdmin || adminAllowedCallFlowModes.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={isMassRunning || !isAllowed}
+                          onClick={() => setCallFlowMode(opt.id)}
+                          title={!isAllowed ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border text-left transition-all flex items-center justify-between gap-1 ${
+                            callFlowMode === opt.id
+                              ? opt.id === 'cancel_code'
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200 cursor-pointer'
+                                : opt.id === 'otp_press1'
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 cursor-pointer'
+                                : 'bg-purple-500/20 border-purple-400 text-white cursor-pointer'
+                              : !isAllowed
+                              ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white cursor-pointer disabled:opacity-50'
+                          }`}
+                        >
+                          <span className="truncate">{opt.label}</span>
+                          {!isAllowed && <Lock className="w-2.5 h-2.5 text-slate-500 shrink-0" />}
+                        </button>
+                      );
+                    })}
                   </div>
                   {callFlowMode === 'cancel_code' && (
                     <div className="text-[10px] text-amber-300 bg-amber-950/30 border border-amber-500/30 rounded px-2 py-1.5">
@@ -5467,7 +5613,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       {/* ======================================================== */}
       {/* PESTAÑA DEDICADA: ACCIÓN DEL IVR AL CONTESTAR (ESPACIO EXPANDIDO) */}
       {/* ======================================================== */}
-      {productionMode === 'ivr_action' && (
+      {isSuperAdmin && productionMode === 'ivr_action' && (
         <div className="space-y-6">
           {/* Header Banner con Acciones Rápidas */}
           <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">

@@ -306,6 +306,8 @@ export interface SystemUser {
   tenantId?: string; // ID del Grupo de Call Center al que pertenece
   assignedExtension?: string; // Extensión predeterminada asignada para llamadas 1-clic
   assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos específicamente para este usuario
+  assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
+  allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
 }
 
 export interface AstDbEntry {
@@ -600,6 +602,8 @@ export interface CallCenterTenant {
   magnusBillingUrl?: string; // URL del portal MagnusBilling para consultar minutos
   magnusSipAccount?: string; // Nombre de cuenta SIP en MagnusBilling (ej. cc_mario)
   assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos para este Call Center
+  assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
+  allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
 }
 
 export interface TenantRechargeHistory {

@@ -1,0 +1,491 @@
+Connected to Asterisk GIT-20-352e66b114 currently running on vmi3461829 (pid = 4489)
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+  == Connect attempt from '127.0.0.1' unable to authenticate
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Attempting call on Local/16104803845@from-internal/n for s@ivr-press1:1 (Retry 1)
+    -- Called 16104803845@from-internal/n
+    -- Executing [16104803845@from-internal:1] NoOp("Local/16104803845@from-internal-00000018;2", "Llamada Saliente 11 digitos a 16104803845") in new stack
+    -- Executing [16104803845@from-internal:2] Set("Local/16104803845@from-internal-00000018;2", "CALLING_USER=ringall") in new stack
+[2026-11-18 22:23:32.058] WARNING[106156][C-00000020]: func_channel.c:611 func_channel_read: Unknown or unavailable item requested: 'endpoint'
+    -- Executing [16104803845@from-internal:3] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(CALLING_USER=)") in new stack
+    -- Executing [16104803845@from-internal:4] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(__CALLING_AGENT=ringall)") in new stack
+    -- Executing [16104803845@from-internal:5] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(__IVR_AGENT_EXTEN=ringall)") in new stack
+    -- Executing [16104803845@from-internal:6] Set("Local/16104803845@from-internal-00000018;2", "__CALL_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:7] Set("Local/16104803845@from-internal-00000018;2", "CLIENT_BAL=10") in new stack
+    -- Executing [16104803845@from-internal:8] Set("Local/16104803845@from-internal-00000018;2", "CLIENT_CUT=1") in new stack
+    -- Executing [16104803845@from-internal:9] GotoIf("Local/16104803845@from-internal-00000018;2", "0?allow_11d") in new stack
+    -- Executing [16104803845@from-internal:10] GotoIf("Local/16104803845@from-internal-00000018;2", "1?allow_11d") in new stack
+    -- Goto (from-internal,16104803845,15)
+    -- Executing [16104803845@from-internal:15] Set("Local/16104803845@from-internal-00000018;2", "DB(last_agent_call/16104803845)=ringall") in new stack
+    -- Executing [16104803845@from-internal:16] Set("Local/16104803845@from-internal-00000018;2", "DB(last_agent_call/ringall)=ringall") in new stack
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Executing [16104803845@from-internal:17] Set("Local/16104803845@from-internal-00000018;2", "TARGET_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:18] Set("Local/16104803845@from-internal-00000018;2", "__TARGET_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:19] Set("Local/16104803845@from-internal-00000018;2", "__TARGET_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:20] Set("Local/16104803845@from-internal-00000018;2", "__CALL_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:21] Set("Local/16104803845@from-internal-00000018;2", "__CUSTOMER_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:22] Set("Local/16104803845@from-internal-00000018;2", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [16104803845@from-internal:23] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(REC_OUT_11D=/var/spool/asterisk/monitor/20261118-222332_OUT_ringall_to_16104803845_1795055012.80.wav)") in new stack
+    -- Executing [16104803845@from-internal:24] ExecIf("Local/16104803845@from-internal-00000018;2", "0?NoOp(=== [MIXMONITOR OUT] Grabando llamada saliente de ringall:  ===)") in new stack
+    -- Executing [16104803845@from-internal:25] ExecIf("Local/16104803845@from-internal-00000018;2", "0?MixMonitor(,b)") in new stack
+    -- Executing [16104803845@from-internal:26] Set("Local/16104803845@from-internal-00000018;2", "DIAL_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:27] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(DIAL_NUM=104803845)") in new stack
+    -- Executing [16104803845@from-internal:28] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(DIAL_NUM=04803845)") in new stack
+    -- Executing [16104803845@from-internal:29] Set("Local/16104803845@from-internal-00000018;2", "CALLING_USER_CHAN=1001") in new stack
+[2026-11-18 22:23:32.066] WARNING[106156][C-00000020]: func_channel.c:611 func_channel_read: Unknown or unavailable item requested: 'endpoint'
+    -- Executing [16104803845@from-internal:30] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(CALLING_USER_CHAN=)") in new stack
+    -- Executing [16104803845@from-internal:31] Set("Local/16104803845@from-internal-00000018;2", "ASSIGNED_CARRIER=") in new stack
+    -- Executing [16104803845@from-internal:32] ExecIf("Local/16104803845@from-internal-00000018;2", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:33] ExecIf("Local/16104803845@from-internal-00000018;2", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:34] ExecIf("Local/16104803845@from-internal-00000018;2", "1?Set(ASSIGNED_CARRIER=carrier_sammy)") in new stack
+    -- Executing [16104803845@from-internal:35] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(ASSIGNED_CARRIER=carrier_sammy)") in new stack
+    -- Executing [16104803845@from-internal:36] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:37] ExecIf("Local/16104803845@from-internal-00000018;2", "1?Set(__TENANT_ID=tenant-alpha)") in new stack
+    -- Executing [16104803845@from-internal:38] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(ASSIGNED_CARRIER=carrier_sammy)") in new stack
+    -- Executing [16104803845@from-internal:39] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(__TENANT_ID=tenant-bpo)") in new stack
+    -- Executing [16104803845@from-internal:40] ExecIf("Local/16104803845@from-internal-00000018;2", "0?Set(__TENANT_ID=tenant-vip)") in new stack
+    -- Executing [16104803845@from-internal:41] GotoIf("Local/16104803845@from-internal-00000018;2", "0?skip_tenant_bal_11d") in new stack
+    -- Executing [16104803845@from-internal:42] Set("Local/16104803845@from-internal-00000018;2", "TENANT_BAL=67.5") in new stack
+    -- Executing [16104803845@from-internal:43] Set("Local/16104803845@from-internal-00000018;2", "TENANT_CUT=1") in new stack
+    -- Executing [16104803845@from-internal:44] GotoIf("Local/16104803845@from-internal-00000018;2", "0?skip_tenant_bal_11d") in new stack
+    -- Executing [16104803845@from-internal:45] GotoIf("Local/16104803845@from-internal-00000018;2", "1?skip_tenant_bal_11d") in new stack
+    -- Goto (from-internal,16104803845,50)
+    -- Executing [16104803845@from-internal:50] NoOp("Local/16104803845@from-internal-00000018;2", "") in new stack
+    -- Executing [16104803845@from-internal:51] ExecIf("Local/16104803845@from-internal-00000018;2", "0?System(curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=talking&agent=1001&tenant=tenant-alpha&channel=Local%2F16104803845%40from-internal-00000018%3B2" &)") in new stack
+    -- Executing [16104803845@from-internal:52] GotoIf("Local/16104803845@from-internal-00000018;2", "0?standard_carriers_11d") in new stack
+    -- Executing [16104803845@from-internal:53] NoOp("Local/16104803845@from-internal-00000018;2", "=== [CARRIER DEDICADO] Intentando troncal exclusiva asignada: carrier_sammy para destino 16104803845 ===") in new stack
+    -- Executing [16104803845@from-internal:54] GotoIf("Local/16104803845@from-internal-00000018;2", "0?skip_dedicated_carrier_sammy_11d") in new stack
+    -- Executing [16104803845@from-internal:55] NoOp("Local/16104803845@from-internal-00000018;2", "=== [OUTBOUND DEDICADO] Marcando por Troncal Exclusiva: carrier_sammy (209.145.55.43:5060) a 16104803845 | CID=Asignado por Proveedor ===") in new stack
+    -- Executing [16104803845@from-internal:56] Dial("Local/16104803845@from-internal-00000018;2", "PJSIP/16104803845@carrier_sammy,40,TIb(sub-pjsip-outbound^s^1(^stackorstarve223))") in new stack
+    -- PJSIP/carrier_sammy-0000001f Internal Gosub(sub-pjsip-outbound,s,1(,stackorstarve223)) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/carrier_sammy-0000001f", "=== [OUTBOUND PRE-DIAL] Canal: PJSIP/carrier_sammy-0000001f | CID Carrier= | TrunkUser=stackorstarve223 ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/carrier_sammy-0000001f", "JITTERBUFFER(adaptive)=default") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/carrier_sammy-0000001f", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/carrier_sammy-0000001f", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/carrier_sammy-0000001f", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] GotoIf("PJSIP/carrier_sammy-0000001f", "0?set_explicit_carrier_cid:provider_assigned_cid") in new stack
+    -- Goto (sub-pjsip-outbound,s,10)
+    -- Executing [s@sub-pjsip-outbound:10] Set("PJSIP/carrier_sammy-0000001f", "CALLERID(name)=") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/carrier_sammy-0000001f", "1?Set(CALLERID(num)=stackorstarve223)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/carrier_sammy-0000001f", "0?Set(CALLERID(num)=)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] NoOp("PJSIP/carrier_sammy-0000001f", "=== [OUTBOUND CARRIER] CallerID asignado directamente por el proveedor SIP (num=stackorstarve223) ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Return("PJSIP/carrier_sammy-0000001f", "") in new stack
+  == Spawn extension (trunkinbound, 16104803845, 1) exited non-zero on 'PJSIP/carrier_sammy-0000001f'
+    -- PJSIP/carrier_sammy-0000001f Internal Gosub(sub-pjsip-outbound,s,1(,stackorstarve223)) complete GOSUB_RETVAL=
+<--- Transmitting SIP request (1164 bytes) to UDP:209.145.55.43:5060 --->
+INVITE sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj45961f9c-4901-4fa1-b3f7-d43ef143fe94
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>
+Contact: <sip:stackorstarve223@169.58.66.206:47923>
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+CSeq: 24083 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 602641882 602641882 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 19928 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Called PJSIP/16104803845@carrier_sammy
+    -- Connected line update to Local/16104803845@from-internal-00000018;2 prevented.
+<--- Received SIP response (588 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPj45961f9c-4901-4fa1-b3f7-d43ef143fe94
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj45961f9c-4901-4fa1-b3f7-d43ef143fe94
+CSeq: 24083 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d",opaque="7cd0893b5a349c45",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+<--- Transmitting SIP request (465 bytes) to UDP:209.145.55.43:5060 --->
+ACK sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj45961f9c-4901-4fa1-b3f7-d43ef143fe94
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj45961f9c-4901-4fa1-b3f7-d43ef143fe94
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+CSeq: 24083 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1481 bytes) to UDP:209.145.55.43:5060 --->
+INVITE sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj2f7ea347-fdae-4347-959f-6a365f71e7f8
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>
+Contact: <sip:stackorstarve223@169.58.66.206:47923>
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+CSeq: 24084 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="stackorstarve223", realm="asterisk", nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d", uri="sip:16104803845@209.145.55.43:5060", response="95810cedc117f1de8a2f520c79f2436e", algorithm=MD5, cnonce="6bc15cc2119847198b97293c870d05ec", opaque="7cd0893b5a349c45", qop=auth, nc=00000001
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 602641882 602641882 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 19928 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP response (588 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPj2f7ea347-fdae-4347-959f-6a365f71e7f8
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj2f7ea347-fdae-4347-959f-6a365f71e7f8
+CSeq: 24084 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d",opaque="56ef32e420523eb2",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+<--- Transmitting SIP request (465 bytes) to UDP:209.145.55.43:5060 --->
+ACK sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj2f7ea347-fdae-4347-959f-6a365f71e7f8
+From: <sip:stackorstarve223@209.145.55.43>;tag=f58bf06e-ce72-4665-af75-dfad09157c5e
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj2f7ea347-fdae-4347-959f-6a365f71e7f8
+Call-ID: c99d0d3f-e6bd-4913-855f-12ddd5d8fbd6
+CSeq: 24084 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+[2026-11-18 22:23:32.295] WARNING[5370]: res_pjsip_outbound_authenticator_digest.c:633 digest_create_request_with_auth: carrier_sammy:209.145.55.43: Authentication credentials not accepted by server. Credential failed to authenticate (PJSIP_EFAILEDCREDENTIAL)
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [16104803845@from-internal:57] NoOp("Local/16104803845@from-internal-00000018;2", "=== Troncal Exclusiva carrier_sammy finalizo con DIALSTATUS=CHANUNAVAIL HANGUPCAUSE=21 ===") in new stack
+    -- Executing [16104803845@from-internal:58] GotoIf("Local/16104803845@from-internal-00000018;2", "0?end_carrier_11d") in new stack
+    -- Executing [16104803845@from-internal:59] Dial("Local/16104803845@from-internal-00000018;2", "PJSIP/carrier_sammy/sip:16104803845@209.145.55.43:5060,25,TIb(sub-pjsip-outbound^s^1(^stackorstarve223))") in new stack
+    -- PJSIP/carrier_sammy-00000020 Internal Gosub(sub-pjsip-outbound,s,1(,stackorstarve223)) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/carrier_sammy-00000020", "=== [OUTBOUND PRE-DIAL] Canal: PJSIP/carrier_sammy-00000020 | CID Carrier= | TrunkUser=stackorstarve223 ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/carrier_sammy-00000020", "JITTERBUFFER(adaptive)=default") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/carrier_sammy-00000020", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/carrier_sammy-00000020", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/carrier_sammy-00000020", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] GotoIf("PJSIP/carrier_sammy-00000020", "0?set_explicit_carrier_cid:provider_assigned_cid") in new stack
+    -- Goto (sub-pjsip-outbound,s,10)
+    -- Executing [s@sub-pjsip-outbound:10] Set("PJSIP/carrier_sammy-00000020", "CALLERID(name)=") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/carrier_sammy-00000020", "1?Set(CALLERID(num)=stackorstarve223)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/carrier_sammy-00000020", "0?Set(CALLERID(num)=)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] NoOp("PJSIP/carrier_sammy-00000020", "=== [OUTBOUND CARRIER] CallerID asignado directamente por el proveedor SIP (num=stackorstarve223) ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Return("PJSIP/carrier_sammy-00000020", "") in new stack
+  == Spawn extension (trunkinbound, 16104803845, 1) exited non-zero on 'PJSIP/carrier_sammy-00000020'
+    -- PJSIP/carrier_sammy-00000020 Internal Gosub(sub-pjsip-outbound,s,1(,stackorstarve223)) complete GOSUB_RETVAL=
+<--- Transmitting SIP request (1163 bytes) to UDP:209.145.55.43:5060 --->
+INVITE sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj8d41aafc-96af-4461-9718-662a13f4c971
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>
+Contact: <sip:stackorstarve223@169.58.66.206:47923>
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+CSeq: 2292 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 363908516 363908516 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 17952 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Called PJSIP/carrier_sammy/sip:16104803845@209.145.55.43:5060
+    -- Connected line update to Local/16104803845@from-internal-00000018;2 prevented.
+<--- Received SIP response (587 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPj8d41aafc-96af-4461-9718-662a13f4c971
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj8d41aafc-96af-4461-9718-662a13f4c971
+CSeq: 2292 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d",opaque="264f8c1b312ed6e5",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+<--- Transmitting SIP request (464 bytes) to UDP:209.145.55.43:5060 --->
+ACK sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj8d41aafc-96af-4461-9718-662a13f4c971
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPj8d41aafc-96af-4461-9718-662a13f4c971
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+CSeq: 2292 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1480 bytes) to UDP:209.145.55.43:5060 --->
+INVITE sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjf73d9909-c6c1-423f-b3de-44517844d83e
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>
+Contact: <sip:stackorstarve223@169.58.66.206:47923>
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+CSeq: 2293 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="stackorstarve223", realm="asterisk", nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d", uri="sip:16104803845@209.145.55.43:5060", response="cc7aafa5bdbc34fe3de4b5415c7c793f", algorithm=MD5, cnonce="e2082ab0139f4cf493a90af305e15124", opaque="264f8c1b312ed6e5", qop=auth, nc=00000001
+Content-Type: application/sdp
+Content-Length:   446
+
+v=0
+o=- 363908516 363908516 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 17952 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP response (587 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPjf73d9909-c6c1-423f-b3de-44517844d83e
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPjf73d9909-c6c1-423f-b3de-44517844d83e
+CSeq: 2293 INVITE
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055012/e6c03157f7f867ee3187b6f82a5bf36d",opaque="1ee87a0873d1d253",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+<--- Transmitting SIP request (464 bytes) to UDP:209.145.55.43:5060 --->
+ACK sip:16104803845@209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjf73d9909-c6c1-423f-b3de-44517844d83e
+From: <sip:stackorstarve223@209.145.55.43>;tag=75fac8c5-0c41-4910-a4e3-a04e835b0c55
+To: <sip:16104803845@209.145.55.43>;tag=z9hG4bKPjf73d9909-c6c1-423f-b3de-44517844d83e
+Call-ID: 38f4d7be-444a-49eb-801a-327ff70611fa
+CSeq: 2293 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+[2026-11-18 22:23:32.524] WARNING[5370]: res_pjsip_outbound_authenticator_digest.c:633 digest_create_request_with_auth: carrier_sammy:209.145.55.43: Authentication credentials not accepted by server. Credential failed to authenticate (PJSIP_EFAILEDCREDENTIAL)
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [16104803845@from-internal:60] NoOp("Local/16104803845@from-internal-00000018;2", "=== [AISLAMIENTO ESTRICTO] Troncal exclusiva carrier_sammy finalizada (CHANUNAVAIL) - NO conmuta a troncales de otros Call Centers ===") in new stack
+    -- Executing [16104803845@from-internal:61] Goto("Local/16104803845@from-internal-00000018;2", "end_carrier_11d") in new stack
+    -- Goto (from-internal,16104803845,70)
+    -- Executing [16104803845@from-internal:70] NoOp("Local/16104803845@from-internal-00000018;2", "=== [CALL END] Destino: 16104803845 | DIALSTATUS=CHANUNAVAIL | HANGUPCAUSE=21 ===") in new stack
+    -- Executing [16104803845@from-internal:71] GotoIf("Local/16104803845@from-internal-00000018;2", "1?no_retry_11d") in new stack
+    -- Goto (from-internal,16104803845,74)
+    -- Executing [16104803845@from-internal:74] NoOp("Local/16104803845@from-internal-00000018;2", "=== [RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===") in new stack
+    -- Executing [16104803845@from-internal:75] Hangup("Local/16104803845@from-internal-00000018;2", "") in new stack
+  == Spawn extension (from-internal, 16104803845, 75) exited non-zero on 'Local/16104803845@from-internal-00000018;2'
+    -- Executing [h@from-internal:1] NoOp("Local/16104803845@from-internal-00000018;2", "=== [FROM-INTERNAL HANGUP] Canal colgado: Local/16104803845@from-internal-00000018;2 | Causa: 21 ===") in new stack
+    -- Executing [h@from-internal:2] Set("Local/16104803845@from-internal-00000018;2", "TARGET_NUM=16104803845") in new stack
+    -- Executing [h@from-internal:3] Set("Local/16104803845@from-internal-00000018;2", "DB(call_status/16104803845)=ended") in new stack
+    -- Executing [h@from-internal:4] System("Local/16104803845@from-internal-00000018;2", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=ended&cause=21&channel=Local%2F16104803845%40from-internal-00000018%3B2" &") in new stack
+    -- Executing [h@from-internal:5] System("Local/16104803845@from-internal-00000018;2", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/reseller/deduct?client=ringall&secs=0&dest=16104803845&tenant=tenant-alpha" &") in new stack
+<--- Transmitting SIP request (616 bytes) to UDP:209.145.55.43:5060 --->
+REGISTER sip:209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjf1c081f9-af12-4c9f-b94a-f02e00c876dc
+From: <sip:stackorstarve223@209.145.55.43>;tag=356e880c-d64e-4ccf-8112-50d4d76a574d
+To: <sip:stackorstarve223@209.145.55.43>
+Call-ID: 84139cc4-bc83-4e94-ae33-151c6a264574
+CSeq: 22987 REGISTER
+Contact: <sip:stackorstarve223@169.58.66.206:47923;line=tfduhoe>
+Expires: 3600
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP response (595 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPjf1c081f9-af12-4c9f-b94a-f02e00c876dc
+Call-ID: 84139cc4-bc83-4e94-ae33-151c6a264574
+From: <sip:stackorstarve223@209.145.55.43>;tag=356e880c-d64e-4ccf-8112-50d4d76a574d
+To: <sip:stackorstarve223@209.145.55.43>;tag=z9hG4bKPjf1c081f9-af12-4c9f-b94a-f02e00c876dc
+CSeq: 22987 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055015/2bd00273ca7512fe220539a70ebe97cd",opaque="2c2da35b39ec0d0d",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+<--- Transmitting SIP request (921 bytes) to UDP:209.145.55.43:5060 --->
+REGISTER sip:209.145.55.43:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPjaf93cab2-effa-4a0a-a36b-34525a644399
+From: <sip:stackorstarve223@209.145.55.43>;tag=356e880c-d64e-4ccf-8112-50d4d76a574d
+To: <sip:stackorstarve223@209.145.55.43>
+Call-ID: 84139cc4-bc83-4e94-ae33-151c6a264574
+CSeq: 22988 REGISTER
+Contact: <sip:stackorstarve223@169.58.66.206:47923;line=tfduhoe>
+Expires: 3600
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="stackorstarve223", realm="asterisk", nonce="1795055015/2bd00273ca7512fe220539a70ebe97cd", uri="sip:209.145.55.43:5060", response="e05b890f3dc82f6af06df6f71842b16a", algorithm=MD5, cnonce="a3657d78033243a899aa7d760f7faf93", opaque="2c2da35b39ec0d0d", qop=auth, nc=00000001
+Content-Length:  0
+
+
+<--- Received SIP response (595 bytes) from UDP:209.145.55.43:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;received=169.58.66.206;branch=z9hG4bKPjaf93cab2-effa-4a0a-a36b-34525a644399
+Call-ID: 84139cc4-bc83-4e94-ae33-151c6a264574
+From: <sip:stackorstarve223@209.145.55.43>;tag=356e880c-d64e-4ccf-8112-50d4d76a574d
+To: <sip:stackorstarve223@209.145.55.43>;tag=z9hG4bKPjaf93cab2-effa-4a0a-a36b-34525a644399
+CSeq: 22988 REGISTER
+WWW-Authenticate: Digest realm="asterisk",nonce="1795055015/2bd00273ca7512fe220539a70ebe97cd",opaque="3dfaa41234f2daf0",algorithm=MD5,qop="auth"
+Server: Asterisk PBX 20.9.2
+Content-Length:  0
+
+
+[2026-11-18 22:23:36.004] WARNING[5371]: res_pjsip_outbound_registration.c:1212 schedule_retry: Temporal response '401' received from 'sip:209.145.55.43:5060' on registration attempt to 'sip:stackorstarve223@209.145.55.43:5060', retrying in '30'
+vmi3461829*CLI>
+[7]+  Stopped                 asterisk -rvvv

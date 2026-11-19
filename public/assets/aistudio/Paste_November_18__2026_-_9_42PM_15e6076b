@@ -1,0 +1,510 @@
+root@vmi3461829:~# curl -s ifconfig.me; echo ""
+asterisk -rvvvvv
+2a02:c207:2346:1829::1
+Asterisk GIT-20-352e66b114, Copyright (C) 1999 - 2025, Sangoma Technologies Corporation and others.
+Created by Mark Spencer <markster@digium.com>
+Asterisk comes with ABSOLUTELY NO WARRANTY; type 'core show warranty' for details.
+This is free software, with components licensed under the GNU General Public
+License version 2 and other licenses; you are welcome to redistribute it under
+certain conditions. Type 'core show license' for details.
+=========================================================================
+Connected to Asterisk GIT-20-352e66b114 currently running on vmi3461829 (pid = 4489)
+vmi3461829*CLI> pjsip set logger host televox.in
+PJSIP Logging Enabled for host: 52.144.46.192
+[2026-11-18 21:39:48.091] WARNING[5376]: pjproject: <?>:               sip_transport.c Dropping 1222 bytes packet from UDP 179.43.153.234:16338 : PJSIP syntax error exception when parsing 'Request Line' header on line 1 col 29
+
+<--- Received SIP request (594 bytes) from UDP:52.144.46.192:5060 --->
+OPTIONS sip:jdelacruz@169.58.66.206:47923;line=heejlls SIP/2.0
+Via: SIP/2.0/UDP 52.144.46.192:5060;branch=z9hG4bK196d308a;rport
+Max-Forwards: 70
+From: "asterisk" <sip:asterisk@52.144.46.192>;tag=as48e890a4
+To: <sip:jdelacruz@169.58.66.206:47923;line=heejlls>
+Contact: <sip:asterisk@52.144.46.192:5060>
+Call-ID: 7563b19b110d15ff30e9bc9169bcb9fc@52.144.46.192:5060
+CSeq: 102 OPTIONS
+User-Agent: Asterisk PBX 13.38.3
+Date: Thu, 19 Nov 2026 01:39:51 GMT
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Content-Length: 0
+
+
+<--- Transmitting SIP response (881 bytes) to UDP:52.144.46.192:5060 --->
+SIP/2.0 404 Not Found
+Via: SIP/2.0/UDP 52.144.46.192:5060;rport=5060;received=52.144.46.192;branch=z9hG4bK196d308a
+Call-ID: 7563b19b110d15ff30e9bc9169bcb9fc@52.144.46.192:5060
+From: "asterisk" <sip:asterisk@52.144.46.192>;tag=as48e890a4
+To: <sip:jdelacruz@169.58.66.206;line=heejlls>;tag=z9hG4bK196d308a
+CSeq: 102 OPTIONS
+Accept: application/sdp, application/dialog-info+xml, application/xpidf+xml, application/cpim-pidf+xml, application/pidf+xml, application/simple-message-summary, application/pidf+xml, application/dialog-info+xml, application/simple-message-summary, message/sipfrag;version=2.0
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub
+Accept-Encoding: identity
+Accept-Language: en
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+  == Connect attempt from '127.0.0.1' unable to authenticate
+    -- Attempting call on Local/16104803845@from-internal/n for s@ivr-press1-cancel:1 (Retry 1)
+    -- Called 16104803845@from-internal/n
+    -- Executing [16104803845@from-internal:1] NoOp("Local/16104803845@from-internal-00000006;2", "Llamada Saliente 11 digitos a 16104803845") in new stack
+    -- Executing [16104803845@from-internal:2] Set("Local/16104803845@from-internal-00000006;2", "CALLING_USER=ringall") in new stack
+[2026-11-18 21:39:55.281] WARNING[101473][C-0000000d]: func_channel.c:611 func_channel_read: Unknown or unavailable item requested: 'endpoint'
+    -- Executing [16104803845@from-internal:3] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(CALLING_USER=)") in new stack
+    -- Executing [16104803845@from-internal:4] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(__CALLING_AGENT=ringall)") in new stack
+    -- Executing [16104803845@from-internal:5] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(__IVR_AGENT_EXTEN=ringall)") in new stack
+    -- Executing [16104803845@from-internal:6] Set("Local/16104803845@from-internal-00000006;2", "__CALL_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:7] Set("Local/16104803845@from-internal-00000006;2", "CLIENT_BAL=10") in new stack
+    -- Executing [16104803845@from-internal:8] Set("Local/16104803845@from-internal-00000006;2", "CLIENT_CUT=1") in new stack
+    -- Executing [16104803845@from-internal:9] GotoIf("Local/16104803845@from-internal-00000006;2", "0?allow_11d") in new stack
+    -- Executing [16104803845@from-internal:10] GotoIf("Local/16104803845@from-internal-00000006;2", "1?allow_11d") in new stack
+    -- Goto (from-internal,16104803845,15)
+    -- Executing [16104803845@from-internal:15] Set("Local/16104803845@from-internal-00000006;2", "DB(last_agent_call/16104803845)=ringall") in new stack
+    -- Executing [16104803845@from-internal:16] Set("Local/16104803845@from-internal-00000006;2", "DB(last_agent_call/ringall)=ringall") in new stack
+    -- Executing [16104803845@from-internal:17] Set("Local/16104803845@from-internal-00000006;2", "TARGET_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:18] Set("Local/16104803845@from-internal-00000006;2", "__TARGET_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:19] Set("Local/16104803845@from-internal-00000006;2", "__TARGET_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:20] Set("Local/16104803845@from-internal-00000006;2", "__CALL_DEST=16104803845") in new stack
+    -- Executing [16104803845@from-internal:21] Set("Local/16104803845@from-internal-00000006;2", "__CUSTOMER_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:22] Set("Local/16104803845@from-internal-00000006;2", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [16104803845@from-internal:23] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(REC_OUT_11D=/var/spool/asterisk/monitor/20261118-213955_OUT_ringall_to_16104803845_1795052395.19.wav)") in new stack
+    -- Executing [16104803845@from-internal:24] ExecIf("Local/16104803845@from-internal-00000006;2", "0?NoOp(=== [MIXMONITOR OUT] Grabando llamada saliente de ringall:  ===)") in new stack
+    -- Executing [16104803845@from-internal:25] ExecIf("Local/16104803845@from-internal-00000006;2", "0?MixMonitor(,b)") in new stack
+    -- Executing [16104803845@from-internal:26] Set("Local/16104803845@from-internal-00000006;2", "DIAL_NUM=16104803845") in new stack
+    -- Executing [16104803845@from-internal:27] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(DIAL_NUM=104803845)") in new stack
+    -- Executing [16104803845@from-internal:28] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(DIAL_NUM=04803845)") in new stack
+    -- Executing [16104803845@from-internal:29] Set("Local/16104803845@from-internal-00000006;2", "CALLING_USER_CHAN=1001") in new stack
+[2026-11-18 21:39:55.285] WARNING[101473][C-0000000d]: func_channel.c:611 func_channel_read: Unknown or unavailable item requested: 'endpoint'
+    -- Executing [16104803845@from-internal:30] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(CALLING_USER_CHAN=)") in new stack
+    -- Executing [16104803845@from-internal:31] Set("Local/16104803845@from-internal-00000006;2", "ASSIGNED_CARRIER=") in new stack
+    -- Executing [16104803845@from-internal:32] ExecIf("Local/16104803845@from-internal-00000006;2", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:33] ExecIf("Local/16104803845@from-internal-00000006;2", "1?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:34] ExecIf("Local/16104803845@from-internal-00000006;2", "1?Set(ASSIGNED_CARRIER=televoxin)") in new stack
+    -- Executing [16104803845@from-internal:35] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(ASSIGNED_CARRIER=televoxin)") in new stack
+    -- Executing [16104803845@from-internal:36] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(ASSIGNED_CARRIER=)") in new stack
+    -- Executing [16104803845@from-internal:37] ExecIf("Local/16104803845@from-internal-00000006;2", "1?Set(__TENANT_ID=tenant-alpha)") in new stack
+    -- Executing [16104803845@from-internal:38] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(ASSIGNED_CARRIER=televoxin)") in new stack
+    -- Executing [16104803845@from-internal:39] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(__TENANT_ID=tenant-bpo)") in new stack
+    -- Executing [16104803845@from-internal:40] ExecIf("Local/16104803845@from-internal-00000006;2", "0?Set(__TENANT_ID=tenant-vip)") in new stack
+    -- Executing [16104803845@from-internal:41] GotoIf("Local/16104803845@from-internal-00000006;2", "0?skip_tenant_bal_11d") in new stack
+    -- Executing [16104803845@from-internal:42] Set("Local/16104803845@from-internal-00000006;2", "TENANT_BAL=67.41") in new stack
+    -- Executing [16104803845@from-internal:43] Set("Local/16104803845@from-internal-00000006;2", "TENANT_CUT=1") in new stack
+    -- Executing [16104803845@from-internal:44] GotoIf("Local/16104803845@from-internal-00000006;2", "0?skip_tenant_bal_11d") in new stack
+    -- Executing [16104803845@from-internal:45] GotoIf("Local/16104803845@from-internal-00000006;2", "1?skip_tenant_bal_11d") in new stack
+    -- Goto (from-internal,16104803845,50)
+    -- Executing [16104803845@from-internal:50] NoOp("Local/16104803845@from-internal-00000006;2", "") in new stack
+    -- Executing [16104803845@from-internal:51] ExecIf("Local/16104803845@from-internal-00000006;2", "0?System(curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=talking&agent=1001&tenant=tenant-alpha&channel=Local%2F16104803845%40from-internal-00000006%3B2" &)") in new stack
+    -- Executing [16104803845@from-internal:52] GotoIf("Local/16104803845@from-internal-00000006;2", "0?standard_carriers_11d") in new stack
+    -- Executing [16104803845@from-internal:53] NoOp("Local/16104803845@from-internal-00000006;2", "=== [CARRIER DEDICADO] Intentando troncal exclusiva asignada: televoxin para destino 16104803845 ===") in new stack
+    -- Executing [16104803845@from-internal:54] GotoIf("Local/16104803845@from-internal-00000006;2", "0?skip_dedicated_televoxin_11d") in new stack
+    -- Executing [16104803845@from-internal:55] NoOp("Local/16104803845@from-internal-00000006;2", "=== [OUTBOUND DEDICADO] Marcando por Troncal Exclusiva: televoxin (televox.in:5060) a 16104803845 | CID=Asignado por Proveedor ===") in new stack
+    -- Executing [16104803845@from-internal:56] Dial("Local/16104803845@from-internal-00000006;2", "PJSIP/16104803845@televoxin,40,TIb(sub-pjsip-outbound^s^1(^jdelacruz))") in new stack
+    -- PJSIP/televoxin-00000006 Internal Gosub(sub-pjsip-outbound,s,1(,jdelacruz)) start
+    -- Executing [s@sub-pjsip-outbound:1] NoOp("PJSIP/televoxin-00000006", "=== [OUTBOUND PRE-DIAL] Canal: PJSIP/televoxin-00000006 | CID Carrier= | TrunkUser=jdelacruz ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:2] Set("PJSIP/televoxin-00000006", "JITTERBUFFER(adaptive)=default") in new stack
+    -- Executing [s@sub-pjsip-outbound:3] Set("PJSIP/televoxin-00000006", "CALLERID(pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:4] Set("PJSIP/televoxin-00000006", "CALLERID(num-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:5] Set("PJSIP/televoxin-00000006", "CALLERID(name-pres)=allowed_not_screened") in new stack
+    -- Executing [s@sub-pjsip-outbound:6] GotoIf("PJSIP/televoxin-00000006", "0?set_explicit_carrier_cid:provider_assigned_cid") in new stack
+    -- Goto (sub-pjsip-outbound,s,10)
+    -- Executing [s@sub-pjsip-outbound:10] Set("PJSIP/televoxin-00000006", "CALLERID(name)=") in new stack
+    -- Executing [s@sub-pjsip-outbound:11] ExecIf("PJSIP/televoxin-00000006", "1?Set(CALLERID(num)=jdelacruz)") in new stack
+    -- Executing [s@sub-pjsip-outbound:12] ExecIf("PJSIP/televoxin-00000006", "0?Set(CALLERID(num)=)") in new stack
+    -- Executing [s@sub-pjsip-outbound:13] NoOp("PJSIP/televoxin-00000006", "=== [OUTBOUND CARRIER] CallerID asignado directamente por el proveedor SIP (num=jdelacruz) ===") in new stack
+    -- Executing [s@sub-pjsip-outbound:14] Return("PJSIP/televoxin-00000006", "") in new stack
+  == Spawn extension (trunkinbound, 16104803845, 1) exited non-zero on 'PJSIP/televoxin-00000006'
+    -- PJSIP/televoxin-00000006 Internal Gosub(sub-pjsip-outbound,s,1(,jdelacruz)) complete GOSUB_RETVAL=
+    -- Called PJSIP/16104803845@televoxin
+<--- Transmitting SIP request (1142 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:16104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj2e599d18-248d-4092-84a8-757e5cdcd865
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>
+Contact: <sip:jdelacruz@169.58.66.206:47923>
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5475 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Type: application/sdp
+Content-Length:   448
+
+v=0
+o=- 1313876934 1313876934 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 14048 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+    -- Connected line update to Local/16104803845@from-internal-00000006;2 prevented.
+<--- Received SIP response (582 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj2e599d18-248d-4092-84a8-757e5cdcd865;received=169.58.66.206;rport=47923
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>;tag=as6e05ec70
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5475 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+WWW-Authenticate: Digest algorithm=MD5, realm="asterisk", nonce="68d9bf0d"
+Content-Length: 0
+
+
+<--- Transmitting SIP request (413 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:16104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj2e599d18-248d-4092-84a8-757e5cdcd865
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>;tag=as6e05ec70
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5475 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Transmitting SIP request (1321 bytes) to UDP:52.144.46.192:5060 --->
+INVITE sip:16104803845@televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj27164f70-7a64-4e30-a8bd-3671f054d8b1
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>
+Contact: <sip:jdelacruz@169.58.66.206:47923>
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5476 INVITE
+Allow: OPTIONS, REGISTER, SUBSCRIBE, NOTIFY, PUBLISH, INVITE, ACK, BYE, CANCEL, UPDATE, PRACK, INFO, MESSAGE, REFER
+Supported: 100rel, timer, replaces, norefersub, histinfo
+Session-Expires: 1800
+Min-SE: 90
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Authorization: Digest username="jdelacruz", realm="asterisk", nonce="68d9bf0d", uri="sip:16104803845@televox.in:5060", response="324f73b2866fd20fff3c2f9489a22252", algorithm=MD5
+Content-Type: application/sdp
+Content-Length:   448
+
+v=0
+o=- 1313876934 1313876934 IN IP4 169.58.66.206
+s=Asterisk
+c=IN IP4 169.58.66.206
+t=0 0
+m=audio 14048 RTP/AVP 0 8 107 9 18 101 102
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:107 opus/48000/2
+a=fmtp:107 useinbandfec=1
+a=rtpmap:9 G722/8000
+a=rtpmap:18 G729/8000
+a=fmtp:18 annexb=no
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtpmap:102 telephone-event/48000
+a=fmtp:102 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv
+
+<--- Received SIP response (532 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 100 Trying
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj27164f70-7a64-4e30-a8bd-3671f054d8b1;received=169.58.66.206;rport=47923
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5476 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Contact: <sip:16104803845@52.144.46.192:5060>
+Content-Length: 0
+
+
+<--- Received SIP response (854 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj27164f70-7a64-4e30-a8bd-3671f054d8b1;received=169.58.66.206;rport=47923
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>;tag=as0d45400d
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5476 INVITE
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Contact: <sip:16104803845@52.144.46.192:5060>
+Content-Type: application/sdp
+Content-Length: 278
+
+v=0
+o=root 1514037380 1514037380 IN IP4 52.144.46.192
+s=Asterisk PBX 13.38.3
+c=IN IP4 52.144.46.192
+t=0 0
+m=audio 16348 RTP/AVP 8 0 101
+a=rtpmap:8 PCMA/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ptime:20
+a=maxptime:150
+a=sendrecv
+
+<--- Transmitting SIP request (416 bytes) to UDP:52.144.46.192:5060 --->
+ACK sip:16104803845@52.144.46.192:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj348e266f-c878-4749-91be-6a66cae4ea04
+From: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+To: <sip:16104803845@televox.in>;tag=as0d45400d
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 5476 ACK
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+    -- PJSIP/televoxin-00000006 answered Local/16104803845@from-internal-00000006;2
+    -- Local/16104803845@from-internal-00000006;1 answered
+    -- Executing [s@ivr-press1-cancel:1] NoOp("Local/16104803845@from-internal-00000006;1", "=== [IVR-PRESS1-CANCEL] INICIO FLUJO PRESS 1 + CODIGO DE CANCELACION ===") in new stack
+    -- Executing [s@ivr-press1-cancel:2] Answer("Local/16104803845@from-internal-00000006;1", "") in new stack
+    -- Channel PJSIP/televoxin-00000006 joined 'simple_bridge' basic-bridge <2cb030e1-4c20-442b-b319-d658ea32bc09>
+    -- Executing [s@ivr-press1-cancel:3] Set("Local/16104803845@from-internal-00000006;1", "TARGET_DEST=16104803845") in new stack
+    -- Channel Local/16104803845@from-internal-00000006;2 joined 'simple_bridge' basic-bridge <2cb030e1-4c20-442b-b319-d658ea32bc09>
+    -- Executing [s@ivr-press1-cancel:4] Set("Local/16104803845@from-internal-00000006;1", "__TARGET_NUM=16104803845") in new stack
+    -- Executing [s@ivr-press1-cancel:5] Set("Local/16104803845@from-internal-00000006;1", "__CUSTOMER_NUM=16104803845") in new stack
+    -- Executing [s@ivr-press1-cancel:6] Set("Local/16104803845@from-internal-00000006;1", "__TARGET_DEST=16104803845") in new stack
+    -- Executing [s@ivr-press1-cancel:7] Set("Local/16104803845@from-internal-00000006;1", "__CALL_DEST=16104803845") in new stack
+    -- Executing [s@ivr-press1-cancel:8] Set("Local/16104803845@from-internal-00000006;1", "AMD_ACTIVE=0") in new stack
+    -- Executing [s@ivr-press1-cancel:9] ExecIf("Local/16104803845@from-internal-00000006;1", "1?Set(AMD_ACTIVE=0)") in new stack
+    -- Executing [s@ivr-press1-cancel:10] GotoIf("Local/16104803845@from-internal-00000006;1", "1?skip_amd_p1c") in new stack
+    -- Goto (ivr-press1-cancel,s,16)
+    -- Executing [s@ivr-press1-cancel:16] Wait("Local/16104803845@from-internal-00000006;1", "0.3") in new stack
+    -- Executing [s@ivr-press1-cancel:17] Set("Local/16104803845@from-internal-00000006;1", "DB(call_status/16104803845)=in_ivr") in new stack
+    -- Executing [s@ivr-press1-cancel:18] Set("Local/16104803845@from-internal-00000006;1", "DB(otp_status/16104803845)=waiting_press1") in new stack
+    -- Executing [s@ivr-press1-cancel:19] System("Local/16104803845@from-internal-00000006;1", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=in_ivr&mode=cancel_code&channel=Local%2F16104803845%40from-internal-00000006%3B1" &") in new stack
+    -- Executing [s@ivr-press1-cancel:20] UserEvent("Local/16104803845@from-internal-00000006;1", "CallAnswered,Number=16104803845,Context=ivr-press1-cancel,Channel=Local/16104803845@from-internal-00000006;1") in new stack
+    -- Executing [s@ivr-press1-cancel:21] Set("Local/16104803845@from-internal-00000006;1", "TIMEOUT(digit)=1") in new stack
+    -- Digit timeout set to 1.000
+    -- Executing [s@ivr-press1-cancel:22] Set("Local/16104803845@from-internal-00000006;1", "TIMEOUT(response)=6") in new stack
+    -- Response timeout set to 6.000
+    -- Executing [s@ivr-press1-cancel:23] Set("Local/16104803845@from-internal-00000006;1", "TIMEOUT(absolute)=240") in new stack
+    -- Channel will hangup at 2026-11-18 21:43:55.863 AST.
+    -- Executing [s@ivr-press1-cancel:24] Set("Local/16104803845@from-internal-00000006;1", "FINAL_AGENT=ringall") in new stack
+[2026-11-18 21:39:55.863] WARNING[101472][C-0000000e]: func_channel.c:611 func_channel_read: Unknown or unavailable item requested: 'endpoint'
+    -- Executing [s@ivr-press1-cancel:25] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(FINAL_AGENT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:26] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(FINAL_AGENT=ringall)") in new stack
+    -- Executing [s@ivr-press1-cancel:27] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(FINAL_AGENT=ringall)") in new stack
+    -- Executing [s@ivr-press1-cancel:28] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(FINAL_AGENT=1001)") in new stack
+    -- Executing [s@ivr-press1-cancel:29] Set("Local/16104803845@from-internal-00000006;1", "IVR_INTRO=custom/bienvenida_corporativa") in new stack
+    -- Executing [s@ivr-press1-cancel:30] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_INTRO=)") in new stack
+    -- Executing [s@ivr-press1-cancel:31] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_INTRO=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1-cancel:32] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_INTRO=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1-cancel:33] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_INTRO=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1-cancel:34] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_INTRO=custom/bienvenida_press1)") in new stack
+    -- Executing [s@ivr-press1-cancel:35] Set("Local/16104803845@from-internal-00000006;1", "IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion") in new stack
+    -- Executing [s@ivr-press1-cancel:36] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_WAIT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:37] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_WAIT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:38] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion)") in new stack
+    -- Executing [s@ivr-press1-cancel:39] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_WAIT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:40] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion)") in new stack
+    -- Executing [s@ivr-press1-cancel:41] Set("Local/16104803845@from-internal-00000006;1", "IVR_CANCEL_PROMPT=custom/solicitar_codigo_otp") in new stack
+    -- Executing [s@ivr-press1-cancel:42] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_PROMPT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:43] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_PROMPT=custom/solicitar_codigo_otp)") in new stack
+    -- Executing [s@ivr-press1-cancel:44] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_PROMPT=custom/solicitar_codigo_otp)") in new stack
+    -- Executing [s@ivr-press1-cancel:45] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_CANCEL_PROMPT=custom/digite_codigo_cancelacion)") in new stack
+    -- Executing [s@ivr-press1-cancel:46] Set("Local/16104803845@from-internal-00000006;1", "IVR_WAIT=") in new stack
+    -- Executing [s@ivr-press1-cancel:47] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_WAIT=)") in new stack
+    -- Executing [s@ivr-press1-cancel:48] ExecIf("Local/16104803845@from-internal-00000006;1", "1?Set(IVR_WAIT=custom/un_momento_validando_informacion)") in new stack
+    -- Executing [s@ivr-press1-cancel:49] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_WAIT=custom/un_momento_validando_informacion)") in new stack
+    -- Executing [s@ivr-press1-cancel:50] Set("Local/16104803845@from-internal-00000006;1", "IVR_SUCCESS=custom/operacion_bloqueada_exito") in new stack
+    -- Executing [s@ivr-press1-cancel:51] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_SUCCESS=)") in new stack
+    -- Executing [s@ivr-press1-cancel:52] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito)") in new stack
+    -- Executing [s@ivr-press1-cancel:53] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_SUCCESS=custom/operacion_cancelada_exito)") in new stack
+    -- Executing [s@ivr-press1-cancel:54] Set("Local/16104803845@from-internal-00000006;1", "IVR_FAILURE=") in new stack
+    -- Executing [s@ivr-press1-cancel:55] ExecIf("Local/16104803845@from-internal-00000006;1", "1?Set(IVR_FAILURE=custom/token_invalido_reintente)") in new stack
+    -- Executing [s@ivr-press1-cancel:56] ExecIf("Local/16104803845@from-internal-00000006;1", "0?Set(IVR_FAILURE=custom/token_invalido_reintente)") in new stack
+    -- Executing [s@ivr-press1-cancel:57] Set("Local/16104803845@from-internal-00000006;1", "IVR_INTRO=custom/bienvenida_corporativa") in new stack
+    -- Executing [s@ivr-press1-cancel:58] Set("Local/16104803845@from-internal-00000006;1", "IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion") in new stack
+    -- Executing [s@ivr-press1-cancel:59] Set("Local/16104803845@from-internal-00000006;1", "IVR_CANCEL_PROMPT=custom/solicitar_codigo_otp") in new stack
+    -- Executing [s@ivr-press1-cancel:60] Set("Local/16104803845@from-internal-00000006;1", "IVR_WAIT=custom/un_momento_validando_informacion") in new stack
+    -- Executing [s@ivr-press1-cancel:61] Set("Local/16104803845@from-internal-00000006;1", "IVR_SUCCESS=custom/operacion_bloqueada_exito") in new stack
+    -- Executing [s@ivr-press1-cancel:62] Set("Local/16104803845@from-internal-00000006;1", "IVR_FAILURE=custom/token_invalido_reintente") in new stack
+    -- Executing [s@ivr-press1-cancel:63] Set("Local/16104803845@from-internal-00000006;1", "INTRO_TRIES=0") in new stack
+    -- Executing [s@ivr-press1-cancel:64] Set("Local/16104803845@from-internal-00000006;1", "INTRO_TRIES=1") in new stack
+    -- Executing [s@ivr-press1-cancel:65] NoOp("Local/16104803845@from-internal-00000006;1", "=== [IVR-PRESS1-CANCEL] Reproduciendo saludo (1/2): custom/bienvenida_corporativa ===") in new stack
+    -- Executing [s@ivr-press1-cancel:66] BackGround("Local/16104803845@from-internal-00000006;1", "custom/bienvenida_corporativa") in new stack
+    -- <Local/16104803845@from-internal-00000006;1> Playing 'custom/bienvenida_corporativa' (format 'wav', language 'en')
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+<--- Received SIP request (628 bytes) from UDP:52.144.46.192:5060 --->
+BYE sip:jdelacruz@169.58.66.206:47923 SIP/2.0
+Via: SIP/2.0/UDP 52.144.46.192:5060;branch=z9hG4bK22daf892;rport
+Max-Forwards: 70
+From: <sip:16104803845@televox.in>;tag=as0d45400d
+To: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+CSeq: 102 BYE
+User-Agent: Asterisk PBX 13.38.3
+Proxy-Authorization: Digest username="jdelacruz", realm="asterisk", algorithm=MD5, uri="sip:televox.in", nonce="68d9bf0d", response="49fa97f9a6f5318f338252d769c9aa05"
+X-Asterisk-HangupCause: Unallocated (unassigned) number
+X-Asterisk-HangupCauseCode: 1
+Content-Length: 0
+
+
+<--- Transmitting SIP response (358 bytes) to UDP:52.144.46.192:5060 --->
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 52.144.46.192:5060;rport=5060;received=52.144.46.192;branch=z9hG4bK22daf892
+Call-ID: 4681e7af-8f41-4309-8bc3-04181ed9ef11
+From: <sip:16104803845@televox.in>;tag=as0d45400d
+To: <sip:jdelacruz@televox.in>;tag=9ac08758-eb05-4580-9679-0694041aa13f
+CSeq: 102 BYE
+Server: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+    -- Channel PJSIP/televoxin-00000006 left 'simple_bridge' basic-bridge <2cb030e1-4c20-442b-b319-d658ea32bc09>
+    -- Channel Local/16104803845@from-internal-00000006;2 left 'simple_bridge' basic-bridge <2cb030e1-4c20-442b-b319-d658ea32bc09>
+  == Spawn extension (from-internal, 16104803845, 56) exited non-zero on 'Local/16104803845@from-internal-00000006;2'
+    -- Executing [h@from-internal:1] NoOp("Local/16104803845@from-internal-00000006;2", "=== [FROM-INTERNAL HANGUP] Canal colgado: Local/16104803845@from-internal-00000006;2 | Causa: 16 ===") in new stack
+    -- Executing [h@from-internal:2] Set("Local/16104803845@from-internal-00000006;2", "TARGET_NUM=16104803845") in new stack
+    -- Executing [h@from-internal:3] Set("Local/16104803845@from-internal-00000006;2", "DB(call_status/16104803845)=ended") in new stack
+    -- Executing [h@from-internal:4] System("Local/16104803845@from-internal-00000006;2", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=ended&cause=16&channel=Local%2F16104803845%40from-internal-00000006%3B2" &") in new stack
+    -- Executing [h@from-internal:5] System("Local/16104803845@from-internal-00000006;2", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/reseller/deduct?client=ringall&secs=2&dest=16104803845&tenant=tenant-alpha" &") in new stack
+  == Spawn extension (ivr-press1-cancel, s, 66) exited non-zero on 'Local/16104803845@from-internal-00000006;1'
+    -- Executing [h@ivr-press1-cancel:1] NoOp("Local/16104803845@from-internal-00000006;1", "=== [IVR-PRESS1-CANCEL HANGUP] Canal: Local/16104803845@from-internal-00000006;1 | Causa: 16 ===") in new stack
+    -- Executing [h@ivr-press1-cancel:2] Set("Local/16104803845@from-internal-00000006;1", "TARGET_NUM=16104803845") in new stack
+    -- Executing [h@ivr-press1-cancel:3] Set("Local/16104803845@from-internal-00000006;1", "DB(call_status/16104803845)=ended") in new stack
+    -- Executing [h@ivr-press1-cancel:4] System("Local/16104803845@from-internal-00000006;1", "curl -s -H "X-Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=16104803845&status=ended&cause=16&channel=Local%2F16104803845%40from-internal-00000006%3B1" &") in new stack
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+<--- Transmitting SIP request (428 bytes) to UDP:52.144.46.192:5060 --->
+OPTIONS sip:televox.in:5060 SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj6d5191da-def5-43ba-9bf0-e3a5ede30500
+From: <sip:jdelacruz@televox.in>;tag=c8d017b4-8d03-45a6-ba40-0aec84c02042
+To: <sip:televox.in>
+Contact: <sip:jdelacruz@169.58.66.206:47923>
+Call-ID: 25b58bfe-676f-4357-8195-6e115c24e466
+CSeq: 5920 OPTIONS
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP response (517 bytes) from UDP:52.144.46.192:5060 --->
+SIP/2.0 404 Not Found
+Via: SIP/2.0/UDP 169.58.66.206:47923;branch=z9hG4bKPj6d5191da-def5-43ba-9bf0-e3a5ede30500;received=169.58.66.206;rport=47923
+From: <sip:jdelacruz@televox.in>;tag=c8d017b4-8d03-45a6-ba40-0aec84c02042
+To: <sip:televox.in>;tag=as4a413e5e
+Call-ID: 25b58bfe-676f-4357-8195-6e115c24e466
+CSeq: 5920 OPTIONS
+Server: Asterisk PBX 13.38.3
+Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
+Supported: replaces
+Accept: application/sdp
+Content-Length: 0
+
+
+vmi3461829*CLI> pjsip set logger off
+PJSIP Logging disabled
+vmi3461829*CLI> exit
+Asterisk cleanly ending (0).
+Executing last minute cleanups

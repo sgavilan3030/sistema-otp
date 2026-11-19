@@ -2228,6 +2228,47 @@ function saveStoredAudios(audios: any[]) {
   } catch (_) {}
 }
 
+const VALID_CALL_FLOW_MODES = ['otp', 'press1', 'hybrid', 'cancel_code', 'otp_press1'] as const;
+
+function normalizeCallFlowMode(mode?: string): 'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1' {
+  const m = String(mode || '').trim();
+  if (m === 'press1_cancel' || m === 'cancel_code') return 'cancel_code';
+  if (m === 'ivr_otp_verify' || m === 'otp_press1') return 'otp_press1';
+  if (m === 'otp' || m === 'hybrid' || m === 'press1') return m;
+  return 'press1';
+}
+
+function resolveClientDialingPlanScope(user?: any, tenant?: any): {
+  assignedMode: 'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1';
+  allowedModes: Array<'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1'>;
+} {
+  const filterValid = (arr: any) =>
+    Array.isArray(arr)
+      ? Array.from(new Set(arr.map((x) => normalizeCallFlowMode(String(x))).filter((x) => (VALID_CALL_FLOW_MODES as readonly string[]).includes(x))))
+      : [];
+
+  const userAllowed = filterValid(user?.allowedCallFlowModes);
+  const tenantAllowed = filterValid(tenant?.allowedCallFlowModes);
+  const defaultMode = normalizeCallFlowMode(
+    user?.assignedCallFlowMode || tenant?.assignedCallFlowMode || userAllowed[0] || tenantAllowed[0] || 'press1'
+  );
+
+  let allowedModes: Array<'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1'>;
+  if (userAllowed.length > 0 && tenantAllowed.length > 0) {
+    const inter = userAllowed.filter((m) => tenantAllowed.includes(m));
+    allowedModes = inter.length > 0 ? inter : [defaultMode];
+  } else if (userAllowed.length > 0) {
+    allowedModes = userAllowed;
+  } else if (tenantAllowed.length > 0) {
+    allowedModes = tenantAllowed;
+  } else {
+    allowedModes = [defaultMode];
+  }
+
+  const assignedMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0];
+  return { assignedMode, allowedModes };
+}
+
 app.get('/api/tenants', (req, res) => {
   const authUser = (req as any).authUser;
   const tenants = loadStoredTenants();
@@ -3236,7 +3277,37 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => *8888,1,Goto(*43,1)\n`;
   dialplanContent += `exten => 8880,1,Goto(*43,1)\n\n`;
 
-  const usedTrunkEndpointSlugs = new Set<string>(extsList.map((e: any) => String(e.extension || '').toLowerCase()));
+  const usedTrunkEndpointSlugs = new Set<string>(
+    extsList
+      .map((e: any) => String(e?.extension || e?.id || e?.number || e?.num || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase())
+      .filter(Boolean)
+  );
+  try {
+    const allUsersForSlugs = [
+      ...(Array.isArray(lastSyncedUsers) ? lastSyncedUsers : []),
+      ...loadStoredUsers(),
+    ];
+    for (const u of allUsersForSlugs) {
+      if (!u) continue;
+      const rawU = String(u.username || (u.email ? u.email.split('@')[0] : '') || u.name || '').trim();
+      const cleanU = rawU.toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+      if (cleanU) usedTrunkEndpointSlugs.add(cleanU);
+      if (Array.isArray(u.assignedExtensions)) {
+        for (const ue of u.assignedExtensions) {
+          const cleanUe = String(ue || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+          if (cleanUe) usedTrunkEndpointSlugs.add(cleanUe);
+        }
+      }
+    }
+    if (typeof resellerStore !== 'undefined' && resellerStore && Array.isArray(resellerStore.clients)) {
+      for (const rc of resellerStore.clients) {
+        if (!rc) continue;
+        const rawC = String(rc.sipUsername || rc.name || '').trim();
+        const cleanC = rawC.replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+        if (cleanC) usedTrunkEndpointSlugs.add(cleanC);
+      }
+    }
+  } catch (_) {}
   const carrierEndpointMap = new Map<string, string>();
   carriersList.forEach((c: any, idx: number) => {
     if (!c || !c.name || !c.host) return;
@@ -3661,8 +3732,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
-  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Inicio rápido de IVR ===)\n`;
-  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
@@ -3798,8 +3869,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
-  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Inicio rápido de IVR ===)\n`;
-  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
@@ -4048,7 +4119,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-direct-playback]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [1-CLICK PLAYBACK] AUDIO AL DESCOLGAR PARA DESTINO \${CALLERID(num)} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(0.3)\n`;
+  dialplanContent += ` same => n,Wait(1.5)\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -4092,7 +4163,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
-  dialplanContent += ` same => n(skip_amd_ata),Wait(0.3)\n`;
+  dialplanContent += ` same => n(skip_amd_ata),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
@@ -4150,7 +4221,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_p1c)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
-  dialplanContent += ` same => n(skip_amd_p1c),Wait(0.3)\n`;
+  dialplanContent += ` same => n(skip_amd_p1c),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -4304,7 +4375,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
-  dialplanContent += ` same => n(skip_amd_otp_v),Wait(0.3)\n`;
+  dialplanContent += ` same => n(skip_amd_otp_v),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -5872,7 +5943,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     const explicitSuperAdminWithoutTenant = authIsGlobalAdmin && !effectiveTenantId;
     const activeCarriersForResolve = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
 
-    // Resolve Call Center Tenant & enforce its assigned SIP carrier + isolated extension range
+    // Resolve Call Center Tenant & isolated extension range
     const tenantResolution = explicitSuperAdminWithoutTenant
       ? { tenant: null, carrierName: '' }
       : resolveTenantCarrierForCall(
@@ -5897,6 +5968,31 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
         );
 
     const callerIsSuperAdmin = authIsGlobalAdmin;
+
+    // Enforce admin-assigned dialing plan (Plan de Marcación) for non-global-admin clients
+    let enforcedMode = effectiveMode;
+    const isManualDialerOnlyMode =
+      effectiveMode === 'direct' ||
+      effectiveMode === 'playback' ||
+      effectiveMode === 'audio_playback' ||
+      effectiveMode === 'audio_then_agent';
+    if (!callerIsSuperAdmin && !isManualDialerOnlyMode) {
+      const planScope = resolveClientDialingPlanScope(userResolution.user || authUser, tenantResolution.tenant);
+      const normalizedReqMode = normalizeCallFlowMode(effectiveMode);
+      enforcedMode = planScope.allowedModes.includes(normalizedReqMode)
+        ? normalizedReqMode
+        : planScope.assignedMode;
+      targetContext =
+        enforcedMode === 'otp'
+          ? 'ivr-otp'
+          : enforcedMode === 'hybrid'
+          ? 'ivr-hybrid'
+          : enforcedMode === 'cancel_code'
+          ? 'ivr-press1-cancel'
+          : enforcedMode === 'otp_press1'
+          ? 'ivr-otp-verify'
+          : 'ivr-press1';
+    }
 
     if (tenantResolution.tenant && tenantResolution.tenant.status === 'suspended' && !callerIsSuperAdmin) {
       return res.status(403).json({
@@ -5978,8 +6074,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     // Save payload for automatic retry ONLY if explicitly requested (e.g. mass campaign with AMD active)
     const shouldAutoRetry = req.body.autoRetry === true || req.body.autoRetry === 'true' || req.body.autoRetry === 1;
     if (shouldAutoRetry) {
-      lastOriginatePayloads.set(cleanDest, { ...req.body, agentExten: effectiveAgentExten, autoRetry: true });
-      lastOriginatePayloads.set(formattedDest, { ...req.body, agentExten: effectiveAgentExten, autoRetry: true });
+      lastOriginatePayloads.set(cleanDest, { ...req.body, mode: enforcedMode, callMode: enforcedMode, agentExten: effectiveAgentExten, autoRetry: true });
+      lastOriginatePayloads.set(formattedDest, { ...req.body, mode: enforcedMode, callMode: enforcedMode, agentExten: effectiveAgentExten, autoRetry: true });
       callRetryAttempts.set(cleanDest, 1);
       callRetryAttempts.set(formattedDest, 1);
     } else {
@@ -5989,12 +6085,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       callRetryAttempts.delete(formattedDest);
     }
 
-    let cleanCarrier = (carrier || '').trim();
-    const forcedCarrier = tenantResolution.carrierName || userResolution.carrierName;
-    if (forcedCarrier) {
-      if (!callerIsSuperAdmin || !cleanCarrier || cleanCarrier === 'auto' || cleanCarrier === 'pool') {
-        cleanCarrier = forcedCarrier;
-      }
+    // Clients are free to select any active route ('carrier') they wish to use;
+    // only fall back to the default assigned carrier if no route was chosen.
+    let cleanCarrier = String(carrier || '').trim();
+    const defaultAssignedCarrier = tenantResolution.carrierName || userResolution.carrierName;
+    if (!cleanCarrier && defaultAssignedCarrier) {
+      cleanCarrier = defaultAssignedCarrier;
     }
 
     const activePool = activeCarriersForResolve
@@ -6208,7 +6304,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum || 'Asignado por Proveedor',
       tenantId: tenantResolution.tenant?.id,
-      mode: effectiveMode,
+      mode: enforcedMode,
       startTime: Date.now(),
       timestamp: Date.now(),
       duration: 0,
@@ -6255,7 +6351,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       ...(cleanCancelWait ? { CALL_CANCEL_WAIT: cleanCancelWait, __CALL_CANCEL_WAIT: cleanCancelWait } : {}),
       ...(cleanOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait } : {}),
       ...(holdMusic ? { CALL_HOLD_MUSIC: holdMusic, __CALL_HOLD_MUSIC: holdMusic } : {}),
-      IVR_MODE: effectiveMode || 'press1',
+      IVR_MODE: enforcedMode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
     };
@@ -7235,8 +7331,8 @@ app.post('/api/asterisk/audio/unassign', requireAdminRole, (req, res) => {
   }
 });
 
-// Endpoint to set default IVR answer action (press1 by default)
-app.post('/api/asterisk/action/set-default', requireAdminRole, (req, res) => {
+// Endpoint to set default IVR answer action (Super Admin only - Dialplan control)
+app.post('/api/asterisk/action/set-default', requireGlobalAdmin, (req, res) => {
   try {
     const { mode = 'press1' } = req.body;
     const targetContext =
@@ -7383,11 +7479,26 @@ function stripHeavyBlobs(state: any) {
   return clone;
 }
 
-function sanitizeStateForClient(state: any) {
+function sanitizeCarrierForClient(c: any) {
+  if (!c || typeof c !== 'object') return c;
+  const { secret: _s, password: _p, username: _u, fromuser: _fu, ...safeCarrier } = c;
+  return safeCarrier;
+}
+
+function sanitizeStateForClient(state: any, includeSecrets = false) {
   if (!state || typeof state !== 'object') return state;
   const stripped = stripHeavyBlobs(state);
   if (Array.isArray(stripped.users)) {
     stripped.users = stripped.users.map(sanitizeUserForClient);
+  }
+  if (!includeSecrets) {
+    if (Array.isArray(stripped.carriers)) {
+      stripped.carriers = stripped.carriers.map(sanitizeCarrierForClient);
+    }
+    if (stripped.connectionSettings && typeof stripped.connectionSettings === 'object') {
+      const { amiSecret: _as, ariSecret: _ars, ...safeConn } = stripped.connectionSettings;
+      stripped.connectionSettings = safeConn;
+    }
   }
   return stripped;
 }
@@ -7423,14 +7534,19 @@ app.get('/api/app/user-state', (req, res) => {
 
     const isMasterUser = authIsGlobalAdmin && (!userId || userId === 'user-admin' || username.toLowerCase() === 'admin');
 
+    const storedCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+    const safeStoredCarriers = authIsGlobalAdmin ? storedCarriers : storedCarriers.map(sanitizeCarrierForClient);
+
     if (fs.existsSync(userPath)) {
       const data = fs.readFileSync(userPath, 'utf-8');
-      const parsedUserState = sanitizeStateForClient(JSON.parse(data));
+      const parsedUserState = sanitizeStateForClient(JSON.parse(data), authIsGlobalAdmin);
       if (!isMasterUser && fs.existsSync(APP_STATE_FILE)) {
         try {
-          const globalState = sanitizeStateForClient(JSON.parse(fs.readFileSync(APP_STATE_FILE, 'utf-8')));
+          const globalState = sanitizeStateForClient(JSON.parse(fs.readFileSync(APP_STATE_FILE, 'utf-8')), authIsGlobalAdmin);
           if (Array.isArray(globalState.carriers) && globalState.carriers.length > 0) {
             parsedUserState.carriers = globalState.carriers;
+          } else if (Array.isArray(safeStoredCarriers) && safeStoredCarriers.length > 0) {
+            parsedUserState.carriers = safeStoredCarriers;
           }
           if (Array.isArray(globalState.audios) && globalState.audios.length > 0) {
             parsedUserState.audios = globalState.audios;
@@ -7450,6 +7566,9 @@ app.get('/api/app/user-state', (req, res) => {
           parsedUserState.lastUpdated = Math.max(Number(parsedUserState.lastUpdated || 0), Number(globalState.lastUpdated || 0));
         } catch (_) {}
       }
+      if ((!Array.isArray(parsedUserState.carriers) || parsedUserState.carriers.length === 0) && safeStoredCarriers.length > 0) {
+        parsedUserState.carriers = safeStoredCarriers;
+      }
       return res.json({ success: true, state: parsedUserState, source: 'user_file' });
     }
 
@@ -7457,18 +7576,44 @@ app.get('/api/app/user-state', (req, res) => {
       const fallbackPath = getUserConfigPath(`user-${username}`);
       if (fs.existsSync(fallbackPath)) {
         const data = fs.readFileSync(fallbackPath, 'utf-8');
-        return res.json({ success: true, state: sanitizeStateForClient(JSON.parse(data)), source: 'user_fallback' });
+        const parsedFallback = sanitizeStateForClient(JSON.parse(data), authIsGlobalAdmin);
+        if ((!Array.isArray(parsedFallback.carriers) || parsedFallback.carriers.length === 0) && safeStoredCarriers.length > 0) {
+          parsedFallback.carriers = safeStoredCarriers;
+        }
+        return res.json({ success: true, state: parsedFallback, source: 'user_fallback' });
       }
     }
 
     // Fallback to global app_state.json and initialize user's profile
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
-      const parsed = sanitizeStateForClient(JSON.parse(data));
+      const parsed = sanitizeStateForClient(JSON.parse(data), authIsGlobalAdmin);
+      if (!authIsGlobalAdmin) {
+        if (!Array.isArray(parsed.carriers) || parsed.carriers.length === 0) {
+          parsed.carriers = safeStoredCarriers;
+        }
+        if (Array.isArray(parsed.users)) {
+          parsed.users = parsed.users.filter((u: any) =>
+            authUser?.tenantId
+              ? String(u.tenantId || '') === String(authUser.tenantId)
+              : String(u.id) === String(authUser?.id)
+          );
+        }
+      } else if ((!Array.isArray(parsed.carriers) || parsed.carriers.length === 0) && safeStoredCarriers.length > 0) {
+        parsed.carriers = safeStoredCarriers;
+      }
       try {
         fs.writeFileSync(userPath, JSON.stringify(parsed, null, 2), 'utf-8');
       } catch (_) {}
       return res.json({ success: true, state: parsed, source: 'app_state_initial' });
+    }
+
+    if (safeStoredCarriers.length > 0) {
+      return res.json({
+        success: true,
+        state: { carriers: safeStoredCarriers },
+        source: 'carriers_bootstrap',
+      });
     }
   } catch (err: any) {
     console.error('[STATE] Error leyendo user-state:', err);
@@ -7490,7 +7635,7 @@ app.post('/api/app/user-state', (req, res) => {
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
       fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
     }
-    const sanitizedIncoming = sanitizeStateForClient(state);
+    const sanitizedIncoming = sanitizeStateForClient(state, authIsGlobalAdmin);
     const stateWithTimestamp = {
       ...sanitizedIncoming,
       lastUpdated: Date.now(),
@@ -7533,13 +7678,13 @@ app.get('/api/app/state', (req, res) => {
       const userPath = getUserConfigPath(userId, username);
       if (fs.existsSync(userPath)) {
         const data = fs.readFileSync(userPath, 'utf-8');
-        return res.json({ success: true, state: sanitizeStateForClient(JSON.parse(data)), source: 'user_file' });
+        return res.json({ success: true, state: sanitizeStateForClient(JSON.parse(data), authIsGlobalAdmin), source: 'user_file' });
       }
     }
 
     if (fs.existsSync(APP_STATE_FILE)) {
       const data = fs.readFileSync(APP_STATE_FILE, 'utf-8');
-      const parsed = sanitizeStateForClient(JSON.parse(data));
+      const parsed = sanitizeStateForClient(JSON.parse(data), authIsGlobalAdmin);
       if (!authIsGlobalAdmin && Array.isArray(parsed.users)) {
         parsed.users = parsed.users.filter((u: any) =>
           authUser?.tenantId
@@ -7569,7 +7714,7 @@ app.post('/api/app/state', (req, res) => {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true, mode: 0o750 });
     }
-    const sanitizedForStorage = sanitizeStateForClient(state);
+    const sanitizedForStorage = sanitizeStateForClient(state, authIsGlobalAdmin);
     const stateWithTimestamp = {
       ...sanitizedForStorage,
       lastUpdated: Date.now(),
@@ -7646,14 +7791,22 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     );
 
     const masterEntities = getMasterEntitiesFromDisk();
+    let matchedTenantObj: any = null;
     let tenantAssigned: string[] | undefined = undefined;
     if (tenantId) {
       const tenantsList = loadStoredTenants();
-      const matchedTenant = tenantsList.find((t: any) => t && t.id === tenantId);
-      if (matchedTenant && Array.isArray(matchedTenant.assignedEntityIds)) {
-        tenantAssigned = matchedTenant.assignedEntityIds.map((id: any) => String(id));
+      matchedTenantObj = tenantsList.find((t: any) => t && t.id === tenantId) || null;
+      if (matchedTenantObj && Array.isArray(matchedTenantObj.assignedEntityIds)) {
+        tenantAssigned = matchedTenantObj.assignedEntityIds.map((id: any) => String(id));
       }
     }
+
+    const planScope = !isSuperAdminReq
+      ? resolveClientDialingPlanScope(matchedUser, matchedTenantObj)
+      : {
+          assignedMode: 'press1' as const,
+          allowedModes: [...VALID_CALL_FLOW_MODES],
+        };
 
     const userAssigned: string[] | undefined =
       matchedUser && Array.isArray(matchedUser.assignedEntityIds)
@@ -7695,10 +7848,18 @@ app.get('/api/app/ivr-workspace', (req, res) => {
       } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
         ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
       }
+      if (!isSuperAdminReq) {
+        const currentMode = normalizeCallFlowMode(ws.callFlowMode);
+        if (!planScope.allowedModes.includes(currentMode)) {
+          ws.callFlowMode = planScope.assignedMode;
+        }
+      }
       return res.json({
         success: true,
         workspace: ws,
         assignedEntityIds,
+        assignedCallFlowMode: planScope.assignedMode,
+        allowedCallFlowModes: planScope.allowedModes,
         masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: tenantId ? 'tenant_workspace' : 'user_workspace',
       });
@@ -7714,19 +7875,26 @@ app.get('/api/app/ivr-workspace', (req, res) => {
       } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
         ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
       }
+      if (!isSuperAdminReq) {
+        ws.callFlowMode = planScope.assignedMode;
+      }
       return res.json({
         success: true,
         workspace: ws,
         assignedEntityIds,
+        assignedCallFlowMode: planScope.assignedMode,
+        allowedCallFlowModes: planScope.allowedModes,
         masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: 'global_template',
       });
     }
-    if (Array.isArray(assignedEntityIds)) {
+    if (Array.isArray(assignedEntityIds) || !isSuperAdminReq) {
       return res.json({
         success: true,
         workspace: null,
         assignedEntityIds,
+        assignedCallFlowMode: planScope.assignedMode,
+        allowedCallFlowModes: planScope.allowedModes,
         assignedEntities: filterEntitiesForScope([]),
       });
     }
@@ -7754,11 +7922,19 @@ app.post('/api/app/ivr-workspace', (req, res) => {
       const matched = usersList.find((u: any) => u && ((userId && u.id === userId) || (username && String(u.username || '').toLowerCase() === String(username).toLowerCase())));
       if (matched?.tenantId) tenantId = String(matched.tenantId);
     }
+    const safeWorkspace = { ...workspace };
+    if (!authIsGlobalAdmin) {
+      const tenantsList = tenantId ? loadStoredTenants() : [];
+      const matchedTenant = tenantId ? tenantsList.find((t: any) => t && t.id === tenantId) : null;
+      const planScope = resolveClientDialingPlanScope(authUser, matchedTenant);
+      const reqFlow = normalizeCallFlowMode(safeWorkspace.callFlowMode);
+      safeWorkspace.callFlowMode = planScope.allowedModes.includes(reqFlow) ? reqFlow : planScope.assignedMode;
+    }
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
       fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
     }
     const payloadWithTs = {
-      ...workspace,
+      ...safeWorkspace,
       lastUpdated: Date.now(),
       savedByUserId: userId || 'user-admin',
       savedByUsername: username || 'admin',
@@ -10882,7 +11058,12 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
             if (!authUser?.tenantId || (prev.id && String(prev.tenantId || '') !== String(authUser.tenantId))) {
               continue;
             }
-            const safeSub = { ...u, tenantId: authUser.tenantId };
+            const safeSub = {
+              ...u,
+              tenantId: authUser.tenantId,
+              assignedCallFlowMode: prev?.assignedCallFlowMode,
+              allowedCallFlowModes: prev?.allowedCallFlowModes,
+            };
             if (safeSub.role === 'admin' && !safeSub.tenantId) safeSub.role = 'supervisor';
             userMap.set(key, normalizeUserRecordForStorage(safeSub, prev));
           } else {
@@ -10931,6 +11112,8 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
           ...targetUser,
           tenantId: authUser.tenantId,
           role: targetUser.role === 'admin' && !authUser.tenantId ? 'supervisor' : targetUser.role,
+          assignedCallFlowMode: prevUser?.assignedCallFlowMode,
+          allowedCallFlowModes: prevUser?.allowedCallFlowModes,
         };
     const updatedUserObj = normalizeUserRecordForStorage(
       { ...sanitizedTarget, username: cleanUser, sipSecret: password, ...(hasNewPass ? { password } : {}) },

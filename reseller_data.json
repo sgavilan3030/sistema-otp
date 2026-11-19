@@ -1,6 +1,23 @@
 {
   "clients": [
     {
+      "id": "user-verify-plan-tmp",
+      "name": "Verify Client Tmp",
+      "sipUsername": "verifyclienttmp",
+      "sipPassword": "VerifyClient2026!",
+      "currency": "USD",
+      "balance": 10,
+      "allocatedMinutes": 500,
+      "usedMinutes": 0,
+      "costPerMinute": 0.02,
+      "planType": "prepago",
+      "status": "active",
+      "creditLimit": 0,
+      "cutoffOnZero": true,
+      "createdAt": "2026-11-18",
+      "totalRecharges": 1
+    },
+    {
       "id": "user-pedro",
       "name": "Pedro VoIP",
       "sipUsername": "pedro",

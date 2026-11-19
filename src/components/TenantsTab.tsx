@@ -31,7 +31,15 @@ import {
   Lock,
   BookOpen
 } from 'lucide-react';
-import { CallCenterTenant, TenantRechargeHistory, PjsipExtension, CarrierTrunk, SystemUser } from '../types';
+import { CallCenterTenant, TenantRechargeHistory, PjsipExtension, CarrierTrunk, SystemUser, CallFlowMode } from '../types';
+
+const CALL_FLOW_MODE_OPTIONS: { id: CallFlowMode; label: string; desc: string }[] = [
+  { id: 'otp', label: '1. Captura OTP', desc: 'Solicita código OTP al contestar' },
+  { id: 'press1', label: '2. Press-1 (Asesor)', desc: 'Al marcar 1 transfiere a Softphone' },
+  { id: 'hybrid', label: '3. Híbrido (OTP + Asesor)', desc: 'OTP automático o Press-1' },
+  { id: 'cancel_code', label: '4. Código de Cancelación', desc: 'Marca 1 → Envía código + Válido/Inválido' },
+  { id: 'otp_press1', label: '5. IVR de Captura OTP', desc: 'Marca 1 → Audio espera + Validar en LiveCalls' },
+];
 
 interface SimpleEntityOption {
   id: string;
@@ -140,6 +148,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     magnusBillingUrl: '',
     magnusSipAccount: '',
     assignedEntityIds: [] as string[],
+    assignedCallFlowMode: 'press1' as CallFlowMode,
+    allowedCallFlowModes: ['press1'] as CallFlowMode[],
   });
 
   // Recharge modal form
@@ -218,6 +228,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       magnusBillingUrl: '',
       magnusSipAccount: '',
       assignedEntityIds: [],
+      assignedCallFlowMode: 'press1',
+      allowedCallFlowModes: ['press1'],
     });
     setEditingTenant(null);
     setIsCreateModalOpen(true);
@@ -228,6 +240,11 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     if (!isAdmin) return;
     refreshMasterEntities();
     const activeIdSet = new Set(availableEntities.map((e) => e.id));
+    const primaryMode: CallFlowMode = tenant.assignedCallFlowMode || 'press1';
+    const allowedModes: CallFlowMode[] =
+      Array.isArray(tenant.allowedCallFlowModes) && tenant.allowedCallFlowModes.length > 0
+        ? Array.from(new Set<CallFlowMode>([primaryMode, ...tenant.allowedCallFlowModes]))
+        : [primaryMode];
     setFormData({
       name: tenant.name,
       code: tenant.code,
@@ -249,6 +266,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       assignedEntityIds: Array.isArray(tenant.assignedEntityIds)
         ? tenant.assignedEntityIds.filter((id) => activeIdSet.size === 0 || activeIdSet.has(id))
         : availableEntities.map((e) => e.id),
+      assignedCallFlowMode: primaryMode,
+      allowedCallFlowModes: allowedModes,
     });
     setEditingTenant(tenant);
     setIsCreateModalOpen(true);
@@ -284,6 +303,10 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     const code = formData.code.trim().toUpperCase() || formData.name.substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const dialplanContext = `tenant_${code.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
     const calculatedMinutes = Math.floor(formData.dollarBalance / (formData.ratePerMinute || 0.015));
+    const primaryMode: CallFlowMode = formData.assignedCallFlowMode || 'press1';
+    const normalizedAllowedModes: CallFlowMode[] = Array.from(
+      new Set<CallFlowMode>([primaryMode, ...(formData.allowedCallFlowModes || [])])
+    );
 
     if (editingTenant) {
       const updated: CallCenterTenant = {
@@ -308,6 +331,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         magnusBillingUrl: formData.magnusBillingUrl.trim(),
         magnusSipAccount: formData.magnusSipAccount.trim(),
         assignedEntityIds: [...formData.assignedEntityIds],
+        assignedCallFlowMode: primaryMode,
+        allowedCallFlowModes: normalizedAllowedModes,
       };
       onUpdateTenant(updated);
     } else {
@@ -336,6 +361,8 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         magnusBillingUrl: formData.magnusBillingUrl.trim(),
         magnusSipAccount: formData.magnusSipAccount.trim(),
         assignedEntityIds: [...formData.assignedEntityIds],
+        assignedCallFlowMode: primaryMode,
+        allowedCallFlowModes: normalizedAllowedModes,
       };
       onAddTenant(newTenant);
     }
@@ -744,10 +771,25 @@ same => n,Hangup()
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="text-slate-400 flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5 text-amber-400" />
-                        {isAdmin ? 'Cuenta SIP / Carrier:' : 'Ruta Saliente:'}
+                        <span>Plan de Marcación:</span>
+                      </span>
+                      <span className="font-mono font-bold text-amber-300">
+                        {CALL_FLOW_MODE_OPTIONS.find((m) => m.id === (tenant.assignedCallFlowMode || 'press1'))?.label || '2. Press-1 (Asesor)'}
+                        {Array.isArray(tenant.allowedCallFlowModes) && tenant.allowedCallFlowModes.length > 1
+                          ? ` (+${tenant.allowedCallFlowModes.length - 1})`
+                          : ''}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+                        {isAdmin ? 'Ruta Predeterminada:' : 'Ruta Saliente:'}
                       </span>
                       <span className="font-mono font-semibold text-emerald-300">
-                        {isAdmin ? (carrier ? carrier.name : 'Troncal por defecto') : 'Canal Seguro Asignado'}
+                        {isAdmin
+                          ? (carrier ? carrier.name : 'Pool / Libre')
+                          : (tenant.carrierId && tenant.carrierId !== 'auto' && carrier ? `${carrier.name} (editable)` : 'Selección libre de ruta')}
                         {isAdmin && tenant.magnusSipAccount ? ` (${tenant.magnusSipAccount})` : ''}
                       </span>
                     </div>
@@ -1178,8 +1220,8 @@ same => n,Hangup()
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center justify-between">
-                    <span>Carrier / Cuenta SIP MagnusBilling</span>
-                    <span className="text-[10px] font-mono text-emerald-400">Solo Super Admin</span>
+                    <span>Ruta Saliente Predeterminada (Opcional)</span>
+                    <span className="text-[10px] font-mono text-sky-300">El cliente elige ruta</span>
                   </label>
                   <select
                     value={formData.carrierId}
@@ -1193,6 +1235,9 @@ same => n,Hangup()
                       </option>
                     ))}
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Ruta inicial sugerida; el cliente podrá cambiar libremente entre las rutas activas al realizar sus llamadas.
+                  </p>
                   {(() => {
                     const selC = carriers.find((c) => c.id === formData.carrierId || c.name === formData.carrierId);
                     if (selC && (selC.enabled === false || selC.status === 'disabled')) {
@@ -1324,6 +1369,97 @@ same => n,Hangup()
                     onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
                   />
+                </div>
+              </div>
+
+              {/* Assigned Dialing Plan (Solo Administrador) */}
+              <div className="bg-slate-950/70 border border-amber-500/30 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Lock className="w-4 h-4" />
+                      Plan de Marcación Asignado (Solo Administrador)
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Define qué plan(es) de marcación IVR puede usar este Call Center. El cliente no podrá modificar ni ejecutar planes no autorizados.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Plan Principal Predeterminado
+                    </label>
+                    <select
+                      value={formData.assignedCallFlowMode}
+                      onChange={(e) => {
+                        const nextPrimary = e.target.value as CallFlowMode;
+                        const nextAllowed = Array.from(
+                          new Set<CallFlowMode>([nextPrimary, ...(formData.allowedCallFlowModes || [])])
+                        );
+                        setFormData({
+                          ...formData,
+                          assignedCallFlowMode: nextPrimary,
+                          allowedCallFlowModes: nextAllowed,
+                        });
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500"
+                    >
+                      {CALL_FLOW_MODE_OPTIONS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Planes Habilitados para este Call Center ({formData.allowedCallFlowModes.length}/{CALL_FLOW_MODE_OPTIONS.length})
+                    </label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {CALL_FLOW_MODE_OPTIONS.map((opt) => {
+                        const isPrimary = formData.assignedCallFlowMode === opt.id;
+                        const isChecked = isPrimary || formData.allowedCallFlowModes.includes(opt.id);
+                        return (
+                          <label
+                            key={opt.id}
+                            className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                              isChecked
+                                ? 'bg-amber-950/40 border-amber-500/50 text-white'
+                                : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={isPrimary}
+                                onChange={(e) => {
+                                  if (isPrimary) return;
+                                  const nextAllowed = e.target.checked
+                                    ? Array.from(new Set<CallFlowMode>([...formData.allowedCallFlowModes, opt.id]))
+                                    : formData.allowedCallFlowModes.filter((m) => m !== opt.id);
+                                  setFormData({
+                                    ...formData,
+                                    allowedCallFlowModes: nextAllowed.length > 0 ? nextAllowed : [formData.assignedCallFlowMode],
+                                  });
+                                }}
+                                className="rounded border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-950"
+                              />
+                              <span className="font-semibold truncate">{opt.label}</span>
+                            </div>
+                            {isPrimary && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                                Principal
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 

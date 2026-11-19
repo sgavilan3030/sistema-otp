@@ -249,7 +249,12 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     return null;
   }, [tenants, currentUser?.tenantId, selectedExtension]);
 
-  const lockedTenantCarrier = React.useMemo(() => {
+  const enabledCarriers = React.useMemo(
+    () => carriers.filter((c) => c && c.enabled !== false && c.status !== 'disabled'),
+    [carriers]
+  );
+
+  const defaultAssignedCarrier = React.useMemo(() => {
     if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
       const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const byTenant = carriers.find(
@@ -275,24 +280,30 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     return null;
   }, [userTenant, carriers, currentUser?.carrierId, currentUser?.assignedCarrierId]);
 
-  const isCarrierLockedToTenant = Boolean(!isSuperAdmin && (lockedTenantCarrier || userTenant));
-
-  // Selected Carrier for dialing
+  // Selected Carrier for dialing (freely selectable by any client or admin)
   const [selectedCarrier, setSelectedCarrier] = useState<string>(() => {
+    if (defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled') {
+      return defaultAssignedCarrier.name;
+    }
     const active = carriers.find((c) => c.enabled !== false && c.status !== 'disabled');
-    return active?.name || carriers[0]?.name || 'auto';
+    return active?.name || 'auto';
   });
 
+  const lastInitializedUserRef = useRef<string>('');
   useEffect(() => {
-    if (!isSuperAdmin && lockedTenantCarrier) {
-      setSelectedCarrier(lockedTenantCarrier.name);
+    const uid = currentUser?.id || '';
+    if (uid && lastInitializedUserRef.current !== uid) {
+      lastInitializedUserRef.current = uid;
+      if (defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled') {
+        setSelectedCarrier(defaultAssignedCarrier.name);
+      } else {
+        const active = enabledCarriers[0];
+        setSelectedCarrier(active?.name || 'auto');
+      }
     }
-  }, [isSuperAdmin, lockedTenantCarrier]);
+  }, [currentUser?.id, defaultAssignedCarrier, enabledCarriers]);
 
-  const userCarrierFallback = currentUser?.carrierId || currentUser?.assignedCarrierId;
-  const effectiveCarrier = !isSuperAdmin
-    ? (lockedTenantCarrier ? lockedTenantCarrier.name : (userCarrierFallback && userCarrierFallback !== 'auto' ? userCarrierFallback : 'auto'))
-    : selectedCarrier;
+  const effectiveCarrier = selectedCarrier || 'auto';
 
   // Call Mode & Audio Prompt State for 1-Click Dialing
   const [callMode, setCallMode] = useState<ManualDialerCallMode>('playback');
@@ -1162,24 +1173,21 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
                 <label className="text-xs font-bold text-slate-300">
                   {isSuperAdmin ? 'Troncal Saliente:' : 'Ruta Saliente:'}
                 </label>
-                {isSuperAdmin ? (
-                  <select
-                    value={selectedCarrier}
-                    onChange={(e) => setSelectedCarrier(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
-                  >
-                    {carriers.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        [{c.name}] ({c.authType === 'ip_auth' ? 'IP a IP' : 'SIP Reg'})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5">
-                    <Lock className="w-3 h-3 shrink-0" />
-                    <span>Canal Seguro Asignado{userTenant?.code ? ` (${userTenant.code})` : ''}</span>
-                  </div>
-                )}
+                <select
+                  value={selectedCarrier}
+                  onChange={(e) => setSelectedCarrier(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 hover:border-emerald-500 text-emerald-400 font-mono text-xs font-bold focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  title="Selecciona la ruta saliente que deseas utilizar para tus llamadas"
+                >
+                  <option value="auto">🔄 Pool Automático</option>
+                  {enabledCarriers.map((c, idx) => (
+                    <option key={c.id} value={c.name}>
+                      {isSuperAdmin
+                        ? `[${c.name}] (${c.authType === 'ip_auth' ? 'IP a IP' : 'SIP Reg'})`
+                        : `${idx === 0 ? '⭐ ' : ''}${c.name}`}
+                    </option>
+                  ))}
+                </select>
                 {userTenant?.magnusBillingUrl && (
                   <a
                     href={userTenant.magnusBillingUrl}
