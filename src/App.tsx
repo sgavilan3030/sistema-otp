@@ -274,7 +274,13 @@ export default function App() {
     };
   }, [users, currentUserId]);
 
+  const isRefreshingTelemetryRef = useRef<boolean>(false);
+  const lastLiveCallsSigRef = useRef<string>('');
+  const lastOtpRecordsSigRef = useRef<string>('');
+
   const refreshLiveTelemetry = useCallback(async () => {
+    if (isRefreshingTelemetryRef.current) return;
+    isRefreshingTelemetryRef.current = true;
     try {
       const { activeU, assignedExts, queryString } = getActiveIsolationScope();
       const [callsRes, otpRes] = await Promise.all([
@@ -285,10 +291,15 @@ export default function App() {
       if (callsRes.ok) {
         const data = await callsRes.json();
         if (data.success && Array.isArray(data.calls)) {
-          setGlobalLiveCalls(data.calls);
-          setGlobalLiveCallsUpdatedAt(Date.now());
+          const callsSig = data.calls.map((c: any) => `${c.id}:${c.status}:${c.agent}:${c.isOnHold}:${c.otpStatus || ''}:${c.capturedOtp || ''}`).join('|');
           const running = data.calls.filter((c: any) => c.status !== 'ended').length;
-          setActiveCallCount(running);
+          // Only trigger full state re-render if call list/status changed OR calls are active (duration tick)
+          if (callsSig !== lastLiveCallsSigRef.current || running > 0) {
+            lastLiveCallsSigRef.current = callsSig;
+            setGlobalLiveCalls(data.calls);
+            setGlobalLiveCallsUpdatedAt(Date.now());
+          }
+          setActiveCallCount((prev) => (prev === running ? prev : running));
         }
       }
 
@@ -307,19 +318,31 @@ export default function App() {
               return recNum ? assignedExts.includes(recNum) : false;
             });
           }
-          setGlobalOtpRecords(recs);
+          const otpSig = recs.map((r: any) => `${r.id}:${r.otp}:${r.status}:${r.agent || ''}`).join('|');
+          if (otpSig !== lastOtpRecordsSigRef.current) {
+            lastOtpRecordsSigRef.current = otpSig;
+            setGlobalOtpRecords(recs);
+          }
           if (recs.length > 0) {
             const newest = recs[0];
             const alertKey = `${newest.id}_${newest.otp}`;
             if (newest && newest.otp && alertKey !== dismissedOtpKey) {
-              setGlobalOtpAlert(newest);
+              setGlobalOtpAlert((prev) => {
+                if (prev && prev.id === newest.id && prev.otp === newest.otp && prev.status === newest.status) {
+                  return prev;
+                }
+                return newest;
+              });
             }
           } else {
-            setGlobalOtpAlert(null);
+            setGlobalOtpAlert((prev) => (prev === null ? prev : null));
           }
         }
       }
     } catch (_) {}
+    finally {
+      isRefreshingTelemetryRef.current = false;
+    }
   }, [getActiveIsolationScope, dismissedOtpKey]);
 
   useEffect(() => {
@@ -329,10 +352,13 @@ export default function App() {
       refreshLiveTelemetry();
     };
     poll();
-    const intervalMs = activeTab === 'live-calls' || activeTab === 'call-spy' ? 2500 : 4000;
+    const intervalMs =
+      activeCallCount > 0 || activeTab === 'live-calls' || activeTab === 'call-spy'
+        ? 3500
+        : 8000;
     const interval = setInterval(poll, intervalMs);
     return () => clearInterval(interval);
-  }, [isAuthenticated, refreshLiveTelemetry, activeTab]);
+  }, [isAuthenticated, refreshLiveTelemetry, activeTab, activeCallCount]);
 
   const handleCopyOtp = (otp: string) => {
     navigator.clipboard.writeText(otp);
@@ -443,6 +469,8 @@ export default function App() {
   const isApplyingRemoteUpdateRef = useRef(false);
   const isStateLoadedRef = useRef(false);
   const lastServerTimestampRef = useRef(0);
+  const lastUserStateVersionRef = useRef<number>(-1);
+  const isFetchingUserStateRef = useRef<boolean>(false);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
 
@@ -453,16 +481,51 @@ export default function App() {
     }
   }, [currentUser, activeTab]);
 
-  const fetchUserState = useCallback(async (targetUserId?: string, targetUsername?: string) => {
+  const fetchUserState = useCallback(async (targetUserId?: string, targetUsername?: string, forceFull = false) => {
+    if (isFetchingUserStateRef.current) return;
+    isFetchingUserStateRef.current = true;
     try {
       const uId = targetUserId || currentUserId || 'user-admin';
       const uName = targetUsername || currentUser?.username || 'admin';
-      const res = await fetch(`/api/app/user-state?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}`);
+      const qs = `userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}`;
+
+      // Check 30-byte file mtime version first so idle polls never download or parse full user-state
+      let latestVersion = -1;
+      if (isStateLoadedRef.current && !forceFull) {
+        try {
+          const verRes = await fetch(`/api/app/user-state/version?${qs}`);
+          if (verRes.ok) {
+            const verData = await verRes.json();
+            if (typeof verData?.version === 'number') {
+              latestVersion = verData.version;
+              if (latestVersion > 0 && latestVersion === lastUserStateVersionRef.current) {
+                return;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      const res = await fetch(`/api/app/user-state?${qs}`);
       if (!res.ok) {
         isStateLoadedRef.current = true;
         return;
       }
       const data = await res.json();
+      if (latestVersion > 0) {
+        lastUserStateVersionRef.current = latestVersion;
+      } else {
+        // Sync version baseline immediately after initial load so subsequent polls use 30-byte check
+        fetch(`/api/app/user-state/version?${qs}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((vd) => {
+            if (typeof vd?.version === 'number' && vd.version > 0) {
+              lastUserStateVersionRef.current = vd.version;
+            }
+          })
+          .catch(() => {});
+      }
+
       if (data.success && data.state) {
         const s = data.state;
         if (s.lastUpdated && s.lastUpdated <= lastServerTimestampRef.current && isStateLoadedRef.current) {
@@ -519,17 +582,19 @@ export default function App() {
       }
     } catch (err) {
       isStateLoadedRef.current = true;
+    } finally {
+      isFetchingUserStateRef.current = false;
     }
   }, [currentUserId, currentUser?.username]);
 
-  // Poll server state every 4.5s and on window focus
+  // Poll lightweight user-state version every 12s and on window focus
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchUserState();
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       fetchUserState();
-    }, 4500);
+    }, 12000);
     const handleFocus = () => fetchUserState();
     window.addEventListener('focus', handleFocus);
     return () => {
@@ -592,6 +657,15 @@ export default function App() {
           if (d.lastUpdated) {
             lastServerTimestampRef.current = d.lastUpdated;
           }
+          // Refresh known version so we don't re-fetch our own write
+          fetch(`/api/app/user-state/version?userId=${encodeURIComponent(currentUser.id)}&username=${encodeURIComponent(currentUser.username)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((vd) => {
+              if (typeof vd?.version === 'number' && vd.version > 0) {
+                lastUserStateVersionRef.current = vd.version;
+              }
+            })
+            .catch(() => {});
         }
       } catch (err) {}
     }, 1200);
@@ -725,6 +799,7 @@ export default function App() {
   }, [currentUserId]);
 
   const isTenantsHydratedRef = useRef(false);
+  const lastSavedTenantsJsonRef = useRef<string>('');
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -735,8 +810,10 @@ export default function App() {
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.tenants) && data.tenants.length > 0) {
+          lastSavedTenantsJsonRef.current = JSON.stringify(data.tenants);
           setTenants(data.tenants);
         } else if (currentUser?.role === 'admin' && !currentUser?.tenantId) {
+          lastSavedTenantsJsonRef.current = JSON.stringify(tenants);
           fetch('/api/tenants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -751,8 +828,16 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    localStorage.setItem('ast20_tenants', JSON.stringify(tenants));
-    if (isAuthenticated && isTenantsHydratedRef.current && currentUser?.role === 'admin' && !currentUser?.tenantId) {
+    const serialized = JSON.stringify(tenants);
+    localStorage.setItem('ast20_tenants', serialized);
+    if (
+      isAuthenticated &&
+      isTenantsHydratedRef.current &&
+      currentUser?.role === 'admin' &&
+      !currentUser?.tenantId &&
+      serialized !== lastSavedTenantsJsonRef.current
+    ) {
+      lastSavedTenantsJsonRef.current = serialized;
       fetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1658,15 +1743,16 @@ export default function App() {
       } catch (_) {}
     };
 
-    const interval = setInterval(checkAmiHealth, 15000);
+    const interval = setInterval(checkAmiHealth, activeTab === 'telemetry' ? 15000 : 30000);
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeTab]);
 
   const handleLogout = () => {
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     clearAuthToken();
     isStateLoadedRef.current = false;
     isTenantsHydratedRef.current = false;
+    lastUserStateVersionRef.current = -1;
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem('ast_session_active');
@@ -1691,7 +1777,8 @@ export default function App() {
       localStorage.setItem('ast20_current_user_id', user.id);
     } catch (e) {}
     // Load this user's exclusive server configuration immediately across any browser
-    await fetchUserState(user.id, user.username);
+    lastUserStateVersionRef.current = -1;
+    await fetchUserState(user.id, user.username, true);
     showToast(`¡Bienvenido, ${user.name}! Configuración exclusiva cargada.`);
     addLog('SYSTEM', `[LOGIN] Configuración cargada para usuario: ${user.name} (${user.username || user.id})`);
   };
@@ -1724,6 +1811,7 @@ export default function App() {
       clearAuthToken();
       isStateLoadedRef.current = false;
       isTenantsHydratedRef.current = false;
+      lastUserStateVersionRef.current = -1;
       setIsAuthenticated(false);
     };
     window.addEventListener('ast:unauthorized', onUnauthorized);
@@ -1843,6 +1931,8 @@ export default function App() {
             amdEnabled={amdEnabled}
             isTogglingAmd={isTogglingAmd}
             onToggleAmd={handleToggleAmd}
+            globalOtpRecords={globalOtpRecords}
+            globalLiveCalls={globalLiveCalls}
           />
         )}
 

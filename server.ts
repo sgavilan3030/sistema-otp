@@ -428,7 +428,66 @@ interface CliCacheEntry {
   timestamp: number;
 }
 const cliCommandCache = new Map<string, CliCacheEntry>();
+const inFlightCliCommands = new Map<string, Promise<string>>();
 let isLocalCliRunning = false;
+
+interface JsonFileCacheEntry {
+  mtimeMs: number;
+  data: any;
+}
+const jsonFileMemCache = new Map<string, JsonFileCacheEntry>();
+
+function getFileMtimeMsSafe(filePath: string): number {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      return fs.statSync(filePath).mtimeMs || 0;
+    }
+  } catch (_) {}
+  return 0;
+}
+
+function getMaxMtimeMs(paths: string[]): number {
+  let max = 0;
+  for (const p of paths) {
+    const m = getFileMtimeMsSafe(p);
+    if (m > max) max = m;
+  }
+  return max;
+}
+
+function readJsonFileCached<T = any>(filePath: string): T | null {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      jsonFileMemCache.delete(filePath);
+      return null;
+    }
+    const mtimeMs = fs.statSync(filePath).mtimeMs || 0;
+    const cached = jsonFileMemCache.get(filePath);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.data as T;
+    }
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    jsonFileMemCache.set(filePath, { mtimeMs, data: parsed });
+    return parsed as T;
+  } catch (_) {
+    return null;
+  }
+}
+
+function invalidateJsonFileCache(filePath: string, nextData?: any) {
+  if (!filePath) return;
+  if (nextData !== undefined) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const mtimeMs = fs.statSync(filePath).mtimeMs || Date.now();
+        jsonFileMemCache.set(filePath, { mtimeMs, data: nextData });
+        return;
+      }
+    } catch (_) {}
+  }
+  jsonFileMemCache.delete(filePath);
+}
 
 // ==============================================================================
 // SERVER TELEMETRY & EXPONENTIAL BACKOFF FOR AMI
@@ -575,6 +634,17 @@ export function invalidateCliCache(pattern?: string) {
   }
 }
 
+function hasAnyLiveCallInStore(now = Date.now()): boolean {
+  try {
+    for (const call of callStatusStore.values()) {
+      if (call.status !== 'ended' && call.status !== 'machine' && now - call.timestamp < 1800000) {
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
 export async function executeAsteriskCommand(cmd: string): Promise<string> {
   const cleanCmd = String(cmd || '').trim();
   if (!cleanCmd || /^\s*!/.test(cleanCmd) || /[\r\n\0`]|;\s*!/.test(cleanCmd)) {
@@ -593,12 +663,12 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     cleanCmd.includes('show channels');
   const now = Date.now();
 
-  // Dynamic TTL based on query type to maintain real-time responsiveness without hammering Asterisk CLI
+  // Dynamic TTL based on query type and whether any call is currently active
   const ttl = isChannelsCheck
-    ? 3500
+    ? (hasAnyLiveCallInStore(now) ? 4500 : 8000)
     : (cleanCmd.startsWith('pjsip show')
-      ? 6000
-      : (cleanCmd.startsWith('database show') ? 5000 : 4000));
+      ? 10000
+      : (cleanCmd.startsWith('database show') ? 15000 : 6000));
 
   // 0. Return cached read-only result immediately (0ms) if within TTL
   if (isReadOnly) {
@@ -606,114 +676,129 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
     if (cached && (now - cached.timestamp < ttl)) {
       return cached.output;
     }
+    // Deduplicate concurrent identical read-only queries so we never spawn duplicate subprocesses
+    const existingPromise = inFlightCliCommands.get(cleanCmd);
+    if (existingPromise) {
+      return existingPromise;
+    }
   }
 
-  // 1. Try local CLI ONLY if asterisk daemon is running
-  if (hasLocalAsterisk) {
-    // If Asterisk daemon socket does not exist, Asterisk is stopped - do NOT spawn useless failing subprocesses
-    if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
-      return isReadOnly ? (cliCommandCache.get(cleanCmd)?.output || '') : '';
-    }
-
-    // If local CLI is currently busy running a command and this is a read request, return cached (or empty)
-    // to strictly prevent concurrent UNIX socket collisions that choke Asterisk PJSIP
-    if (isLocalCliRunning && isReadOnly) {
-      const existing = cliCommandCache.get(cleanCmd);
-      if (existing) return existing.output;
-    }
-
-    try {
-      isLocalCliRunning = true;
-      const bin = getAsteriskBinary();
-      const localRes = await new Promise<string>((resolve) => {
-        execFile(bin, ['-rx', cleanCmd], { timeout: 2500 }, (err, stdout) => {
-          if (!err && stdout !== undefined && stdout !== null) {
-            resolve(String(stdout).trim());
-          } else {
-            resolve('');
-          }
-        });
-      });
-
-      // Cache the result even if empty (0 channels or empty AstDB is a valid result that MUST be cached to prevent polling loops!)
-      if (isReadOnly) {
-        cliCommandCache.set(cleanCmd, { output: localRes, timestamp: Date.now() });
-      } else {
-        invalidateCliCache();
-        addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cleanCmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
+  const runCommandInternal = async (): Promise<string> => {
+    // 1. Try local CLI ONLY if asterisk daemon is running
+    if (hasLocalAsterisk) {
+      // If Asterisk daemon socket does not exist, Asterisk is stopped - do NOT spawn useless failing subprocesses
+      if (!fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
+        return isReadOnly ? (cliCommandCache.get(cleanCmd)?.output || '') : '';
       }
 
-      return localRes;
-    } catch (_) {}
-    finally {
-      isLocalCliRunning = false;
+      // If local CLI is currently busy running a command and this is a read request, return cached
+      // to strictly prevent concurrent UNIX socket collisions that choke Asterisk PJSIP
+      if (isLocalCliRunning && isReadOnly) {
+        const existing = cliCommandCache.get(cleanCmd);
+        if (existing) return existing.output;
+      }
+
+      try {
+        isLocalCliRunning = true;
+        const bin = getAsteriskBinary();
+        const localRes = await new Promise<string>((resolve) => {
+          execFile(bin, ['-rx', cleanCmd], { timeout: 2500 }, (err, stdout) => {
+            if (!err && stdout !== undefined && stdout !== null) {
+              resolve(String(stdout).trim());
+            } else {
+              resolve('');
+            }
+          });
+        });
+
+        // Cache the result even if empty (0 channels or empty AstDB is a valid result that MUST be cached to prevent polling loops!)
+        if (isReadOnly) {
+          cliCommandCache.set(cleanCmd, { output: localRes, timestamp: Date.now() });
+        } else {
+          invalidateCliCache();
+          addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cleanCmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
+        }
+
+        return localRes;
+      } catch (_) {}
+      finally {
+        isLocalCliRunning = false;
+      }
+
+      // CRITICAL: If local Asterisk daemon socket exists, local CLI is authoritative.
+      if (isReadOnly) {
+        return cliCommandCache.get(cleanCmd)?.output || '';
+      }
     }
 
-    // CRITICAL: If local Asterisk daemon socket exists, local CLI is authoritative.
-    // Do NOT fall through to AMI on read-only queries if CLI returned empty; that was causing
-    // constant login/logout storms in the Asterisk console.
-    if (isReadOnly) {
+    // 2. Try remote VPS HTTP bridge with Circuit Breaker
+    const isCircuitOpen = remoteConsecutiveFailures >= 2 && (Date.now() - remoteLastFailureTime < 25000);
+
+    // If remote VPS is down/timing out, skip read-only requests immediately so UI never hangs
+    if (isCircuitOpen && isReadOnly) {
       return cliCommandCache.get(cleanCmd)?.output || '';
     }
-  }
 
-  // 2. Try remote VPS HTTP bridge with Circuit Breaker
-  const isCircuitOpen = remoteConsecutiveFailures >= 2 && (now - remoteLastFailureTime < 25000);
-
-  // If remote VPS is down/timing out, skip read-only requests immediately so UI never hangs
-  if (isCircuitOpen && isReadOnly) {
-    return cliCommandCache.get(cleanCmd)?.output || '';
-  }
-
-  if (REMOTE_ASTERISK_HTTP) {
-    try {
-      const controller = new AbortController();
-      const timeoutMs = isCircuitOpen ? 800 : (isReadOnly ? 1200 : 2500);
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...buildRemoteAuthHeaders(undefined, { 'x-internal-webhook-key': INTERNAL_WEBHOOK_KEY }),
-        },
-        body: JSON.stringify({ command: cleanCmd }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (resp.ok) {
-        const data = (await resp.json()) as any;
-        if (data && data.output !== undefined) {
-          remoteConsecutiveFailures = 0;
-          remoteLastSuccessTime = Date.now();
-          if (isReadOnly) {
-            cliCommandCache.set(cleanCmd, { output: data.output, timestamp: Date.now() });
+    if (REMOTE_ASTERISK_HTTP) {
+      try {
+        const controller = new AbortController();
+        const timeoutMs = isCircuitOpen ? 800 : (isReadOnly ? 1200 : 2500);
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const resp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/ami/test`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...buildRemoteAuthHeaders(undefined, { 'x-internal-webhook-key': INTERNAL_WEBHOOK_KEY }),
+          },
+          body: JSON.stringify({ command: cleanCmd }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (resp.ok) {
+          const data = (await resp.json()) as any;
+          if (data && data.output !== undefined) {
+            remoteConsecutiveFailures = 0;
+            remoteLastSuccessTime = Date.now();
+            if (isReadOnly) {
+              cliCommandCache.set(cleanCmd, { output: data.output, timestamp: Date.now() });
+            }
+            return data.output;
           }
-          return data.output;
+        } else {
+          remoteConsecutiveFailures++;
+          remoteLastFailureTime = Date.now();
         }
-      } else {
+      } catch (_) {
         remoteConsecutiveFailures++;
         remoteLastFailureTime = Date.now();
       }
-    } catch (_) {
-      remoteConsecutiveFailures++;
-      remoteLastFailureTime = Date.now();
     }
-  }
 
-  // 3. Fallback to raw local AMI socket only if local Asterisk might exist and local ctl wasn't reachable
-  if (hasLocalAsterisk && !fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
-    try {
-      const amiRes = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [cleanCmd]);
-      if (amiRes && !amiRes.startsWith('AMI Error') && !amiRes.startsWith('AMI Backoff')) {
-        if (isReadOnly) {
-          cliCommandCache.set(cleanCmd, { output: amiRes, timestamp: Date.now() });
+    // 3. Fallback to raw local AMI socket only if local Asterisk might exist and local ctl wasn't reachable
+    if (hasLocalAsterisk && !fs.existsSync('/var/run/asterisk/asterisk.ctl')) {
+      try {
+        const amiRes = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [cleanCmd]);
+        if (amiRes && !amiRes.startsWith('AMI Error') && !amiRes.startsWith('AMI Backoff')) {
+          if (isReadOnly) {
+            cliCommandCache.set(cleanCmd, { output: amiRes, timestamp: Date.now() });
+          }
+          return amiRes;
         }
-        return amiRes;
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+
+    return cliCommandCache.get(cleanCmd)?.output || '';
+  };
+
+  if (isReadOnly) {
+    const promise = runCommandInternal().finally(() => {
+      inFlightCliCommands.delete(cleanCmd);
+    });
+    inFlightCliCommands.set(cleanCmd, promise);
+    return promise;
   }
 
-  return cliCommandCache.get(cleanCmd)?.output || '';
+  return runCommandInternal();
 }
 
 const amiQueryCache = new Map<string, { output: string; timestamp: number }>();
@@ -1091,23 +1176,41 @@ function amiFastOriginate(
   callerId: string,
   variables: Record<string, string> = {}
 ): Promise<{ success: boolean; message: string }> {
+  const now = Date.now();
+  // Fail fast in 0ms when AMI circuit breaker is open so fallback spooler (.call) launches immediately
+  if (amiHealthState.isCircuitOpen && now < amiHealthState.nextAllowedAttemptTime) {
+    return Promise.resolve({
+      success: false,
+      message: `AMI Backoff activo (${amiHealthState.lastError || 'usando spooler .call'})`,
+    });
+  }
+
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let resolved = false;
     let originateSent = false;
 
+    const finish = (result: { success: boolean; message: string }) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      try {
+        socket.destroy();
+      } catch (_) {}
+      resolve(result);
+    };
+
     const timeout = setTimeout(() => {
       if (!resolved) {
-        resolved = true;
-        try { socket.destroy(); } catch (_) {}
-        // If originate was already sent over socket, treat as dispatched
         if (originateSent) {
-          resolve({ success: true, message: 'AMI Originate enviado asíncronamente' });
+          recordAmiSuccess();
+          finish({ success: true, message: 'AMI Originate enviado asíncronamente' });
         } else {
-          resolve({ success: false, message: 'AMI Originate timeout' });
+          recordAmiFailure('AMI Originate timeout');
+          finish({ success: false, message: 'AMI Originate timeout' });
         }
       }
-    }, 2500);
+    }, 2000);
 
     socket.connect(AMI_PORT, AMI_HOST, () => {
       const loginPayload = `Action: Login\r\nUsername: ${AMI_USER}\r\nSecret: ${AMI_SECRET}\r\nEvents: off\r\n\r\n`;
@@ -1117,6 +1220,17 @@ function amiFastOriginate(
     let buffer = '';
     socket.on('data', (data) => {
       buffer += data.toString();
+
+      // Fail-fast on authentication failure instead of burning the 2s timeout
+      if (!originateSent && (buffer.includes('Message: Authentication failed') || buffer.includes('Response: Error'))) {
+        recordAmiFailure('AMI Authentication failed (verificar manager.conf vs AMI_SECRET)');
+        try {
+          socket.write('Action: Logoff\r\n\r\n');
+          socket.end();
+        } catch (_) {}
+        finish({ success: false, message: 'AMI Authentication failed' });
+        return;
+      }
 
       if (!originateSent && (buffer.includes('Message: Authentication accepted') || buffer.includes('Response: Success'))) {
         originateSent = true;
@@ -1148,35 +1262,25 @@ function amiFastOriginate(
 
       if (originateSent) {
         if (buffer.includes('Originate successfully queued') || buffer.includes('Response: Success')) {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            try {
-              socket.write('Action: Logoff\r\n\r\n');
-              socket.end();
-            } catch (_) {}
-            resolve({ success: true, message: 'Llamada lanzada instantáneamente hacia Asterisk' });
-          }
+          recordAmiSuccess();
+          try {
+            socket.write('Action: Logoff\r\n\r\n');
+            socket.end();
+          } catch (_) {}
+          finish({ success: true, message: 'Llamada lanzada instantáneamente hacia Asterisk' });
         } else if (buffer.includes('Response: Error')) {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            try {
-              socket.write('Action: Logoff\r\n\r\n');
-              socket.end();
-            } catch (_) {}
-            resolve({ success: false, message: buffer });
-          }
+          try {
+            socket.write('Action: Logoff\r\n\r\n');
+            socket.end();
+          } catch (_) {}
+          finish({ success: false, message: buffer });
         }
       }
     });
 
     socket.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        resolve({ success: false, message: err.message });
-      }
+      recordAmiFailure(err.message);
+      finish({ success: false, message: err.message });
     });
   });
 }
@@ -1881,29 +1985,30 @@ function normalizeUserRecordForStorage(u: any, prev?: any): any {
   return merged;
 }
 
+let cachedNormalizedUsers: { key: string; list: any[] } | null = null;
+
 function loadStoredUsers(): any[] {
+  const usersMtime = getFileMtimeMsSafe(USERS_FILE);
+  const appStateMtime = usersMtime > 0 ? 0 : getFileMtimeMsSafe(APP_STATE_FILE);
+  const cacheKey = `${usersMtime}:${appStateMtime}`;
+  if (cachedNormalizedUsers && cachedNormalizedUsers.key === cacheKey && cachedNormalizedUsers.list.length > 0) {
+    return cachedNormalizedUsers.list;
+  }
+
   let list: any[] = [];
   let needsSave = false;
 
-  try {
-    if (fs.existsSync(USERS_FILE)) {
-      const raw = fs.readFileSync(USERS_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
-    }
-  } catch (_) {}
+  const parsedUsers = readJsonFileCached<any[]>(USERS_FILE);
+  if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+    list = parsedUsers.map((u) => (u ? { ...u } : u));
+  }
 
   if (list.length === 0) {
-    try {
-      if (fs.existsSync(APP_STATE_FILE)) {
-        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.users) && parsed.users.length > 0) {
-          list = parsed.users;
-          needsSave = true;
-        }
-      }
-    } catch (_) {}
+    const parsedAppState = readJsonFileCached<any>(APP_STATE_FILE);
+    if (Array.isArray(parsedAppState?.users) && parsedAppState.users.length > 0) {
+      list = parsedAppState.users.map((u: any) => (u ? { ...u } : u));
+      needsSave = true;
+    }
   }
 
   const defaults = createDefaultBootstrapUsers();
@@ -1938,23 +2043,21 @@ function loadStoredUsers(): any[] {
   if (needsSave) {
     saveStoredUsers(normalized);
   }
+  const newKey = `${getFileMtimeMsSafe(USERS_FILE)}:${getFileMtimeMsSafe(APP_STATE_FILE)}`;
+  cachedNormalizedUsers = { key: newKey, list: normalized };
   return normalized;
 }
 
 function saveStoredUsers(users: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
-    let existingList: any[] = [];
-    try {
-      if (fs.existsSync(USERS_FILE)) {
-        const parsed = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-        if (Array.isArray(parsed)) existingList = parsed;
-      }
-    } catch (_) {}
+    const existingList = readJsonFileCached<any[]>(USERS_FILE);
     const prevByKey = new Map<string, any>();
-    for (const prev of existingList) {
-      if (prev?.id) prevByKey.set(String(prev.id).toLowerCase(), prev);
-      if (prev?.username) prevByKey.set(String(prev.username).toLowerCase(), prev);
+    if (Array.isArray(existingList)) {
+      for (const prev of existingList) {
+        if (prev?.id) prevByKey.set(String(prev.id).toLowerCase(), prev);
+        if (prev?.username) prevByKey.set(String(prev.username).toLowerCase(), prev);
+      }
     }
 
     const securedUsers = (Array.isArray(users) ? users : []).map((u: any) => {
@@ -1965,6 +2068,8 @@ function saveStoredUsers(users: any[]) {
     });
 
     fs.writeFileSync(USERS_FILE, JSON.stringify(securedUsers, null, 2), { encoding: 'utf8', mode: 0o600 });
+    invalidateJsonFileCache(USERS_FILE, securedUsers);
+    cachedNormalizedUsers = null;
     // Keep app_state.json users sanitized (never plaintext passwords)
     if (fs.existsSync(APP_STATE_FILE)) {
       try {
@@ -1973,6 +2078,7 @@ function saveStoredUsers(users: any[]) {
         parsed.users = securedUsers.map(sanitizeUserForClient);
         parsed.lastUpdated = Date.now();
         fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+        invalidateJsonFileCache(APP_STATE_FILE, parsed);
       } catch (_) {}
     }
   } catch (_) {}
@@ -2065,13 +2171,8 @@ export function saveStoredOtpExtensions(extList: any[]) {
 }
 
 function loadStoredTenants(): any[] {
-  try {
-    if (fs.existsSync(TENANTS_FILE)) {
-      const raw = fs.readFileSync(TENANTS_FILE, 'utf8');
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) return list;
-    }
-  } catch (_) {}
+  const list = readJsonFileCached<any[]>(TENANTS_FILE);
+  if (Array.isArray(list) && list.length > 0) return list;
   return [];
 }
 
@@ -2079,6 +2180,7 @@ function saveStoredTenants(tenants: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(TENANTS_FILE, JSON.stringify(tenants, null, 2), 'utf8');
+    invalidateJsonFileCache(TENANTS_FILE, tenants);
   } catch (_) {}
 }
 
@@ -2211,13 +2313,8 @@ async function syncTenantCarriersToAstDb(tenantsList: any[], carriersList?: any[
 const AUDIOS_META_FILE = path.join(DATA_DIR, 'audios_meta.json');
 
 function loadStoredAudios(): any[] {
-  try {
-    if (fs.existsSync(AUDIOS_META_FILE)) {
-      const raw = fs.readFileSync(AUDIOS_META_FILE, 'utf8');
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) return list;
-    }
-  } catch (_) {}
+  const list = readJsonFileCached<any[]>(AUDIOS_META_FILE);
+  if (Array.isArray(list) && list.length > 0) return list;
   return [];
 }
 
@@ -2225,6 +2322,7 @@ function saveStoredAudios(audios: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(AUDIOS_META_FILE, JSON.stringify(audios, null, 2), 'utf8');
+    invalidateJsonFileCache(AUDIOS_META_FILE, audios);
   } catch (_) {}
 }
 
@@ -2340,20 +2438,10 @@ app.post('/api/audios/metadata', requireAdminRole, (req, res) => {
 });
 
 function loadStoredExtensions(): any[] {
-  try {
-    if (fs.existsSync(EXTENSIONS_FILE)) {
-      const raw = fs.readFileSync(EXTENSIONS_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (_) {}
-  try {
-    if (fs.existsSync(APP_STATE_FILE)) {
-      const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.extensions) && parsed.extensions.length > 0) return parsed.extensions;
-    }
-  } catch (_) {}
+  const parsed = readJsonFileCached<any[]>(EXTENSIONS_FILE);
+  if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  const appState = readJsonFileCached<any>(APP_STATE_FILE);
+  if (Array.isArray(appState?.extensions) && appState.extensions.length > 0) return appState.extensions;
   return defaultExtensionsList;
 }
 
@@ -2361,6 +2449,7 @@ function saveStoredExtensions(extensions: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(EXTENSIONS_FILE, JSON.stringify(extensions, null, 2), 'utf8');
+    invalidateJsonFileCache(EXTENSIONS_FILE, extensions);
     if (fs.existsSync(APP_STATE_FILE)) {
       try {
         const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
@@ -2368,6 +2457,7 @@ function saveStoredExtensions(extensions: any[]) {
         parsed.extensions = extensions;
         parsed.lastUpdated = Date.now();
         fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+        invalidateJsonFileCache(APP_STATE_FILE, parsed);
       } catch (_) {}
     }
   } catch (_) {}
@@ -2375,21 +2465,11 @@ function saveStoredExtensions(extensions: any[]) {
 
 function loadStoredCarriers(): any[] {
   let list: any[] = [];
-  try {
-    if (fs.existsSync(CARRIERS_FILE)) {
-      const raw = fs.readFileSync(CARRIERS_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
-    }
-  } catch (_) {}
+  const parsed = readJsonFileCached<any[]>(CARRIERS_FILE);
+  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
   if (list.length === 0) {
-    try {
-      if (fs.existsSync(APP_STATE_FILE)) {
-        const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.carriers) && parsed.carriers.length > 0) list = parsed.carriers;
-      }
-    } catch (_) {}
+    const appState = readJsonFileCached<any>(APP_STATE_FILE);
+    if (Array.isArray(appState?.carriers) && appState.carriers.length > 0) list = appState.carriers;
   }
   if (list.length === 0) {
     list = defaultCarriersList;
@@ -2419,6 +2499,7 @@ function saveStoredCarriers(carriers: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(CARRIERS_FILE, JSON.stringify(carriers, null, 2), 'utf8');
+    invalidateJsonFileCache(CARRIERS_FILE, carriers);
     if (fs.existsSync(APP_STATE_FILE)) {
       try {
         const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
@@ -2426,6 +2507,7 @@ function saveStoredCarriers(carriers: any[]) {
         parsed.carriers = carriers;
         parsed.lastUpdated = Date.now();
         fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+        invalidateJsonFileCache(APP_STATE_FILE, parsed);
       } catch (_) {}
     }
   } catch (_) {}
@@ -7503,7 +7585,7 @@ function sanitizeStateForClient(state: any, includeSecrets = false) {
   return stripped;
 }
 
-// Lightweight version check: returns version timestamp (30 bytes) so clients don't poll 1.7MB payloads
+// Lightweight version check: returns max mtime timestamp (30 bytes) so clients don't poll large payloads
 app.get('/api/app/user-state/version', (req, res) => {
   try {
     const authUser = (req as any).authUser;
@@ -7511,10 +7593,9 @@ app.get('/api/app/user-state/version', (req, res) => {
     const userId = isMaster ? String(req.query.userId || authUser?.id || '').trim() : String(authUser?.id || '').trim();
     const username = isMaster ? String(req.query.username || authUser?.username || '').trim() : String(authUser?.username || '').trim();
     const userPath = getUserConfigPath(userId, username);
-    if (fs.existsSync(userPath)) {
-      const stats = fs.statSync(userPath);
-      return res.json({ success: true, version: stats.mtimeMs });
-    }
+    const fallbackPath = username && !userId ? getUserConfigPath(`user-${username}`) : '';
+    const version = getMaxMtimeMs([userPath, fallbackPath, APP_STATE_FILE, CARRIERS_FILE, EXTENSIONS_FILE]);
+    return res.json({ success: true, version });
   } catch (_) {}
   res.json({ success: true, version: 0 });
 });
@@ -7748,11 +7829,9 @@ function getMasterEntitiesFromDisk(): any[] {
     const adminWsPath = getIvrWorkspacePath('user-admin', 'admin');
     const adminStatePath = getUserConfigPath('user-admin', 'admin');
     for (const candidate of [adminWsPath, IVR_WORKSPACE_FILE, adminStatePath, APP_STATE_FILE]) {
-      if (candidate && fs.existsSync(candidate)) {
-        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-        if (Array.isArray(parsed?.campaignEntities)) {
-          return parsed.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
-        }
+      const parsed = readJsonFileCached<any>(candidate);
+      if (Array.isArray(parsed?.campaignEntities)) {
+        return parsed.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
       }
     }
   } catch (_) {}
@@ -7761,6 +7840,30 @@ function getMasterEntitiesFromDisk(): any[] {
 
 app.get('/api/app/master-entities', (req, res) => {
   return res.json({ success: true, entities: getMasterEntitiesFromDisk() });
+});
+
+// Lightweight version check for IVR Workspace so clients avoid downloading/parsing workspace JSON every few seconds
+app.get('/api/app/ivr-workspace/version', (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+    const userId = authIsGlobalAdmin
+      ? String(req.query.userId || authUser?.id || '').trim()
+      : String(authUser?.id || '').trim();
+    const username = authIsGlobalAdmin
+      ? String(req.query.username || authUser?.username || '').trim()
+      : String(authUser?.username || '').trim();
+    let tenantId = authIsGlobalAdmin
+      ? String(req.query.tenantId || '').trim()
+      : String(authUser?.tenantId || '').trim();
+    if (!tenantId && authUser?.tenantId) tenantId = String(authUser.tenantId);
+
+    const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
+    const adminWsPath = getIvrWorkspacePath('user-admin', 'admin');
+    const version = getMaxMtimeMs([userWsPath, IVR_WORKSPACE_FILE, adminWsPath, USERS_FILE, TENANTS_FILE]);
+    return res.json({ success: true, version });
+  } catch (_) {}
+  return res.json({ success: true, version: 0 });
 });
 
 app.get('/api/app/ivr-workspace', (req, res) => {
@@ -8909,15 +9012,18 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
 
   res.json({ success: true, records: filteredRecords, totalAllTenants: authIsGlobalAdmin ? capturedOtpHistory.length : filteredRecords.length });
 
-  // Optional background sync with Asterisk AstDB every 10 seconds without blocking response
-  if (!isSyncingAstDb && (forceFresh || now - lastAstDbSyncTime >= 10000)) {
+  // Optional background sync with Asterisk AstDB every 30 seconds without blocking response
+  const canQueryLocalOrRemoteAstDb = !hasLocalAsterisk || fs.existsSync('/var/run/asterisk/asterisk.ctl');
+  if (!isSyncingAstDb && canQueryLocalOrRemoteAstDb && (forceFresh || now - lastAstDbSyncTime >= 30000)) {
     isSyncingAstDb = true;
     (async () => {
       try {
-        const codesOutput = await executeAsteriskCommand('database show otp_codes');
-        const statusOutput = await executeAsteriskCommand('database show otp_status');
-        const agentOutput = await executeAsteriskCommand('database show otp_agent');
-        const pickedOutput = await executeAsteriskCommand('database show last_picked_agent');
+        const [codesOutput, statusOutput, agentOutput, pickedOutput] = await Promise.all([
+          executeAsteriskCommand('database show otp_codes'),
+          executeAsteriskCommand('database show otp_status'),
+          executeAsteriskCommand('database show otp_agent'),
+          executeAsteriskCommand('database show last_picked_agent'),
+        ]);
 
         const statusMap: Record<string, 'valid' | 'invalid' | 'pending'> = {};
         if (statusOutput) {

