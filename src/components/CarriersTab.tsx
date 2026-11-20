@@ -172,7 +172,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setSecret('');
     setInboundContext('trunkinbound');
     setOutboundCallerId('');
-    setSelectedCodecs(['ulaw', 'alaw', 'g729']);
+    setSelectedCodecs(['ulaw', 'alaw']);
     setQualifyFreq(60);
     setFromuser('');
     setSendrpid('yes');
@@ -378,7 +378,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
             `type = endpoint\n` +
             `context = ${c.inboundContext || 'trunkinbound'}\n` +
             `disallow = all\n` +
-            `allow = ${(c.codecs && c.codecs.length > 0) ? c.codecs.join(',') : 'ulaw,alaw,g729,g722,opus'}\n` +
+            `allow = ${(c.codecs && c.codecs.length > 0) ? c.codecs.filter((x) => x !== 'g729').join(',') || 'ulaw,alaw' : 'ulaw,alaw'}\n` +
             `aors = ${slug}_aor\n` +
             (isRegistration && c.secret ? `outbound_auth = auth_${slug}\n` : `identify_by = ip\n`) +
             (isRegistration && (c.fromuser || c.username) ? `from_user = ${c.fromuser || c.username || slug}\n` : '') +

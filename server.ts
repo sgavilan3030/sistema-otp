@@ -1154,12 +1154,17 @@ function getLocalPublicIpv4Sync(): string {
 
 let detectedExternalIp: string = getLocalPublicIpv4Sync();
 
-function prioritizeZeroTranscodeCodecs(raw: string): string {
-  const list = raw
+function prioritizeZeroTranscodeCodecs(raw: string, isCarrierTrunk = false): string {
+  const rawList = raw
     .split(',')
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
-  if (list.length === 0) return 'ulaw,alaw,g722';
+  // Strip g729 (Asterisk does not include codec_g729 translator by default, which causes immediate
+  // "No path to translate" drops on 200 OK when the carrier picks G729 first).
+  // On PSTN carrier trunks, also strip opus/g722 so the carrier cleanly picks PCMU (ulaw) or PCMA (alaw).
+  const blocked = isCarrierTrunk ? new Set(['g729', 'opus', 'g722']) : new Set(['g729']);
+  const list = rawList.filter((c) => !blocked.has(c));
+  if (list.length === 0) return isCarrierTrunk ? 'ulaw,alaw' : 'ulaw,alaw,g722';
   const ordered: string[] = [];
   if (list.includes('ulaw')) ordered.push('ulaw');
   if (list.includes('alaw')) ordered.push('alaw');
@@ -1245,6 +1250,7 @@ function amiFastOriginate(
         const callerIdLine = cleanCallerId && cleanCallerId !== '"" <>' && !cleanCallerId.includes('5550199')
           ? `CallerID: ${cleanCallerId}\r\n`
           : '';
+        const codecsLine = channel.startsWith('Local/') ? `Codecs: ulaw,alaw\r\n` : '';
         const originatePayload =
           `Action: Originate\r\n` +
           `Channel: ${channel}\r\n` +
@@ -1252,6 +1258,7 @@ function amiFastOriginate(
           `Exten: ${exten}\r\n` +
           `Priority: 1\r\n` +
           callerIdLine +
+          codecsLine +
           `Async: true\r\n` +
           `Timeout: 45000\r\n` +
           varLines +
@@ -1308,9 +1315,10 @@ function fallbackOriginate(
       const callerIdSpoolLine = cleanCallerId && cleanCallerId !== '"" <>' && !cleanCallerId.includes('5550199')
         ? `CallerID: ${cleanCallerId}\n`
         : '';
+      const codecsSpoolLine = channel.startsWith('Local/') ? `Codecs: ulaw,alaw\n` : '';
       const callContent = 
 `Channel: ${channel}
-${callerIdSpoolLine}Context: ${context}
+${callerIdSpoolLine}${codecsSpoolLine}Context: ${context}
 Extension: ${exten}
 Priority: 1
 MaxRetries: 0
@@ -1854,7 +1862,7 @@ export const defaultCarriersList = [
     inboundContext: 'trunkinbound',
     outboundCallerId: '',
     outboundCallerIdName: '',
-    codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
@@ -1877,7 +1885,7 @@ export const defaultCarriersList = [
     inboundContext: 'trunkinbound',
     outboundCallerId: '',
     outboundCallerIdName: '',
-    codecs: ['ulaw', 'alaw', 'g729'],
+    codecs: ['ulaw', 'alaw'],
     qualifyFreq: 60,
     status: 'reachable',
     latencyMs: 18,
@@ -2808,8 +2816,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       const cUser = (carrier.username || cName).trim();
       const cSecret = (carrier.secret || '').trim();
       const cContext = (carrier.inboundContext || 'trunkinbound').trim();
-      const rawTrunkCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw,g729';
-      const cCodecs = prioritizeZeroTranscodeCodecs(rawTrunkCodecs);
+      const rawTrunkCodecs = (carrier.codecs && carrier.codecs.length > 0) ? carrier.codecs.join(',') : 'ulaw,alaw';
+      const cCodecs = prioritizeZeroTranscodeCodecs(rawTrunkCodecs, true);
 
       // effectiveFromUser asegura que el From SIP coincida con la cuenta SIP cuando se especifica o se registra
       const effectiveFromUser = (carrier.fromuser || '').trim();
