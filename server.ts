@@ -1019,13 +1019,13 @@ function ensureAmdConfExists() {
 ; y filtrar contestadores / buzones de voz en EE. UU.
 ; ========================================================
 [general]
-initial_silence = 2500
-greeting = 1600
-after_greeting_silence = 700
-total_analysis_time = 4500
+initial_silence = 3500
+greeting = 2200
+after_greeting_silence = 800
+total_analysis_time = 5000
 min_word_length = 100
 between_words_silence = 50
-maximum_number_of_words = 5
+maximum_number_of_words = 7
 silence_threshold = 256
 maximum_word_length = 5000
 `;
@@ -1041,7 +1041,8 @@ maximum_word_length = 5000
         current.includes('maximum_number_of_words = 3') ||
         current.includes('silence_threshold = 384') ||
         current.includes('maximum_on_length') ||
-        !current.includes('total_analysis_time = 4500')
+        !current.includes('total_analysis_time = 5000') ||
+        !current.includes('initial_silence = 3500')
       ) {
         shouldWrite = true;
       }
@@ -1637,14 +1638,16 @@ function ensureCustomAudioFilesExist() {
     }
 
     if (needsGeneration) {
+      try {
+        const buf = generatePcm8kWaveBuffer(aud.text ? 2.5 : 3.5, aud.freq);
+        fs.writeFileSync(wavPath, buf);
+        try { fs.chmodSync(wavPath, 0o644); } catch (_) {}
+        try { fs.copyFileSync(wavPath, esWavPath); } catch (_) {}
+        try { fs.copyFileSync(wavPath, enWavPath); } catch (_) {}
+        try { fs.copyFileSync(wavPath, rootWavPath); } catch (_) {}
+      } catch (_) {}
       if (aud.text) {
         downloadAndConvertTts(aud.text, wavPath, esWavPath, enWavPath);
-      } else {
-        try {
-          const buf = generatePcm8kWaveBuffer(3.5, aud.freq);
-          fs.writeFileSync(wavPath, buf);
-          try { fs.chmodSync(wavPath, 0o644); } catch (_) {}
-        } catch (_) {}
       }
     } else {
       // Ensure mirrored
@@ -2892,7 +2895,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       pjsipContent += `dtmf_mode = rfc4733\n`;
       pjsipContent += `rtp_keepalive = 5\n`;
       pjsipContent += `asymmetric_rtp_codec = no\n`;
-      pjsipContent += `timers = yes\n`;
+      pjsipContent += `timers = no\n`;
+      pjsipContent += `send_connected_line = no\n`;
+      pjsipContent += `inband_progress = no\n`;
       pjsipContent += `language = es\n`;
       pjsipContent += `moh_suggest = default\n`;
       pjsipContent += `transport = ${trunkTransport}\n\n`;
@@ -2922,7 +2927,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `callerid_privacy = allowed\n`;
         pjsipContent += `dtmf_mode = rfc4733\n`;
         pjsipContent += `rtp_keepalive = 5\n`;
-        pjsipContent += `timers = yes\n`;
+        pjsipContent += `timers = no\n`;
+        pjsipContent += `send_connected_line = no\n`;
+        pjsipContent += `inband_progress = no\n`;
         pjsipContent += `language = es\n`;
         pjsipContent += `transport = ${trunkTransport}\n\n`;
       } else if (cName === 'televox' && !rawCarrierNamesSet.has('televoxin') && !usedCarrierSlugs.has('televoxin')) {
@@ -2949,7 +2956,9 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         pjsipContent += `callerid_privacy = allowed\n`;
         pjsipContent += `dtmf_mode = rfc4733\n`;
         pjsipContent += `rtp_keepalive = 5\n`;
-        pjsipContent += `timers = yes\n`;
+        pjsipContent += `timers = no\n`;
+        pjsipContent += `send_connected_line = no\n`;
+        pjsipContent += `inband_progress = no\n`;
         pjsipContent += `language = es\n`;
         pjsipContent += `transport = ${trunkTransport}\n\n`;
       }
@@ -3487,11 +3496,11 @@ export function generateCleanDialplanConf(
         block += ` same => n,Set(CALLERID(num)=${cOutCid})\n`;
       }
       block += ` same => n,NoOp(=== [OUTBOUND DEDICADO] Marcando por Troncal Exclusiva: ${epName} (${cHost}:${cPort}) a ${numWithPrefix} | CID=${cOutCid || 'Asignado por Proveedor'} ===)\n`;
-      block += ` same => n,Dial(${primaryDialTarget},40,TIb(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,Ib(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
       block += ` same => n,NoOp(=== Troncal Exclusiva ${epName} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},25,TIb(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,Ib(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
       }
       block += ` same => n,NoOp(=== [AISLAMIENTO ESTRICTO] Troncal exclusiva ${epName} finalizada (\${DIALSTATUS}) - NO conmuta a troncales de otros Call Centers ===)\n`;
       block += ` same => n,Goto(${labelEnd})\n`;
@@ -3532,11 +3541,11 @@ export function generateCleanDialplanConf(
       if (cOutCid) {
         block += ` same => n,Set(CALLERID(num)=${cOutCid})\n`;
       }
-      block += ` same => n,Dial(${primaryDialTarget},40,TIb(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
+      block += ` same => n,Dial(${primaryDialTarget},40,Ib(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
       block += ` same => n,NoOp(=== Troncal ${epName} finalizo con DIALSTATUS=\${DIALSTATUS} HANGUPCAUSE=\${HANGUPCAUSE} ===)\n`;
       block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       if (!isIpAuth) {
-        block += ` same => n,Dial(${fallbackDialTarget},25,TIb(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
+        block += ` same => n,Dial(${fallbackDialTarget},25,Ib(sub-pjsip-outbound^s^1(${cOutCid}^${cOutArg2})))\n`;
         block += ` same => n,GotoIf($["\${DIALSTATUS}" = "ANSWER" | "\${DIALSTATUS}" = "BUSY" | "\${DIALSTATUS}" = "CANCEL" | "\${DIALSTATUS}" = "NOANSWER"]?${labelEnd})\n`;
       }
     });
@@ -3810,9 +3819,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_press1)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
+  dialplanContent += ` same => n(amd_silence_human_press1),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
   dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
@@ -3908,9 +3920,16 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" =~ "PJSIP/"]?Set(DIAL_AGENTS=\${FINAL_AGENT}))\n`;
   dialplanContent += ` same => n,NoOp(=== [PRESS-1 DIAL STRING] Marcando simultaneamente a: \${DIAL_AGENTS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?press1_agent_retry)\n`;
   dialplanContent += ` same => n,Goto(press1_finish)\n`;
   dialplanContent += ` same => n(dial_press1_ringall),NoOp(=== [PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?press1_agent_retry)\n`;
+  dialplanContent += ` same => n,Goto(press1_finish)\n`;
+  dialplanContent += ` same => n(press1_agent_retry),NoOp(=== [PRESS-1 ESPERA AGENTE] Ningún softphone disponible (\${DIALSTATUS}) -> Reintento breve antes de finalizar ===)\n`;
+  dialplanContent += ` same => n,Playback(custom/un_momento_por_favor)\n`;
+  dialplanContent += ` same => n,Wait(2.5)\n`;
+  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},30,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n(press1_finish),Hangup()\n\n`;
 
   dialplanContent += `; CUALQUIER OTRA TECLA (0, 2-9, *, #) TRANSFIERE DIRECTO AL OPERADOR\n`;
@@ -3947,9 +3966,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
+  dialplanContent += ` same => n(amd_silence_human_otp),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
   dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
   dialplanContent += ` same => n,Wait(1.5)\n`;
@@ -4170,9 +4192,16 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" =~ "PJSIP/"]?Set(DIAL_AGENTS=\${FINAL_AGENT}))\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?otp_press1_agent_retry)\n`;
   dialplanContent += ` same => n,Goto(otp_press1_finish)\n`;
   dialplanContent += ` same => n(dial_otp_ringall),NoOp(=== [OTP PRESS-1 RING-ALL TODAS LAS EXTENSIONES] Marcando: \${GLOBAL_RINGALL_EXTENSIONS} ===)\n`;
   dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},60,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?otp_press1_agent_retry)\n`;
+  dialplanContent += ` same => n,Goto(otp_press1_finish)\n`;
+  dialplanContent += ` same => n(otp_press1_agent_retry),NoOp(=== [OTP ESPERA AGENTE] Ningún softphone disponible (\${DIALSTATUS}) -> Reintento breve ===)\n`;
+  dialplanContent += ` same => n,Playback(custom/un_momento_por_favor)\n`;
+  dialplanContent += ` same => n,Wait(2.5)\n`;
+  dialplanContent += ` same => n,Dial(\${GLOBAL_RINGALL_EXTENSIONS},30,Ttb(sub-audio-quality^s^1(\${TARGET_NUM}))U(sub-record-picked-agent^\${TARGET_NUM}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n(otp_press1_finish),Hangup()\n\n`;
 
   dialplanContent += `exten => _XXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
@@ -4241,9 +4270,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_ata)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Audio+Agent hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_ata)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
+  dialplanContent += ` same => n(amd_silence_human_ata),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
   dialplanContent += ` same => n(skip_amd_ata),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
@@ -4278,7 +4310,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=talking_agent&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" || "\${FINAL_AGENT}" = "all" || "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
-  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?ata_agent_retry:ata_finish)\n`;
+  dialplanContent += ` same => n(ata_agent_retry),Playback(custom/un_momento_por_favor)\n`;
+  dialplanContent += ` same => n,Wait(2.5)\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},30,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n(ata_finish),Hangup()\n`;
   dialplanContent += ` same => n(amd_machine_ata),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -4299,9 +4335,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_p1c)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_p1c)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_p1c)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
+  dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
   dialplanContent += ` same => n(skip_amd_p1c),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
@@ -4453,9 +4492,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada IVR Captura OTP hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1600,700,4500,100,50,5,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp_v)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
+  dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
   dialplanContent += ` same => n(skip_amd_otp_v),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;

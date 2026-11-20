@@ -2,9 +2,7 @@ import React from 'react';
 import {
   PhoneCall,
   Headphones,
-  RefreshCw,
   Menu,
-  LogOut,
   ShieldCheck,
   Server,
   Volume2,
@@ -32,12 +30,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
-  connectionSettings,
-  currentUser,
-  onQuickSync,
   onOpenMobileMenu,
-  onLogout,
-  isSyncing,
   activeCallCount = 0,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
@@ -150,35 +143,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                 <span>{activeCallCount} EN VIVO</span>
-              </button>
-            )}
-
-            {/* Quick Sync Button: Only for Admin or Users with canSyncAsterisk */}
-            {(currentUser?.role === 'admin' || currentUser?.permissions?.canSyncAsterisk) && (
-              <button
-                id="btn-quick-sync-asterisk"
-                onClick={onQuickSync}
-                disabled={isSyncing}
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer ${
-                  isSyncing
-                    ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 cursor-wait'
-                    : 'bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 hover:border-emerald-500/40'
-                }`}
-                title="Sincronizar configuración de la central PBX"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Recarga PBX'}</span>
-              </button>
-            )}
-
-            {/* Quick Logout Button */}
-            {currentUser && onLogout && (
-              <button
-                onClick={onLogout}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-colors cursor-pointer"
-                title="Cerrar Sesión"
-              >
-                <LogOut className="w-4 h-4" />
               </button>
             )}
           </div>

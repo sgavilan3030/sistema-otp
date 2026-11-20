@@ -5188,15 +5188,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isMassRunning}
-                    className="px-3 py-1.5 rounded-lg bg-purple-950/40 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold border border-purple-500/30 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Cargar .txt</span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => {
                       setUploadedFileName(null);
                       setMassNumbersText('16104803845\n18005550199\n18099602110');
@@ -5428,25 +5419,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {isMassRunning && (
+                  {isMassRunning && (
+                    <div className="flex items-center gap-2">
                       <span className="flex items-center gap-2 text-xs font-mono text-purple-400 bg-purple-950/30 px-3 py-1.5 rounded-xl border border-purple-500/30">
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                         <span>Marcando: {massActiveNumber}</span>
                       </span>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleHangupAllMassCalls}
-                      disabled={isHangingUpAllMass}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
-                      title="Colgar todas las llamadas masivas activas"
-                    >
-                      <PhoneOff className="w-3.5 h-3.5" />
-                      <span>Colgar Todas</span>
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Filtros de Estado: Todas, En Línea, En Hold, Colgadas, Grabadora */}
@@ -6487,31 +6467,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             <div className="flex items-center gap-2.5 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => setProductionMode('single')}
-                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition-all w-full sm:w-auto text-center"
-              >
-                Ajustar Número / CallerID
-              </button>
-
-              <button
-                type="button"
                 onClick={handleLaunchProductionCall}
                 disabled={isLaunching || isHangingUp || !targetNumber.trim()}
                 className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all flex-1 sm:flex-initial cursor-pointer"
               >
                 <PhoneCall className={`w-4 h-4 ${isLaunching ? 'animate-bounce' : ''}`} />
                 <span>{isLaunching ? 'Lanzando...' : 'Lanzar Llamada'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleHangupActiveCall}
-                disabled={isHangingUp || isLaunching}
-                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 border border-rose-400/30 transition-all flex-1 sm:flex-initial cursor-pointer"
-                title="Colgar llamada activa inmediatamente en Asterisk"
-              >
-                <PhoneOff className="w-4 h-4" />
-                <span>{isHangingUp ? 'Colgando...' : 'Colgar'}</span>
               </button>
             </div>
           </div>
