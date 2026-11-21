@@ -1109,7 +1109,16 @@ icesupport=no
     if (!shouldWriteMgr) {
       try {
         const curMgr = fs.readFileSync(mgrPath, 'utf8');
-        if (curMgr.includes('bindaddr = 0.0.0.0') || curMgr.includes('bindaddr=0.0.0.0') || curMgr.includes('mysecretpass')) {
+        const hasExpectedUser = new RegExp(`^\\[${AMI_USER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'm').test(curMgr);
+        const hasExpectedSecret =
+          curMgr.includes(`secret = ${AMI_SECRET}`) || curMgr.includes(`secret=${AMI_SECRET}`);
+        if (
+          !hasExpectedUser ||
+          !hasExpectedSecret ||
+          curMgr.includes('bindaddr = 0.0.0.0') ||
+          curMgr.includes('bindaddr=0.0.0.0') ||
+          curMgr.includes('mysecretpass')
+        ) {
           shouldWriteMgr = true;
         }
       } catch (_) {}
@@ -7211,6 +7220,22 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       activeAudioAssignments.otp_wait = cleanPath;
       break;
 
+    case 'otp_verify_wait':
+      for (const tgt of genericTargets) {
+        commands.push(`database put ivr_vars ${tgt}_otp_verify_wait "${cleanPath}"`);
+      }
+      copyToFallback('enviando_codigo_verificacion');
+      activeAudioAssignments.otp_verify_wait = cleanPath;
+      break;
+
+    case 'cancel_wait':
+      for (const tgt of genericTargets) {
+        commands.push(`database put ivr_vars ${tgt}_cancel_wait "${cleanPath}"`);
+      }
+      copyToFallback('enviando_codigo_cancelacion');
+      (activeAudioAssignments as any).cancel_wait = cleanPath;
+      break;
+
     case 'otp_success':
     case 'success':
       for (const tgt of genericTargets) {
@@ -11685,6 +11710,9 @@ async function startServer() {
       immutable: true,
       etag: true,
     }));
+    app.use('/assets', (_req, res) => {
+      res.status(404).end();
+    });
 
     // Cache generic static public files, but NEVER cache HTML files
     app.use(express.static(distPath, {
