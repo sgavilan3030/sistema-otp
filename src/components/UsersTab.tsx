@@ -68,6 +68,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   onAddExtension,
   onNavigateToProduction,
 }) => {
+  const activeUser = currentUser || users.find((u) => u.id === currentUserId);
+  const canManageUsers = activeUser ? (activeUser.role === 'admin' || !!activeUser.permissions?.canManageUsers) : false;
+  const isGlobalSuperAdmin = Boolean(activeUser && activeUser.role === 'admin' && !activeUser.tenantId);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
 
@@ -149,6 +153,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     canManageUsers: false,
     canExportConfigs: false,
     canSpy: false,
+    canUseMassCalls: false,
   });
 
   // Compute next free 2001+ extension for standalone (non-Call Center) clients
@@ -193,6 +198,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canManageUsers: true,
         canExportConfigs: true,
         canSpy: true,
+        canUseMassCalls: !formTenantId,
       });
     } else if (role === 'supervisor') {
       setFormAccountType('agent');
@@ -206,6 +212,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canManageUsers: false,
         canExportConfigs: true,
         canSpy: true,
+        canUseMassCalls: false,
       });
     } else if (role === 'agent') {
       setFormAccountType('agent');
@@ -219,6 +226,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canManageUsers: false,
         canExportConfigs: false,
         canSpy: false,
+        canUseMassCalls: false,
       });
     } else if (role === 'reseller_client') {
       setFormAccountType('reseller_client');
@@ -232,6 +240,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         canManageUsers: false,
         canExportConfigs: false,
         canSpy: false,
+        canUseMassCalls: false,
       });
       if (!editingUser && !formTenantId) {
         const nextClientExt = getNextClientExtension2001();
@@ -350,7 +359,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormTenantId(user.tenantId || '');
     setFormStatus(user.status);
     setSelectedExts(user.assignedExtensions);
-    setPermissions(user.permissions);
+    setPermissions({
+      ...user.permissions,
+      canUseMassCalls: Boolean(user.permissions?.canUseMassCalls),
+    });
     const activeIdSet = new Set(availableEntities.map((e) => e.id));
     if (Array.isArray(user.assignedEntityIds)) {
       setFormAssignedEntityIds(
@@ -461,10 +473,18 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
     const finalRole = formAccountType === 'reseller_client' ? 'reseller_client' : formRole;
-    const isGlobalSuperAdmin = finalRole === 'admin' && !formTenantId;
+    const targetIsGlobalSuperAdmin = finalRole === 'admin' && !formTenantId;
     const normalizedAllowedFlows: CallFlowMode[] = Array.from(
       new Set<CallFlowMode>([formAssignedCallFlowMode, ...formAllowedCallFlowModes])
     );
+    const effectivePermissions: UserPermissions = {
+      ...permissions,
+      canUseMassCalls: targetIsGlobalSuperAdmin
+        ? true
+        : isGlobalSuperAdmin
+        ? Boolean(permissions.canUseMassCalls)
+        : Boolean(editingUser?.permissions?.canUseMassCalls),
+    };
 
     const userObj: SystemUser = {
       ...(editingUser || {}),
@@ -484,10 +504,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       tenantId: formTenantId ? formTenantId : undefined,
       assignedExtensions: selectedExts,
-      assignedEntityIds: isGlobalSuperAdmin ? undefined : [...formAssignedEntityIds],
-      assignedCallFlowMode: isGlobalSuperAdmin ? undefined : formAssignedCallFlowMode,
-      allowedCallFlowModes: isGlobalSuperAdmin ? undefined : normalizedAllowedFlows,
-      permissions,
+      assignedEntityIds: targetIsGlobalSuperAdmin ? undefined : [...formAssignedEntityIds],
+      assignedCallFlowMode: targetIsGlobalSuperAdmin ? undefined : formAssignedCallFlowMode,
+      allowedCallFlowModes: targetIsGlobalSuperAdmin ? undefined : normalizedAllowedFlows,
+      permissions: effectivePermissions,
       status: formStatus,
       avatarColor: editingUser?.avatarColor || randomColor,
       createdAt: editingUser?.createdAt || new Date().toISOString().split('T')[0],
@@ -583,8 +603,29 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     },
   ];
 
-  const activeUser = currentUser || users.find((u) => u.id === currentUserId);
-  const canManageUsers = activeUser ? (activeUser.role === 'admin' || !!activeUser.permissions?.canManageUsers) : false;
+  const handleToggleUserMassCalls = (user: SystemUser) => {
+    if (!isGlobalSuperAdmin) return;
+    const nextValue = !Boolean(user.permissions?.canUseMassCalls);
+    const updatedUser: SystemUser = {
+      ...user,
+      permissions: {
+        ...user.permissions,
+        canUseMassCalls: nextValue,
+      },
+    };
+    onUpdateUser(updatedUser);
+    fetch('/api/users/sync-sip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: updatedUser }),
+    }).catch(() => {});
+    setSyncFeedback(
+      nextValue
+        ? `✓ Acceso al Centro de Llamadas Masivas habilitado para ${user.name}.`
+        : `✓ Acceso al Centro de Llamadas Masivas revocado para ${user.name}.`
+    );
+    setTimeout(() => setSyncFeedback(null), 4000);
+  };
 
   if (!canManageUsers) {
     return (
@@ -906,6 +947,51 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-500/30">
                         {optLabel}{allowed.length > 1 ? ` (+${allowed.length - 1})` : ''}
                       </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Centro de Llamadas Masivas Access Badge */}
+                <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
+                    <Users className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Centro Masivas:</span>
+                  </span>
+                  {user.role === 'admin' && !user.tenantId ? (
+                    <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30">
+                      Acceso Total (Admin)
+                    </span>
+                  ) : (() => {
+                    const userTenantObj = user.tenantId ? tenants.find((t) => t.id === user.tenantId) : null;
+                    const directEnabled = Boolean(user.permissions?.canUseMassCalls);
+                    const tenantEnabled = Boolean(userTenantObj?.allowMassCalls && user.role !== 'agent');
+                    const effectiveEnabled = directEnabled || tenantEnabled;
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            effectiveEnabled
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                              : 'bg-slate-900 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {directEnabled ? '⚡ Habilitado' : tenantEnabled ? '⚡ Por Call Center' : '🔒 Bloqueado'}
+                        </span>
+                        {isGlobalSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserMassCalls(user)}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                              directEnabled
+                                ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                                : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border-purple-500/40'
+                            }`}
+                            title={directEnabled ? 'Revocar acceso directo al Centro de Llamadas Masivas' : 'Dar acceso directo al Centro de Llamadas Masivas'}
+                          >
+                            {directEnabled ? 'Quitar' : 'Dar Acceso'}
+                          </button>
+                        )}
+                      </div>
                     );
                   })()}
                 </div>
@@ -1587,6 +1673,55 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       </div>
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* Acceso a Centro de Llamadas Masivas (Solo Administrador) */}
+              <div className="p-3.5 rounded-lg bg-slate-950 border border-purple-500/35 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-purple-300 font-bold flex items-center gap-1.5 text-xs">
+                    <Users className="w-4 h-4 text-purple-400" />
+                    <span>Centro de Llamadas Masivas (Solo Administrador)</span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                      (formRole === 'admin' && !formTenantId) || permissions.canUseMassCalls
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                        : 'bg-slate-900 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {(formRole === 'admin' && !formTenantId) || permissions.canUseMassCalls ? '⚡ Habilitado' : '🔒 Bloqueado'}
+                  </span>
+                </div>
+
+                {formRole === 'admin' && !formTenantId ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/25 border border-emerald-500/30 text-[11px] text-emerald-300">
+                    ✓ El Super Administrador Global siempre tiene acceso al Centro de Llamadas Masivas.
+                  </div>
+                ) : (
+                  <label className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors ${isGlobalSuperAdmin ? 'cursor-pointer bg-slate-900/70 border-slate-800 hover:border-purple-500/40' : 'opacity-60 cursor-not-allowed bg-slate-900/40 border-slate-800'}`}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(permissions.canUseMassCalls)}
+                      disabled={!isGlobalSuperAdmin}
+                      onChange={(e) => {
+                        if (!isGlobalSuperAdmin) return;
+                        setPermissions((prev) => ({
+                          ...prev,
+                          canUseMassCalls: e.target.checked,
+                        }));
+                      }}
+                      className="mt-0.5 rounded border-slate-700 text-purple-500 focus:ring-purple-500 bg-slate-950"
+                    />
+                    <div className="text-[11px] text-slate-300 leading-relaxed">
+                      <span className="font-bold text-white block">
+                        Permitir acceso al Centro de Llamadas Masivas (Ring-All)
+                      </span>
+                      <span className="text-slate-400">
+                        Solo el Administrador puede habilitar esta función para clientes. Si está desactivada, solo podrá usar el Disparador Individual (1 a 1).
+                      </span>
+                    </div>
+                  </label>
                 )}
               </div>
 

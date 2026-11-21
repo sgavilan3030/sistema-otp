@@ -1953,6 +1953,7 @@ function createDefaultBootstrapUsers(): any[] {
         canUseSoftphone: true,
         canManageUsers: true,
         canExportConfigs: true,
+        canUseMassCalls: true,
       },
     },
     {
@@ -1977,6 +1978,7 @@ function createDefaultBootstrapUsers(): any[] {
         canUseSoftphone: true,
         canManageUsers: true,
         canExportConfigs: true,
+        canUseMassCalls: true,
       },
     },
   ];
@@ -2376,6 +2378,14 @@ function resolveClientDialingPlanScope(user?: any, tenant?: any): {
 
   const assignedMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0];
   return { assignedMode, allowedModes };
+}
+
+function isMassCallsAllowedForUser(user?: any, tenant?: any): boolean {
+  if (isGlobalAdminUser(user)) return true;
+  if (!user) return false;
+  if (user.permissions?.canUseMassCalls === true) return true;
+  if (tenant?.allowMassCalls === true && user.role !== 'agent') return true;
+  return false;
 }
 
 app.get('/api/tenants', (req, res) => {
@@ -6101,6 +6111,18 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 
     const callerIsSuperAdmin = authIsGlobalAdmin;
 
+    // Enforce admin-only permission for Centro de Llamadas Masivas
+    const isMassCampaignCall = req.body.isMassCampaign === true || req.body.isMassCampaign === 'true';
+    if (isMassCampaignCall && !callerIsSuperAdmin) {
+      const massAllowed = isMassCallsAllowedForUser(userResolution.user || authUser, tenantResolution.tenant);
+      if (!massAllowed) {
+        return res.status(403).json({
+          success: false,
+          error: 'Acceso denegado: Solo el Administrador puede habilitar el Centro de Llamadas Masivas para clientes.',
+        });
+      }
+    }
+
     // Enforce admin-assigned dialing plan (Plan de Marcación) for non-global-admin clients
     let enforcedMode = effectiveMode;
     const isManualDialerOnlyMode =
@@ -7989,6 +8011,8 @@ app.get('/api/app/ivr-workspace', (req, res) => {
       return assignedEntityIds.map((id) => byId.get(id)).filter(Boolean);
     };
 
+    const canUseMassCalls = isSuperAdminReq || isMassCallsAllowedForUser(matchedUser, matchedTenantObj);
+
     const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     if (fs.existsSync(userWsPath)) {
       const ws = JSON.parse(fs.readFileSync(userWsPath, 'utf8'));
@@ -8013,6 +8037,7 @@ app.get('/api/app/ivr-workspace', (req, res) => {
         assignedEntityIds,
         assignedCallFlowMode: planScope.assignedMode,
         allowedCallFlowModes: planScope.allowedModes,
+        canUseMassCalls,
         masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: tenantId ? 'tenant_workspace' : 'user_workspace',
       });
@@ -8037,6 +8062,7 @@ app.get('/api/app/ivr-workspace', (req, res) => {
         assignedEntityIds,
         assignedCallFlowMode: planScope.assignedMode,
         allowedCallFlowModes: planScope.allowedModes,
+        canUseMassCalls,
         masterEntities: isSuperAdminReq ? masterEntities : undefined,
         source: 'global_template',
       });
@@ -8048,13 +8074,14 @@ app.get('/api/app/ivr-workspace', (req, res) => {
         assignedEntityIds,
         assignedCallFlowMode: planScope.assignedMode,
         allowedCallFlowModes: planScope.allowedModes,
+        canUseMassCalls,
         assignedEntities: filterEntitiesForScope([]),
       });
     }
   } catch (err: any) {
     console.error('[IVR-WORKSPACE] Error leyendo:', err);
   }
-  return res.json({ success: true, workspace: null });
+  return res.json({ success: true, workspace: null, canUseMassCalls: isGlobalAdminUser((req as any).authUser) });
 });
 
 app.post('/api/app/ivr-workspace', (req, res) => {
@@ -11219,6 +11246,10 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
               tenantId: authUser.tenantId,
               assignedCallFlowMode: prev?.assignedCallFlowMode,
               allowedCallFlowModes: prev?.allowedCallFlowModes,
+              permissions: {
+                ...(u.permissions || {}),
+                canUseMassCalls: Boolean(prev?.permissions?.canUseMassCalls),
+              },
             };
             if (safeSub.role === 'admin' && !safeSub.tenantId) safeSub.role = 'supervisor';
             userMap.set(key, normalizeUserRecordForStorage(safeSub, prev));
@@ -11270,6 +11301,10 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
           role: targetUser.role === 'admin' && !authUser.tenantId ? 'supervisor' : targetUser.role,
           assignedCallFlowMode: prevUser?.assignedCallFlowMode,
           allowedCallFlowModes: prevUser?.allowedCallFlowModes,
+          permissions: {
+            ...(targetUser.permissions || {}),
+            canUseMassCalls: Boolean(prevUser?.permissions?.canUseMassCalls),
+          },
         };
     const updatedUserObj = normalizeUserRecordForStorage(
       { ...sanitizedTarget, username: cleanUser, sipSecret: password, ...(hasNewPass ? { password } : {}) },

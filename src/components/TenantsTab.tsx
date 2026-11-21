@@ -150,6 +150,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     assignedEntityIds: [] as string[],
     assignedCallFlowMode: 'press1' as CallFlowMode,
     allowedCallFlowModes: ['press1'] as CallFlowMode[],
+    allowMassCalls: false,
   });
 
   // Recharge modal form
@@ -230,6 +231,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       assignedEntityIds: [],
       assignedCallFlowMode: 'press1',
       allowedCallFlowModes: ['press1'],
+      allowMassCalls: false,
     });
     setEditingTenant(null);
     setIsCreateModalOpen(true);
@@ -268,6 +270,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         : availableEntities.map((e) => e.id),
       assignedCallFlowMode: primaryMode,
       allowedCallFlowModes: allowedModes,
+      allowMassCalls: Boolean(tenant.allowMassCalls),
     });
     setEditingTenant(tenant);
     setIsCreateModalOpen(true);
@@ -333,6 +336,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         assignedEntityIds: [...formData.assignedEntityIds],
         assignedCallFlowMode: primaryMode,
         allowedCallFlowModes: normalizedAllowedModes,
+        allowMassCalls: Boolean(formData.allowMassCalls),
       };
       onUpdateTenant(updated);
     } else {
@@ -363,6 +367,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         assignedEntityIds: [...formData.assignedEntityIds],
         assignedCallFlowMode: primaryMode,
         allowedCallFlowModes: normalizedAllowedModes,
+        allowMassCalls: Boolean(formData.allowMassCalls),
       };
       onAddTenant(newTenant);
     }
@@ -779,6 +784,38 @@ same => n,Hangup()
                           ? ` (+${tenant.allowedCallFlowModes.length - 1})`
                           : ''}
                       </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Centro Masivas:</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            tenant.allowMassCalls
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                              : 'bg-slate-950 text-slate-400 border-slate-800'
+                          }`}
+                        >
+                          {tenant.allowMassCalls ? '⚡ Habilitado' : '🔒 Bloqueado'}
+                        </span>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => onUpdateTenant({ ...tenant, allowMassCalls: !tenant.allowMassCalls })}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                              tenant.allowMassCalls
+                                ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                                : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border-purple-500/40'
+                            }`}
+                            title={tenant.allowMassCalls ? 'Revocar acceso al Centro de Llamadas Masivas' : 'Dar acceso al Centro de Llamadas Masivas'}
+                          >
+                            {tenant.allowMassCalls ? 'Quitar' : 'Dar Acceso'}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between text-slate-300">
@@ -1461,6 +1498,27 @@ same => n,Hangup()
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Centro de Llamadas Masivas (Solo Administrador) */}
+              <div className="bg-slate-950/70 border border-purple-500/30 rounded-xl p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData.allowMassCalls)}
+                    onChange={(e) => setFormData({ ...formData, allowMassCalls: e.target.checked })}
+                    className="mt-0.5 rounded border-slate-700 text-purple-500 focus:ring-purple-500 bg-slate-950"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-purple-400" />
+                      <span>Habilitar Centro de Llamadas Masivas (Solo Administrador)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Por defecto está bloqueado. Actívalo solo si deseas dar acceso al marcador masivo Ring-All a este Call Center; de lo contrario solo verán el Disparador Individual (1 a 1).
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {/* Assigned IVR Scripts Checklist */}

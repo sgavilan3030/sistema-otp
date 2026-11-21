@@ -271,6 +271,7 @@ export const initialUsers: SystemUser[] = [
       canUseSoftphone: true,
       canManageUsers: true,
       canExportConfigs: true,
+      canUseMassCalls: true,
     },
   },
   {
@@ -294,6 +295,7 @@ export const initialUsers: SystemUser[] = [
       canUseSoftphone: true,
       canManageUsers: true,
       canExportConfigs: true,
+      canUseMassCalls: true,
     },
   },
 ];

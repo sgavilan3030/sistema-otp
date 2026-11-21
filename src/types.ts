@@ -254,6 +254,7 @@ export interface UserPermissions {
   canManageUsers: boolean;
   canExportConfigs?: boolean;
   canSpy?: boolean;
+  canUseMassCalls?: boolean;
 }
 
 export interface CapturedOtpRecord {
@@ -604,6 +605,7 @@ export interface CallCenterTenant {
   assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos para este Call Center
   assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
   allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
+  allowMassCalls?: boolean; // Acceso al Centro de Llamadas Masivas otorgado exclusivamente por el Administrador
 }
 
 export interface TenantRechargeHistory {
