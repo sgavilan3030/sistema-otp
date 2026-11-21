@@ -7,7 +7,6 @@ const CALL_FLOW_MODE_OPTIONS: { id: CallFlowMode; label: string }[] = [
   { id: 'press1', label: '2. Press-1 (Asesor)' },
   { id: 'hybrid', label: '3. Híbrido (OTP + Asesor)' },
   { id: 'cancel_code', label: '4. Código de Cancelación' },
-  { id: 'otp_press1', label: '5. IVR de Captura OTP' },
 ];
 import {
   Users,

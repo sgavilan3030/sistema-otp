@@ -38,7 +38,6 @@ const CALL_FLOW_MODE_OPTIONS: { id: CallFlowMode; label: string; desc: string }[
   { id: 'press1', label: '2. Press-1 (Asesor)', desc: 'Al marcar 1 transfiere a Softphone' },
   { id: 'hybrid', label: '3. Híbrido (OTP + Asesor)', desc: 'OTP automático o Press-1' },
   { id: 'cancel_code', label: '4. Código de Cancelación', desc: 'Marca 1 → Envía código + Válido/Inválido' },
-  { id: 'otp_press1', label: '5. IVR de Captura OTP', desc: 'Marca 1 → Audio espera + Validar en LiveCalls' },
 ];
 
 interface SimpleEntityOption {
