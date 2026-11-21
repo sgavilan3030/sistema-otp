@@ -61,6 +61,7 @@ import {
   Upload,
   FileText,
   ExternalLink,
+  Send,
 } from 'lucide-react';
 
 export interface CampaignAudioConfig {
@@ -201,11 +202,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Mode selection: disparador individual (1 a 1 hacia asesor asignado), acción IVR y centro de llamadas masivas (Ring-All a todas las extensiones)
   const [productionMode, setProductionMode] = useState<'single' | 'ivr_action' | 'mass_campaign'>('single');
 
-  const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['otp', 'press1', 'hybrid', 'cancel_code'];
+  const ALL_CALL_FLOW_MODES: CallFlowMode[] = ['cancel_code', 'otp', 'press1', 'hybrid'];
   const normalizeUiFlowMode = (mode?: string | null): CallFlowMode => {
     if (mode === 'otp_press1') return 'otp';
     if (mode === 'otp' || mode === 'press1' || mode === 'hybrid' || mode === 'cancel_code') return mode;
-    return 'press1';
+    return 'cancel_code';
   };
   const [serverAssignedFlowMode, setServerAssignedFlowMode] = useState<CallFlowMode | null>(null);
   const [serverAllowedFlowModes, setServerAllowedFlowModes] = useState<CallFlowMode[] | null>(null);
@@ -237,7 +238,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         return normalizeUiFlowMode(saved);
       }
     } catch (_) {}
-    return 'press1';
+    return 'cancel_code';
   });
 
   const setCallFlowMode = (mode: CallFlowMode) => {
@@ -305,12 +306,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
-  // Press 1 Destination Setting (Ring-All vs Extensiones Específicas) with persistent save
-  const [press1DestMode, setPress1DestMode] = useState<'ringall' | 'specific'>('ringall');
-  const [press1DestExtensions, setPress1DestExtensions] = useState<string[]>(['1001']);
-  const [isSavingDest, setIsSavingDest] = useState<boolean>(false);
-  const [destSaveFeedback, setDestSaveFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
   // Fetch AMD status & Press 1 destination configuration on mount
   useEffect(() => {
     if (typeof amdEnabledProp !== 'boolean') {
@@ -327,19 +322,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     fetch('/api/asterisk/press1-destination')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
-          if (data.mode === 'specific' || data.mode === 'ringall') {
-            setPress1DestMode(data.mode);
-          }
-          if (Array.isArray(data.extensions) && data.extensions.length > 0) {
-            setPress1DestExtensions(data.extensions);
-          }
-          if (!isSingleExtensionAgent) {
-            if (data.mode === 'ringall') {
-              setAgentExtension('ringall');
-            } else if (Array.isArray(data.extensions) && data.extensions.length > 0) {
-              setAgentExtension(data.extensions[0]);
-            }
+        if (data.success && !isSingleExtensionAgent) {
+          if (data.mode === 'ringall') {
+            setAgentExtension('ringall');
+          } else if (Array.isArray(data.extensions) && data.extensions.length > 0) {
+            setAgentExtension(data.extensions[0]);
           }
         }
       })
@@ -369,69 +356,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   };
 
-  const handleToggleDestExtension = (extNum: string) => {
-    setPress1DestExtensions((prev) => {
-      if (prev.includes(extNum)) {
-        if (prev.length === 1) return prev; // Keep at least one
-        return prev.filter((e) => e !== extNum);
-      } else {
-        return [...prev, extNum];
-      }
-    });
-  };
-
-  const handleSavePress1Destination = async () => {
-    setIsSavingDest(true);
-    setDestSaveFeedback(null);
-    try {
-      const res = await fetch('/api/asterisk/press1-destination/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: press1DestMode,
-          extensions: press1DestMode === 'specific' ? press1DestExtensions : [],
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDestSaveFeedback({
-          text: data.message || 'Configuración guardada exitosamente en Asterisk.',
-          type: 'success',
-        });
-        if (press1DestMode === 'ringall') {
-          setAgentExtension('ringall');
-        } else if (press1DestExtensions.length > 0) {
-          setAgentExtension(press1DestExtensions[0]);
-        }
-      } else {
-        setDestSaveFeedback({
-          text: `Error al guardar: ${data.error || 'Fallo desconocido'}`,
-          type: 'error',
-        });
-      }
-    } catch (err: any) {
-      setDestSaveFeedback({
-        text: `Error de red al guardar: ${err.message}`,
-        type: 'error',
-      });
-    } finally {
-      setIsSavingDest(false);
-      setTimeout(() => setDestSaveFeedback(null), 6000);
-    }
-  };
-
   const handleSelectAgentExtension = (val: string) => {
     setAgentExtension(val);
     if (val === 'ringall') {
-      setPress1DestMode('ringall');
       fetch('/api/asterisk/press1-destination/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'ringall', extensions: [] }),
       }).catch(() => {});
     } else {
-      setPress1DestMode('specific');
-      setPress1DestExtensions([val]);
       fetch('/api/asterisk/press1-destination/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -859,7 +792,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           const resolvedMode: CallFlowMode =
             isSuperAdmin || allowedFromServer.includes(normalizedWsMode)
               ? normalizedWsMode
-              : (normalizeUiFlowMode(data.assignedCallFlowMode) || allowedFromServer[0] || 'press1');
+              : (normalizeUiFlowMode(data.assignedCallFlowMode) || allowedFromServer[0] || 'cancel_code');
           setCallFlowModeState(resolvedMode);
           try {
             localStorage.setItem('ast20_call_flow_mode', resolvedMode);
@@ -1514,7 +1447,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     name?: string;
     service: string;
     mode?: CallFlowMode;
-    status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'otp_captured' | 'transferred' | 'connected' | 'ended';
+    status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'asking_cancel_code' | 'otp_captured' | 'transferred' | 'connected' | 'ended';
     capturedOtp?: string;
     otpStatus?: 'valid' | 'invalid' | 'pending';
     cancelDecision?: 'valid' | 'invalid' | 'pending';
@@ -1563,13 +1496,55 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       osc.type = 'sine';
       osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
       osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
+      osc.frequency.setValueAtTime(1046.5, audioCtx.currentTime + 0.25); // C6
+      gain.gain.setValueAtTime(0.38, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.55);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start();
-      osc.stop(audioCtx.currentTime + 0.45);
+      osc.stop(audioCtx.currentTime + 0.55);
     } catch (_) {}
+  };
+
+  const [sendingCancelCodeNum, setSendingCancelCodeNum] = useState<string | null>(null);
+  const notifiedCancelPress1Ref = useRef<Set<string>>(new Set());
+
+  const handleNotifyCancelCodeSent = async (targetNum: string, targetAgent?: string) => {
+    const cleanNum = String(targetNum || '').replace(/[^0-9]/g, '');
+    if (!cleanNum) return;
+    setSendingCancelCodeNum(cleanNum);
+    try {
+      const res = await fetch('/api/asterisk/call/cancel-code-sent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: cleanNum,
+          agent: targetAgent && targetAgent !== 'ringall' ? targetAgent : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (activeCall && activeCall.number.replace(/[^0-9]/g, '') === cleanNum) {
+          setActiveCall((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: 'asking_cancel_code',
+                  validationNote:
+                    '✓ Aviso enviado a Asterisk: el IVR ahora le está solicitando al cliente que digite el código de cancelación.',
+                }
+              : null
+          );
+        }
+        setLaunchFeedback({
+          text: `✓ Aviso enviado para ${cleanNum}. El IVR ahora le pide al cliente digitar el código de cancelación.`,
+          type: 'success',
+        });
+      }
+    } catch (_) {}
+    finally {
+      setSendingCancelCodeNum(null);
+    }
   };
 
   // History of captured OTPs
@@ -1675,7 +1650,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       activeUser?.assignedCallFlowMode ||
       userTenant?.assignedCallFlowMode ||
       serverAssignedFlowMode ||
-      'press1'
+      'cancel_code'
     );
     const baseList = fromUser || fromTenant || fromServer || [primary];
     return Array.from(new Set<CallFlowMode>([primary, ...baseList]));
@@ -1696,7 +1671,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       userTenant?.assignedCallFlowMode ||
       serverAssignedFlowMode ||
       adminAllowedCallFlowModes[0] ||
-      'press1'
+      'cancel_code'
     );
   }, [
     isSuperAdmin,
@@ -1760,6 +1735,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
   const lastCarrierInitUserRef = useRef<string>('');
 
+  const assignedClientCarrierName =
+    defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled'
+      ? defaultAssignedCarrier.name
+      : enabledCarriers[0]?.name || 'auto';
+
   useEffect(() => {
     const uid = activeUser?.id || '';
     if (uid && lastCarrierInitUserRef.current !== uid) {
@@ -1770,13 +1750,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         defaultAssignedCarrier.status !== 'disabled'
       ) {
         setSelectedCarrierName(defaultAssignedCarrier.name);
+      } else if (!isSuperAdmin && enabledCarriers[0]?.name) {
+        setSelectedCarrierName(enabledCarriers[0].name);
       } else {
         setSelectedCarrierName('auto');
       }
     }
-  }, [activeUser?.id, defaultAssignedCarrier]);
+  }, [activeUser?.id, defaultAssignedCarrier, isSuperAdmin, enabledCarriers]);
 
-  const effectiveSelectedCarrier = selectedCarrierName || 'auto';
+  const effectiveSelectedCarrier = isSuperAdmin
+    ? selectedCarrierName || 'auto'
+    : assignedClientCarrierName;
   const activeCarrierObj =
     (effectiveSelectedCarrier !== 'auto'
       ? carriers.find(
@@ -2360,7 +2344,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           const callState = data.call;
 
           // 1. Detección en vivo de cuando el cliente presiona la tecla 1
-          if (callState.status === 'pressed_1' || callState.digit === '1') {
+          if (callState.status === 'pressed_1' || (callState.digit === '1' && callState.status !== 'asking_cancel_code' && callState.status !== 'cancel_valid' && callState.status !== 'cancel_invalid')) {
             setActiveCall((prev) => {
               if (!prev) return null;
               if (prev.status !== 'pressed_1') {
@@ -2376,6 +2360,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 channel: callState.channel || prev.channel,
               };
             });
+          } else if (callState.status === 'asking_cancel_code') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: 'asking_cancel_code',
+                    mode: (callState.mode as CallFlowMode) || prev.mode,
+                    validationNote:
+                      '🎙️ El IVR le está solicitando al cliente que digite el código de cancelación...',
+                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                    channel: callState.channel || prev.channel,
+                  }
+                : null
+            );
           } else if (callState.status === 'cancel_valid') {
             setActiveCall((prev) =>
               prev
@@ -2463,6 +2461,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     return () => clearInterval(watcherInterval);
   }, [activeCall?.isActive, activeCall?.number, activeCall?.status]);
+
+  // Audible chime alert for any cancel_code call pressing 1 in globalLiveCalls (mass campaigns or background)
+  const pendingCancelPress1Global = React.useMemo(() => {
+    if (!Array.isArray(globalLiveCalls)) return [];
+    const activeNumClean = activeCall?.isActive ? activeCall.number.replace(/[^0-9]/g, '') : '';
+    return globalLiveCalls.filter((c: any) => {
+      if (c.status !== 'pressed_1' || c.mode !== 'cancel_code') return false;
+      const cNum = String(c.number || '').replace(/[^0-9]/g, '');
+      if (activeNumClean && cNum === activeNumClean && activeCall?.status === 'pressed_1') return false;
+      return true;
+    });
+  }, [globalLiveCalls, activeCall?.isActive, activeCall?.number, activeCall?.status]);
+
+  useEffect(() => {
+    if (pendingCancelPress1Global.length === 0) return;
+    let shouldPlay = false;
+    for (const c of pendingCancelPress1Global) {
+      const k = `${c.number}_${c.pressed1At || c.startTime || ''}`;
+      if (!notifiedCancelPress1Ref.current.has(k)) {
+        notifiedCancelPress1Ref.current.add(k);
+        shouldPlay = true;
+      }
+    }
+    if (shouldPlay) playPress1Chime();
+  }, [pendingCancelPress1Global]);
 
   // Duration timer for active call
   useEffect(() => {
@@ -2654,11 +2677,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           amdEnabled,
           agentExten: isSingleExtensionAgent
             ? userAssignedExt
-            : (agentExtension === 'ringall' || press1DestMode === 'ringall')
+            : agentExtension === 'ringall'
               ? (userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall')
-              : (press1DestMode === 'specific' && press1DestExtensions.length > 1
-                  ? press1DestExtensions.join('&')
-                  : (agentExtension || press1DestExtensions.join('&') || '1001')),
+              : (agentExtension || '1001'),
           audioIntro: currentAudios.introAudioPath,
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
@@ -3209,22 +3230,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>{isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente'}</span>
               </div>
-              <select
-                id="select-banner-carrier"
-                value={selectedCarrierName}
-                onChange={(e) => setSelectedCarrierName(e.target.value)}
-                className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
-                title="Selecciona la ruta saliente que deseas utilizar para emitir tus llamadas"
-              >
-                <option value="auto">🔄 Pool Automático</option>
-                {enabledCarriers.map((c, idx) => (
-                  <option key={c.id} value={c.name}>
-                    {isSuperAdmin
-                      ? `${idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}${c.name}`
-                      : `${idx === 0 ? '⭐ ' : ''}${c.name}`}
-                  </option>
-                ))}
-              </select>
+              {isSuperAdmin ? (
+                <select
+                  id="select-banner-carrier"
+                  value={selectedCarrierName}
+                  onChange={(e) => setSelectedCarrierName(e.target.value)}
+                  className="mt-1 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded px-2 py-0.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
+                  title="Selecciona la ruta saliente que deseas utilizar para emitir tus llamadas"
+                >
+                  <option value="auto">🔄 Pool Automático</option>
+                  {enabledCarriers.map((c, idx) => (
+                    <option key={c.id} value={c.name}>
+                      {`${idx === 0 ? '⭐ [Primaria] ' : `[Troncal ${idx + 1}] `}${c.name}`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div
+                  className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-700/80 text-xs text-emerald-400 font-mono font-bold"
+                  title="Ruta saliente asignada por el Administrador (los clientes no pueden cambiar de carrier)"
+                >
+                  <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>⭐ {activeCarrier}</span>
+                </div>
+              )}
             </div>
 
             {userTenant?.magnusBillingUrl && (
@@ -3275,6 +3304,54 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
         </div>
       </div>
+
+      {/* ALERTA PRIORITARIA: CLIENTE PRESIONÓ 1 EN MODO CÓDIGO DE CANCELACIÓN (MASIVAS / SEGUNDO PLANO) */}
+      {pendingCancelPress1Global.length > 0 && (
+        <div className="space-y-3">
+          {pendingCancelPress1Global.map((call: any) => {
+            const cNum = String(call.number || '').replace(/[^0-9]/g, '');
+            const isSending = sendingCancelCodeNum === cNum;
+            return (
+              <div
+                key={`cancel-alert-${call.id || cNum}`}
+                className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/95 via-amber-900/60 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn"
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shadow-lg shadow-amber-400/50 animate-bounce shrink-0">
+                      <span className="text-2xl leading-none">1</span>
+                      <span className="text-[9px] uppercase tracking-wider font-extrabold">DTMF</span>
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1">
+                          <BellRing className="w-3 h-3 animate-spin" />
+                          ¡CLIENTE PRESIONÓ 1 — ENVÍALE EL CÓDIGO DE CANCELACIÓN!
+                        </span>
+                        <span className="font-mono text-xs font-bold text-white bg-slate-900/80 px-2 py-0.5 rounded border border-amber-400/40">
+                          {call.number}
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-100 mt-1.5 leading-relaxed">
+                        El sistema le dijo: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y lo mantiene en espera. Envíale el código al cliente y presiona el botón para que lo digite:
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSending}
+                    onClick={() => handleNotifyCancelCodeSent(cNum, call.agent)}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-xl shadow-emerald-500/30 shrink-0 cursor-pointer disabled:opacity-60"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>{isSending ? 'Notificando a Asterisk...' : 'Ya Envié el Código → Pedir que Digite'}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (Solo si no está visible el HUD inline de llamada activa para no duplicar) */}
       {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && !(activeCall?.isActive && activeCall.otpStatus !== 'valid') && (
@@ -3582,6 +3659,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     }`} />
                     {activeCall.status === 'pressed_1'
                       ? '¡CLIENTE MARCÓ 1!'
+                      : activeCall.status === 'asking_cancel_code'
+                      ? 'PIDIENDO CÓDIGO AL CLIENTE'
                       : activeCall.status === 'transferred'
                       ? 'CONECTADO CON ASESOR'
                       : activeCall.status === 'in_ivr'
@@ -3721,6 +3800,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               className={`p-3 rounded-xl border transition-all ${
                 activeCall.status === 'pressed_1'
                   ? 'bg-amber-500/30 border-amber-400 text-amber-200 font-black animate-pulse ring-4 ring-amber-400/50 shadow-lg shadow-amber-500/30 scale-105'
+                  : activeCall.status === 'asking_cancel_code'
+                  ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold animate-pulse ring-2 ring-cyan-400/40'
                   : activeCall.status === 'otp_captured'
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-lg shadow-emerald-500/20'
                   : activeCall.status === 'transferred'
@@ -3734,6 +3815,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <>
                     <BellRing className="w-3.5 h-3.5 text-amber-400 animate-spin" />
                     <span className="text-amber-300 font-extrabold">¡PRESIONÓ 1!</span>
+                  </>
+                ) : activeCall.status === 'asking_cancel_code' ? (
+                  <>
+                    <KeyRound className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+                    <span className="text-cyan-200 font-extrabold">PIDIENDO CÓDIGO</span>
                   </>
                 ) : (
                   <span>Respuesta DTMF (1 / OTP)</span>
@@ -3761,8 +3847,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           {/* BANNER GIGANTE Y ALERTA: CLIENTE PRESIONÓ 1 */}
           {activeCall.status === 'pressed_1' && (() => {
             const isCancelCodeCall = (activeCall.mode || callFlowMode) === 'cancel_code';
-            const isOtpVerifyCall = (activeCall.mode || callFlowMode) === 'otp_press1';
-            const isManualCodeFlow = isCancelCodeCall || isOtpVerifyCall;
+            const cleanNum = activeCall.number.replace(/[^0-9]/g, '');
+            const isSending = sendingCancelCodeNum === cleanNum;
             return (
               <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/90 via-amber-900/50 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn my-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -3776,9 +3862,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1 shadow">
                           <BellRing className="w-3 h-3 animate-spin" />
                           {isCancelCodeCall
-                            ? '¡MARCÓ 1 — ENVIANDO CÓDIGO DE CANCELACIÓN!'
-                            : isOtpVerifyCall
-                            ? '¡MARCÓ 1 — ENVIANDO CÓDIGO DE VERIFICACIÓN!'
+                            ? '¡MARCÓ 1 — ENVÍALE EL CÓDIGO DE CANCELACIÓN!'
                             : '¡TECLA 1 PRESIONADA EN VIVO!'}
                         </span>
                         <span className="text-xs text-amber-200 font-mono font-bold">
@@ -3788,13 +3872,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <h3 className="text-lg font-black text-white mt-1">
                         {isCancelCodeCall
                           ? 'El cliente marcó 1: Reproduciendo "Un momento por favor, le estamos enviando un código de cancelación"'
-                          : isOtpVerifyCall
-                          ? 'El cliente marcó 1: Reproduciendo "Un momento por favor, le estamos enviando su código de verificación"'
                           : 'El cliente ha marcado la tecla 1 en su teléfono'}
                       </h3>
                       <p className="text-xs text-amber-200/90 max-w-xl mt-0.5">
-                        {isManualCodeFlow
-                          ? 'Asterisk está reproduciendo el audio de espera y solicitando el código al cliente. En cuanto aparezca en pantalla o en Llamadas en Vivo, selecciona VÁLIDO o INVÁLIDO:'
+                        {isCancelCodeCall
+                          ? 'El cliente está esperando a que le envíes el código de cancelación. Envíale el código ahora y presiona el botón verde para que Asterisk le pida digitarlo:'
                           : (
                             <>
                               Asterisk detectó la marcación DTMF 1. La llamada se está transfiriendo inmediatamente a tu extensión de Asesor (<strong>{activeCall.agent ? `Ext. ${activeCall.agent}` : activeCall.agentExten === 'ringall' ? 'Todas las Extensiones (Ring-All)' : `Ext. ${activeCall.agentExten || '1001'}`}</strong> / Softphone). ¡Listo para conversar con el cliente!
@@ -3805,27 +3887,39 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
-                    {isManualCodeFlow ? (
-                      <>
+                    {isCancelCodeCall ? (
+                      <div className="flex flex-col gap-2 w-full sm:w-auto">
                         <button
-                          id="btn-hud-cancel-valid"
+                          id="btn-hud-cancel-code-sent"
                           type="button"
-                          onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp || (isOtpVerifyCall ? 'OTP' : 'CANCEL'), activeCall.number)}
-                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-lg shadow-emerald-500/40 cursor-pointer"
+                          disabled={isSending}
+                          onClick={() => handleNotifyCancelCodeSent(activeCall.number, activeCall.agent || activeCall.agentExten)}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-xl shadow-emerald-500/40 cursor-pointer disabled:opacity-60"
                         >
-                          <CheckCircle className="w-4 h-4" />
-                          <span>CÓDIGO VÁLIDO</span>
+                          <Send className="w-4 h-4" />
+                          <span>{isSending ? 'Activando solicitud...' : 'Ya Envié el Código → Pedir al Cliente que Digite'}</span>
                         </button>
-                        <button
-                          id="btn-hud-cancel-invalid"
-                          type="button"
-                          onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp || (isOtpVerifyCall ? 'OTP' : 'CANCEL'), activeCall.number)}
-                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-black text-xs bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-lg shadow-rose-600/40 cursor-pointer"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          <span>CÓDIGO INVÁLIDO</span>
-                        </button>
-                      </>
+                        <div className="flex items-center gap-2">
+                          <button
+                            id="btn-hud-cancel-valid"
+                            type="button"
+                            onClick={() => handleVerifyOtp('valid', activeCall.capturedOtp || 'CANCEL', activeCall.number)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[11px] bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 transition-all cursor-pointer"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Válido</span>
+                          </button>
+                          <button
+                            id="btn-hud-cancel-invalid"
+                            type="button"
+                            onClick={() => handleVerifyOtp('invalid', activeCall.capturedOtp || 'CANCEL', activeCall.number)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[11px] bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 transition-all cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Inválido</span>
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <button
                         id="btn-hud-press1-talk"
@@ -3932,9 +4026,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
               {(activeCall.mode || callFlowMode) === 'cancel_code' ? (
                 <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/30 text-xs text-slate-300">
-                  <span className="text-amber-300 font-bold block mb-1">🛡️ Flujo Automático Código de Cancelación:</span>
+                  <span className="text-amber-300 font-bold block mb-1">🛡️ Flujo Interactivo Press-1 + Código de Cancelación:</span>
                   <p className="text-slate-200">
-                    Cuando el cliente marque <strong>1</strong>, el sistema le dice: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y captura los dígitos que marque. Usa <strong>CÓDIGO VÁLIDO</strong> para confirmar la cancelación y finalizar, o <strong>CÓDIGO INVÁLIDO</strong> para pedirle otro código automáticamente.
+                    1) Al marcar <strong>1</strong>, el sistema le dice <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y te <strong>avisa con alerta y sonido</strong>.<br />
+                    2) Envíale el código al cliente y presiona <strong>"Ya Envié el Código → Pedir que Digite"</strong> para que Asterisk se lo solicite.<br />
+                    3) Cuando aparezcan los dígitos aquí abajo, elige <strong>CÓDIGO VÁLIDO</strong> o <strong>CÓDIGO INVÁLIDO</strong>.
                   </p>
                 </div>
               ) : (
@@ -4151,8 +4247,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 {!isSuperAdmin && (
                   <p className="text-[11px] text-slate-400">
                     {adminAllowedCallFlowModes.length <= 1
-                      ? 'Solo el Administrador puede asignar o cambiar tu plan de marcación. Puedes seleccionar libremente la ruta saliente en el selector superior.'
-                      : 'Solo puedes usar los planes de marcación autorizados para tu cuenta por el Administrador. Puedes seleccionar libremente tu ruta saliente.'}
+                      ? 'Solo el Administrador puede asignar o cambiar tu plan de marcación y ruta saliente.'
+                      : 'Solo puedes usar los planes de marcación autorizados para tu cuenta por el Administrador.'}
                   </p>
                 )}
 
@@ -4290,174 +4386,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 )}
               </div>
 
-              {/* CARD 2: DESTINO AL PRESIONAR 1 (TODAS LAS EXTENSIONES VS EXTENSIONES ESPECÍFICAS) */}
-              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <PhoneForwarded className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold text-white uppercase tracking-wider">
-                        Destino de Asesores al Presionar 1 (IVR Transfer)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Define si deben sonar <strong>todas las extensiones registradas</strong> al mismo tiempo o solo <strong>extensiones específicas</strong>.
-                    </p>
-                  </div>
-
-                  {/* BOTÓN PARA GUARDAR CAMBIOS */}
-                  <button
-                    id="btn-save-press1-dest"
-                    type="button"
-                    onClick={handleSavePress1Destination}
-                    disabled={isSavingDest}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
-                    title="Guardar la configuración de extensiones persistentemente en Asterisk"
-                  >
-                    {isSavingDest ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Save className="w-3.5 h-3.5" />
-                    )}
-                    <span>{isSavingDest ? 'Guardando en Asterisk...' : 'Guardar Cambios de Destino'}</span>
-                  </button>
-                </div>
-
-                {/* Feedback de guardado */}
-                {destSaveFeedback && (
-                  <div
-                    className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
-                      destSaveFeedback.type === 'success'
-                        ? 'bg-emerald-500/10 border border-emerald-500/40 text-emerald-300'
-                        : 'bg-rose-500/10 border border-rose-500/40 text-rose-300'
-                    }`}
-                  >
-                    {destSaveFeedback.type === 'success' ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                    )}
-                    <span>{destSaveFeedback.text}</span>
-                  </div>
-                )}
-
-                {/* Opciones: Ring-All vs Específicas */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Opción 1: Ring-All */}
-                  <label
-                    onClick={() => {
-                      setPress1DestMode('ringall');
-                      if (!isSingleExtensionAgent) setAgentExtension('ringall');
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                      press1DestMode === 'ringall'
-                        ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500/40'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="press1_dest_mode"
-                      checked={press1DestMode === 'ringall'}
-                      onChange={() => {
-                        setPress1DestMode('ringall');
-                        if (!isSingleExtensionAgent) setAgentExtension('ringall');
-                      }}
-                      className="mt-1 text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700"
-                    />
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>
-                          {userTenant ? `Todas las Extensiones de ${userTenant.name} (Ring-All)` : 'Todas las Extensiones (Ring-All)'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                        Suenan únicamente las extensiones de este grupo ({tenantScopedExtensions.join(', ')}). El primer asesor que descuelgue toma la llamada.
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Opción 2: Extensiones Específicas */}
-                  <label
-                    onClick={() => {
-                      setPress1DestMode('specific');
-                      if (!isSingleExtensionAgent && press1DestExtensions.length > 0) {
-                        setAgentExtension(press1DestExtensions[0]);
-                      }
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                      press1DestMode === 'specific'
-                        ? 'bg-sky-950/30 border-sky-500 text-white shadow-md ring-1 ring-sky-500/40'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="press1_dest_mode"
-                      checked={press1DestMode === 'specific'}
-                      onChange={() => {
-                        setPress1DestMode('specific');
-                        if (!isSingleExtensionAgent && press1DestExtensions.length > 0) {
-                          setAgentExtension(press1DestExtensions[0]);
-                        }
-                      }}
-                      className="mt-1 text-sky-500 focus:ring-sky-500 bg-slate-900 border-slate-700"
-                    />
-                    <div className="flex-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <UserCheck className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Extensiones Específicas</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                        Solo sonarán las extensiones que marques a continuación ({press1DestExtensions.join(', ') || 'ninguna seleccionada'}).
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Sub-selector de extensiones específicas cuando el modo es 'specific' */}
-                {press1DestMode === 'specific' && (
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 animate-fadeIn">
-                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Marca las extensiones que deben sonar:</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                      {visibleAgentExtensions.map((ext) => {
-                        const isChecked = press1DestExtensions.includes(ext.extension);
-                        return (
-                          <label
-                            key={ext.id || ext.extension}
-                            className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
-                              isChecked
-                                ? 'bg-sky-500/20 border-sky-500 text-sky-200 shadow-sm'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleDestExtension(ext.extension)}
-                              className="rounded text-sky-500 focus:ring-sky-500 bg-slate-950 border-slate-700"
-                            />
-                            <div className="truncate">
-                              <span className="font-mono text-white font-black">{ext.extension}</span>
-                              <span className="text-[10px] text-slate-400 ml-1 truncate">({ext.name || 'Asesor'})</span>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    <div className="text-[11px] text-slate-400 pt-1 flex items-center justify-between">
-                      <span>Seleccionadas: <strong className="text-sky-300 font-mono">{press1DestExtensions.join(' & ') || '1001'}</strong></span>
-                      <span className="text-[10px] text-amber-400/90 italic">Recuerda hacer clic en "Guardar Cambios de Destino" para aplicar</span>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Service Template Selection with Dynamic Entity Management & Campaign Selection for Agents */}
               <div className="space-y-3">
@@ -5196,22 +5124,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
               <div className="space-y-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1">
-                    {isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente (Selección del Cliente)'}
+                  <div className="text-[10px] text-slate-400 font-mono font-bold mb-1 flex items-center justify-between">
+                    <span>{isSuperAdmin ? 'Troncal SIP Saliente' : 'Ruta Saliente (Asignada por Admin)'}</span>
+                    {!isSuperAdmin && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                        <Lock className="w-2.5 h-2.5" />
+                        Fija
+                      </span>
+                    )}
                   </div>
-                  <select
-                    value={selectedCarrierName}
-                    onChange={(e) => setSelectedCarrierName(e.target.value)}
-                    disabled={isMassRunning}
-                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
-                  >
-                    <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
-                    {enabledCarriers.map((c, idx) => (
-                      <option key={c.id} value={c.name}>
-                        {isSuperAdmin ? `${c.name} (${c.host})` : `${idx === 0 ? '⭐ ' : ''}${c.name}`}
-                      </option>
-                    ))}
-                  </select>
+                  {isSuperAdmin ? (
+                    <select
+                      value={selectedCarrierName}
+                      onChange={(e) => setSelectedCarrierName(e.target.value)}
+                      disabled={isMassRunning}
+                      className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none cursor-pointer"
+                    >
+                      <option value="auto">🔄 Pool Automático (Multi-Carrier Failover)</option>
+                      {enabledCarriers.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {`${c.name} (${c.host})`}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5"
+                      title="Los clientes no pueden cambiar de carrier"
+                    >
+                      <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>⭐ {activeCarrier}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -5657,7 +5601,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Opción 1: Captura OTP */}
+              {/* Opción Principal: Press-1 + Código de Cancelación */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('cancel_code')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'cancel_code'
+                    ? 'bg-amber-500/15 border-amber-400 text-white shadow-xl shadow-amber-500/15 ring-2 ring-amber-400/70'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'cancel_code' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-950">
+                      PRINCIPAL ACTIVO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-amber-400 font-bold">PRINCIPAL</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">1. Press-1 + Código Cancelación</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Al marcar 1 reproduce: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em>, te <strong>avisa al instante</strong> para que envíes el código y espera a que confirmes para pedirle que lo digite.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-amber-400/95 font-mono">
+                  ✓ Alerta en vivo + Envío guiado + Válido/Inválido
+                </div>
+              </button>
+
+              {/* Opción 2: Captura OTP */}
               <button
                 type="button"
                 onClick={() => setCallFlowMode('otp')}
@@ -5676,10 +5651,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       SELECCIONADO
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-slate-500">Modo 1</span>
+                    <span className="text-[10px] font-mono text-slate-500">Modo 2</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">1. Capturar Código OTP</div>
+                <div className="text-sm font-bold text-white">2. Capturar Código OTP</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
                   Reproduce la locución de verificación y solicita al cliente ingresar su código de confirmación o clave OTP de 4 o 6 dígitos en el teclado.
                 </div>
@@ -5688,7 +5663,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </button>
 
-              {/* Opción 2: Press-1 */}
+              {/* Opción 3: Press-1 */}
               <button
                 type="button"
                 onClick={() => setCallFlowMode('press1')}
@@ -5707,10 +5682,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       SELECCIONADO
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-slate-500">Modo 2</span>
+                    <span className="text-[10px] font-mono text-slate-500">Modo 3</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">2. Press-1 (Transferir a Softphone)</div>
+                <div className="text-sm font-bold text-white">3. Press-1 (Transferir a Softphone)</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
                   Advierte sobre una transacción no autorizada y le indica al cliente: <em>"Presione 1 para comunicarse con un asesor"</em>.
                 </div>
@@ -5719,7 +5694,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </button>
 
-              {/* Opción 3: Híbrido */}
+              {/* Opción 4: Híbrido */}
               <button
                 type="button"
                 onClick={() => setCallFlowMode('hybrid')}
@@ -5738,46 +5713,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       SELECCIONADO
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-slate-500">Modo 3</span>
+                    <span className="text-[10px] font-mono text-slate-500">Modo 4</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">3. Híbrido Completo (OTP + Asesor)</div>
+                <div className="text-sm font-bold text-white">4. Híbrido Completo (OTP + Asesor)</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
                   Pide el token de seguridad. Si el cliente ingresa el código se captura; si presiona 1 o solicita asesor, transfiere la llamada.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-purple-400/90 font-mono">
                   ✓ Máxima flexibilidad operativa
-                </div>
-              </button>
-
-              {/* Opción 4: Press-1 + Código de Cancelación */}
-              <button
-                type="button"
-                onClick={() => setCallFlowMode('cancel_code')}
-                className={`p-5 rounded-2xl border text-left transition-all relative ${
-                  callFlowMode === 'cancel_code'
-                    ? 'bg-amber-500/15 border-amber-400 text-white shadow-xl shadow-amber-500/15 ring-2 ring-amber-400/70'
-                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-amber-500/40'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  {callFlowMode === 'cancel_code' ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-950">
-                      SELECCIONADO
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-mono text-amber-400">Modo 4</span>
-                  )}
-                </div>
-                <div className="text-sm font-bold text-white">4. Press-1 + Código Cancelación</div>
-                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Al marcar 1 reproduce: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y el agente elige si el código es <strong>Válido</strong> o <strong>Inválido</strong>.
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-amber-400/95 font-mono">
-                  ✓ Validación manual Válido / Inválido en vivo
                 </div>
               </button>
             </div>

