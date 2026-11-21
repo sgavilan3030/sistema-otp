@@ -86,6 +86,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
   })();
 
   const isAdmin = propIsAdmin !== undefined ? propIsAdmin : (activeUser ? activeUser.role === 'admin' : true);
+  const isSuperAdmin = isAdmin && !activeUser?.tenantId;
 
   const [press1, setPress1] = useState<Press1Config>(initialPress1);
   const [otp, setOtp] = useState<OtpCaptureConfig>(initialOtp);
@@ -1001,7 +1002,8 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         )}
       </div>
 
-      {/* Real-time IVR Testing Banner */}
+      {/* Real-time IVR Testing Banner (Solo Super Admin) */}
+      {isSuperAdmin && (
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-emerald-500/30 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
@@ -1067,6 +1069,12 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 type="text"
                 value={testPhone}
                 onChange={(e) => setTestPhone(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && testPhone.trim() && !isTriggeringCall) {
+                    e.preventDefault();
+                    handleOriginateTestCall();
+                  }
+                }}
                 placeholder="ej. 16104803845"
                 className="flex-1 px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500 focus:outline-none"
               />
@@ -1239,6 +1247,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* NUEVA SECCIÓN DE FLUJO: IVR de Captura OTP (Press-1 + Audio de Espera Verificación + LiveCallsTab) */}
       <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-cyan-950/20 to-slate-950 border border-cyan-500/40 shadow-xl space-y-4">

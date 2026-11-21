@@ -3589,7 +3589,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             <span>Purgar Canales Huérfanos</span>
           </button>
 
-          {!activeCall?.isActive && (
+          {isSuperAdmin && !activeCall?.isActive && (
             <button
               id="btn-open-test-8888-hud"
               onClick={() => {
@@ -4204,6 +4204,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     type="text"
                     value={targetNumber}
                     onChange={(e) => setTargetNumber(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && targetNumber.trim() && !isLaunching && !isHangingUp) {
+                        e.preventDefault();
+                        handleLaunchProductionCall();
+                      }
+                    }}
                     placeholder="ej. 16104803845"
                     className="flex-1 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-lg font-bold focus:border-emerald-500 focus:outline-none"
                   />
@@ -4212,6 +4218,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     type="text"
                     value={targetName}
                     onChange={(e) => setTargetName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && targetNumber.trim() && !isLaunching && !isHangingUp) {
+                        e.preventDefault();
+                        handleLaunchProductionCall();
+                      }
+                    }}
                     placeholder="Nombre titular (opcional)"
                     className="w-1/3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:border-emerald-500 focus:outline-none hidden sm:block"
                   />
@@ -5037,17 +5049,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUploadedFileName(null);
-                      setMassNumbersText('16104803845\n18005550199\n18099602110');
-                    }}
-                    disabled={isMassRunning}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    Números de Prueba
-                  </button>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedFileName(null);
+                        setMassNumbersText('16104803845\n18005550199\n18099602110');
+                      }}
+                      disabled={isMassRunning}
+                      className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Números de Prueba
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
