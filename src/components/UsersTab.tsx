@@ -36,6 +36,8 @@ import {
   Network,
   Building2,
   BookOpen,
+  Crown,
+  CalendarCheck,
 } from 'lucide-react';
 
 interface UsersTabProps {
@@ -46,11 +48,13 @@ interface UsersTabProps {
   currentUserId: string;
   currentUser?: SystemUser;
   onSwitchUser: (userId: string) => void;
-  onAddUser: (user: SystemUser) => void;
+  onAddUser: (user: SystemUser, activateInitialMonth?: boolean) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
   onAddExtension?: (ext: PjsipExtension) => void;
   onNavigateToProduction?: () => void;
+  onManageMembership?: () => void;
+  onRefreshMembership?: () => void;
 }
 
 export const UsersTab: React.FC<UsersTabProps> = ({
@@ -66,6 +70,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   onDeleteUser,
   onAddExtension,
   onNavigateToProduction,
+  onManageMembership,
+  onRefreshMembership,
 }) => {
   const activeUser = currentUser || users.find((u) => u.id === currentUserId);
   const canManageUsers = activeUser ? (activeUser.role === 'admin' || !!activeUser.permissions?.canManageUsers) : false;
@@ -96,6 +102,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [formActivateInitialMonth, setFormActivateInitialMonth] = useState<boolean>(true);
 
   // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts — no fake inactive templates)
   const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() => {
@@ -324,6 +331,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormAssignedEntityIds([]);
     setFormAssignedCallFlowMode('press1');
     setFormAllowedCallFlowModes(['press1']);
+    setFormActivateInitialMonth(true);
     // Standalone non-Call-Center clients default to next free 2001+ extension
     const nextClientExt = getNextClientExtension2001();
     setSelectedExts([nextClientExt]);
@@ -513,10 +521,17 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       lastLogin: editingUser?.lastLogin || 'Pendiente primer inicio',
     };
 
+    const shouldActivateInitialMonth =
+      !editingUser &&
+      isGlobalSuperAdmin &&
+      formActivateInitialMonth &&
+      !targetIsGlobalSuperAdmin &&
+      !formTenantId;
+
     if (editingUser) {
       onUpdateUser(userObj);
     } else {
-      onAddUser(userObj);
+      onAddUser(userObj, shouldActivateInitialMonth);
     }
 
     // Ensure any assigned 2001+ client extension that doesn't yet exist in ExtensionsTab is created automatically
@@ -535,7 +550,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
             transport: 'transport-udp',
             port: 47923,
             maxContacts: 5,
-            codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+            codecs: ['ulaw', 'alaw'],
             status: 'unknown',
             tenantId: formTenantId || undefined,
           });
@@ -543,18 +558,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       });
     }
 
-    // Auto-provision immediately in Asterisk 20 PJSIP
-    fetch('/api/users/sync-sip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user: userObj }),
-    })
-      .then((r) => r.json())
-      .then(() => {
-        setSyncFeedback(`✓ Usuario "${usernameFinal}" (Ext: ${selectedExts.join(', ') || usernameFinal}) registrado en Asterisk PJSIP (Puerto 47923). MicroSIP ya puede conectarse.`);
-        setTimeout(() => setSyncFeedback(null), 6000);
-      })
-      .catch(() => {});
+    setSyncFeedback(
+      `✓ Usuario "${usernameFinal}" (Ext: ${selectedExts.join(', ') || usernameFinal}) sincronizado en Asterisk PJSIP (Puerto 47923).${
+        shouldActivateInitialMonth ? ' Membresía Principal de 1 Mes activada.' : ''
+      }`
+    );
+    setTimeout(() => setSyncFeedback(null), 6000);
+    if (onRefreshMembership) {
+      setTimeout(() => onRefreshMembership(), 500);
+    }
 
     setIsModalOpen(false);
   };
@@ -1029,6 +1041,44 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   )}
                 </div>
 
+                {/* Membership Status Badge */}
+                {!(user.role === 'admin' && !user.tenantId) && (() => {
+                  const tenantObj = user.tenantId ? tenants.find((t) => t.id === user.tenantId) : null;
+                  const inheritedFromTenant = Boolean(tenantObj && !user.membership?.independent);
+                  const eff = inheritedFromTenant
+                    ? tenantObj?.effectiveMembership
+                    : user.effectiveMembership;
+                  const memStatus = eff?.status || (user.membership?.status) || (user.membership?.initialMonthActivated ? 'expired' : 'pending_initial');
+                  const isActive = eff ? eff.isActive : (memStatus === 'active');
+                  const remainingText = eff && eff.isActive
+                    ? `${eff.remainingDays}d ${eff.remainingHours}h`
+                    : memStatus === 'suspended'
+                    ? 'Suspendida'
+                    : memStatus === 'expired'
+                    ? 'Vencida'
+                    : '1er Mes Pendiente';
+
+                  return (
+                    <div className="py-1.5 px-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs mb-2">
+                      <span className="text-slate-400 font-medium flex items-center gap-1.5 text-[11px]">
+                        <Crown className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{inheritedFromTenant ? 'Membresía (Call Center):' : 'Membresía:'}</span>
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                          isActive
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                            : memStatus === 'pending_initial'
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                            : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                        }`}
+                      >
+                        {isActive ? `✓ Activa (${remainingText})` : remainingText}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 {/* Assigned Guiones / Entidades IVR Badge */}
                 <div className="mb-2.5 p-2 rounded-lg bg-slate-950/80 border border-sky-500/25 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between gap-2">
@@ -1146,6 +1196,17 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 <span className="text-[11px] text-slate-500 font-mono">{user.lastLogin}</span>
 
                 <div className="flex items-center space-x-2">
+                  {isGlobalSuperAdmin && onManageMembership && !(user.role === 'admin' && !user.tenantId) && (
+                    <button
+                      type="button"
+                      onClick={onManageMembership}
+                      className="px-2 py-1 rounded text-[11px] font-semibold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Gestionar membresía mensual y semanas en el panel de Membresías"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      <span>Membresía</span>
+                    </button>
+                  )}
                   {!(user.role === 'admin' && !user.tenantId) && (
                     <button
                       type="button"
@@ -1928,6 +1989,28 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* Activar Membresía Principal de 1 Mes al crear usuario individual */}
+              {!editingUser && isGlobalSuperAdmin && !formTenantId && !(formAccountType === 'agent' && formRole === 'admin') && (
+                <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-500/35 flex items-start gap-2.5">
+                  <input
+                    id="userActivateInitialMonth"
+                    type="checkbox"
+                    checked={formActivateInitialMonth}
+                    onChange={(e) => setFormActivateInitialMonth(e.target.checked)}
+                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500"
+                  />
+                  <label htmlFor="userActivateInitialMonth" className="text-xs text-slate-200 cursor-pointer leading-snug">
+                    <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <CalendarCheck className="w-3.5 h-3.5" />
+                      Activar Membresía Principal de 1 Mes (30 días) al crear
+                    </span>
+                    <span className="block text-[11px] text-slate-400 mt-0.5">
+                      Si se desmarca, el cliente quedará en espera de su 1ra activación mensual obligatoria antes de poder agregar semanas o realizar llamadas.
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {/* Form Buttons */}
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-800">

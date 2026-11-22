@@ -282,6 +282,82 @@ export interface ProductionTarget {
   notes?: string;
 }
 
+export interface MembershipHistoryEntry {
+  id: string;
+  action: 'initial_month' | 'weekly_extension' | 'suspended' | 'reactivated' | 'request_approved' | 'reset';
+  weeksAdded?: number;
+  daysAdded: number;
+  previousExpiresAt?: string | null;
+  newExpiresAt: string;
+  amountPaid?: number;
+  paymentMethod?: string;
+  reference?: string;
+  notes?: string;
+  performedBy: string;
+  timestamp: string;
+}
+
+export interface MembershipInfo {
+  status: 'unactivated' | 'active' | 'expired' | 'suspended';
+  initialMonthActivated: boolean;
+  initialActivatedAt?: string;
+  expiresAt?: string;
+  lastRenewedAt?: string;
+  totalWeeksAdded?: number;
+  independent?: boolean;
+  history?: MembershipHistoryEntry[];
+}
+
+export interface EffectiveMembershipStatus {
+  enforceSystem: boolean;
+  exempt: boolean;
+  isActive: boolean;
+  status: 'exempt' | 'unactivated' | 'active' | 'expired' | 'suspended';
+  scope: 'global_admin' | 'tenant' | 'user';
+  targetId: string;
+  targetName: string;
+  initialMonthActivated: boolean;
+  initialActivatedAt?: string;
+  expiresAt?: string;
+  remainingMs: number;
+  remainingDays: number;
+  remainingHours: number;
+  totalWeeksAdded: number;
+  canActivateWeeks: boolean;
+  mustActivateInitialMonth: boolean;
+  history: MembershipHistoryEntry[];
+}
+
+export interface MembershipSettings {
+  enforceMembershipSystem: boolean;
+  initialMonthDays: number;
+  weekDays: number;
+  initialMonthPriceUsd: number;
+  weeklyPriceUsd: number;
+  allowSelfRenewalFromBalance: boolean;
+}
+
+export interface MembershipRenewalRequest {
+  id: string;
+  targetType: 'user' | 'tenant';
+  targetId: string;
+  targetName: string;
+  requestedByUserId: string;
+  requestedByUsername: string;
+  planType: 'initial_month' | 'weekly_extension';
+  weeksCount: number;
+  daysCount: number;
+  estimatedPriceUsd: number;
+  paymentMethod: string;
+  reference: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  rejectionReason?: string;
+}
+
 export interface SystemUser {
   id: string;
   name: string;
@@ -309,6 +385,8 @@ export interface SystemUser {
   assignedEntityIds?: string[]; // Guiones / Entidades a Simular permitidos específicamente para este usuario
   assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
   allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
+  membership?: MembershipInfo;
+  effectiveMembership?: EffectiveMembershipStatus;
 }
 
 export interface AstDbEntry {
@@ -606,6 +684,8 @@ export interface CallCenterTenant {
   assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
   allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
   allowMassCalls?: boolean; // Acceso al Centro de Llamadas Masivas otorgado exclusivamente por el Administrador
+  membership?: MembershipInfo;
+  effectiveMembership?: EffectiveMembershipStatus;
 }
 
 export interface TenantRechargeHistory {

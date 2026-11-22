@@ -10,8 +10,9 @@ import {
   Cpu,
   Building2,
   PhoneForwarded,
+  CalendarClock,
 } from 'lucide-react';
-import { AsteriskConnectionSettings, SystemUser } from '../types';
+import { AsteriskConnectionSettings, EffectiveMembershipStatus, SystemUser } from '../types';
 
 interface HeaderProps {
   activeTab: string;
@@ -25,6 +26,7 @@ interface HeaderProps {
   activeCallCount?: number;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  myMembership?: EffectiveMembershipStatus | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   onOpenMobileMenu,
   activeCallCount = 0,
+  myMembership,
 }) => {
   const tabTitles: Record<string, { title: string; subtitle: string; icon: React.ElementType }> = {
     production: {
@@ -84,6 +87,11 @@ export const Header: React.FC<HeaderProps> = ({
       subtitle: 'Control de acceso RBAC para Administradores, Supervisores y Operadores',
       icon: Users,
     },
+    membership: {
+      title: 'Membresías & Suscripciones',
+      subtitle: 'Membresía Principal de 1 Mes (30 días) y renovaciones por semanas (7 días)',
+      icon: CalendarClock,
+    },
     telemetry: {
       title: 'Telemetría & Sistema',
       subtitle: 'Monitoreo en tiempo real de rendimiento, latencia y estado de la central',
@@ -133,6 +141,32 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Telemetry Badges & Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {myMembership && !myMembership.exempt && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('membership')}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer ${
+                  myMembership.status === 'active'
+                    ? myMembership.remainingDays <= 3
+                      ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40'
+                      : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                    : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-rose-500/40'
+                }`}
+                title="Ver estado y renovación de Mi Membresía"
+              >
+                <CalendarClock className="w-3.5 h-3.5" />
+                <span>
+                  {myMembership.status === 'active'
+                    ? `Membresía: ${myMembership.remainingDays}d ${myMembership.remainingHours}h`
+                    : myMembership.status === 'expired'
+                    ? 'Membresía Vencida'
+                    : myMembership.status === 'suspended'
+                    ? 'Membresía Suspendida'
+                    : 'Activar 1er Mes'}
+                </span>
+              </button>
+            )}
+
             {/* Live Calls Indicator Pill */}
             {activeCallCount > 0 && (
               <button

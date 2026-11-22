@@ -29,7 +29,9 @@ import {
   Info,
   ExternalLink,
   Lock,
-  BookOpen
+  BookOpen,
+  Crown,
+  CalendarCheck,
 } from 'lucide-react';
 import { CallCenterTenant, TenantRechargeHistory, PjsipExtension, CarrierTrunk, SystemUser, CallFlowMode } from '../types';
 
@@ -49,7 +51,7 @@ interface SimpleEntityOption {
 
 interface TenantsTabProps {
   tenants: CallCenterTenant[];
-  onAddTenant: (tenant: CallCenterTenant) => void;
+  onAddTenant: (tenant: CallCenterTenant, activateInitialMonth?: boolean) => void;
   onUpdateTenant: (tenant: CallCenterTenant) => void;
   onDeleteTenant: (id: string) => void;
   onRechargeTenant: (tenantId: string, amountDollars: number, paymentMethod: 'zelle' | 'cash' | 'usdt_crypto' | 'bank_transfer' | 'credit_card', reference: string, notes?: string) => void;
@@ -60,6 +62,7 @@ interface TenantsTabProps {
   currentUser?: SystemUser;
   onSyncAsterisk?: () => void;
   onNavigateToManualDialer?: () => void;
+  onManageMembership?: () => void;
 }
 
 export const TenantsTab: React.FC<TenantsTabProps> = ({
@@ -75,6 +78,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   currentUser,
   onSyncAsterisk,
   onNavigateToManualDialer,
+  onManageMembership,
 }) => {
   const isAdmin = currentUser?.role === 'admin' && !currentUser?.tenantId;
   const [activeSubTab, setActiveSubTab] = useState<'groups' | 'ranges' | 'dialplan' | 'recharges'>('groups');
@@ -151,6 +155,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     allowedCallFlowModes: ['press1'] as CallFlowMode[],
     allowMassCalls: false,
   });
+  const [activateInitialMonthOnCreate, setActivateInitialMonthOnCreate] = useState<boolean>(true);
 
   // Recharge modal form
   const [rechargeAmount, setRechargeAmount] = useState<number>(50);
@@ -232,6 +237,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       allowedCallFlowModes: ['press1'],
       allowMassCalls: false,
     });
+    setActivateInitialMonthOnCreate(true);
     setEditingTenant(null);
     setIsCreateModalOpen(true);
   };
@@ -368,7 +374,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         allowedCallFlowModes: normalizedAllowedModes,
         allowMassCalls: Boolean(formData.allowMassCalls),
       };
-      onAddTenant(newTenant);
+      onAddTenant(newTenant, activateInitialMonthOnCreate);
     }
 
     setIsCreateModalOpen(false);
@@ -936,6 +942,46 @@ same => n,Hangup()
                       </div>
                     )}
                   </div>
+
+                  {/* Membership Status Box */}
+                  {(() => {
+                    const eff = tenant.effectiveMembership;
+                    const mStatus = eff?.status || tenant.membership?.status || (tenant.membership?.initialMonthActivated ? 'expired' : 'pending_initial');
+                    const isActiveMem = eff ? eff.isActive : mStatus === 'active';
+                    const expStr = eff?.expiresAt || tenant.membership?.expiresAt;
+                    return (
+                      <div className="bg-slate-950/90 border border-amber-500/25 rounded-xl p-2.5 mb-3 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="font-semibold text-[11px]">Membresía:</span>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                              isActiveMem
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                : mStatus === 'pending_initial'
+                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                                : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                            }`}
+                          >
+                            {isActiveMem
+                              ? `✓ Activa (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
+                              : mStatus === 'pending_initial'
+                              ? '1er Mes Pendiente'
+                              : mStatus === 'suspended'
+                              ? 'Suspendida'
+                              : 'Vencida'}
+                          </span>
+                          {expStr && (
+                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                              Vence: {new Date(expStr).toLocaleDateString('es-ES')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Action Buttons */}
@@ -949,6 +995,18 @@ same => n,Hangup()
                       >
                         <DollarSign className="w-3.5 h-3.5" />
                         Recargar
+                      </button>
+                    )}
+
+                    {isAdmin && onManageMembership && (
+                      <button
+                        type="button"
+                        onClick={onManageMembership}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Activar 1er Mes o sumar semanas en el panel de Membresías"
+                      >
+                        <Crown className="w-3.5 h-3.5" />
+                        Membresía
                       </button>
                     )}
 
@@ -1603,6 +1661,27 @@ same => n,Hangup()
                   Corte automático de llamadas salientes cuando el saldo llegue a $0.00
                 </label>
               </div>
+
+              {!editingTenant && isAdmin && (
+                <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-500/35 flex items-start gap-2.5">
+                  <input
+                    id="tenantActivateInitialMonth"
+                    type="checkbox"
+                    checked={activateInitialMonthOnCreate}
+                    onChange={(e) => setActivateInitialMonthOnCreate(e.target.checked)}
+                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500"
+                  />
+                  <label htmlFor="tenantActivateInitialMonth" className="text-xs text-slate-200 cursor-pointer leading-snug">
+                    <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <CalendarCheck className="w-3.5 h-3.5" />
+                      Activar Membresía Principal de 1 Mes (30 días) al crear Call Center
+                    </span>
+                    <span className="block text-[11px] text-slate-400 mt-0.5">
+                      Si se desmarca, los agentes de este Call Center quedarán bloqueados hasta activar su 1er mes obligatorio.
+                    </span>
+                  </label>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button

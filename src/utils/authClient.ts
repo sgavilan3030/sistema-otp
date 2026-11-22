@@ -78,6 +78,18 @@ export async function authFetch(input: RequestInfo | URL, init?: RequestInit): P
   ) {
     clearAuthToken();
     window.dispatchEvent(new CustomEvent('ast:unauthorized'));
+  } else if (
+    typeof window !== 'undefined' &&
+    isSameOriginApi &&
+    response.status === 403
+  ) {
+    try {
+      const cloned = response.clone();
+      const body = await cloned.json().catch(() => null);
+      if (body && body.code === 'MEMBERSHIP_REQUIRED') {
+        window.dispatchEvent(new CustomEvent('ast:membership-blocked', { detail: body }));
+      }
+    } catch (_) {}
   }
 
   return response;

@@ -11,6 +11,9 @@ import {
   ActiveAudioAssignments,
   SystemUser,
   CallCenterTenant,
+  EffectiveMembershipStatus,
+  MembershipRenewalRequest,
+  MembershipSettings,
 } from './types';
 import {
   initialExtensions,
@@ -36,6 +39,7 @@ import { IVRStudioTab } from './components/IVRStudioTab';
 import { AudioLibraryTab } from './components/AudioLibraryTab';
 import { UsersTab } from './components/UsersTab';
 import { ServerTelemetryTab } from './components/ServerTelemetryTab';
+import { MembershipTab } from './components/MembershipTab';
 import { AmdConfigModal } from './components/AmdConfigModal';
 import { isTabAllowedForUser, getDefaultTabForUser } from './utils/rbac';
 import { getAuthToken, clearAuthToken, authFetch as fetch } from './utils/authClient';
@@ -867,6 +871,13 @@ export default function App() {
 
   const isTenantsHydratedRef = useRef(false);
   const lastSavedTenantsJsonRef = useRef<string>('');
+  const serializeTenantsCore = (list: CallCenterTenant[]) =>
+    JSON.stringify(
+      list.map((t) => {
+        const { effectiveMembership: _em, membership: _m, ...rest } = t as any;
+        return rest;
+      })
+    );
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -877,10 +888,10 @@ export default function App() {
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.tenants) && data.tenants.length > 0) {
-          lastSavedTenantsJsonRef.current = JSON.stringify(data.tenants);
+          lastSavedTenantsJsonRef.current = serializeTenantsCore(data.tenants);
           setTenants(data.tenants);
         } else if (currentUser?.role === 'admin' && !currentUser?.tenantId) {
-          lastSavedTenantsJsonRef.current = JSON.stringify(tenants);
+          lastSavedTenantsJsonRef.current = serializeTenantsCore(tenants);
           fetch('/api/tenants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -895,16 +906,17 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    const serialized = JSON.stringify(tenants);
-    localStorage.setItem('ast20_tenants', serialized);
+    const serializedAll = JSON.stringify(tenants);
+    const serializedCore = serializeTenantsCore(tenants);
+    localStorage.setItem('ast20_tenants', serializedAll);
     if (
       isAuthenticated &&
       isTenantsHydratedRef.current &&
       currentUser?.role === 'admin' &&
       !currentUser?.tenantId &&
-      serialized !== lastSavedTenantsJsonRef.current
+      serializedCore !== lastSavedTenantsJsonRef.current
     ) {
-      lastSavedTenantsJsonRef.current = serialized;
+      lastSavedTenantsJsonRef.current = serializedCore;
       fetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -914,13 +926,39 @@ export default function App() {
   }, [tenants, isAuthenticated]);
 
   // Call Center Tenants Handlers
-  const handleAddTenant = (newTenant: CallCenterTenant) => {
-    setTenants((prev) => [newTenant, ...prev]);
+  const handleAddTenant = async (newTenant: CallCenterTenant, activateInitialMonth?: boolean) => {
+    const updatedList = [newTenant, ...tenants];
+    if (activateInitialMonth && currentUser?.role === 'admin' && !currentUser?.tenantId) {
+      lastSavedTenantsJsonRef.current = serializeTenantsCore(updatedList);
+    }
+    setTenants(updatedList);
     addLog(
       'SYSTEM',
       `Nuevo Grupo de Call Center creado: "${newTenant.name}" (Rango ${newTenant.extensionStart}-${newTenant.extensionEnd}, Contexto [${newTenant.dialplanContext}])`,
       `Tenant: ${newTenant.code}\nExtensiones: ${newTenant.extensionStart}-${newTenant.extensionEnd}\nCarrier: ${newTenant.carrierId}\nCallerID: ${newTenant.outboundCallerId}`
     );
+    if (activateInitialMonth && currentUser?.role === 'admin' && !currentUser?.tenantId) {
+      try {
+        await fetch('/api/tenants', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenants: updatedList, carriers, extensions }),
+        });
+        await fetch('/api/membership/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetType: 'tenant',
+            targetId: newTenant.id,
+            action: 'initial_month',
+            notes: 'Activación inicial de 1 Mes al crear Call Center',
+          }),
+        });
+        await refreshMembershipOverview();
+        showToast(`Call Center "${newTenant.name}" creado con Membresía Principal de 1 Mes activa.`);
+        return;
+      } catch (_) {}
+    }
     showToast(`Call Center "${newTenant.name}" creado con éxito.`);
   };
 
@@ -974,7 +1012,7 @@ export default function App() {
           name: `${tenant.code} Agente ${ext - start + 1}`,
           secret: `Cc#${tenant.code}${ext}!`,
           context: tenant.dialplanContext,
-          codecs: ['ulaw', 'alaw', 'g722'],
+          codecs: ['ulaw', 'alaw'],
           maxContacts: 1,
           transport: 'transport-udp',
           port: activeSipPort,
@@ -1005,6 +1043,128 @@ export default function App() {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  // =========================================================================
+  // SISTEMA DE MEMBRESÍAS (1ER MES OBLIGATORIO -> EXTENSIONES SEMANALES)
+  // =========================================================================
+  const [membershipSettings, setMembershipSettings] = useState<MembershipSettings>({
+    enforceMembershipSystem: true,
+    initialMonthDays: 30,
+    weekDays: 7,
+    initialMonthPriceUsd: 150,
+    weeklyPriceUsd: 45,
+    allowSelfRenewalFromBalance: false,
+  });
+  const [myMembership, setMyMembership] = useState<EffectiveMembershipStatus | null>(null);
+  const [membershipRequests, setMembershipRequests] = useState<MembershipRenewalRequest[]>([]);
+
+  const isMembershipLocked = Boolean(
+    isAuthenticated &&
+    myMembership &&
+    !myMembership.exempt &&
+    !myMembership.isActive
+  );
+
+  const pendingMembershipRequestsCount =
+    currentUser?.role === 'admin' && !currentUser?.tenantId
+      ? membershipRequests.filter((r) => r.status === 'pending').length
+      : 0;
+
+  const refreshMembershipOverview = useCallback(async () => {
+    if (!getAuthToken()) return;
+    try {
+      const res = await fetch('/api/membership/overview');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.success) return;
+
+      if (data.settings) setMembershipSettings(data.settings);
+      if (data.myMembership) setMyMembership(data.myMembership);
+      if (Array.isArray(data.requests)) {
+        setMembershipRequests(data.requests);
+      } else if (Array.isArray(data.myRequests)) {
+        setMembershipRequests(data.myRequests);
+      }
+
+      if (Array.isArray(data.tenants)) {
+        const memMap = new Map<string, any>(
+          data.tenants.map((t: any) => [t.id, { membership: t.membership, effectiveMembership: t.effectiveMembership }])
+        );
+        setTenants((prev) => {
+          let changed = false;
+          const next = prev.map((t) => {
+            const m = memMap.get(t.id);
+            if (!m) return t;
+            const prevSig = `${t.effectiveMembership?.status || ''}:${t.effectiveMembership?.expiresAt || ''}:${t.membership?.initialMonthActivated ? 1 : 0}`;
+            const nextSig = `${m.effectiveMembership?.status || ''}:${m.effectiveMembership?.expiresAt || ''}:${m.membership?.initialMonthActivated ? 1 : 0}`;
+            if (prevSig === nextSig) return t;
+            changed = true;
+            return { ...t, membership: m.membership, effectiveMembership: m.effectiveMembership };
+          });
+          if (!changed) return prev;
+          lastSavedTenantsJsonRef.current = serializeTenantsCore(next);
+          return next;
+        });
+      }
+
+      if (Array.isArray(data.users)) {
+        const uMap = new Map<string, any>(data.users.map((u: any) => [u.id, u]));
+        setUsers((prev) => {
+          let changed = false;
+          const next = prev.map((u) => {
+            const srv = uMap.get(u.id);
+            if (!srv) return u;
+            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}:${u.membership?.initialMonthActivated ? 1 : 0}`;
+            const nextSig = `${srv.effectiveMembership?.status || ''}:${srv.effectiveMembership?.expiresAt || ''}:${srv.membership?.initialMonthActivated ? 1 : 0}`;
+            if (prevSig === nextSig) return u;
+            changed = true;
+            return { ...u, membership: srv.membership, effectiveMembership: srv.effectiveMembership };
+          });
+          return changed ? next : prev;
+        });
+      } else if (data.myMembership) {
+        setUsers((prev) =>
+          prev.map((u) => {
+            if (u.id !== currentUserId) return u;
+            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}`;
+            const nextSig = `${data.myMembership.status || ''}:${data.myMembership.expiresAt || ''}`;
+            if (prevSig === nextSig) return u;
+            return { ...u, effectiveMembership: data.myMembership };
+          })
+        );
+      }
+    } catch (_) {}
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    refreshMembershipOverview();
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshMembershipOverview();
+    }, 30000);
+    const onMembershipBlocked = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      if (detail?.error) {
+        showToast(detail.error, 'error');
+      } else {
+        showToast('Tu membresía no está activa. Activa o renueva tu plan para continuar.', 'error');
+      }
+      refreshMembershipOverview();
+      setActiveTab('membership');
+    };
+    window.addEventListener('ast:membership-blocked', onMembershipBlocked as EventListener);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ast:membership-blocked', onMembershipBlocked as EventListener);
+    };
+  }, [isAuthenticated, refreshMembershipOverview]);
+
+  useEffect(() => {
+    if (isMembershipLocked && activeTab !== 'membership') {
+      setActiveTab('membership');
+    }
+  }, [isMembershipLocked, activeTab]);
 
   const addLog = (
     type: SyncLogEntry['type'],
@@ -1578,7 +1738,7 @@ export default function App() {
   };
 
   // User Handlers with Auto-provisioning in Asterisk 20 PJSIP
-  const handleAddUser = (newUser: SystemUser) => {
+  const handleAddUser = (newUser: SystemUser, activateInitialMonth?: boolean) => {
     const updatedUsersList = [...users, newUser];
     setUsers(updatedUsersList);
     const cleanUser = String(newUser.username || newUser.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
@@ -1595,7 +1755,7 @@ export default function App() {
           transport: 'transport-udp',
           port: 47923,
           maxContacts: 10,
-          codecs: ['opus', 'g722', 'ulaw', 'alaw', 'g729'],
+          codecs: ['ulaw', 'alaw'],
           status: 'registered',
           callerId: `"${newUser.name}" <${(newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser}>`,
           callerIdNum: (newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser,
@@ -1622,8 +1782,10 @@ export default function App() {
       fetch('/api/users/sync-sip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: newUser }),
-      }).catch(() => {});
+        body: JSON.stringify({ user: newUser, activateInitialMonth: Boolean(activateInitialMonth) }),
+      })
+        .then(() => refreshMembershipOverview())
+        .catch(() => {});
     }
 
     addLog(
@@ -1820,6 +1982,8 @@ export default function App() {
     isStateLoadedRef.current = false;
     isTenantsHydratedRef.current = false;
     lastUserStateVersionRef.current = -1;
+    setMyMembership(null);
+    setMembershipRequests([]);
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem('ast_session_active');
@@ -1836,9 +2000,16 @@ export default function App() {
         ? prev.map((u) => (u.id === user.id || u.username === user.username ? { ...u, ...user } : u))
         : [user, ...prev];
     });
+    if (user.effectiveMembership) {
+      setMyMembership(user.effectiveMembership);
+    }
     setCurrentUserId(user.id);
     setIsAuthenticated(true);
-    setActiveTab(getDefaultTabForUser(user));
+    setActiveTab(
+      user.effectiveMembership && !user.effectiveMembership.exempt && !user.effectiveMembership.isActive
+        ? 'membership'
+        : getDefaultTabForUser(user)
+    );
     try {
       sessionStorage.setItem('ast_session_active', 'true');
       localStorage.setItem('ast20_current_user_id', user.id);
@@ -1846,6 +2017,7 @@ export default function App() {
     // Load this user's exclusive server configuration immediately across any browser
     lastUserStateVersionRef.current = -1;
     await fetchUserState(user.id, user.username, true);
+    refreshMembershipOverview();
     showToast(`¡Bienvenido, ${user.name}! Configuración exclusiva cargada.`);
     addLog('SYSTEM', `[LOGIN] Configuración cargada para usuario: ${user.name} (${user.username || user.id})`);
   };
@@ -1864,9 +2036,16 @@ export default function App() {
                 ? prev.map((u) => (u.id === data.user.id || u.username === data.user.username ? { ...u, ...data.user } : u))
                 : [data.user, ...prev];
             });
+            if (data.user.effectiveMembership) {
+              setMyMembership(data.user.effectiveMembership);
+            }
             setCurrentUserId(data.user.id);
             setIsAuthenticated(true);
-            setActiveTab(getDefaultTabForUser(data.user));
+            setActiveTab(
+              data.user.effectiveMembership && !data.user.effectiveMembership.exempt && !data.user.effectiveMembership.isActive
+                ? 'membership'
+                : getDefaultTabForUser(data.user)
+            );
           } else {
             clearAuthToken();
           }
@@ -1879,6 +2058,8 @@ export default function App() {
       isStateLoadedRef.current = false;
       isTenantsHydratedRef.current = false;
       lastUserStateVersionRef.current = -1;
+      setMyMembership(null);
+      setMembershipRequests([]);
       setIsAuthenticated(false);
     };
     window.addEventListener('ast:unauthorized', onUnauthorized);
@@ -1943,6 +2124,9 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
         amdEnabled={amdEnabled}
         onOpenAmdModal={() => setIsAmdModalOpen(true)}
+        myMembership={myMembership}
+        pendingMembershipRequestsCount={pendingMembershipRequestsCount}
+        isMembershipLocked={isMembershipLocked}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL A LA DERECHA */}
@@ -1959,9 +2143,25 @@ export default function App() {
           activeCallCount={activeCallCount}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          myMembership={myMembership}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {isMembershipLocked ? (
+          <MembershipTab
+            currentUser={currentUser}
+            myMembership={myMembership}
+            settings={membershipSettings}
+            users={users}
+            tenants={tenants}
+            requests={membershipRequests}
+            onRefresh={refreshMembershipOverview}
+            lockMode={true}
+            onLogout={handleLogout}
+            onShowToast={showToast}
+          />
+        ) : (
+        <>
         {/* Guard de Seguridad RBAC en caso de acceso no autorizado a una pestaña */}
         {!isTabAllowedForUser(activeTab, currentUser) && (
           <div className="p-8 max-w-xl mx-auto my-12 bg-slate-900 border-2 border-rose-500/40 rounded-2xl text-center space-y-4 shadow-2xl">
@@ -2069,6 +2269,7 @@ export default function App() {
             currentUser={currentUser}
             onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
             onNavigateToManualDialer={() => setActiveTab('manual-dialer')}
+            onManageMembership={() => setActiveTab('membership')}
           />
         )}
 
@@ -2136,6 +2337,23 @@ export default function App() {
             onDeleteUser={handleDeleteUser}
             onAddExtension={handleAddExtension}
             onNavigateToProduction={() => setActiveTab('production')}
+            onManageMembership={() => setActiveTab('membership')}
+            onRefreshMembership={refreshMembershipOverview}
+          />
+        )}
+
+        {activeTab === 'membership' && isTabAllowedForUser('membership', currentUser) && (
+          <MembershipTab
+            currentUser={currentUser}
+            myMembership={myMembership}
+            settings={membershipSettings}
+            users={users}
+            tenants={tenants}
+            requests={membershipRequests}
+            onRefresh={refreshMembershipOverview}
+            lockMode={false}
+            onLogout={handleLogout}
+            onShowToast={showToast}
           />
         )}
 
@@ -2148,12 +2366,14 @@ export default function App() {
             isSyncing={isSyncing}
           />
         )}
+        </>
+        )}
       </main>
       </div>
 
       {/* Floating Press-1 Cancel Code Alert Banner across non-production/non-live tabs */}
       {(() => {
-        if (activeTab === 'production' || activeTab === 'live-calls') return null;
+        if (isMembershipLocked || activeTab === 'production' || activeTab === 'live-calls') return null;
         const pendingCancelCall = globalLiveCalls.find(
           (c: any) =>
             c.status === 'pressed_1' &&
@@ -2221,7 +2441,7 @@ export default function App() {
       })()}
 
       {/* Floating OTP Notification Banner (Hidden in production & live-calls since both render dedicated OTP consoles) */}
-      {globalOtpAlert && activeTab !== 'production' && activeTab !== 'live-calls' && (
+      {!isMembershipLocked && globalOtpAlert && activeTab !== 'production' && activeTab !== 'live-calls' && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-950 border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl shadow-emerald-500/30 text-white">
           <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-emerald-500/20">
             <div className="flex items-center gap-2">

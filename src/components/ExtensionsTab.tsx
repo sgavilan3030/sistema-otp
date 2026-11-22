@@ -196,7 +196,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
   const [extTransport, setExtTransport] = useState<PjsipExtension['transport']>('transport-udp');
   const [extPort, setExtPort] = useState<number>(47923);
   const [extMaxContacts, setExtMaxContacts] = useState(2);
-  const [selectedCodecs, setSelectedCodecs] = useState<string[]>(['ulaw', 'alaw', 'g722']);
+  const [selectedCodecs, setSelectedCodecs] = useState<string[]>(['ulaw', 'alaw']);
   const [extRecordCalls, setExtRecordCalls] = useState<boolean>(false);
   const [extIsSpyOnly, setExtIsSpyOnly] = useState<boolean>(false);
 
@@ -284,7 +284,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
     setExtTransport('transport-udp');
     setExtPort(47923);
     setExtMaxContacts(2);
-    setSelectedCodecs(['ulaw', 'alaw', 'g722']);
+    setSelectedCodecs(['ulaw', 'alaw']);
     setExtRecordCalls(false);
     setExtIsSpyOnly(false);
     setIsModalOpen(true);

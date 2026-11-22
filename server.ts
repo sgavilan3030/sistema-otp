@@ -263,9 +263,379 @@ function verifyAuthToken(token?: string): AuthTokenPayload | null {
   }
 }
 
+const TENANTS_FILE = path.join(DATA_DIR, 'tenants.json');
+const MEMBERSHIP_SETTINGS_FILE = path.join(DATA_DIR, 'membership_settings.json');
+const MEMBERSHIP_REQUESTS_FILE = path.join(DATA_DIR, 'membership_requests.json');
+
+interface ServerMembershipSettings {
+  enforceMembershipSystem: boolean;
+  initialMonthDays: number;
+  weekDays: number;
+  initialMonthPriceUsd: number;
+  weeklyPriceUsd: number;
+  allowSelfRenewalFromBalance: boolean;
+}
+
+const DEFAULT_MEMBERSHIP_SETTINGS: ServerMembershipSettings = {
+  enforceMembershipSystem: true,
+  initialMonthDays: 30,
+  weekDays: 7,
+  initialMonthPriceUsd: 150,
+  weeklyPriceUsd: 45,
+  allowSelfRenewalFromBalance: false,
+};
+
+function loadMembershipSettings(): ServerMembershipSettings {
+  try {
+    if (fs.existsSync(MEMBERSHIP_SETTINGS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(MEMBERSHIP_SETTINGS_FILE, 'utf8'));
+      if (raw && typeof raw === 'object') {
+        return {
+          enforceMembershipSystem: raw.enforceMembershipSystem !== false,
+          initialMonthDays: Math.max(1, Math.floor(Number(raw.initialMonthDays) || 30)),
+          weekDays: Math.max(1, Math.floor(Number(raw.weekDays) || 7)),
+          initialMonthPriceUsd: Math.max(0, Number(raw.initialMonthPriceUsd ?? 150)),
+          weeklyPriceUsd: Math.max(0, Number(raw.weeklyPriceUsd ?? 45)),
+          allowSelfRenewalFromBalance: Boolean(raw.allowSelfRenewalFromBalance),
+        };
+      }
+    }
+  } catch (_) {}
+  return { ...DEFAULT_MEMBERSHIP_SETTINGS };
+}
+
+function saveMembershipSettings(nextSettings: Partial<ServerMembershipSettings>): ServerMembershipSettings {
+  const current = loadMembershipSettings();
+  const merged: ServerMembershipSettings = {
+    enforceMembershipSystem:
+      typeof nextSettings.enforceMembershipSystem === 'boolean'
+        ? nextSettings.enforceMembershipSystem
+        : current.enforceMembershipSystem,
+    initialMonthDays: Math.max(1, Math.min(365, Math.floor(Number(nextSettings.initialMonthDays ?? current.initialMonthDays) || 30))),
+    weekDays: Math.max(1, Math.min(31, Math.floor(Number(nextSettings.weekDays ?? current.weekDays) || 7))),
+    initialMonthPriceUsd: Math.max(0, Number(nextSettings.initialMonthPriceUsd ?? current.initialMonthPriceUsd)),
+    weeklyPriceUsd: Math.max(0, Number(nextSettings.weeklyPriceUsd ?? current.weeklyPriceUsd)),
+    allowSelfRenewalFromBalance:
+      typeof nextSettings.allowSelfRenewalFromBalance === 'boolean'
+        ? nextSettings.allowSelfRenewalFromBalance
+        : current.allowSelfRenewalFromBalance,
+  };
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+  fs.writeFileSync(MEMBERSHIP_SETTINGS_FILE, JSON.stringify(merged, null, 2), 'utf8');
+  return merged;
+}
+
+function loadMembershipRequests(): any[] {
+  try {
+    if (fs.existsSync(MEMBERSHIP_REQUESTS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(MEMBERSHIP_REQUESTS_FILE, 'utf8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveMembershipRequests(requests: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+    fs.writeFileSync(MEMBERSHIP_REQUESTS_FILE, JSON.stringify(requests, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+function evaluateMembershipRecord(
+  rawMembership: any,
+  settings: ServerMembershipSettings,
+  scope: 'tenant' | 'user',
+  targetId: string,
+  targetName: string
+) {
+  const now = Date.now();
+  const m = rawMembership && typeof rawMembership === 'object' ? rawMembership : null;
+  const initialMonthActivated = Boolean(m?.initialMonthActivated);
+  const expiresAt = m?.expiresAt ? String(m.expiresAt) : undefined;
+  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN;
+  const hasFutureExpiry = !isNaN(expiresAtMs) && expiresAtMs > now;
+
+  let status: 'unactivated' | 'active' | 'expired' | 'suspended' = 'unactivated';
+  if (m?.status === 'suspended') {
+    status = 'suspended';
+  } else if (!initialMonthActivated) {
+    status = 'unactivated';
+  } else if (hasFutureExpiry) {
+    status = 'active';
+  } else {
+    status = 'expired';
+  }
+
+  const remainingMs = status === 'active' && !isNaN(expiresAtMs) ? Math.max(0, expiresAtMs - now) : 0;
+  const remainingDays = Math.floor(remainingMs / 86400000);
+  const remainingHours = Math.floor((remainingMs % 86400000) / 3600000);
+  const isActive = settings.enforceMembershipSystem ? status === 'active' : status !== 'suspended';
+
+  return {
+    enforceSystem: settings.enforceMembershipSystem,
+    exempt: false,
+    isActive,
+    status,
+    scope,
+    targetId,
+    targetName,
+    initialMonthActivated,
+    initialActivatedAt: m?.initialActivatedAt,
+    expiresAt,
+    remainingMs,
+    remainingDays,
+    remainingHours,
+    totalWeeksAdded: Number(m?.totalWeeksAdded) || 0,
+    canActivateWeeks: initialMonthActivated,
+    mustActivateInitialMonth: !initialMonthActivated,
+    history: Array.isArray(m?.history) ? m.history : [],
+  };
+}
+
+function resolveEffectiveMembershipForUser(
+  user: any,
+  tenantsList?: any[],
+  settings?: ServerMembershipSettings
+) {
+  const s = settings || loadMembershipSettings();
+  if (!user || isGlobalAdminUser(user)) {
+    return {
+      enforceSystem: s.enforceMembershipSystem,
+      exempt: true,
+      isActive: true,
+      status: 'exempt' as const,
+      scope: 'global_admin' as const,
+      targetId: String(user?.id || 'global'),
+      targetName: String(user?.name || 'Super Administrador Global'),
+      initialMonthActivated: true,
+      remainingMs: 0,
+      remainingDays: 9999,
+      remainingHours: 0,
+      totalWeeksAdded: 0,
+      canActivateWeeks: true,
+      mustActivateInitialMonth: false,
+      history: [],
+    };
+  }
+
+  if (user.tenantId && !user.membership?.independent) {
+    const tList = Array.isArray(tenantsList) ? tenantsList : loadStoredTenants();
+    const matchedTenant = tList.find((t: any) => t && String(t.id) === String(user.tenantId));
+    if (matchedTenant) {
+      return evaluateMembershipRecord(
+        matchedTenant.membership,
+        s,
+        'tenant',
+        String(matchedTenant.id),
+        String(matchedTenant.name || matchedTenant.code || matchedTenant.id)
+      );
+    }
+  }
+
+  return evaluateMembershipRecord(
+    user.membership,
+    s,
+    'user',
+    String(user.id || user.username || 'unknown'),
+    String(user.name || user.username || 'Cliente')
+  );
+}
+
+function applyMembershipActivation(
+  currentMembership: any,
+  params: {
+    action: 'initial_month' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset';
+    weeksCount?: number;
+    amountPaid?: number;
+    paymentMethod?: string;
+    reference?: string;
+    notes?: string;
+    requestApproved?: boolean;
+  },
+  performedBy: string,
+  settings?: ServerMembershipSettings
+): { ok: boolean; error?: string; membership?: any } {
+  const s = settings || loadMembershipSettings();
+  const prev = currentMembership && typeof currentMembership === 'object' ? { ...currentMembership } : {
+    status: 'unactivated',
+    initialMonthActivated: false,
+    totalWeeksAdded: 0,
+    history: [],
+  };
+  const prevHistory = Array.isArray(prev.history) ? [...prev.history] : [];
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const prevExpiresMs = prev.expiresAt ? Date.parse(String(prev.expiresAt)) : NaN;
+  const baseMs = !isNaN(prevExpiresMs) && prevExpiresMs > now ? prevExpiresMs : now;
+
+  if (params.action === 'initial_month') {
+    const daysToAdd = s.initialMonthDays;
+    const newExpiresIso = new Date(baseMs + daysToAdd * 86400000).toISOString();
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: params.requestApproved ? 'request_approved' : 'initial_month',
+      daysAdded: daysToAdd,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: newExpiresIso,
+      amountPaid: typeof params.amountPaid === 'number' ? params.amountPaid : s.initialMonthPriceUsd,
+      paymentMethod: params.paymentMethod || 'admin',
+      reference: params.reference || '',
+      notes: params.notes || `Activación Membresía Principal de 1 Mes (${daysToAdd} días)`,
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        ...prev,
+        status: 'active',
+        initialMonthActivated: true,
+        initialActivatedAt: prev.initialActivatedAt || nowIso,
+        expiresAt: newExpiresIso,
+        lastRenewedAt: nowIso,
+        totalWeeksAdded: Number(prev.totalWeeksAdded) || 0,
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
+
+  if (params.action === 'weekly_extension') {
+    if (!prev.initialMonthActivated) {
+      return {
+        ok: false,
+        error: 'Primera activación obligatoria: primero debes activar la Membresía Principal de 1 Mes (30 días) antes de activar semanas.',
+      };
+    }
+    const weeks = Math.floor(Number(params.weeksCount) || 0);
+    if (!Number.isFinite(weeks) || weeks < 1 || weeks > 104) {
+      return {
+        ok: false,
+        error: 'La cantidad de semanas debe ser un número entero entre 1 y 104.',
+      };
+    }
+    const daysToAdd = weeks * s.weekDays;
+    const newExpiresIso = new Date(baseMs + daysToAdd * 86400000).toISOString();
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: params.requestApproved ? 'request_approved' : 'weekly_extension',
+      weeksAdded: weeks,
+      daysAdded: daysToAdd,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: newExpiresIso,
+      amountPaid: typeof params.amountPaid === 'number' ? params.amountPaid : weeks * s.weeklyPriceUsd,
+      paymentMethod: params.paymentMethod || 'admin',
+      reference: params.reference || '',
+      notes: params.notes || `Extensión de +${weeks} ${weeks === 1 ? 'semana' : 'semanas'} (${daysToAdd} días)`,
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        ...prev,
+        status: 'active',
+        initialMonthActivated: true,
+        expiresAt: newExpiresIso,
+        lastRenewedAt: nowIso,
+        totalWeeksAdded: (Number(prev.totalWeeksAdded) || 0) + weeks,
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
+
+  if (params.action === 'suspend') {
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: 'suspended',
+      daysAdded: 0,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: prev.expiresAt || nowIso,
+      notes: params.notes || 'Membresía suspendida por el Administrador',
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        ...prev,
+        status: 'suspended',
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
+
+  if (params.action === 'reactivate') {
+    if (!prev.initialMonthActivated) {
+      return {
+        ok: false,
+        error: 'No se puede reactivar: esta cuenta aún no tiene activada su Membresía Principal de 1 Mes.',
+      };
+    }
+    const stillValid = !isNaN(prevExpiresMs) && prevExpiresMs > now;
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: 'reactivated',
+      daysAdded: 0,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: prev.expiresAt || nowIso,
+      notes: params.notes || 'Membresía reactivada por el Administrador',
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        ...prev,
+        status: stillValid ? 'active' : 'expired',
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
+
+  if (params.action === 'reset') {
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: 'reset',
+      daysAdded: 0,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: nowIso,
+      notes: params.notes || 'Membresía reiniciada (requiere 1er Mes nuevamente)',
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        status: 'unactivated',
+        initialMonthActivated: false,
+        totalWeeksAdded: 0,
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
+
+  return { ok: false, error: 'Acción de membresía no válida.' };
+}
+
+function syncMembershipToAstDb(targetType: 'user' | 'tenant', targetId: string, membership: any) {
+  if (!hasLocalAsterisk || !targetId) return;
+  const cleanId = String(targetId).replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (!cleanId) return;
+  const statusVal = String(membership?.status || 'unactivated');
+  const expiresVal = String(membership?.expiresAt || '');
+  executeAsteriskCommand(`database put membership_${targetType} ${cleanId} "${statusVal}"`).catch(() => {});
+  if (expiresVal) {
+    executeAsteriskCommand(`database put membership_${targetType}_exp ${cleanId} "${expiresVal}"`).catch(() => {});
+  }
+}
+
 function sanitizeUserForClient(u: any) {
   if (!u || typeof u !== 'object') return u;
   const { password: _p, passwordHash: _ph, sipSecret: _ss, ...rest } = u;
+  try {
+    rest.effectiveMembership = resolveEffectiveMembershipForUser(u);
+  } catch (_) {}
   return rest;
 }
 
@@ -362,6 +732,35 @@ function requireInternalOrGlobalAdmin(req: express.Request, res: express.Respons
     return next();
   }
   return res.status(403).json({ success: false, error: 'Endpoint interno restringido a webhooks de Asterisk o Super Administrador Global.' });
+}
+
+function requireActiveMembership(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (isInternalAsteriskWebhook(req)) {
+    return next();
+  }
+  const authUser = (req as any).authUser || resolveAuthenticatedUser(req);
+  if (!authUser) {
+    return res.status(401).json({ success: false, error: 'Autenticación requerida.' });
+  }
+  if (isGlobalAdminUser(authUser)) {
+    return next();
+  }
+  const effective = resolveEffectiveMembershipForUser(authUser);
+  if (effective.exempt || effective.isActive) {
+    return next();
+  }
+  const reasonMsg =
+    effective.status === 'suspended'
+      ? 'Tu membresía se encuentra suspendida por el Administrador.'
+      : effective.status === 'expired'
+      ? 'Tu membresía ha vencido. Activa una extensión por semanas en el módulo Mi Membresía para continuar operando.'
+      : 'Debes activar tu Membresía Principal de 1 Mes (30 días) para comenzar a operar en el sistema.';
+  return res.status(403).json({
+    success: false,
+    code: 'MEMBERSHIP_REQUIRED',
+    error: reasonMsg,
+    membership: effective,
+  });
 }
 
 // Native AMI Action: Hangup directly to Asterisk socket
@@ -1058,28 +1457,78 @@ maximum_word_length = 5000
   } catch (_) {}
 }
 
-// Helper to ensure Asterisk codecs.conf and rtp.conf exist for crystal-clear bidirectional audio
+// Helper to ensure Asterisk codecs.conf, asterisk.conf timing options, rtp.conf, and manager.conf exist for crystal-clear bidirectional audio
+function ensureAsteriskCoreOptionsConf() {
+  const asteriskConfPath = '/etc/asterisk/asterisk.conf';
+  if (!fs.existsSync(asteriskConfPath)) return;
+  try {
+    let raw = fs.readFileSync(asteriskConfPath, 'utf8');
+    let changed = false;
+
+    const ensureOption = (sectionBody: string, key: string, value: string): string => {
+      const commentedOrSetRe = new RegExp(`^[;#\\s]*${key}\\s*=.*$`, 'mi');
+      const desiredLine = `${key} = ${value}`;
+      if (commentedOrSetRe.test(sectionBody)) {
+        const next = sectionBody.replace(commentedOrSetRe, desiredLine);
+        if (next !== sectionBody) changed = true;
+        return next;
+      }
+      changed = true;
+      return `${sectionBody.trimEnd()}\n${desiredLine}\n`;
+    };
+
+    const optionsHeaderRe = /^\[options\]\s*$/im;
+    if (optionsHeaderRe.test(raw)) {
+      const match = raw.match(/^\[options\][^\n]*(?:\r?\n([\s\S]*?))?(?=^[ \t]*\[[^\]]+\]|(?![\s\S]))/im);
+      if (match && typeof match.index === 'number') {
+        const fullSec = match[0];
+        const nlIdx = fullSec.indexOf('\n');
+        const headerLine = nlIdx >= 0 ? fullSec.slice(0, nlIdx + 1) : `${fullSec}\n`;
+        let body = nlIdx >= 0 ? fullSec.slice(nlIdx + 1) : '';
+        body = ensureOption(body, 'internal_timing', 'yes');
+        body = ensureOption(body, 'transmit_silence', 'yes');
+        body = ensureOption(body, 'highpriority', 'yes');
+        const rebuilt = headerLine + body;
+        if (rebuilt !== fullSec) {
+          raw = raw.slice(0, match.index) + rebuilt + raw.slice(match.index + fullSec.length);
+        }
+      }
+    } else {
+      raw = `${raw.trimEnd()}\n\n[options]\ninternal_timing = yes\ntransmit_silence = yes\nhighpriority = yes\n`;
+      changed = true;
+    }
+
+    if (changed) {
+      writeAsteriskConfigFile(asteriskConfPath, raw);
+      console.log('✓ Configuración /etc/asterisk/asterisk.conf optimizada (internal_timing=yes, transmit_silence=yes, highpriority=yes)');
+    }
+  } catch (_) {}
+}
+
 function ensureAudioCodecsAndRtpConfExists() {
   const codecsPath = '/etc/asterisk/codecs.conf';
   const codecsContent = `; ========================================================
-; Asterisk HD Voice Codecs & Audio DSP Processing
-; Máxima Fidelidad de Audio Bidireccional (Ambas Vías)
+; Asterisk Voice Codecs & Zero-Transcode Audio Stability
 ; ========================================================
+[plc]
+genericplc = true
+genericplc_on_equal_codecs = false
+
 [opus]
 type=opus
-max_playback_rate=48000
-max_bandwidth=fullband
-cbr=no
-fec=yes
+max_playback_rate=16000
+max_bandwidth=wideband
+cbr=yes
+fec=no
 dtx=no
 
 [speex]
 type=speex
-quality=10
-complexity=4
-enhancement=true
+quality=8
+complexity=2
+enhancement=false
 vad=false
-vbr=true
+vbr=false
 `;
 
   const rtpPath = '/etc/asterisk/rtp.conf';
@@ -1096,9 +1545,18 @@ icesupport=no
 `;
 
   try {
-    if (!fs.existsSync(codecsPath)) {
+    let codecsUpdated = false;
+    const existingCodecs = fs.existsSync(codecsPath) ? fs.readFileSync(codecsPath, 'utf8') : '';
+    if (!existingCodecs || existingCodecs.trim() !== codecsContent.trim()) {
       writeAsteriskConfigFile(codecsPath, codecsContent);
-      console.log('✓ Configuración /etc/asterisk/codecs.conf creada para HD Opus y Speex Denoise');
+      codecsUpdated = true;
+      console.log('✓ Configuración /etc/asterisk/codecs.conf optimizada (PLC nativo sin distorsión y sin VBR robótico)');
+    }
+    ensureAsteriskCoreOptionsConf();
+    if (hasLocalAsterisk && codecsUpdated) {
+      exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null; asterisk -rx "core reload" 2>/dev/null', () => {});
+    } else if (hasLocalAsterisk) {
+      exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null', () => {});
     }
     writeAsteriskConfigFile(rtpPath, rtpContent);
     try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
@@ -1163,17 +1621,19 @@ function getLocalPublicIpv4Sync(): string {
 
 let detectedExternalIp: string = getLocalPublicIpv4Sync();
 
-function prioritizeZeroTranscodeCodecs(raw: string, isCarrierTrunk = false): string {
+function prioritizeZeroTranscodeCodecs(raw: string, isCarrierTrunk = false, isWebRtc = false): string {
   const rawList = raw
     .split(',')
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
-  // Strip g729 (Asterisk does not include codec_g729 translator by default, which causes immediate
-  // "No path to translate" drops on 200 OK when the carrier picks G729 first).
-  // On PSTN carrier trunks, also strip opus/g722 so the carrier cleanly picks PCMU (ulaw) or PCMA (alaw).
-  const blocked = isCarrierTrunk ? new Set(['g729', 'opus', 'g722']) : new Set(['g729']);
+  // Enforce pure G.711 (ulaw,alaw) across UDP/TCP extensions & trunks to guarantee ZERO CPU resampling/transcoding
+  // against 8kHz IVR prompts and PSTN carriers (eliminating robotic/choppy Opus/G.722 resampling).
+  // Allow Opus only for WebRTC (transport-wss).
+  const blocked = (isCarrierTrunk || !isWebRtc)
+    ? new Set(['g729', 'opus', 'g722', 'speex', 'ilbc', 'gsm'])
+    : new Set(['g729', 'g722', 'speex', 'ilbc', 'gsm']);
   const list = rawList.filter((c) => !blocked.has(c));
-  if (list.length === 0) return isCarrierTrunk ? 'ulaw,alaw' : 'ulaw,alaw,g722';
+  if (list.length === 0) return isWebRtc ? 'opus,ulaw,alaw' : 'ulaw,alaw';
   const ordered: string[] = [];
   if (list.includes('ulaw')) ordered.push('ulaw');
   if (list.includes('alaw')) ordered.push('alaw');
@@ -1453,6 +1913,69 @@ function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
   return buffer;
 }
 
+// Encode signed 16-bit PCM sample into ITU-T G.711 mu-law byte
+function encodeLinear16ToUlaw(sample: number): number {
+  const BIAS = 0x84;
+  const CLIP = 32635;
+  let sign = (sample >> 8) & 0x80;
+  if (sign !== 0) sample = -sample;
+  if (sample > CLIP) sample = CLIP;
+  sample += BIAS;
+  let exponent = 7;
+  for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {}
+  const mantissa = (sample >> (exponent + 3)) & 0x0f;
+  return (~(sign | (exponent << 4) | mantissa)) & 0xff;
+}
+
+// Convert 8kHz 16-bit Mono PCM WAV file to native raw .ulaw for zero-transcode Asterisk Playback
+function ensureNativeUlawFromWav(wavPath: string, extraUlawDirs: string[] = []) {
+  try {
+    if (!fs.existsSync(wavPath)) return;
+    const buf = fs.readFileSync(wavPath);
+    if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return;
+    let offset = 12;
+    let channels = 0;
+    let sampleRate = 0;
+    let bitsPerSample = 0;
+    let dataStart = -1;
+    let dataSize = 0;
+    while (offset + 8 <= buf.length) {
+      const chunkId = buf.toString('ascii', offset, offset + 4);
+      const chunkSize = buf.readUInt32LE(offset + 4);
+      const bodyStart = offset + 8;
+      if (chunkId === 'fmt ' && chunkSize >= 16 && bodyStart + 16 <= buf.length) {
+        const audioFormat = buf.readUInt16LE(bodyStart);
+        if (audioFormat !== 1) return; // PCM only
+        channels = buf.readUInt16LE(bodyStart + 2);
+        sampleRate = buf.readUInt32LE(bodyStart + 4);
+        bitsPerSample = buf.readUInt16LE(bodyStart + 14);
+      } else if (chunkId === 'data') {
+        dataStart = bodyStart;
+        dataSize = Math.min(chunkSize, buf.length - bodyStart);
+        break;
+      }
+      offset = bodyStart + chunkSize + (chunkSize % 2);
+    }
+    if (channels !== 1 || sampleRate !== 8000 || bitsPerSample !== 16 || dataStart < 0 || dataSize < 160) return;
+
+    const sampleCount = Math.floor(dataSize / 2);
+    const ulawBuf = Buffer.alloc(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      const pcm = buf.readInt16LE(dataStart + i * 2);
+      ulawBuf[i] = encodeLinear16ToUlaw(pcm);
+    }
+    const baseName = path.basename(wavPath, '.wav');
+    const primaryUlawPath = wavPath.replace(/\.wav$/i, '.ulaw');
+    fs.writeFileSync(primaryUlawPath, ulawBuf, { mode: 0o644 });
+    for (const targetDir of extraUlawDirs) {
+      try {
+        const outPath = path.join(targetDir, `${baseName}.ulaw`);
+        fs.writeFileSync(outPath, ulawBuf, { mode: 0o644 });
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 async function downloadAndConvertTts(text: string, destWavPath: string, esWavPath: string, enWavPath: string) {
   if (!text) return;
   try {
@@ -1476,7 +1999,7 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
       const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encodeURIComponent(chunk)}`;
       const tmp = `/tmp/tts_${baseName}_${i}_${Date.now()}.mp3`;
       tmpFiles.push(tmp);
-      await new Promise<void>((resolve, reject) => {
+      await new Promise<void>((resolve) => {
         const file = fs.createWriteStream(tmp);
         https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
           if (res.statusCode !== 200) {
@@ -1497,13 +2020,8 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
     const validTmpFiles = tmpFiles.filter((f) => fs.existsSync(f) && fs.statSync(f).size > 0);
     if (validTmpFiles.length > 0) {
       const concatList = validTmpFiles.join('|');
-      const destGsmPath = destWavPath.replace(/\.wav$/, '.gsm');
-      const esGsmPath = esWavPath.replace(/\.wav$/, '.gsm');
-      const enGsmPath = enWavPath.replace(/\.wav$/, '.gsm');
       const rootWavPath = `/var/lib/asterisk/sounds/${baseName}.wav`;
-      const rootGsmPath = `/var/lib/asterisk/sounds/${baseName}.gsm`;
       const publicWavPath = path.join(process.cwd(), 'public/assets', `${baseName}.wav`);
-      const publicGsmPath = path.join(process.cwd(), 'public/assets', `${baseName}.gsm`);
 
       exec(`ffmpeg -y -i "concat:${concatList}" -ar 8000 -ac 1 -c:a pcm_s16le "${destWavPath}"`, (err) => {
         validTmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
@@ -1514,18 +2032,15 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
           try { fs.copyFileSync(destWavPath, rootWavPath); } catch (_) {}
           try { fs.copyFileSync(destWavPath, publicWavPath); } catch (_) {}
 
-          // Also generate native 8kHz GSM format for zero-transcoding playback
-          exec(`ffmpeg -y -i "${destWavPath}" -ar 8000 -ac 1 -c:a libgsm "${destGsmPath}"`, (gsmErr) => {
-            if (!gsmErr && fs.existsSync(destGsmPath)) {
-              try { fs.chmodSync(destGsmPath, 0o644); } catch (_) {}
-              try { fs.copyFileSync(destGsmPath, esGsmPath); } catch (_) {}
-              try { fs.copyFileSync(destGsmPath, enGsmPath); } catch (_) {}
-              try { fs.copyFileSync(destGsmPath, rootGsmPath); } catch (_) {}
-              try { fs.copyFileSync(destGsmPath, publicGsmPath); } catch (_) {}
-            }
-          });
+          // Generate native 8kHz .ulaw for zero-transcoding direct RTP playback
+          ensureNativeUlawFromWav(destWavPath, [
+            path.dirname(esWavPath),
+            path.dirname(enWavPath),
+            '/var/lib/asterisk/sounds',
+            path.join(process.cwd(), 'public/assets'),
+          ]);
 
-          console.log(`[TTS VOICE] ✓ Audio de voz humana generado en español (WAV y GSM): ${baseName}`);
+          console.log(`[TTS VOICE] ✓ Audio de voz humana generado en español (WAV y ULAW nativo): ${baseName}`);
         }
       });
     } else {
@@ -1534,7 +2049,7 @@ async function downloadAndConvertTts(text: string, destWavPath: string, esWavPat
   } catch (_) {}
 }
 
-// Helper to guarantee /var/lib/asterisk/sounds/custom directory has valid PCM audio files
+// Helper to guarantee /var/lib/asterisk/sounds/custom directory has valid PCM + native ULAW audio files
 function ensureCustomAudioFilesExist() {
   const customDir = SOUNDS_CUSTOM_DIR;
   const esCustomDir = '/var/lib/asterisk/sounds/es/custom';
@@ -1608,15 +2123,12 @@ function ensureCustomAudioFilesExist() {
 
   for (const aud of audios) {
     const wavPath = path.join(customDir, `${aud.name}.wav`);
-    const gsmPath = path.join(customDir, `${aud.name}.gsm`);
     const esWavPath = path.join(esCustomDir, `${aud.name}.wav`);
     const enWavPath = path.join(enCustomDir, `${aud.name}.wav`);
     const rootWavPath = `/var/lib/asterisk/sounds/${aud.name}.wav`;
-    const rootGsmPath = `/var/lib/asterisk/sounds/${aud.name}.gsm`;
     const localAssetWav = path.join(process.cwd(), 'public/assets', `${aud.name}.wav`);
-    const localAssetGsm = path.join(process.cwd(), 'public/assets', `${aud.name}.gsm`);
 
-    // Priority 1: If pre-generated natural human Spanish voice exists in public/assets, copy it immediately!
+    // Priority 1: If pre-generated natural human Spanish voice exists in public/assets, copy WAV & synthesize native ULAW!
     if (fs.existsSync(localAssetWav) && fs.statSync(localAssetWav).size > 1000) {
       try {
         fs.copyFileSync(localAssetWav, wavPath);
@@ -1626,27 +2138,27 @@ function ensureCustomAudioFilesExist() {
         try { fs.chmodSync(wavPath, 0o644); } catch (_) {}
         try { fs.chmodSync(esWavPath, 0o644); } catch (_) {}
         try { fs.chmodSync(enWavPath, 0o644); } catch (_) {}
+        ensureNativeUlawFromWav(wavPath, [esCustomDir, enCustomDir, '/var/lib/asterisk/sounds']);
+        // Remove lossy .gsm duplicates if high-quality PCM WAV + ULAW exist so Asterisk never picks GSM
+        for (const staleGsm of [
+          path.join(customDir, `${aud.name}.gsm`),
+          path.join(esCustomDir, `${aud.name}.gsm`),
+          path.join(enCustomDir, `${aud.name}.gsm`),
+          `/var/lib/asterisk/sounds/${aud.name}.gsm`,
+        ]) {
+          try { if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm); } catch (_) {}
+        }
       } catch (_) {}
-
-      if (fs.existsSync(localAssetGsm)) {
-        try {
-          fs.copyFileSync(localAssetGsm, gsmPath);
-          fs.copyFileSync(localAssetGsm, path.join(esCustomDir, `${aud.name}.gsm`));
-          fs.copyFileSync(localAssetGsm, path.join(enCustomDir, `${aud.name}.gsm`));
-          try { fs.copyFileSync(localAssetGsm, rootGsmPath); } catch (_) {}
-          try { fs.chmodSync(gsmPath, 0o644); } catch (_) {}
-        } catch (_) {}
-      }
       continue;
     }
 
     // Priority 2: Check if valid audio exists and is not just an old 3.5s sine beep (~56044 bytes)
     let needsGeneration = false;
-    if (!fs.existsSync(wavPath) && !fs.existsSync(gsmPath)) {
+    if (!fs.existsSync(wavPath)) {
       needsGeneration = true;
     } else if (aud.text) {
       try {
-        if (!fs.existsSync(wavPath) || fs.statSync(wavPath).size <= 56100) {
+        if (fs.statSync(wavPath).size <= 56100) {
           needsGeneration = true;
         }
       } catch (_) {
@@ -1662,22 +2174,20 @@ function ensureCustomAudioFilesExist() {
         try { fs.copyFileSync(wavPath, esWavPath); } catch (_) {}
         try { fs.copyFileSync(wavPath, enWavPath); } catch (_) {}
         try { fs.copyFileSync(wavPath, rootWavPath); } catch (_) {}
+        ensureNativeUlawFromWav(wavPath, [esCustomDir, enCustomDir, '/var/lib/asterisk/sounds']);
       } catch (_) {}
       if (aud.text) {
         downloadAndConvertTts(aud.text, wavPath, esWavPath, enWavPath);
       }
     } else {
-      // Ensure mirrored
+      // Ensure mirrored & native .ulaw exists
       try {
         if (fs.existsSync(wavPath)) {
           if (!fs.existsSync(esWavPath)) fs.copyFileSync(wavPath, esWavPath);
           if (!fs.existsSync(enWavPath)) fs.copyFileSync(wavPath, enWavPath);
-        }
-        if (fs.existsSync(gsmPath)) {
-          const esGsm = path.join(esCustomDir, `${aud.name}.gsm`);
-          const enGsm = path.join(enCustomDir, `${aud.name}.gsm`);
-          if (!fs.existsSync(esGsm)) fs.copyFileSync(gsmPath, esGsm);
-          if (!fs.existsSync(enGsm)) fs.copyFileSync(gsmPath, enGsm);
+          if (!fs.existsSync(wavPath.replace(/\.wav$/i, '.ulaw'))) {
+            ensureNativeUlawFromWav(wavPath, [esCustomDir, enCustomDir, '/var/lib/asterisk/sounds']);
+          }
         }
       } catch (_) {}
     }
@@ -1793,14 +2303,14 @@ app.use('/api', apiRateLimiter, (req, res, next) => {
   return requireApiAuth(req, res, next);
 });
 
-// Default extensions with valid credentials and settings for Asterisk 20 (HD Voice prioritized)
+// Default extensions with valid credentials and settings for Asterisk 20 (Zero-Transcode G.711 ulaw/alaw)
 const defaultExtensionsList = [
   {
     extension: '1000',
     name: 'Super Admin (Modo Espía)',
     secret: 'Adm1nSpy#2026!1000',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['ulaw', 'alaw'],
     maxContacts: 3,
     transport: 'transport-udp',
     port: 47923,
@@ -1814,7 +2324,7 @@ const defaultExtensionsList = [
     name: 'Operador Principal',
     secret: 'Secr3tP@ssw0rd!1001',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['ulaw', 'alaw'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1826,7 +2336,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 2',
     secret: 'S0p0rte#2026@1002',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['ulaw', 'alaw'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1838,7 +2348,7 @@ const defaultExtensionsList = [
     name: 'Agente Soporte 3',
     secret: 'S0p0rte#2026@1003',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['ulaw', 'alaw'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -1850,7 +2360,7 @@ const defaultExtensionsList = [
     name: 'Supervisor Turno',
     secret: 'Superv1sor2026!',
     context: 'from-internal',
-    codecs: ['ulaw', 'alaw', 'g722'],
+    codecs: ['ulaw', 'alaw'],
     maxContacts: 5,
     transport: 'transport-udp',
     port: 47923,
@@ -2004,6 +2514,7 @@ function normalizeUserRecordForStorage(u: any, prev?: any): any {
     merged.sipSecret = merged.sipSecret || prev?.sipSecret || prev?.password;
   }
   delete merged.password;
+  delete merged.effectiveMembership;
   return merged;
 }
 
@@ -2108,7 +2619,6 @@ function saveStoredUsers(users: any[]) {
 
 const CARRIERS_FILE = path.join(DATA_DIR, 'carriers.json');
 const EXTENSIONS_FILE = path.join(DATA_DIR, 'extensions.json');
-const TENANTS_FILE = path.join(DATA_DIR, 'tenants.json');
 const OTP_EXTENSIONS_FILE = path.join(DATA_DIR, 'otp_extensions.json');
 
 export const defaultOtpExtensionsList: any[] = [
@@ -2399,7 +2909,11 @@ function isMassCallsAllowedForUser(user?: any, tenant?: any): boolean {
 
 app.get('/api/tenants', (req, res) => {
   const authUser = (req as any).authUser;
-  const tenants = loadStoredTenants();
+  const settings = loadMembershipSettings();
+  const tenants = loadStoredTenants().map((t: any) => ({
+    ...t,
+    effectiveMembership: evaluateMembershipRecord(t?.membership, settings, 'tenant', String(t?.id || ''), String(t?.name || t?.code || '')),
+  }));
   if (isGlobalAdminUser(authUser)) {
     return res.json({ success: true, tenants });
   }
@@ -2413,7 +2927,21 @@ app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
   try {
     const { tenants, carriers, extensions } = req.body;
     if (Array.isArray(tenants)) {
-      saveStoredTenants(tenants);
+      const existingTenants = loadStoredTenants();
+      const prevById = new Map<string, any>();
+      for (const et of existingTenants) {
+        if (et?.id) prevById.set(String(et.id), et);
+      }
+      const preservedTenants = tenants.map((t: any) => {
+        if (!t || typeof t !== 'object') return t;
+        const { effectiveMembership: _em, ...cleanTenant } = t;
+        const prevT = t.id ? prevById.get(String(t.id)) : null;
+        if (prevT?.membership) {
+          cleanTenant.membership = prevT.membership;
+        }
+        return cleanTenant;
+      });
+      saveStoredTenants(preservedTenants);
       if (Array.isArray(carriers) && carriers.length > 0) {
         lastSyncedCarriers = carriers;
         saveStoredCarriers(carriers);
@@ -2425,7 +2953,7 @@ app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
       const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
       const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
       const activeUsers = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
-      syncTenantCarriersToAstDb(tenants, activeCarriers).catch(() => {});
+      syncTenantCarriersToAstDb(preservedTenants, activeCarriers).catch(() => {});
       try {
         const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, activeUsers);
         lastGeneratedPjsip = updatedPjsip;
@@ -2441,7 +2969,7 @@ app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
         }
         sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']).catch(() => {});
       } catch (_) {}
-      return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas en PJSIP + Dialplan.', count: tenants.length });
+      return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas en PJSIP + Dialplan.', count: preservedTenants.length });
     }
     res.status(400).json({ success: false, error: 'tenants debe ser un array' });
   } catch (err: any) {
@@ -2590,7 +3118,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
           transport: 'transport-udp',
           port: 47923,
           maxContacts: 10,
-          codecs: ['ulaw', 'alaw', 'g722'],
+          codecs: ['ulaw', 'alaw'],
           callerIdNum: (Array.isArray(u.assignedExtensions) && u.assignedExtensions[0]) || cleanU,
           callerIdName: u.name || cleanU,
           status: 'registered',
@@ -2632,7 +3160,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
             transport: 'transport-udp',
             port: 47923,
             maxContacts: 10,
-            codecs: ['ulaw', 'alaw', 'g722'],
+            codecs: ['ulaw', 'alaw'],
             callerIdNum: cleanC,
             callerIdName: c.name || cleanC,
             status: 'registered',
@@ -2727,8 +3255,6 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     }
     const cleanCidNum = (ext.callerIdNum && !String(ext.callerIdNum).includes('5550199') && !String(ext.callerIdNum).includes('Asignado')) ? ext.callerIdNum : num;
     const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
-    const rawCodecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : 'ulaw,alaw,g722';
-    const codecs = prioritizeZeroTranscodeCodecs(rawCodecs);
     const extPort = parseInt(ext.port, 10) || activePort;
 
     let transport = 'transport-udp';
@@ -2742,12 +3268,19 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       transport = 'transport-udp';
     }
 
+    const isWebRtcExt = transport === 'transport-wss';
+    const rawCodecs = (ext.codecs && ext.codecs.length > 0) ? ext.codecs.join(',') : (isWebRtcExt ? 'opus,ulaw,alaw' : 'ulaw,alaw');
+    const codecs = prioritizeZeroTranscodeCodecs(rawCodecs, false, isWebRtcExt);
+
     pjsipContent += `; --- EXTENSIÓN ${num} (${ext.name || 'Agente'} - Puerto SIP ${extPort}) ---\n`;
     pjsipContent += `[${num}]\n`;
     pjsipContent += `type = endpoint\n`;
     pjsipContent += `context = ${ext.context || 'from-internal'}\n`;
     pjsipContent += `disallow = all\n`;
     pjsipContent += `allow = ${codecs}\n`;
+    pjsipContent += `incoming_call_offer_pref = local_first\n`;
+    pjsipContent += `outgoing_call_offer_pref = local_first\n`;
+    pjsipContent += `preferred_codec_only = yes\n`;
     pjsipContent += `auth = ${num}-auth\n`;
     pjsipContent += `aors = ${num}\n`;
     pjsipContent += `callerid = ${callerId}\n`;
@@ -2764,9 +3297,11 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `identify_by = auth_username,username\n`;
     pjsipContent += `callerid_privacy = allowed\n`;
     pjsipContent += `dtmf_mode = rfc4733\n`;
-    pjsipContent += `rtp_keepalive = 5\n`;
+    pjsipContent += `rtp_keepalive = 30\n`;
+    pjsipContent += `rtp_timeout = 60\n`;
+    pjsipContent += `rtp_timeout_hold = 300\n`;
     pjsipContent += `asymmetric_rtp_codec = no\n`;
-    pjsipContent += `timers = yes\n`;
+    pjsipContent += `timers = no\n`;
     pjsipContent += `language = es\n`;
     pjsipContent += `moh_suggest = default\n\n`;
 
@@ -3159,7 +3694,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `; Subrutina Pre-Dial para preparacion de audio en canal saliente real (CallerID asignado por el proveedor SIP)\n`;
   dialplanContent += `[sub-pjsip-outbound]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Canal: \${CHANNEL} | CID Carrier=\${ARG1} | TrunkUser=\${ARG2} ===)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(fixed)=60,150)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
@@ -3668,12 +4203,12 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(fixed)=60,150)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
   dialplanContent += `exten => s,1,NoOp(Llamada Entrante s por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
+  dialplanContent += ` same => n,Set(JITTERBUFFER(fixed)=60,150)\n`;
   dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
@@ -3688,8 +4223,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-captura-vivo]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [CAPTURA-DINAMICA-OTP] INICIO MOTOR CAPTURA CON EXT: \${OTP_ENGINE_EXTEN} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(adaptive)=default)\n`;
-  dialplanContent += ` same => n,Wait(1.5)\n`;
+  dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(CURR_EXT=\${IF($["\${OTP_ENGINE_EXTEN}" != ""]?\${OTP_ENGINE_EXTEN}:4001)})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -3844,7 +4378,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
   dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -3853,8 +4387,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
   dialplanContent += ` same => n(amd_silence_human_press1),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
-  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
-  dialplanContent += ` same => n,Wait(1.5)\n`;
+  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Prueba local o detección apagada -> Inicio rápido de audio ===)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(1.2))\n`;
   dialplanContent += ` same => n(amd_ok_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
@@ -3991,7 +4525,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
   dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -4000,8 +4534,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
   dialplanContent += ` same => n(amd_silence_human_otp),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
-  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Detección apagada -> Espera de 1.5s antes de IVR ===)\n`;
-  dialplanContent += ` same => n,Wait(1.5)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Prueba local o detección apagada -> Inicio rápido de audio ===)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(1.2))\n`;
   dialplanContent += ` same => n(amd_ok_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
@@ -4295,7 +4829,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_ata)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_ata)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Audio+Agent hacia \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -4304,7 +4838,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
   dialplanContent += ` same => n(amd_silence_human_ata),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
-  dialplanContent += ` same => n(skip_amd_ata),Wait(1.5)\n`;
+  dialplanContent += ` same => n(skip_amd_ata),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(1.2))\n`;
   dialplanContent += ` same => n(amd_ok_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
@@ -4360,7 +4894,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_p1c)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_p1c)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -4369,7 +4903,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
   dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
-  dialplanContent += ` same => n(skip_amd_p1c),Wait(1.5)\n`;
+  dialplanContent += ` same => n(skip_amd_p1c),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(1.2))\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_DEST})=waiting_press1)\n`;
@@ -4532,7 +5066,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada IVR Captura OTP hacia \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
@@ -4541,7 +5075,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
   dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
-  dialplanContent += ` same => n(skip_amd_otp_v),Wait(1.5)\n`;
+  dialplanContent += ` same => n(skip_amd_otp_v),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(1.2))\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -5669,7 +6203,9 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
       for (const u of req.body.users) {
         if (u && (u.id || u.username)) {
           const k = String(u.id || u.username).toLowerCase();
-          mergedMap.set(k, { ...(mergedMap.get(k) || {}), ...u });
+          const prev = mergedMap.get(k);
+          const { effectiveMembership: _em, membership: _m, ...cleanIncoming } = u;
+          mergedMap.set(k, { ...(prev || {}), ...cleanIncoming, ...(prev?.membership ? { membership: prev.membership } : {}) });
         }
       }
       saveStoredUsers(Array.from(mergedMap.values()));
@@ -5677,9 +6213,14 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
       lastSyncedUsers = usersToInclude;
     }
 
+    const storedTenantsList = loadStoredTenants();
     const tenantsToSync = Array.isArray(req.body.tenants) && req.body.tenants.length > 0
-      ? req.body.tenants
-      : loadStoredTenants();
+      ? req.body.tenants.map((t: any) => {
+          const prevT = storedTenantsList.find((st: any) => st && String(st.id) === String(t?.id));
+          const { effectiveMembership: _em, membership: _m, ...cleanT } = t || {};
+          return { ...cleanT, ...(prevT?.membership ? { membership: prevT.membership } : {}) };
+        })
+      : storedTenantsList;
     if (Array.isArray(req.body.tenants) && req.body.tenants.length > 0) {
       saveStoredTenants(tenantsToSync);
     }
@@ -5969,7 +6510,7 @@ let isAmdEnabled: boolean = loadStoredAmdEnabled();
 let press1DestinationMode: 'ringall' | 'specific' = 'ringall';
 let press1SelectedExtensions: string[] = ['1001'];
 
-app.post('/api/asterisk/call/originate', async (req, res) => {
+app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, res) => {
   try {
     const rawDest = req.body.destination || req.body.exten || req.body.number;
     const {
@@ -6572,7 +7113,7 @@ app.post('/api/asterisk/call/originate', async (req, res) => {
 });
 
 // Endpoint for agent to mark captured OTP as valid or invalid
-app.post('/api/asterisk/otp/verify', (req, res) => {
+app.post('/api/asterisk/otp/verify', requireActiveMembership, (req, res) => {
   try {
     const { id, number, status } = req.body;
     if (!status || !['valid', 'invalid', 'pending'].includes(status)) {
@@ -6683,7 +7224,7 @@ app.get('/api/asterisk/audio/list', (req, res) => {
 });
 
 // Upload and convert audio file to Asterisk format (WAV 8000Hz PCM 16-bit Mono)
-app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (req, res) => {
+app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ limit: '50mb' }), async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     if (!isAdminUser(authUser) && !authUser?.permissions?.canUploadAudio) {
@@ -6746,14 +7287,19 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
     execFile('ffmpeg', ['-y', '-i', tempRawPath, '-ar', '8000', '-ac', '1', '-c:a', 'pcm_s16le', targetPath], (ffmpegErr) => {
       if (!ffmpegErr) {
         try { fs.unlinkSync(tempRawPath); } catch (e) {}
-        console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath}`);
+        ensureNativeUlawFromWav(targetPath, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
+        try {
+          const staleGsm = targetPath.replace(/\.wav$/i, '.gsm');
+          if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm);
+        } catch (_) {}
+        console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath} (+ .ulaw nativo)`);
         onAudioSavedSuccess('ffmpeg');
         return res.json({
           success: true,
           asteriskPath: `custom/${cleanBaseName}`,
           fileName: targetWavName,
-          format: 'WAV 8000Hz PCM 16-bit Mono',
-          message: `Audio guardado y optimizado para Asterisk en custom/${cleanBaseName}`,
+          format: 'WAV 8000Hz PCM 16-bit Mono + ULAW',
+          message: `Audio guardado y optimizado para Asterisk (sin transcodificación) en custom/${cleanBaseName}`,
         });
       }
 
@@ -6761,14 +7307,19 @@ app.post('/api/asterisk/audio/upload', express.json({ limit: '50mb' }), async (r
       execFile('sox', [tempRawPath, '-r', '8000', '-c', '1', '-b', '16', targetPath], (soxErr) => {
         if (!soxErr) {
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
-          console.log(`[AUDIO OK - sox] Convertido a ${targetPath}`);
+          ensureNativeUlawFromWav(targetPath, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
+          try {
+            const staleGsm = targetPath.replace(/\.wav$/i, '.gsm');
+            if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm);
+          } catch (_) {}
+          console.log(`[AUDIO OK - sox] Convertido a ${targetPath} (+ .ulaw nativo)`);
           onAudioSavedSuccess('sox');
           return res.json({
             success: true,
             asteriskPath: `custom/${cleanBaseName}`,
             fileName: targetWavName,
-            format: 'WAV 8000Hz PCM 16-bit Mono',
-            message: `Audio guardado y optimizado con sox en custom/${cleanBaseName}`,
+            format: 'WAV 8000Hz PCM 16-bit Mono + ULAW',
+            message: `Audio guardado y optimizado con sox (sin transcodificación) en custom/${cleanBaseName}`,
           });
         }
 
@@ -7684,7 +8235,19 @@ function sanitizeStateForClient(state: any, includeSecrets = false) {
   if (!state || typeof state !== 'object') return state;
   const stripped = stripHeavyBlobs(state);
   if (Array.isArray(stripped.users)) {
-    stripped.users = stripped.users.map(sanitizeUserForClient);
+    const authUsersList = loadStoredUsers();
+    const authById = new Map<string, any>();
+    for (const au of authUsersList) {
+      if (au?.id) authById.set(String(au.id).toLowerCase(), au);
+      if (au?.username) authById.set(String(au.username).toLowerCase(), au);
+    }
+    stripped.users = stripped.users.map((u: any) => {
+      const authMatch =
+        (u?.id && authById.get(String(u.id).toLowerCase())) ||
+        (u?.username && authById.get(String(u.username).toLowerCase()));
+      const mergedU = authMatch ? { ...u, membership: authMatch.membership } : u;
+      return sanitizeUserForClient(mergedU);
+    });
   }
   if (!includeSecrets) {
     if (Array.isArray(stripped.carriers)) {
@@ -8125,7 +8688,7 @@ app.get('/api/app/ivr-workspace', (req, res) => {
   return res.json({ success: true, workspace: null, canUseMassCalls: isGlobalAdminUser((req as any).authUser) });
 });
 
-app.post('/api/app/ivr-workspace', (req, res) => {
+app.post('/api/app/ivr-workspace', requireActiveMembership, (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const authIsGlobalAdmin = isGlobalAdminUser(authUser);
@@ -8942,7 +9505,7 @@ app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) =>
 });
 
 // Endpoint for agent to decide if captured OTP is valid or invalid
-app.post('/api/asterisk/otp/decision', async (req, res) => {
+app.post('/api/asterisk/otp/decision', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { id, otp, number, status, action, agent } = req.body;
@@ -9056,7 +9619,7 @@ app.post('/api/asterisk/otp/decision', async (req, res) => {
 });
 
 // Endpoint for agent to signal Asterisk that the cancellation code was sent to the client so Asterisk prompts the client to type it
-app.post('/api/asterisk/call/cancel-code-sent', async (req, res) => {
+app.post('/api/asterisk/call/cancel-code-sent', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { number, agent } = req.body || {};
@@ -10105,7 +10668,7 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
 });
 
 // Endpoint to toggle Hold (Music on Hold) for a live call
-app.post('/api/asterisk/call/hold', async (req, res) => {
+app.post('/api/asterisk/call/hold', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { number, channel, hold = true, holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_' } = req.body;
@@ -10462,7 +11025,7 @@ app.post('/api/asterisk/call/purge-zombies', requireAdminRole, async (req, res) 
 });
 
 // Endpoint to transfer an active live call directly to the automated OTP capture system (Ext. 3333)
-app.post('/api/asterisk/call/transfer-otp', async (req, res) => {
+app.post('/api/asterisk/call/transfer-otp', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { channel, number, exten = '3333', agent } = req.body || {};
@@ -10607,7 +11170,7 @@ function requireSpyPermission(req: express.Request, res: express.Response, next:
 }
 
 // Endpoint to originate live ChanSpy monitoring call to supervisor's softphone/extension (default 1000)
-app.post('/api/asterisk/spy/originate', requireSpyPermission, async (req, res) => {
+app.post('/api/asterisk/spy/originate', requireSpyPermission, requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const {
@@ -11127,7 +11690,7 @@ app.post('/api/reseller/clients', requireGlobalAdmin, async (req, res) => {
       transport: 'transport-udp',
       port: 47923,
       maxContacts: 5,
-      codecs: ['ulaw', 'alaw', 'g722'],
+      codecs: ['ulaw', 'alaw'],
       callerId: `"${client.name || cleanUsername}" <${cleanUsername}>`,
       callerIdNum: cleanUsername,
       callerIdName: client.name || cleanUsername,
@@ -11270,7 +11833,7 @@ disableLocalRing=0
 enableLocalDTMF=1
 enableLog=0
 enableSTUN=0
-forceCodec=
+forceCodec=PCMU/8000
 hideCallerId=0
 localPort=0
 ringtone=
@@ -11337,12 +11900,14 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
         if (u && (u.id || u.username)) {
           const key = String(u.id || u.username).toLowerCase();
           const prev = userMap.get(key) || {};
+          const { membership: _ignoreM, effectiveMembership: _ignoreEm, ...cleanU } = u;
           if (!authIsGlobalAdmin) {
             if (!authUser?.tenantId || (prev.id && String(prev.tenantId || '') !== String(authUser.tenantId))) {
               continue;
             }
             const safeSub = {
-              ...u,
+              ...cleanU,
+              ...(prev?.membership ? { membership: prev.membership } : {}),
               tenantId: authUser.tenantId,
               assignedCallFlowMode: prev?.assignedCallFlowMode,
               allowedCallFlowModes: prev?.allowedCallFlowModes,
@@ -11354,7 +11919,13 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
             if (safeSub.role === 'admin' && !safeSub.tenantId) safeSub.role = 'supervisor';
             userMap.set(key, normalizeUserRecordForStorage(safeSub, prev));
           } else {
-            userMap.set(key, normalizeUserRecordForStorage(u, prev));
+            userMap.set(
+              key,
+              normalizeUserRecordForStorage(
+                { ...cleanU, ...(prev?.membership ? { membership: prev.membership } : {}) },
+                prev
+              )
+            );
           }
         }
       }
@@ -11393,10 +11964,24 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       ? targetUser.password.trim()
       : (prevUser?.sipSecret || existingResellerClient?.sipPassword || crypto.randomBytes(12).toString('base64url'));
 
+    const { membership: _discardM, effectiveMembership: _discardEm, ...cleanTargetFields } = targetUser;
+    let preservedMembership = prevUser?.membership;
+    if (!prevUser && authIsGlobalAdmin && req.body.activateInitialMonth === true) {
+      const mRes = applyMembershipActivation(
+        undefined,
+        { action: 'initial_month', notes: 'Activación inicial de 1 Mes al crear usuario' },
+        authUser.username || 'admin'
+      );
+      if (mRes.ok && mRes.membership) {
+        preservedMembership = mRes.membership;
+      }
+    }
+
     const sanitizedTarget = authIsGlobalAdmin
-      ? { ...targetUser }
+      ? { ...cleanTargetFields, ...(preservedMembership ? { membership: preservedMembership } : {}) }
       : {
-          ...targetUser,
+          ...cleanTargetFields,
+          ...(preservedMembership ? { membership: preservedMembership } : {}),
           tenantId: authUser.tenantId,
           role: targetUser.role === 'admin' && !authUser.tenantId ? 'supervisor' : targetUser.role,
           assignedCallFlowMode: prevUser?.assignedCallFlowMode,
@@ -11434,7 +12019,7 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       transport: 'transport-udp',
       port: 47923,
       maxContacts: 10,
-      codecs: ['ulaw', 'alaw', 'g722'],
+      codecs: ['ulaw', 'alaw'],
       callerIdNum: (Array.isArray(targetUser.assignedExtensions) && targetUser.assignedExtensions[0]) || cleanUser,
       callerIdName: targetUser.name || cleanUser,
       status: 'registered',
@@ -11476,7 +12061,7 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
             transport: 'transport-udp',
             port: 47923,
             maxContacts: 3,
-            codecs: ['ulaw', 'alaw', 'g722'],
+            codecs: ['ulaw', 'alaw'],
             callerId: `"${targetUser.name || cleanAssigned}" <${cleanAssigned}>`,
             callerIdNum: cleanAssigned,
             callerIdName: targetUser.name || cleanAssigned,
@@ -11655,6 +12240,516 @@ app.get('/api/reseller/deduct', requireInternalOrGlobalAdmin, (req, res) => {
   }
 });
 
+// ==========================================
+// MEMBERSHIP ENGINE & LIFECYCLE ENDPOINTS
+// ==========================================
+
+app.get('/api/membership/overview', (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const settings = loadMembershipSettings();
+    const tenantsList = loadStoredTenants();
+    const usersList = loadStoredUsers();
+    const requests = loadMembershipRequests();
+    const myMembership = resolveEffectiveMembershipForUser(authUser, tenantsList, settings);
+
+    if (isGlobalAdminUser(authUser)) {
+      const enrichedTenants = tenantsList.map((t: any) => ({
+        ...t,
+        effectiveMembership: evaluateMembershipRecord(
+          t?.membership,
+          settings,
+          'tenant',
+          String(t?.id || ''),
+          String(t?.name || t?.code || '')
+        ),
+      }));
+      const enrichedUsers = usersList.map((u: any) => sanitizeUserForClient(u));
+      return res.json({
+        success: true,
+        settings,
+        myMembership,
+        myRequests: requests,
+        users: enrichedUsers,
+        tenants: enrichedTenants,
+        requests,
+      });
+    }
+
+    const myRequests = requests.filter(
+      (r: any) =>
+        r &&
+        ((r.targetType === myMembership.scope && String(r.targetId) === String(myMembership.targetId)) ||
+          String(r.requestedByUserId) === String(authUser?.id))
+    );
+
+    return res.json({
+      success: true,
+      settings,
+      myMembership,
+      myRequests,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/membership/settings', requireGlobalAdmin, (req, res) => {
+  try {
+    const updated = saveMembershipSettings(req.body || {});
+    return res.json({
+      success: true,
+      settings: updated,
+      message: 'Configuración global de membresías guardada.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const {
+      targetType,
+      targetId,
+      action,
+      weeksCount,
+      amountPaid,
+      paymentMethod,
+      reference,
+      notes,
+    } = req.body || {};
+
+    if (targetType !== 'user' && targetType !== 'tenant') {
+      return res.status(400).json({ success: false, error: 'targetType debe ser "user" o "tenant".' });
+    }
+    if (!targetId) {
+      return res.status(400).json({ success: false, error: 'targetId es requerido.' });
+    }
+    if (!['initial_month', 'weekly_extension', 'suspend', 'reactivate', 'reset'].includes(String(action))) {
+      return res.status(400).json({ success: false, error: 'Acción de membresía no válida.' });
+    }
+
+    const settings = loadMembershipSettings();
+    const performer = String(authUser?.username || authUser?.name || 'admin');
+
+    if (targetType === 'tenant') {
+      const tenantsList = loadStoredTenants();
+      const idx = tenantsList.findIndex((t: any) => t && String(t.id) === String(targetId));
+      if (idx === -1) {
+        return res.status(404).json({ success: false, error: 'Call Center no encontrado.' });
+      }
+      const targetTenant = tenantsList[idx];
+      const result = applyMembershipActivation(
+        targetTenant.membership,
+        { action, weeksCount, amountPaid, paymentMethod, reference, notes },
+        performer,
+        settings
+      );
+      if (!result.ok) {
+        return res.status(400).json({ success: false, error: result.error });
+      }
+      tenantsList[idx] = { ...targetTenant, membership: result.membership };
+      saveStoredTenants(tenantsList);
+      syncMembershipToAstDb('tenant', String(targetTenant.id), result.membership);
+      const effectiveMembership = evaluateMembershipRecord(
+        result.membership,
+        settings,
+        'tenant',
+        String(targetTenant.id),
+        String(targetTenant.name || targetTenant.code || '')
+      );
+      return res.json({
+        success: true,
+        targetType: 'tenant',
+        target: { ...tenantsList[idx], effectiveMembership },
+        effectiveMembership,
+        message:
+          action === 'initial_month'
+            ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetTenant.name}.`
+            : action === 'weekly_extension'
+            ? `Membresía de ${targetTenant.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
+            : `Estado de membresía actualizado para ${targetTenant.name}.`,
+      });
+    }
+
+    const usersList = loadStoredUsers();
+    const uIdx = usersList.findIndex((u: any) => u && String(u.id) === String(targetId));
+    if (uIdx === -1) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado.' });
+    }
+    const targetUser = usersList[uIdx];
+    if (isGlobalAdminUser(targetUser)) {
+      return res.status(400).json({ success: false, error: 'El Super Administrador Global está exento de membresía.' });
+    }
+    const result = applyMembershipActivation(
+      targetUser.membership,
+      { action, weeksCount, amountPaid, paymentMethod, reference, notes },
+      performer,
+      settings
+    );
+    if (!result.ok) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    usersList[uIdx] = { ...targetUser, membership: result.membership };
+    saveStoredUsers(usersList);
+    lastSyncedUsers = loadStoredUsers();
+    syncMembershipToAstDb('user', String(targetUser.id), result.membership);
+    const sanitized = sanitizeUserForClient(usersList[uIdx]);
+    return res.json({
+      success: true,
+      targetType: 'user',
+      target: sanitized,
+      effectiveMembership: sanitized.effectiveMembership,
+      message:
+        action === 'initial_month'
+          ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetUser.name}.`
+          : action === 'weekly_extension'
+          ? `Membresía de ${targetUser.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
+          : `Estado de membresía actualizado para ${targetUser.name}.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/membership/bulk-activate-legacy', requireGlobalAdmin, (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const settings = loadMembershipSettings();
+    const performer = String(authUser?.username || authUser?.name || 'admin');
+    let activatedTenants = 0;
+    let activatedUsers = 0;
+
+    const tenantsList = loadStoredTenants();
+    const updatedTenants = tenantsList.map((t: any) => {
+      if (t && !t.membership?.initialMonthActivated) {
+        const resAct = applyMembershipActivation(
+          t.membership,
+          { action: 'initial_month', amountPaid: 0, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
+          performer,
+          settings
+        );
+        if (resAct.ok) {
+          activatedTenants += 1;
+          syncMembershipToAstDb('tenant', String(t.id), resAct.membership);
+          return { ...t, membership: resAct.membership };
+        }
+      }
+      return t;
+    });
+    if (activatedTenants > 0) saveStoredTenants(updatedTenants);
+
+    const usersList = loadStoredUsers();
+    const updatedUsers = usersList.map((u: any) => {
+      if (u && !isGlobalAdminUser(u) && !u.tenantId && !u.membership?.initialMonthActivated) {
+        const resAct = applyMembershipActivation(
+          u.membership,
+          { action: 'initial_month', amountPaid: 0, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
+          performer,
+          settings
+        );
+        if (resAct.ok) {
+          activatedUsers += 1;
+          syncMembershipToAstDb('user', String(u.id), resAct.membership);
+          return { ...u, membership: resAct.membership };
+        }
+      }
+      return u;
+    });
+    if (activatedUsers > 0) {
+      saveStoredUsers(updatedUsers);
+      lastSyncedUsers = loadStoredUsers();
+    }
+
+    return res.json({
+      success: true,
+      activatedTenants,
+      activatedUsers,
+      message: `Activación inicial aplicada: ${activatedTenants} Call Center(s) y ${activatedUsers} cliente(s) individuales activados por ${settings.initialMonthDays} días.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/membership/request-renewal', (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    if (!authUser) {
+      return res.status(401).json({ success: false, error: 'Autenticación requerida.' });
+    }
+    if (isGlobalAdminUser(authUser)) {
+      return res.status(400).json({ success: false, error: 'El Super Administrador Global no requiere membresía.' });
+    }
+
+    const {
+      planType,
+      weeksCount = 1,
+      paymentMethod = 'transfer',
+      reference = '',
+      notes = '',
+      payWithBalance = false,
+    } = req.body || {};
+
+    if (planType !== 'initial_month' && planType !== 'weekly_extension') {
+      return res.status(400).json({ success: false, error: 'Tipo de plan no válido.' });
+    }
+
+    const settings = loadMembershipSettings();
+    const tenantsList = loadStoredTenants();
+    const effective = resolveEffectiveMembershipForUser(authUser, tenantsList, settings);
+    if (effective.scope === 'global_admin') {
+      return res.status(400).json({ success: false, error: 'Cuenta exenta.' });
+    }
+
+    if (planType === 'weekly_extension' && !effective.initialMonthActivated) {
+      return res.status(400).json({
+        success: false,
+        error: `Primera activación obligatoria: primero debes solicitar/activar la Membresía Principal de 1 Mes (${settings.initialMonthDays} días) antes de activar semanas.`,
+      });
+    }
+
+    const normalizedWeeks = planType === 'initial_month' ? 0 : Math.floor(Number(weeksCount) || 0);
+    if (planType === 'weekly_extension' && (!Number.isFinite(normalizedWeeks) || normalizedWeeks < 1 || normalizedWeeks > 52)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Indica un número entero de semanas válido (mínimo 1 semana, máximo 52).',
+      });
+    }
+
+    const daysCount = planType === 'initial_month' ? settings.initialMonthDays : normalizedWeeks * settings.weekDays;
+    const estimatedPriceUsd = planType === 'initial_month' ? settings.initialMonthPriceUsd : normalizedWeeks * settings.weeklyPriceUsd;
+
+    // Optional instant self-activation from account balance if enabled by Super Admin
+    if (payWithBalance && settings.allowSelfRenewalFromBalance) {
+      if (effective.scope === 'tenant') {
+        const tIdx = tenantsList.findIndex((t: any) => t && String(t.id) === String(effective.targetId));
+        if (tIdx >= 0 && (Number(tenantsList[tIdx].dollarBalance) || 0) >= estimatedPriceUsd) {
+          const targetTenant = tenantsList[tIdx];
+          const resAct = applyMembershipActivation(
+            targetTenant.membership,
+            {
+              action: planType,
+              weeksCount: normalizedWeeks,
+              amountPaid: estimatedPriceUsd,
+              paymentMethod: 'saldo_prepago',
+              reference: 'AUTO-SALDO',
+              notes: notes || 'Auto-renovación instantánea descontada del saldo del Call Center',
+            },
+            String(authUser.username || authUser.id),
+            settings
+          );
+          if (!resAct.ok) {
+            return res.status(400).json({ success: false, error: resAct.error });
+          }
+          const newBal = Math.max(0, parseFloat(((Number(targetTenant.dollarBalance) || 0) - estimatedPriceUsd).toFixed(2)));
+          const rate = Number(targetTenant.ratePerMinute) > 0 ? Number(targetTenant.ratePerMinute) : 0.015;
+          tenantsList[tIdx] = {
+            ...targetTenant,
+            dollarBalance: newBal,
+            minuteBalance: Math.floor(newBal / rate),
+            membership: resAct.membership,
+          };
+          saveStoredTenants(tenantsList);
+          syncMembershipToAstDb('tenant', String(targetTenant.id), resAct.membership);
+          return res.json({
+            success: true,
+            instantActivated: true,
+            myMembership: resolveEffectiveMembershipForUser(authUser, tenantsList, settings),
+            message: `Membresía activada al instante con tu saldo ($${estimatedPriceUsd} USD descontados).`,
+          });
+        }
+        return res.status(400).json({ success: false, error: `Saldo insuficiente en el Call Center ($${estimatedPriceUsd} USD requeridos).` });
+      } else {
+        const usersList = loadStoredUsers();
+        const uIdx = usersList.findIndex((u: any) => u && String(u.id) === String(effective.targetId));
+        if (uIdx >= 0 && (Number(usersList[uIdx].balance) || 0) >= estimatedPriceUsd) {
+          const targetUser = usersList[uIdx];
+          const resAct = applyMembershipActivation(
+            targetUser.membership,
+            {
+              action: planType,
+              weeksCount: normalizedWeeks,
+              amountPaid: estimatedPriceUsd,
+              paymentMethod: 'saldo_prepago',
+              reference: 'AUTO-SALDO',
+              notes: notes || 'Auto-renovación instantánea descontada del saldo de usuario',
+            },
+            String(authUser.username || authUser.id),
+            settings
+          );
+          if (!resAct.ok) {
+            return res.status(400).json({ success: false, error: resAct.error });
+          }
+          const newBal = Math.max(0, parseFloat(((Number(targetUser.balance) || 0) - estimatedPriceUsd).toFixed(2)));
+          usersList[uIdx] = {
+            ...targetUser,
+            balance: newBal,
+            allocatedMinutes: Math.round(newBal / (Number(targetUser.costPerMinute) || 0.02)),
+            membership: resAct.membership,
+          };
+          saveStoredUsers(usersList);
+          lastSyncedUsers = loadStoredUsers();
+          syncMembershipToAstDb('user', String(targetUser.id), resAct.membership);
+          return res.json({
+            success: true,
+            instantActivated: true,
+            myMembership: resolveEffectiveMembershipForUser(usersList[uIdx], tenantsList, settings),
+            message: `Membresía activada al instante con tu saldo ($${estimatedPriceUsd} USD descontados).`,
+          });
+        }
+        return res.status(400).json({ success: false, error: `Saldo insuficiente ($${estimatedPriceUsd} USD requeridos).` });
+      }
+    }
+
+    const cleanRef = String(reference || '').trim();
+    if (!cleanRef) {
+      return res.status(400).json({ success: false, error: 'Ingresa una referencia o comprobante de pago para enviar la solicitud.' });
+    }
+
+    const newReq = {
+      id: `mreq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      targetType: effective.scope,
+      targetId: effective.targetId,
+      targetName: effective.targetName,
+      requestedByUserId: String(authUser.id),
+      requestedByUsername: String(authUser.username || authUser.name || ''),
+      planType,
+      weeksCount: normalizedWeeks,
+      daysCount,
+      estimatedPriceUsd,
+      paymentMethod: String(paymentMethod || 'transfer').slice(0, 40),
+      reference: cleanRef.slice(0, 120),
+      notes: String(notes || '').trim().slice(0, 300),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    const requests = loadMembershipRequests();
+    requests.unshift(newReq);
+    saveMembershipRequests(requests.slice(0, 200));
+
+    return res.json({
+      success: true,
+      instantActivated: false,
+      request: newReq,
+      message: 'Solicitud de membresía enviada. El Super Administrador revisará tu pago y activará los días.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req, res) => {
+  try {
+    const authUser = (req as any).authUser;
+    const { requestId } = req.params;
+    const { decision, rejectionReason } = req.body || {};
+    if (decision !== 'approve' && decision !== 'reject') {
+      return res.status(400).json({ success: false, error: 'decision debe ser "approve" o "reject".' });
+    }
+
+    const requests = loadMembershipRequests();
+    const rIdx = requests.findIndex((r: any) => r && String(r.id) === String(requestId));
+    if (rIdx === -1) {
+      return res.status(404).json({ success: false, error: 'Solicitud no encontrada.' });
+    }
+    const reqItem = requests[rIdx];
+    if (reqItem.status !== 'pending') {
+      return res.status(400).json({ success: false, error: 'Esta solicitud ya fue procesada anteriormente.' });
+    }
+
+    const resolverName = String(authUser?.username || authUser?.name || 'admin');
+    const nowIso = new Date().toISOString();
+
+    if (decision === 'reject') {
+      requests[rIdx] = {
+        ...reqItem,
+        status: 'rejected',
+        resolvedAt: nowIso,
+        resolvedBy: resolverName,
+        rejectionReason: String(rejectionReason || 'Pago no verificado').trim().slice(0, 240),
+      };
+      saveMembershipRequests(requests);
+      return res.json({ success: true, request: requests[rIdx], message: 'Solicitud rechazada.' });
+    }
+
+    const settings = loadMembershipSettings();
+    if (reqItem.targetType === 'tenant') {
+      const tenantsList = loadStoredTenants();
+      const tIdx = tenantsList.findIndex((t: any) => t && String(t.id) === String(reqItem.targetId));
+      if (tIdx === -1) {
+        return res.status(404).json({ success: false, error: 'Call Center destino ya no existe.' });
+      }
+      const resAct = applyMembershipActivation(
+        tenantsList[tIdx].membership,
+        {
+          action: reqItem.planType,
+          weeksCount: reqItem.weeksCount,
+          amountPaid: reqItem.estimatedPriceUsd,
+          paymentMethod: reqItem.paymentMethod,
+          reference: reqItem.reference,
+          notes: `Solicitud aprobada (${reqItem.reference})`,
+          requestApproved: true,
+        },
+        resolverName,
+        settings
+      );
+      if (!resAct.ok) {
+        return res.status(400).json({ success: false, error: resAct.error });
+      }
+      tenantsList[tIdx] = { ...tenantsList[tIdx], membership: resAct.membership };
+      saveStoredTenants(tenantsList);
+      syncMembershipToAstDb('tenant', String(tenantsList[tIdx].id), resAct.membership);
+    } else {
+      const usersList = loadStoredUsers();
+      const uIdx = usersList.findIndex((u: any) => u && String(u.id) === String(reqItem.targetId));
+      if (uIdx === -1) {
+        return res.status(404).json({ success: false, error: 'Usuario destino ya no existe.' });
+      }
+      const resAct = applyMembershipActivation(
+        usersList[uIdx].membership,
+        {
+          action: reqItem.planType,
+          weeksCount: reqItem.weeksCount,
+          amountPaid: reqItem.estimatedPriceUsd,
+          paymentMethod: reqItem.paymentMethod,
+          reference: reqItem.reference,
+          notes: `Solicitud aprobada (${reqItem.reference})`,
+          requestApproved: true,
+        },
+        resolverName,
+        settings
+      );
+      if (!resAct.ok) {
+        return res.status(400).json({ success: false, error: resAct.error });
+      }
+      usersList[uIdx] = { ...usersList[uIdx], membership: resAct.membership };
+      saveStoredUsers(usersList);
+      lastSyncedUsers = loadStoredUsers();
+      syncMembershipToAstDb('user', String(usersList[uIdx].id), resAct.membership);
+    }
+
+    requests[rIdx] = {
+      ...reqItem,
+      status: 'approved',
+      resolvedAt: nowIso,
+      resolvedBy: resolverName,
+    };
+    saveMembershipRequests(requests);
+
+    return res.json({
+      success: true,
+      request: requests[rIdx],
+      message: `Solicitud aprobada y membresía activada para ${reqItem.targetName}.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Ensure any unhandled /api/* routes return JSON 404, NEVER index.html or <!doctype>
 app.all('/api/*', (req, res) => {
   res.status(404).json({
@@ -11746,6 +12841,37 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Asterisk 20 Governor Server running on http://0.0.0.0:${PORT}`);
+    setInterval(() => {
+      try {
+        const now = Date.now();
+        const tenantsList = loadStoredTenants();
+        let tenantsChanged = false;
+        for (let i = 0; i < tenantsList.length; i++) {
+          const t = tenantsList[i];
+          if (t?.membership?.status === 'active' && t.membership.expiresAt && Date.parse(t.membership.expiresAt) <= now) {
+            tenantsList[i] = { ...t, membership: { ...t.membership, status: 'expired' } };
+            syncMembershipToAstDb('tenant', String(t.id), tenantsList[i].membership);
+            tenantsChanged = true;
+          }
+        }
+        if (tenantsChanged) saveStoredTenants(tenantsList);
+
+        const usersList = loadStoredUsers();
+        let usersChanged = false;
+        for (let i = 0; i < usersList.length; i++) {
+          const u = usersList[i];
+          if (u?.membership?.status === 'active' && u.membership.expiresAt && Date.parse(u.membership.expiresAt) <= now) {
+            usersList[i] = { ...u, membership: { ...u.membership, status: 'expired' } };
+            syncMembershipToAstDb('user', String(u.id), usersList[i].membership);
+            usersChanged = true;
+          }
+        }
+        if (usersChanged) {
+          saveStoredUsers(usersList);
+          lastSyncedUsers = loadStoredUsers();
+        }
+      } catch (_) {}
+    }, 60 * 1000).unref();
     if (!hasLocalAsterisk) {
       return;
     }

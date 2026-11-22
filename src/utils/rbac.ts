@@ -11,6 +11,7 @@ export type AppModuleId =
   | 'ivr'
   | 'audios'
   | 'users'
+  | 'membership'
   | 'telemetry';
 
 /**
@@ -19,6 +20,11 @@ export type AppModuleId =
  */
 export function isTabAllowedForUser(tabId: string, user?: SystemUser | null): boolean {
   if (!user) return false;
+
+  // Todos los usuarios autenticados pueden consultar/gestionar su módulo de Membresía
+  if (tabId === 'membership') {
+    return true;
+  }
 
   // 1. Super Administrator: unrestricted full access
   if (user.role === 'admin') {

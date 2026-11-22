@@ -17,8 +17,9 @@ import {
   PhoneForwarded,
   Cpu,
   Mic,
+  CalendarClock,
 } from 'lucide-react';
-import { AsteriskConnectionSettings, SystemUser } from '../types';
+import { AsteriskConnectionSettings, EffectiveMembershipStatus, SystemUser } from '../types';
 import { isTabAllowedForUser, getRoleBadgeInfo } from '../utils/rbac';
 import { BrandLogo, BrandWordmark } from './BrandLogo';
 
@@ -39,6 +40,9 @@ interface SidebarProps {
   onToggleTheme?: () => void;
   amdEnabled?: boolean;
   onOpenAmdModal?: () => void;
+  myMembership?: EffectiveMembershipStatus | null;
+  pendingMembershipRequestsCount?: number;
+  isMembershipLocked?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -58,7 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
   amdEnabled = true,
   onOpenAmdModal,
+  myMembership,
+  pendingMembershipRequestsCount = 0,
+  isMembershipLocked = false,
 }) => {
+  const isGlobalSuperAdmin = Boolean(currentUser?.role === 'admin' && !currentUser?.tenantId);
   const navItems = [
     {
       id: 'production',
@@ -136,6 +144,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Usuarios & Permisos',
       subtitle: 'Control de Roles RBAC',
       icon: Users,
+    },
+    {
+      id: 'membership',
+      label: isGlobalSuperAdmin ? 'Membresías' : 'Mi Membresía',
+      subtitle: isGlobalSuperAdmin ? '1er Mes & Semanas' : 'Vigencia & Renovación',
+      icon: CalendarClock,
+      badge: isGlobalSuperAdmin
+        ? pendingMembershipRequestsCount > 0
+          ? `${pendingMembershipRequestsCount} Pend`
+          : 'PLANES'
+        : myMembership?.status === 'active'
+        ? `${myMembership.remainingDays}d`
+        : myMembership?.status === 'expired'
+        ? 'VENCIDA'
+        : myMembership?.status === 'suspended'
+        ? 'PAUSA'
+        : '1er MES',
+      badgeColor: isGlobalSuperAdmin
+        ? pendingMembershipRequestsCount > 0
+          ? 'bg-amber-500 text-slate-950 font-black animate-pulse'
+          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+        : myMembership?.status === 'active'
+        ? myMembership.remainingDays <= 3
+          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold',
     },
     {
       id: 'telemetry',
@@ -252,7 +286,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {navItems
-            .filter((item) => isTabAllowedForUser(item.id, currentUser))
+            .filter((item) => {
+              if (isMembershipLocked) return item.id === 'membership';
+              return isTabAllowedForUser(item.id, currentUser);
+            })
             .map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;

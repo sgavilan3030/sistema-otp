@@ -111,28 +111,25 @@ if [ -f pjsip.conf ]; then
   fi
 fi
 
-# Copiar audios a todos los directorios estándar de Asterisk con permisos seguros (775)
+# Copiar audios WAV de alta calidad (sin .gsm comprimido) a directorios estándar de Asterisk con permisos seguros (775)
 mkdir -p /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom
 mkdir -p /usr/share/asterisk/sounds/custom /usr/share/asterisk/sounds/es/custom /usr/share/asterisk/sounds/en/custom
 if [ -d "public/assets" ]; then
-  cp -f public/assets/*.wav /var/lib/asterisk/sounds/custom/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /var/lib/asterisk/sounds/custom/ 2>/dev/null || true
-  cp -f public/assets/*.wav /var/lib/asterisk/sounds/es/custom/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /var/lib/asterisk/sounds/es/custom/ 2>/dev/null || true
-  cp -f public/assets/*.wav /var/lib/asterisk/sounds/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /var/lib/asterisk/sounds/ 2>/dev/null || true
-  cp -f public/assets/*.wav /usr/share/asterisk/sounds/custom/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/custom/ 2>/dev/null || true
-  cp -f public/assets/*.wav /usr/share/asterisk/sounds/es/custom/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/es/custom/ 2>/dev/null || true
-  cp -f public/assets/*.wav /usr/share/asterisk/sounds/ 2>/dev/null || true
-  cp -f public/assets/*.gsm /usr/share/asterisk/sounds/ 2>/dev/null || true
+  for wavfile in public/assets/*.wav; do
+    [ -f "$wavfile" ] || continue
+    basewav=$(basename "$wavfile" .wav)
+    for snddir in /var/lib/asterisk/sounds/custom /var/lib/asterisk/sounds/es/custom /var/lib/asterisk/sounds/en/custom /var/lib/asterisk/sounds /usr/share/asterisk/sounds/custom /usr/share/asterisk/sounds/es/custom /usr/share/asterisk/sounds/en/custom /usr/share/asterisk/sounds; do
+      cp -f "$wavfile" "$snddir/" 2>/dev/null || true
+      rm -f "$snddir/${basewav}.gsm" 2>/dev/null || true
+    done
+  done
 fi
 chmod -R 775 /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
 chown -R asterisk:asterisk /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2>/dev/null || true
 
-# Recargar Asterisk
-echo "Recargando Asterisk PJSIP, RTP, Dialplan y Manager..."
+# Recargar Asterisk y módulo de timing de alta precisión
+echo "Recargando Asterisk Timing, PJSIP, RTP, Dialplan y Manager..."
+asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null || true
 asterisk -rx "core reload" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
