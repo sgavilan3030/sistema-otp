@@ -1367,37 +1367,37 @@ export interface CallState {
 const callStatusStore = new Map<string, CallState>();
 
 // Helper to ensure /etc/asterisk/musiconhold.conf exists for reliable Music on Hold
-function ensureMusiconholdConfExists() {
+function ensureMusiconholdConfExists(useCustomDir = false) {
   const mohPath = '/etc/asterisk/musiconhold.conf';
+  const targetDir = useCustomDir ? '/var/lib/asterisk/moh_custom' : '/var/lib/asterisk/moh';
   const mohContent = `; ========================================================
 ; Asterisk Music on Hold Configuration (MOH)
-; Clases de musica en espera personalizadas por entidad
 ; ========================================================
 [general]
 
 [default]
 mode=files
-directory=/var/lib/asterisk/moh
+directory=${targetDir}
 sort=alpha
 
 [custom]
 mode=files
-directory=/var/lib/asterisk/moh
+directory=${targetDir}
 sort=alpha
 
 [moh_bank]
 mode=files
-directory=/var/lib/asterisk/moh
+directory=${targetDir}
 sort=alpha
 
 [moh_corporate]
 mode=files
-directory=/var/lib/asterisk/moh
+directory=${targetDir}
 sort=alpha
 
 [moh_digital]
 mode=files
-directory=/var/lib/asterisk/moh
+directory=${targetDir}
 sort=alpha
 `;
   try {
@@ -6954,7 +6954,10 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       }
     }
 
-    const holdMusic = (req.body.holdMusic || req.body.audioHold || '').trim().replace(/\.wav$/i, '');
+    const rawHoldMusic = (req.body.holdMusic || req.body.audioHold || '').trim().replace(/\.wav$/i, '');
+    const holdMusic = rawHoldMusic
+      ? (LEGACY_CUSTOM_HOLD_PATHS.has(rawHoldMusic) ? 'default' : rawHoldMusic)
+      : '';
     if (holdMusic) {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_hold_music "${holdMusic}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_hold_music "${holdMusic}"`);
@@ -7022,8 +7025,11 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       clientName: req.body.victimName || req.body.clientName || 'Cliente',
       entityName: service || 'Servicio al Cliente',
       entityId: req.body.entityId || 'bank',
-      holdMusic: req.body.holdMusic || 'custom/moh_banco_elegante',
-      holdMusicName: path.basename(req.body.holdMusic || 'moh_corporate_loop'),
+      holdMusic: req.body.holdMusic || activeAudioAssignments.hold_music || 'default',
+      holdMusicName:
+        !req.body.holdMusic || req.body.holdMusic === 'default'
+          ? 'Asterisk Default (MOH)'
+          : path.basename(req.body.holdMusic),
       trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum || 'Asignado por Proveedor',
       tenantId: tenantResolution.tenant?.id,
@@ -7394,7 +7400,7 @@ const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   otp_verify_wait: 'custom/enviando_codigo_verificacion',
   otp_success: 'custom/operacion_bloqueada_exito',
   otp_failure: 'custom/token_invalido_reintente',
-  hold_music: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
+  hold_music: 'default',
 };
 
 function loadManualAudioLocks(): Record<string, boolean> {
@@ -7433,12 +7439,27 @@ function saveManualAudioLocks(data: Record<string, boolean>) {
 
 let manualAudioLocks: Record<string, boolean> = loadManualAudioLocks();
 
+const LEGACY_CUSTOM_HOLD_PATHS = new Set([
+  'custom/voz_comercial_para_barrick_pueblo_viejo_',
+  'custom/moh_banco_elegante',
+  'custom/moh_corporate_loop',
+  'custom/moh_digital_hold',
+  'custom/moh_jazz_telecom',
+]);
+
 function loadActiveAudioAssignments(): Record<string, string> {
   try {
     if (fs.existsSync(ACTIVE_AUDIOS_FILE)) {
       const raw = fs.readFileSync(ACTIVE_AUDIOS_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_AUDIO_ASSIGNMENTS, ...parsed };
+      const merged = { ...DEFAULT_AUDIO_ASSIGNMENTS, ...parsed };
+      if (!merged.hold_music || LEGACY_CUSTOM_HOLD_PATHS.has(merged.hold_music)) {
+        merged.hold_music = 'default';
+        try {
+          saveActiveAudioAssignments(merged);
+        } catch (_) {}
+      }
+      return merged;
     }
   } catch (e) {
     console.warn('[AUDIO] Error leyendo active_audios.json, usando predeterminados:', e);
@@ -7462,65 +7483,159 @@ let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments(
 
 let lastMohReloadTime = 0;
 let lastMohAppliedPath = '';
+let attemptedMohPackageRestore = false;
 
-// Helper to overwrite and synchronize Asterisk Music on Hold (MOH) with custom audio
-function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
-  const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
-  const baseName = cleanPath.replace(/^custom\//, '');
-  const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${baseName}.wav`);
+// Restore Asterisk's native default Music on Hold (/var/lib/asterisk/moh)
+function restoreDefaultAsteriskMoh() {
   const mohDir = '/var/lib/asterisk/moh';
+  const shareMohDir = '/usr/share/asterisk/moh';
 
-  // 1. Ensure local MOH directory exists with safe permissions
   try {
     if (!fs.existsSync(mohDir)) {
       fs.mkdirSync(mohDir, { recursive: true, mode: 0o775 });
     }
   } catch (_) {}
 
-  // 2. Overwrite all demo, default and previously tested tracks in MOH directory so no other audio ever leaks or crosses
-  const mohTargets = [
-    'macroform-cold_day',
-    'manolo_camp-morning_coffee',
-    'macroform-the_simplicity',
-    'macroform-robot_dity',
-    'reno_project-system',
-    'custom_moh',
-    'default_hold',
-    '01_hold_music',
-    'hold_music',
-    'active_hold',
-    'moh_corporate_loop',
-    'moh_corporate_loop',
-    'moh_digital_hold',
-    'moh_jazz_telecom',
-    'mi_audio',
-    'banrearreglado',
-    'alerta_banco_antifraude',
-    'conectar_asesor_banco',
-    'acceso_restringido_exito',
-    'bienvenida_corporativa',
-    'bienvenida_press1',
-    'solicitar_codigo_otp',
-    'un_momento_validando_informacion',
+  // Remove any previously injected non-Asterisk custom files from /var/lib/asterisk/moh
+  const injectedCustomFiles = [
+    'custom_moh.wav',
+    'default_hold.wav',
+    '01_hold_music.wav',
+    'hold_music.wav',
+    'active_hold.wav',
+    'moh_corporate_loop.wav',
+    'moh_digital_hold.wav',
+    'moh_jazz_telecom.wav',
+    'mi_audio.wav',
+    'banrearreglado.wav',
+    'alerta_banco_antifraude.wav',
+    'conectar_asesor_banco.wav',
+    'acceso_restringido_exito.wav',
+    'bienvenida_corporativa.wav',
+    'bienvenida_press1.wav',
+    'solicitar_codigo_otp.wav',
+    'un_momento_validando_informacion.wav',
+    'voz_comercial_para_barrick_pueblo_viejo_.wav',
   ];
-
-  if (fs.existsSync(srcFile)) {
-    for (const t of mohTargets) {
-      try {
-        fs.copyFileSync(srcFile, path.join(mohDir, `${t}.wav`));
-      } catch (_) {}
-    }
+  for (const fname of injectedCustomFiles) {
+    try {
+      const target = path.join(mohDir, fname);
+      if (fs.existsSync(target)) {
+        fs.unlinkSync(target);
+      }
+    } catch (_) {}
   }
 
-  // 3. Write proper musiconhold.conf with /var/lib/asterisk/moh directory
-  ensureMusiconholdConfExists();
+  // Restore original Asterisk default tracks if /usr/share/asterisk/moh is separate
+  const nativeAsteriskTracks = [
+    'macroform-cold_day.wav',
+    'manolo_camp-morning_coffee.wav',
+    'macroform-the_simplicity.wav',
+    'macroform-robot_dity.wav',
+    'reno_project-system.wav',
+  ];
+  try {
+    const mohReal = fs.existsSync(mohDir) ? fs.realpathSync(mohDir) : mohDir;
+    const shareReal = fs.existsSync(shareMohDir) ? fs.realpathSync(shareMohDir) : shareMohDir;
+    if (mohReal !== shareReal && fs.existsSync(shareMohDir)) {
+      for (const track of nativeAsteriskTracks) {
+        const srcTrack = path.join(shareMohDir, track);
+        const dstTrack = path.join(mohDir, track);
+        if (fs.existsSync(srcTrack)) {
+          fs.copyFileSync(srcTrack, dstTrack);
+        }
+      }
+    }
+  } catch (_) {}
 
-  // 4. Update AstDB keys
+  // Check if default tracks were missing or previously overwritten by a custom file in SOUNDS_CUSTOM_DIR
+  if (hasLocalAsterisk && !attemptedMohPackageRestore) {
+    try {
+      const customSizes = new Set<number>();
+      if (fs.existsSync(SOUNDS_CUSTOM_DIR)) {
+        for (const f of fs.readdirSync(SOUNDS_CUSTOM_DIR)) {
+          if (f.endsWith('.wav')) {
+            try {
+              customSizes.add(fs.statSync(path.join(SOUNDS_CUSTOM_DIR, f)).size);
+            } catch (_) {}
+          }
+        }
+      }
+      const coldDayPath = path.join(mohDir, 'macroform-cold_day.wav');
+      const hasAnyNative = fs.existsSync(mohDir) && fs.readdirSync(mohDir).some((f) => /\.(wav|ulaw|alaw|gsm|g722|sln16)$/i.test(f));
+      const coldDayOverwritten = fs.existsSync(coldDayPath) && customSizes.has(fs.statSync(coldDayPath).size);
+      if (!hasAnyNative || coldDayOverwritten) {
+        attemptedMohPackageRestore = true;
+        exec('apt-get install --reinstall -y asterisk-moh-opsound-wav >/dev/null 2>&1 && asterisk -rx "moh reload"', () => {
+          console.log('[ASTERISK-MOH] ✓ Pistas nativas por defecto de Asterisk restauradas (asterisk-moh-opsound-wav).');
+        });
+      }
+    } catch (_) {}
+  }
+
+  ensureMusiconholdConfExists(false);
+
+  executeAsteriskCommand('database put ivr_vars default_hold_music "default"').catch(() => {});
+  executeAsteriskCommand('database put ivr_vars hold_music "default"').catch(() => {});
+  executeAsteriskCommand('database put ivr_vars global_hold_music "default"').catch(() => {});
+
+  const now = Date.now();
+  if (lastMohAppliedPath !== 'default' && (now - lastMohReloadTime > 15000)) {
+    lastMohAppliedPath = 'default';
+    lastMohReloadTime = now;
+    executeAsteriskCommand('moh reload').catch(() => {});
+  } else if (!lastMohAppliedPath) {
+    lastMohAppliedPath = 'default';
+  }
+
+  console.log('[ASTERISK-MOH] ✓ Música de Hold configurada con música por defecto de Asterisk (/var/lib/asterisk/moh).');
+}
+
+// Helper to synchronize Asterisk Music on Hold (default or isolated custom directory)
+function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
+  const cleanPath = String(asteriskPath || 'default').trim().replace(/\.wav$/, '');
+  if (
+    !cleanPath ||
+    cleanPath === 'default' ||
+    cleanPath === 'asterisk/default' ||
+    cleanPath === 'moh/default' ||
+    cleanPath === 'custom/default'
+  ) {
+    restoreDefaultAsteriskMoh();
+    return;
+  }
+
+  const baseName = cleanPath.replace(/^custom\//, '');
+  const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${baseName}.wav`);
+  const customMohDir = '/var/lib/asterisk/moh_custom';
+
+  try {
+    if (!fs.existsSync(customMohDir)) {
+      fs.mkdirSync(customMohDir, { recursive: true, mode: 0o775 });
+    }
+  } catch (_) {}
+
+  if (fs.existsSync(srcFile)) {
+    try {
+      for (const existingFile of fs.readdirSync(customMohDir)) {
+        if (existingFile.endsWith('.wav')) {
+          try { fs.unlinkSync(path.join(customMohDir, existingFile)); } catch (_) {}
+        }
+      }
+      fs.copyFileSync(srcFile, path.join(customMohDir, `${baseName}.wav`));
+    } catch (_) {}
+    ensureMusiconholdConfExists(true);
+  } else {
+    restoreDefaultAsteriskMoh();
+    return;
+  }
+
+  // Update AstDB keys
   executeAsteriskCommand(`database put ivr_vars default_hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars hold_music "${cleanPath}"`).catch(() => {});
   executeAsteriskCommand(`database put ivr_vars global_hold_music "${cleanPath}"`).catch(() => {});
 
-  // 5. Reload MOH in Asterisk ONLY if the track has actually changed (strict protection against reload loops)
+  // Reload MOH in Asterisk ONLY if the track has actually changed (strict protection against reload loops)
   const now = Date.now();
   if (lastMohAppliedPath !== cleanPath && (now - lastMohReloadTime > 15000)) {
     lastMohAppliedPath = cleanPath;
@@ -7530,7 +7645,7 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
     lastMohAppliedPath = cleanPath;
   }
 
-  console.log(`[ASTERISK-MOH] ✓ Música de Hold sincronizada en Asterisk MOH: ${cleanPath}`);
+  console.log(`[ASTERISK-MOH] ✓ Música de Hold personalizada sincronizada en ${customMohDir}: ${cleanPath}`);
 }
 
 function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
@@ -8881,6 +8996,9 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const cleanCancelWait = cleanVal(cancelWait);
     const cleanOtpVerifyWait = cleanVal(otpVerifyWait);
     const cleanMoh = cleanVal(holdMusic);
+    const normalizedMoh = cleanMoh
+      ? (LEGACY_CUSTOM_HOLD_PATHS.has(cleanMoh) ? 'default' : cleanMoh)
+      : '';
 
     const primaryTargets = new Set<string>();
     const secondaryTargets = new Set<string>();
@@ -8933,7 +9051,7 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
         if (cleanAgent) cmds.push(`database put ivr_vars ${tgt}_agent ${cleanAgent}`);
         if (cleanCancelWait) cmds.push(`database put ivr_vars ${tgt}_cancel_wait ${cleanCancelWait}`);
         if (cleanOtpVerifyWait) cmds.push(`database put ivr_vars ${tgt}_otp_verify_wait ${cleanOtpVerifyWait}`);
-        if (cleanMoh) cmds.push(`database put ivr_vars ${tgt}_hold_music ${cleanMoh}`);
+        if (normalizedMoh) cmds.push(`database put ivr_vars ${tgt}_hold_music ${normalizedMoh}`);
       }
       return cmds;
     };
@@ -8941,11 +9059,11 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const primaryCommands = buildCommands(primaryTargets);
     const secondaryCommands = buildCommands(secondaryTargets);
 
-    if (cleanMoh && effectiveSuperAdmin) {
-      secondaryCommands.push(`database put ivr_vars default_hold_music ${cleanMoh}`);
-      if (cleanMoh !== activeAudioAssignments.hold_music) {
-        applyHoldMusicToAsteriskMoh(cleanMoh);
-        activeAudioAssignments.hold_music = cleanMoh;
+    if (normalizedMoh && effectiveSuperAdmin) {
+      secondaryCommands.push(`database put ivr_vars default_hold_music ${normalizedMoh}`);
+      if (normalizedMoh !== activeAudioAssignments.hold_music) {
+        applyHoldMusicToAsteriskMoh(normalizedMoh);
+        activeAudioAssignments.hold_music = normalizedMoh;
         saveActiveAudioAssignments(activeAudioAssignments);
       }
     }
@@ -10614,8 +10732,10 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         duration: liveDuration,
         entityId: call.entityId || 'bank',
         entityName: call.entityName || 'Servicio al Cliente',
-        holdMusic: call.holdMusic || 'custom/moh_banco_elegante',
-        holdMusicName: call.holdMusicName || (call.holdMusic ? path.basename(call.holdMusic) : 'MOH Bancaria'),
+        holdMusic: call.holdMusic || 'default',
+        holdMusicName:
+          call.holdMusicName ||
+          (call.holdMusic && call.holdMusic !== 'default' ? path.basename(call.holdMusic) : 'Asterisk Default (MOH)'),
         channel: call.channel || '',
         bridgedChannel: call.bridgedChannel || '',
         trunk: call.trunk || 'televox',
@@ -10673,8 +10793,8 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
                 duration: durSec,
                 entityId: 'bank',
                 entityName: 'Servicio al Cliente',
-                holdMusic: 'custom/moh_banco_elegante',
-                holdMusicName: 'MOH Bancaria',
+                holdMusic: 'default',
+                holdMusicName: 'Asterisk Default (MOH)',
                 channel: chanName,
                 trunk: 'televox',
                 isOnHold: app.toLowerCase().includes('musiconhold'),
@@ -10711,7 +10831,9 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
 app.post('/api/asterisk/call/hold', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
-    const { number, channel, hold = true, holdMusic = activeAudioAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_' } = req.body;
+    const { number, channel, hold = true, holdMusic: rawHoldMusicInput } = req.body;
+    const rawHoldMusic = String(rawHoldMusicInput || activeAudioAssignments.hold_music || 'default').trim().replace(/\.wav$/i, '');
+    const holdMusic = !rawHoldMusic || LEGACY_CUSTOM_HOLD_PATHS.has(rawHoldMusic) ? 'default' : rawHoldMusic;
     const cleanNum = String(number || '').trim().replace(/[^0-9]/g, '');
 
     if (cleanNum) {

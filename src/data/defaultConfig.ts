@@ -623,6 +623,12 @@ export const initialCdrRecords: SqliteCdrRecord[] = [
 
 export const presetHoldMusics = [
   {
+    id: 'moh-asterisk-default',
+    name: 'Música por Defecto de Asterisk (MOH Nativo)',
+    path: 'default',
+    description: 'Música original integrada de Asterisk (/var/lib/asterisk/moh).',
+  },
+  {
     id: 'moh-corporate-elegante',
     name: 'Espera Corporativa Elegante (Piano & Chimes)',
     path: 'custom/moh_corporate_loop',

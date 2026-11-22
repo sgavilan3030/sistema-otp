@@ -378,7 +378,7 @@ const SYSTEM_ROLES: RoleConfig[] = [
     icon: Music,
     description: 'Pista de audio reproducida en bucle al cliente cuando el operador presiona "Hold" en MicroSIP o en el softphone de agente.',
     astDbKey: 'ivr_vars default_hold_music',
-    fallbackDefault: 'custom/voz_comercial_para_barrick_pueblo_viejo_',
+    fallbackDefault: 'default',
   },
 ];
 
@@ -1353,8 +1353,11 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
       {/* SECTION 0: PANEL DEDICADO DE MÚSICA EN ESPERA (HOLD / MOH) */}
       {(() => {
-        const currentHoldPath = activeAssignments.hold_music || 'custom/voz_comercial_para_barrick_pueblo_viejo_';
-        const matchedAudio = audios.find((a) => a.asteriskPath === currentHoldPath.replace(/\.wav$/, ''));
+        const currentHoldPath = activeAssignments.hold_music || 'default';
+        const isAsteriskDefault = currentHoldPath === 'default';
+        const matchedAudio = isAsteriskDefault
+          ? undefined
+          : audios.find((a) => a.asteriskPath === currentHoldPath.replace(/\.wav$/, ''));
         const isPlayingHold = matchedAudio && playingAudioId === matchedAudio.id;
         const isHoldSyncing = !!isSyncingRole.hold_music;
 
@@ -1371,17 +1374,32 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                       <span>Música de Espera en Llamada (Hold MOH - MicroSIP / Asterisk)</span>
                     </h3>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                      ✓ Blindado & En Vivo
+                      {isAsteriskDefault ? '✓ Asterisk por Defecto' : '✓ Personalizada'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 mt-1 max-w-3xl">
-                    Esta es la pista que escucha el cliente en bucle continuo cuando el operador presiona <strong>Hold</strong> en MicroSIP. Está sincronizada en todos los códecs de Asterisk para evitar cualquier cruce de audio o tonos de fábrica.
+                    {isAsteriskDefault
+                      ? 'Actualmente está configurada la música de espera (Hold) nativa que trae Asterisk por defecto (/var/lib/asterisk/moh).'
+                      : 'Esta es la pista personalizada que escucha el cliente en bucle continuo cuando el operador presiona Hold en MicroSIP.'}
                   </p>
                 </div>
               </div>
 
-              {/* Botón de subida directa de audio de Hold */}
+              {/* Botón de subida directa y restauración de Hold */}
               <div className="flex items-center gap-2 flex-wrap">
+                {!isAsteriskDefault && (
+                  <button
+                    type="button"
+                    disabled={isHoldSyncing}
+                    onClick={() => handleAssignRoleDirect('hold_music', 'default')}
+                    className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-all cursor-pointer disabled:opacity-50"
+                    title="Restaurar la música de espera original que trae Asterisk por defecto"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Usar Default de Asterisk</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => holdFileInputRef.current?.click()}
@@ -1412,36 +1430,42 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium">Pista activa actualmente:</span>
                   <span className="font-mono text-cyan-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                    {currentHoldPath}
+                    {isAsteriskDefault ? 'default (Asterisk MOH)' : currentHoldPath}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-3 pt-1">
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-white truncate">
-                      {matchedAudio?.name || 'Música de Hold Personalizada'}
+                      {isAsteriskDefault
+                        ? 'Música por Defecto de Asterisk'
+                        : matchedAudio?.name || 'Música de Hold Personalizada'}
                     </h4>
                     <p className="text-[11px] text-slate-400 font-mono truncate">
-                      {matchedAudio?.fileName || 'archivo_hold.wav'} • {matchedAudio?.durationSec || 25}s • {matchedAudio?.fileSize || '1.2 MB'}
+                      {isAsteriskDefault
+                        ? '/var/lib/asterisk/moh (Pistas nativas Asterisk)'
+                        : `${matchedAudio?.fileName || 'archivo_hold.wav'} • ${matchedAudio?.durationSec || 25}s • ${matchedAudio?.fileSize || '1.2 MB'}`}
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handlePlayByPath(currentHoldPath)}
-                    className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-600/30 cursor-pointer transition-all"
-                    title="Escuchar audio de espera configurado"
-                  >
-                    {isPlayingHold ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                    <span>{isPlayingHold ? 'Pausar' : 'Escuchar Hold'}</span>
-                  </button>
+                  {!isAsteriskDefault && (
+                    <button
+                      type="button"
+                      onClick={() => handlePlayByPath(currentHoldPath)}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-600/30 cursor-pointer transition-all"
+                      title="Escuchar audio de espera configurado"
+                    >
+                      {isPlayingHold ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                      <span>{isPlayingHold ? 'Pausar' : 'Escuchar Hold'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Selector para cambiar de Audio en 1 Clic */}
               <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between space-y-2">
                 <label className="text-xs text-slate-300 font-medium flex items-center justify-between">
-                  <span>Cambiar pista de Hold por otra de la biblioteca:</span>
+                  <span>Cambiar pista de Hold:</span>
                   <span className="text-[10px] text-emerald-400 font-mono">1 Clic Asterisk</span>
                 </label>
                 <div className="flex items-center gap-2">
@@ -1451,6 +1475,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                     onChange={(e) => handleAssignRoleDirect('hold_music', e.target.value)}
                     className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:border-cyan-400 focus:outline-none"
                   >
+                    <option value="default">Asterisk por Defecto (Música Original Asterisk MOH)</option>
                     {audios.map((a) => (
                       <option key={a.id} value={a.asteriskPath}>
                         {a.name} ({a.asteriskPath})

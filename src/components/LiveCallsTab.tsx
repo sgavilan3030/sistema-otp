@@ -326,7 +326,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           number: call.number,
           channel: call.channel,
           hold: !isCurrentlyOnHold,
-          holdMusic: call.holdMusic || 'custom/voz_comercial_para_barrick_pueblo_viejo_',
+          holdMusic: call.holdMusic || 'default',
         }),
       });
       const data = await res.json();

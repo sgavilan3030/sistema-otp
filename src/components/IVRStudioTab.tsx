@@ -129,7 +129,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_codigo_otp',
         agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
+        holdMusicAudioPath: 'default',
       },
       {
         id: 'card',
@@ -141,7 +141,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_otp_tarjeta',
         agentAudioPath: 'custom/conectar_asesor_tarjetas',
         successAudioPath: 'custom/tarjeta_protegida',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
+        holdMusicAudioPath: 'default',
       },
       {
         id: 'whatsapp',
@@ -153,7 +153,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_codigo_sms',
         agentAudioPath: 'custom/conectar_soporte_tecnico',
         successAudioPath: 'custom/verificacion_exitosa',
-        holdMusicAudioPath: 'custom/moh_digital_hold',
+        holdMusicAudioPath: 'default',
       },
       {
         id: 'google',
@@ -165,7 +165,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_codigo_google',
         agentAudioPath: 'custom/conectar_soporte_cuentas',
         successAudioPath: 'custom/acceso_restringido_exito',
-        holdMusicAudioPath: 'custom/moh_digital_hold',
+        holdMusicAudioPath: 'default',
       },
       {
         id: 'amazon',
@@ -177,7 +177,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_codigo_amazon',
         agentAudioPath: 'custom/conectar_soporte_pedidos',
         successAudioPath: 'custom/pedido_cancelado_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
+        holdMusicAudioPath: 'default',
       },
       {
         id: 'custom',
@@ -189,7 +189,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
         promptAudioPath: 'custom/solicitar_codigo_otp',
         agentAudioPath: 'custom/conectar_asesor',
         successAudioPath: 'custom/operacion_bloqueada_exito',
-        holdMusicAudioPath: 'custom/moh_corporate_loop',
+        holdMusicAudioPath: 'default',
       },
     ];
   });
@@ -338,7 +338,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
           wait: current.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: current.successAudioPath || 'custom/operacion_bloqueada_exito',
           agent: current.agentAudioPath || 'custom/conectar_asesor',
-          holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          holdMusic: current.holdMusicAudioPath || 'default',
           agentId: userExtension,
           isManualSave: true,
           isAdmin,
@@ -995,7 +995,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
               </div>
               <div className="bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800 truncate">
                 <span className="text-slate-500 font-sans block text-[10px]">Música en Espera (MOH):</span>
-                <span className="text-amber-400">{currentSelectedEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}</span>
+                <span className="text-amber-400">{currentSelectedEntity.holdMusicAudioPath || 'default'}</span>
               </div>
             </div>
           </div>
@@ -1499,7 +1499,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                   {/* Botón Escuchar Vista Previa */}
                   <button
                     type="button"
-                    onClick={() => handleTogglePlayHoldMusic(ent.holdMusicAudioPath || 'custom/moh_corporate_loop')}
+                    onClick={() => handleTogglePlayHoldMusic(ent.holdMusicAudioPath || 'default')}
                     className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 transition-all cursor-pointer ${
                       isPlaying
                         ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/30 animate-pulse'
@@ -1526,7 +1526,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     )}
                   </div>
                   <select
-                    value={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                    value={ent.holdMusicAudioPath || 'default'}
                     onChange={(e) => handleUpdateEntityHoldMusic(ent.id, e.target.value)}
                     disabled={!isAdmin}
                     className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"

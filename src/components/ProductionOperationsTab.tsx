@@ -387,7 +387,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
-      holdMusicAudioPath: 'custom/moh_corporate_loop',
+      holdMusicAudioPath: 'default',
       isActive: true,
     },
     {
@@ -402,7 +402,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_otp_tarjeta',
       agentAudioPath: 'custom/conectar_asesor_tarjetas',
       successAudioPath: 'custom/tarjeta_protegida',
-      holdMusicAudioPath: 'custom/moh_corporate_loop',
+      holdMusicAudioPath: 'default',
       isActive: false,
     },
     {
@@ -417,7 +417,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_sms',
       agentAudioPath: 'custom/conectar_soporte_tecnico',
       successAudioPath: 'custom/verificacion_exitosa',
-      holdMusicAudioPath: 'custom/moh_digital_hold',
+      holdMusicAudioPath: 'default',
       isActive: false,
     },
     {
@@ -432,7 +432,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_google',
       agentAudioPath: 'custom/conectar_soporte_cuentas',
       successAudioPath: 'custom/acceso_restringido_exito',
-      holdMusicAudioPath: 'custom/moh_digital_hold',
+      holdMusicAudioPath: 'default',
       isActive: false,
     },
     {
@@ -447,7 +447,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_amazon',
       agentAudioPath: 'custom/conectar_soporte_pedidos',
       successAudioPath: 'custom/pedido_cancelado_exito',
-      holdMusicAudioPath: 'custom/moh_corporate_loop',
+      holdMusicAudioPath: 'default',
       isActive: false,
     },
     {
@@ -462,7 +462,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
-      holdMusicAudioPath: 'custom/moh_corporate_loop',
+      holdMusicAudioPath: 'default',
       isActive: false,
     },
   ];
@@ -596,7 +596,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 promptAudioPath: ent.promptAudioPath || 'custom/solicitar_codigo_otp',
                 agentAudioPath: ent.agentAudioPath || 'custom/conectar_asesor',
                 successAudioPath: ent.successAudioPath || 'custom/operacion_bloqueada_exito',
-                holdMusicAudioPath: ent.holdMusicAudioPath || 'custom/moh_corporate_loop',
+                holdMusicAudioPath: ent.holdMusicAudioPath || 'default',
               };
             }
             return ent;
@@ -979,7 +979,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           agent: current.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: current.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: current.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: current.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          holdMusic: current.holdMusicAudioPath || 'default',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
           tenantId: resolvedWorkspaceTenantId || undefined,
@@ -1298,7 +1298,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           agent: entity.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: entity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: entity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: entity.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          holdMusic: entity.holdMusicAudioPath || 'default',
           destination: targetNumber.trim() || '16104803845',
           agentId: targetAgent,
           tenantId: resolvedWorkspaceTenantId || undefined,
@@ -1333,7 +1333,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       successAudioPath: 'custom/operacion_bloqueada_exito',
       cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
       otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
-      holdMusicAudioPath: 'custom/moh_corporate_loop',
+      holdMusicAudioPath: 'default',
       isActive: true,
     };
     setEditingEntity(newEntity);
@@ -2658,7 +2658,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioSuccess: currentAudios.successAudioPath,
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: campaignEntities.find((e) => e.id === selectedService)?.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          holdMusic: campaignEntities.find((e) => e.id === selectedService)?.holdMusicAudioPath || 'default',
         }),
       });
 
@@ -2913,7 +2913,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioSuccess: currentAudios.successAudioPath,
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: currentAudios.holdMusicAudioPath || 'custom/moh_corporate_loop',
+          holdMusic: currentAudios.holdMusicAudioPath || 'default',
         });
 
         let res = await fetch('/api/asterisk/call/originate', {
@@ -4612,8 +4612,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                             <span className="flex items-center gap-1 text-slate-300 shrink-0">
                               <Music className="w-2.5 h-2.5 text-amber-400" /> Hold MOH:
                             </span>
-                            <span className="text-amber-300 truncate font-semibold" title={ent.holdMusicAudioPath || 'custom/moh_corporate_loop'}>
-                              {(ent.holdMusicAudioPath || 'moh_corporate_loop').replace(/^custom\//, '')}
+                            <span className="text-amber-300 truncate font-semibold" title={ent.holdMusicAudioPath || 'default'}>
+                              {(!ent.holdMusicAudioPath || ent.holdMusicAudioPath === 'default') ? 'Asterisk Default' : ent.holdMusicAudioPath.replace(/^custom\//, '')}
                             </span>
                           </div>
                         </div>
@@ -6678,9 +6678,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleTogglePlayAudio(editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop', 'modal_hold')}
-                      disabled={!editingEntity.holdMusicAudioPath}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all"
+                      onClick={() => handleTogglePlayAudio(editingEntity.holdMusicAudioPath || 'default', 'modal_hold')}
+                      disabled={!editingEntity.holdMusicAudioPath || editingEntity.holdMusicAudioPath === 'default'}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all disabled:opacity-40"
                       title="Reproducir música de hold"
                     >
                       {playingAudioKey === 'modal_hold' ? (
@@ -6692,12 +6692,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <select
-                      value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                      value={editingEntity.holdMusicAudioPath || 'default'}
                       onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
                       disabled={!isAdmin}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Espera Corporativa Elegante)</option>
+                      <option value="default">default (Música por Defecto de Asterisk)</option>
                       <option value="custom/moh_corporate_loop">custom/moh_corporate_loop (Música Corporativa Suave)</option>
                       <option value="custom/moh_digital_hold">custom/moh_digital_hold (Tono Digital Alta Fidelidad)</option>
                       <option value="custom/moh_jazz_telecom">custom/moh_jazz_telecom (PBX Telecom Smooth Tone)</option>
@@ -6712,10 +6712,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </select>
                     <input
                       type="text"
-                      value={editingEntity.holdMusicAudioPath || 'custom/moh_corporate_loop'}
+                      value={editingEntity.holdMusicAudioPath || 'default'}
                       onChange={(e) => setEditingEntity({ ...editingEntity, holdMusicAudioPath: e.target.value })}
                       disabled={!isAdmin}
-                      placeholder="Ruta personalizada (ej. custom/mi_musica_hold)"
+                      placeholder="default (Asterisk) o custom/mi_musica_hold"
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
