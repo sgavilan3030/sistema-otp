@@ -26,7 +26,6 @@ import {
   EyeOff,
   Lock,
   Copy,
-  DollarSign,
   Download,
   HelpCircle,
   AlertCircle,
@@ -88,9 +87,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<SystemUser['role']>('agent');
   const [formAccountType, setFormAccountType] = useState<'agent' | 'reseller_client'>('reseller_client');
-  const [formBalance, setFormBalance] = useState<number>(10.00);
-  const [formRate, setFormRate] = useState<number>(0.02);
-  const [formCutoffOnZero, setFormCutoffOnZero] = useState<boolean>(true);
   const [formCarrierId, setFormCarrierId] = useState<string>('auto');
   const [formTenantId, setFormTenantId] = useState<string>('');
   const [filterTenantId, setFilterTenantId] = useState<string>('all');
@@ -104,7 +100,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [formActivateInitialMonth, setFormActivateInitialMonth] = useState<boolean>(true);
 
-  // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts — no fake inactive templates)
+  // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts)
   const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() => {
     try {
       const saved = localStorage.getItem('prod_campaign_entities_v3');
@@ -124,16 +120,30 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     fetch('/api/app/master-entities')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.entities)) {
+        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
           setAvailableEntities(
             data.entities
               .filter((e: any) => e && e.id && e.isActive !== false)
               .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
           );
+        } else if (isGlobalSuperAdmin) {
+          try {
+            const saved = localStorage.getItem('prod_campaign_entities_v3');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                setAvailableEntities(
+                  parsed
+                    .filter((e: any) => e && e.id && e.isActive !== false)
+                    .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
+                );
+              }
+            }
+          } catch (_) {}
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isGlobalSuperAdmin]);
 
   useEffect(() => {
     refreshMasterEntities();
@@ -142,10 +152,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshMasterEntities]);
 
-  // Modals for MicroSIP setup, balance recharge, and scripts assignment
+  // Modals for MicroSIP setup and scripts assignment
   const [microsipModalUser, setMicrosipModalUser] = useState<SystemUser | null>(null);
-  const [rechargeModalUser, setRechargeModalUser] = useState<SystemUser | null>(null);
-  const [rechargeAmount, setRechargeAmount] = useState<number>(10);
   const [scriptsModalUser, setScriptsModalUser] = useState<SystemUser | null>(null);
   const [scriptsModalSelectedIds, setScriptsModalSelectedIds] = useState<string[]>([]);
 
@@ -322,9 +330,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setShowPassword(false);
     setFormRole('reseller_client');
     setFormAccountType('reseller_client');
-    setFormBalance(10.00);
-    setFormRate(0.02);
-    setFormCutoffOnZero(true);
     setFormCarrierId('auto');
     setFormTenantId('');
     setFormStatus('active');
@@ -349,9 +354,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setShowPassword(false);
     setFormRole(user.role);
     setFormAccountType(user.accountType || (user.role === 'reseller_client' ? 'reseller_client' : 'agent'));
-    setFormBalance(typeof user.balance === 'number' ? user.balance : 10.00);
-    setFormRate(typeof user.costPerMinute === 'number' ? user.costPerMinute : 0.02);
-    setFormCutoffOnZero(user.cutoffOnZero !== false);
     const rawUserCarrier = user.carrierId || user.assignedCarrierId || '';
     const matchedCarrierForSelect = rawUserCarrier
       ? carriers.find(
@@ -502,11 +504,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       ...(passwordFinal ? { password: passwordFinal } : {}),
       role: finalRole,
       accountType: formAccountType,
-      balance: formBalance,
-      costPerMinute: formRate,
-      allocatedMinutes: Math.round(formBalance / (formRate || 0.02)),
-      usedMinutes: editingUser?.usedMinutes || 0,
-      cutoffOnZero: formCutoffOnZero,
+      cutoffOnZero: false,
       carrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       assignedCarrierId: formCarrierId === 'auto' ? undefined : formCarrierId,
       tenantId: formTenantId ? formTenantId : undefined,
@@ -831,7 +829,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
                     }`}
                   >
-                    {user.accountType === 'reseller_client' || user.role === 'reseller_client' ? 'Cliente VoIP Minutos' : user.role}
+                    {user.accountType === 'reseller_client' || user.role === 'reseller_client' ? 'Cliente' : user.role}
                   </span>
                 </div>
 
@@ -872,7 +870,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   </div>
                 </div>
 
-                {/* MicroSIP Softphone & Reseller Balance Box */}
+                {/* MicroSIP Softphone Box */}
                 <div className="mb-3 p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-xs space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-[11px]">
@@ -883,20 +881,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       Puerto 47923
                     </span>
                   </div>
-
-                  {/* Reseller balance info if user is reseller_client or has balance */}
-                  {(user.accountType === 'reseller_client' || user.role === 'reseller_client' || typeof user.balance === 'number') && (
-                    <div className="pt-1 border-t border-emerald-500/20 grid grid-cols-2 gap-1.5 text-[11px] font-mono">
-                      <div className="bg-slate-950/80 p-1.5 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px] uppercase">Saldo Prepago:</span>
-                        <span className="text-emerald-300 font-bold">${(user.balance || 0).toFixed(2)} USD</span>
-                      </div>
-                      <div className="bg-slate-950/80 p-1.5 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px] uppercase">Tarifa Minuto:</span>
-                        <span className="text-sky-300 font-bold">${user.costPerMinute || 0.02}/min</span>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Direct Action buttons: Descargar microsip.ini & Guía */}
                   <div className="pt-1 flex items-center gap-1.5">
@@ -918,20 +902,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       <HelpCircle className="w-3 h-3 text-emerald-400" />
                       <span>Guía</span>
                     </button>
-                    {(user.accountType === 'reseller_client' || user.role === 'reseller_client' || typeof user.balance === 'number') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRechargeModalUser(user);
-                          setRechargeAmount(10);
-                        }}
-                        className="py-1.5 px-2 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                        title="Recargar saldo a este cliente"
-                      >
-                        <DollarSign className="w-3 h-3" />
-                        <span>Recargar</span>
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -1422,10 +1392,10 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     }`}
                   >
                     <div className="font-bold text-xs text-emerald-400 flex items-center gap-1">
-                      <DollarSign className="w-3.5 h-3.5" />
-                      <span>Cliente VoIP Minutos</span>
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Cliente</span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Marcación manual MicroSIP con saldo prepago</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Acceso por membresía, extensión SIP y guiones</div>
                   </button>
                   <button
                     type="button"
@@ -1465,82 +1435,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   </button>
                 </div>
               </div>
-
-              {/* Parametros de Reventa de Minutos si es Cliente VoIP */}
-              {(formAccountType === 'reseller_client' || formRole === 'reseller_client') && (
-                <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
-                      <DollarSign className="w-4 h-4" />
-                      <span>Configuración de Saldo Prepago y Facturación por Minuto</span>
-                    </span>
-                    <span className="text-[10px] text-emerald-300 font-mono font-bold bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
-                      Reventa de Minutos
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Saldo Prepago Inicial ($ USD)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        value={formBalance}
-                        onChange={(e) => setFormBalance(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-emerald-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Saldo disponible para llamadas salientes.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Tarifa por Minuto ($ USD / min)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.005"
-                        min="0.001"
-                        value={formRate}
-                        onChange={(e) => setFormRate(parseFloat(e.target.value) || 0.02)}
-                        className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-sky-300 font-mono font-bold focus:border-emerald-500 focus:outline-none"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Costo deducido por cada minuto conectado.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-medium mb-1">
-                        Minutos Aproximados
-                      </label>
-                      <div className="px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-emerald-400 font-mono font-bold text-sm flex items-center justify-between">
-                        <span>{Math.round(formBalance / (formRate || 0.02))} min</span>
-                        <span className="text-[10px] text-slate-500">al agotar saldo</span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Calculado en tiempo real según la tarifa.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
-                    <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formCutoffOnZero}
-                        onChange={(e) => setFormCutoffOnZero(e.target.checked)}
-                        className="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0"
-                      />
-                      <span>Cortar llamada saliente automáticamente si el saldo llega a $0.00 USD</span>
-                    </label>
-                  </div>
-                </div>
-              )}
 
               {/* Default Carrier / Trunk Selector */}
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
@@ -1802,7 +1696,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       {formRole === 'admin' && !formTenantId
                         ? 'El Super Administrador Global tiene acceso total a todos los guiones activos.'
-                        : 'Solo aparecen tus guiones activos reales. Selecciona cuáles podrá trabajar este usuario cada día sin mezclarse con otros.'}
+                        : 'Guiones tomados desde el usuario Administrador. Selecciona cuáles podrá usar este cliente sin mezclarse con otros.'}
                     </p>
                   </div>
                   {!(formRole === 'admin' && !formTenantId) && availableEntities.length > 0 && (
@@ -2133,109 +2027,6 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
                 Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Recargar Saldo de Minutos */}
-      {rechargeModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-emerald-500/40 rounded-xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
-                  <DollarSign className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-white">Recargar Minutos VoIP</h3>
-                  <p className="text-xs text-slate-400">{rechargeModalUser.name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRechargeModalUser(null)}
-                className="p-1 rounded text-slate-400 hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex justify-between items-center font-mono">
-                <span className="text-slate-400">Saldo Actual:</span>
-                <span className="text-emerald-400 font-bold">${(rechargeModalUser.balance || 0).toFixed(2)} USD</span>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Monto a Recargar ($ USD)
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  value={rechargeAmount}
-                  onChange={(e) => setRechargeAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-emerald-300 font-mono font-bold text-base focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-4 gap-1.5 pt-1">
-                {[5, 10, 20, 50].map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setRechargeAmount(amt)}
-                    className={`py-1.5 rounded border text-xs font-mono font-bold transition-all ${
-                      rechargeAmount === amt
-                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    +${amt}
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono flex justify-between items-center">
-                <span>Nuevo Saldo:</span>
-                <span className="font-bold text-white">${((rechargeModalUser.balance || 0) + rechargeAmount).toFixed(2)} USD</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  const newBal = (rechargeModalUser.balance || 0) + rechargeAmount;
-                  const updated: SystemUser = {
-                    ...rechargeModalUser,
-                    balance: newBal,
-                    allocatedMinutes: Math.round(newBal / (rechargeModalUser.costPerMinute || 0.02)),
-                  };
-                  onUpdateUser(updated);
-                  fetch('/api/users/sync-sip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user: updated }),
-                  }).catch(() => {});
-                  setRechargeModalUser(null);
-                  setSyncFeedback(`✓ Saldo de $${rechargeAmount} USD acreditado a ${rechargeModalUser.name}. Saldo total: $${newBal.toFixed(2)} USD.`);
-                  setTimeout(() => setSyncFeedback(null), 5000);
-                }}
-                className="flex-1 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all"
-              >
-                <Check className="w-4 h-4" />
-                <span>Confirmar Recarga</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRechargeModalUser(null)}
-                className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs cursor-pointer"
-              >
-                Cancelar
               </button>
             </div>
           </div>

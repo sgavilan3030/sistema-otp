@@ -1067,22 +1067,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       setInlineRenamingId(null);
       return;
     }
-    setCampaignEntities((prev) => {
-      const updated = prev.map((ent) => {
-        if (ent.id === entityId) {
-          return {
-            ...ent,
-            name: inlineNameVal.trim(),
-            subtitle: inlineSubtitleVal.trim(),
-          };
-        }
-        return ent;
-      });
-      try {
-        localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(updated));
-      } catch (err) {}
-      return updated;
+    const nextEntities = campaignEntities.map((ent) => {
+      if (ent.id === entityId) {
+        return {
+          ...ent,
+          name: inlineNameVal.trim(),
+          subtitle: inlineSubtitleVal.trim(),
+        };
+      }
+      return ent;
     });
+    setCampaignEntities(nextEntities);
+    try {
+      localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(nextEntities));
+    } catch (err) {}
+    pushIvrWorkspaceToServer({ campaignEntities: nextEntities });
     setInlineRenamingId(null);
   };
 

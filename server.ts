@@ -6749,14 +6749,17 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
         }
       }
     } else if (userResolution.user && !callerIsSuperAdmin) {
-      const cli = resellerStore.clients.find(
-        (c) => c.id === userResolution.user.id || c.sipUsername === String(userResolution.user.username || '').toLowerCase()
-      );
-      if (cli && cli.cutoffOnZero !== false && Number(cli.balance ?? 1) <= 0) {
-        return res.status(403).json({
-          success: false,
-          error: `Saldo agotado ($0.00) para la cuenta "${cli.name || cli.sipUsername}". Recarga saldo para continuar.`,
-        });
+      const mSettings = loadMembershipSettings();
+      if (!mSettings.enforceMembershipSystem) {
+        const cli = resellerStore.clients.find(
+          (c) => c.id === userResolution.user.id || c.sipUsername === String(userResolution.user.username || '').toLowerCase()
+        );
+        if (cli && cli.cutoffOnZero === true && Number(cli.balance ?? 1) <= 0) {
+          return res.status(403).json({
+            success: false,
+            error: `Saldo agotado ($0.00) para la cuenta "${cli.name || cli.sipUsername}". Recarga saldo para continuar.`,
+          });
+        }
       }
     }
 
@@ -8500,22 +8503,58 @@ app.post('/api/app/state', (req, res) => {
 });
 
 // Persistent IVR Workspace (Guion / Entidad a Simular, Campañas y Modo IVR sincronizados entre navegadores para Admin, Call Centers y Usuarios)
-function getMasterEntitiesFromDisk(): any[] {
+function getMasterEntitiesFromDisk(reqAuthUser?: any): any[] {
   try {
-    const adminWsPath = getIvrWorkspacePath('user-admin', 'admin');
-    const adminStatePath = getUserConfigPath('user-admin', 'admin');
-    for (const candidate of [adminWsPath, IVR_WORKSPACE_FILE, adminStatePath, APP_STATE_FILE]) {
-      const parsed = readJsonFileCached<any>(candidate);
-      if (Array.isArray(parsed?.campaignEntities)) {
-        return parsed.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
+    const candidates: string[] = [];
+    if (reqAuthUser && isGlobalAdminUser(reqAuthUser)) {
+      candidates.push(
+        getIvrWorkspacePath(reqAuthUser.id, reqAuthUser.username),
+        getUserConfigPath(reqAuthUser.id, reqAuthUser.username)
+      );
+    }
+    const storedUsers = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
+    for (const u of storedUsers) {
+      if (u && isGlobalAdminUser(u)) {
+        candidates.push(getIvrWorkspacePath(u.id, u.username));
+        candidates.push(getUserConfigPath(u.id, u.username));
       }
+    }
+    candidates.push(
+      IVR_WORKSPACE_FILE,
+      getIvrWorkspacePath('user-admin', 'admin'),
+      getUserConfigPath('user-admin', 'admin'),
+      APP_STATE_FILE
+    );
+
+    const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
+    let bestEntities: any[] = [];
+    let bestUpdatedTs = -1;
+
+    for (const candidate of uniqueCandidates) {
+      if (!fs.existsSync(candidate)) continue;
+      const parsed = readJsonFileCached<any>(candidate);
+      if (!Array.isArray(parsed?.campaignEntities)) continue;
+      const active = parsed.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(candidate).mtimeMs || 0;
+      } catch (_) {}
+      const ts = Math.max(Number(parsed?.lastUpdated) || 0, mtime);
+      if (active.length > 0 && ts >= bestUpdatedTs) {
+        bestUpdatedTs = ts;
+        bestEntities = active;
+      }
+    }
+
+    if (bestEntities.length > 0) {
+      return bestEntities;
     }
   } catch (_) {}
   return [];
 }
 
 app.get('/api/app/master-entities', (req, res) => {
-  return res.json({ success: true, entities: getMasterEntitiesFromDisk() });
+  return res.json({ success: true, entities: getMasterEntitiesFromDisk((req as any).authUser) });
 });
 
 // Lightweight version check for IVR Workspace so clients avoid downloading/parsing workspace JSON every few seconds
@@ -8604,7 +8643,8 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     }
 
     const filterEntitiesForScope = (entities: any[]) => {
-      const activePool = [...entities, ...masterEntities].filter((e) => e && e.id && e.isActive !== false);
+      // Tomar definiciones actualizadas desde los guiones activos del Admin primero
+      const activePool = [...masterEntities, ...entities].filter((e) => e && e.id && e.isActive !== false);
       const byId = new Map<string, any>();
       for (const e of activePool) {
         if (!byId.has(e.id)) byId.set(e.id, e);
@@ -8726,7 +8766,7 @@ app.post('/api/app/ivr-workspace', requireActiveMembership, (req, res) => {
     };
     const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     fs.writeFileSync(userWsPath, JSON.stringify(payloadWithTs, null, 2), 'utf8');
-    const isMaster = authIsGlobalAdmin && !tenantId && (!userId || userId === 'user-admin' || String(username || '').toLowerCase() === 'admin');
+    const isMaster = authIsGlobalAdmin && !tenantId && !req.body.tenantId;
     if (isMaster) {
       fs.writeFileSync(IVR_WORKSPACE_FILE, JSON.stringify(payloadWithTs, null, 2), 'utf8');
     }
@@ -12078,9 +12118,10 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       }
     }
 
-    // 4. Save in resellerStore for minutes billing
-    const balance = typeof targetUser.balance === 'number' ? targetUser.balance : 10.00;
+    // 4. Save in resellerStore (cutoff disabled for Membership-managed individual users)
+    const balance = typeof targetUser.balance === 'number' ? targetUser.balance : 0;
     const ratePerMinute = typeof targetUser.costPerMinute === 'number' ? targetUser.costPerMinute : (typeof targetUser.ratePerMinute === 'number' ? targetUser.ratePerMinute : 0.02);
+    const shouldCutoffOnZero = targetUser.cutoffOnZero === true;
     const existingClientIdx = resellerStore.clients.findIndex((c) => c.sipUsername === cleanUser || c.id === targetUser.id);
     const clientRecord = {
       id: targetUser.id || `res-${cleanUser}`,
@@ -12095,7 +12136,7 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       planType: 'prepago',
       status: targetUser.status === 'inactive' ? 'suspended' : 'active',
       creditLimit: 0,
-      cutoffOnZero: targetUser.cutoffOnZero !== false,
+      cutoffOnZero: shouldCutoffOnZero,
       createdAt: targetUser.createdAt || new Date().toISOString().split('T')[0],
       totalRecharges: 1,
     };
@@ -12133,7 +12174,7 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
     for (const tgt of targetsToProvisionInDb) {
       executeAsteriskCommand(`database put reseller_balance ${tgt} "${balance}"`).catch(() => {});
       executeAsteriskCommand(`database put reseller_rate ${tgt} "${ratePerMinute}"`).catch(() => {});
-      executeAsteriskCommand(`database put reseller_cutoff ${tgt} "${targetUser.cutoffOnZero !== false ? '1' : '0'}"`).catch(() => {});
+      executeAsteriskCommand(`database put reseller_cutoff ${tgt} "${shouldCutoffOnZero ? '1' : '0'}"`).catch(() => {});
       executeAsteriskCommand(`database deltree extension_cid/${tgt}`).catch(() => {});
       if (resolvedUserCarrier && resolvedUserCarrier !== 'auto') {
         executeAsteriskCommand(`database put user_carrier ${tgt} "${resolvedUserCarrier}"`).catch(() => {});

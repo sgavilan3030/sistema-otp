@@ -109,8 +109,8 @@ export function getRoleBadgeInfo(role: SystemUser['role']) {
       };
     case 'reseller_client':
       return {
-        label: 'CLIENTE PREPAGO',
-        subtitle: 'Saldo y Softphone',
+        label: 'CLIENTE',
+        subtitle: 'Membresía y Softphone',
         color: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
       };
     default:

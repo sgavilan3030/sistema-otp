@@ -105,16 +105,30 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     fetch('/api/app/master-entities')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.entities)) {
+        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
           setAvailableEntities(
             data.entities
               .filter((e: any) => e && e.id && e.isActive !== false)
               .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }))
           );
+        } else if (isAdmin) {
+          try {
+            const saved = localStorage.getItem('prod_campaign_entities_v3');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                setAvailableEntities(
+                  parsed
+                    .filter((e: any) => e && e.id && e.isActive !== false)
+                    .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }))
+                );
+              }
+            }
+          } catch (_) {}
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     refreshMasterEntities();
