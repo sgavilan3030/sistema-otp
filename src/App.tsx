@@ -46,7 +46,13 @@ import { getAuthToken, clearAuthToken, authFetch as fetch } from './utils/authCl
 import { CheckCircle2, AlertCircle, RefreshCw, KeyRound, Copy, Check, X, ShieldAlert, BellRing, Send, PhoneCall } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('production');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('ast20_active_tab') || 'production';
+    } catch {
+      return 'production';
+    }
+  });
 
   // Core Data States with localStorage persistence
   const [extensions, setExtensions] = useState<PjsipExtension[]>(() => {
@@ -164,12 +170,12 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       localStorage.removeItem('ast_session_user_token');
-      // Siempre exigir autenticación en primera carga para mostrar el panel de login
       return false;
     } catch {
       return false;
     }
   });
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(() => Boolean(getAuthToken()));
 
   // Theme state: 'light' | 'dark' (Default to 'light' for modern clear, professional appearance)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -1987,6 +1993,7 @@ export default function App() {
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem('ast_session_active');
+      sessionStorage.removeItem('ast20_active_tab');
       localStorage.removeItem('ast_session_user_token');
     } catch (e) {}
     showToast('Has cerrado sesión correctamente.', 'info');
@@ -2022,6 +2029,14 @@ export default function App() {
     addLog('SYSTEM', `[LOGIN] Configuración cargada para usuario: ${user.name} (${user.username || user.id})`);
   };
 
+  // Guardar pestaña activa en sessionStorage para mantenerla al recargar la página
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      sessionStorage.setItem('ast20_active_tab', activeTab);
+    } catch (_) {}
+  }, [isAuthenticated, activeTab]);
+
   // Restaurar sesión activa si hay token válido y escuchar expiraciones 401
   useEffect(() => {
     const token = getAuthToken();
@@ -2041,16 +2056,35 @@ export default function App() {
             }
             setCurrentUserId(data.user.id);
             setIsAuthenticated(true);
+            const savedTab = (() => {
+              try {
+                return sessionStorage.getItem('ast20_active_tab');
+              } catch {
+                return null;
+              }
+            })();
+            const memLocked = Boolean(
+              data.user.effectiveMembership &&
+                !data.user.effectiveMembership.exempt &&
+                !data.user.effectiveMembership.isActive
+            );
             setActiveTab(
-              data.user.effectiveMembership && !data.user.effectiveMembership.exempt && !data.user.effectiveMembership.isActive
+              memLocked
                 ? 'membership'
+                : savedTab && isTabAllowedForUser(savedTab, data.user)
+                ? savedTab
                 : getDefaultTabForUser(data.user)
             );
           } else {
             clearAuthToken();
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          setIsRestoringSession(false);
+        });
+    } else {
+      setIsRestoringSession(false);
     }
 
     const onUnauthorized = () => {
@@ -2060,11 +2094,30 @@ export default function App() {
       lastUserStateVersionRef.current = -1;
       setMyMembership(null);
       setMembershipRequests([]);
+      setIsRestoringSession(false);
       setIsAuthenticated(false);
+      try {
+        sessionStorage.removeItem('ast20_active_tab');
+      } catch (_) {}
     };
     window.addEventListener('ast:unauthorized', onUnauthorized);
     return () => window.removeEventListener('ast:unauthorized', onUnauthorized);
   }, []);
+
+  if (isRestoringSession) {
+    return (
+      <div
+        className={`min-h-screen w-full flex items-center justify-center font-sans ${
+          theme === 'light' ? 'bg-slate-50 text-slate-800' : 'bg-[#010604] text-slate-200'
+        }`}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-7 h-7 text-emerald-400 animate-spin" />
+          <span className="text-xs font-semibold tracking-wide opacity-80">Cargando sesión...</span>
+        </div>
+      </div>
+    );
+  }
 
   // --------------------------------------------------------------------------
   // PANTALLA DE LOGIN: PRIMERA PANTALLA MOSTRADA PARA ACCEDER AL SISTEMA
