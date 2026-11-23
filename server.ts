@@ -5915,12 +5915,28 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], req
       };
     });
 
+    let recentRegisterErrors: string[] = [];
+    try {
+      if (fs.existsSync('/var/log/asterisk/messages')) {
+        const logTail = await new Promise<string>((resolve) => {
+          exec('tail -n 200 /var/log/asterisk/messages | grep -iE "pjsip.*(register|auth|failed|no matching|200)" | tail -n 15', { timeout: 1500 }, (_e, out) => {
+            resolve(out ? out.trim() : '');
+          });
+        });
+        if (logTail) {
+          recentRegisterErrors = logTail.split('\n').filter(Boolean);
+        }
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       hasSyntaxError: hasDuplicateSections,
       endpoints: live.parsed,
       rawOutput: live.raw,
       credentials: softphoneCredentials,
+      recentRegisterErrors,
+      configuredExtensionsCount: activeList.length,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -6569,15 +6585,23 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     let amiOutput = '';
     let cliOutput = 'Sin cambios en PJSIP/Dialplan (AstDB actualizado sin interrumpir registros)';
+    let reloadError = '';
     if (reloadCmds.length > 0) {
       if (hasLocalAsterisk) {
-        cliOutput = await new Promise<string>((resolve) => {
-          const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2500);
-          exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), (err, stdout) => {
+        const bin = getAsteriskBinary();
+        const reloadRes = await new Promise<{ out: string; errMsg: string }>((resolve) => {
+          const timer = setTimeout(() => resolve({ out: 'Dialplan y PJSIP recargados en caliente', errMsg: '' }), 4000);
+          exec(reloadCmds.map((c) => `"${bin}" -rx "${c}"`).join(' && '), (err, stdout, stderr) => {
             clearTimeout(timer);
-            resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
+            if (err) {
+              resolve({ out: stdout ? stdout.trim() : '', errMsg: (stderr || err.message || 'Error ejecutando asterisk -rx').trim() });
+            } else {
+              resolve({ out: stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente', errMsg: '' });
+            }
           });
         });
+        cliOutput = reloadRes.out || reloadRes.errMsg;
+        reloadError = reloadRes.errMsg;
       } else {
         try {
           amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
@@ -6588,11 +6612,31 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       }
     }
 
+    if (hasLocalAsterisk && pjsipChanged && !pjsipWritten) {
+      return res.status(500).json({
+        success: false,
+        error: 'No se pudo escribir /etc/asterisk/pjsip.conf (verifica permisos del usuario del proceso PM2/Node).',
+        pjsipWritten,
+        dialplanWritten,
+      });
+    }
+
+    if (hasLocalAsterisk && reloadError) {
+      return res.status(500).json({
+        success: false,
+        error: `pjsip.conf escrito pero falló la recarga de Asterisk: ${reloadError}`,
+        pjsipWritten,
+        dialplanWritten,
+        cliOutput,
+      });
+    }
+
     // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge without local Asterisk
+    let remoteSyncWarning = '';
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 4500);
         const remoteSyncResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/sync/extensions`, {
           method: 'POST',
           headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
@@ -6602,8 +6646,12 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
         clearTimeout(timeoutId);
         if (remoteSyncResp.ok) {
           console.log(`[ASTERISK-SYNC] ✓ Replicado exitosamente en VPS Asterisk remoto: ${REMOTE_ASTERISK_HTTP}`);
+        } else {
+          remoteSyncWarning = `El servidor Asterisk remoto (${REMOTE_ASTERISK_HTTP}) rechazó la sincronización con HTTP ${remoteSyncResp.status}. Si estás usando la vista previa externa, abre directamente la URL de tu VPS para sincronizar Asterisk.`;
+          console.warn(`[ASTERISK-SYNC] ${remoteSyncWarning}`);
         }
       } catch (fwdErr: any) {
+        remoteSyncWarning = `No se pudo contactar al servidor Asterisk remoto (${REMOTE_ASTERISK_HTTP}): ${fwdErr.message}`;
         console.warn(`[ASTERISK-SYNC] Remote sync forward notice:`, fwdErr.message);
       }
     }
@@ -6612,8 +6660,18 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
 
     // If restart requested or if socket re-bind is required for new transport port
     if (req.body.restartAsterisk && hasLocalAsterisk) {
-      exec('asterisk -rx "core restart now"', (err) => {
+      const bin = getAsteriskBinary();
+      exec(`"${bin}" -rx "core restart now"`, (err) => {
         if (err) exec('systemctl restart asterisk', () => {});
+      });
+    }
+
+    if (!hasLocalAsterisk && remoteSyncWarning) {
+      return res.status(502).json({
+        success: false,
+        error: remoteSyncWarning,
+        pjsipWritten,
+        dialplanWritten,
       });
     }
 

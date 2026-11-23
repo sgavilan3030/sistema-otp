@@ -1351,6 +1351,7 @@ export default function App() {
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.success !== false) {
+        lastServerTimestampRef.current = Date.now();
         recordAmiSuccessClient();
         addLog(
           'AMI',
@@ -1699,32 +1700,34 @@ export default function App() {
     setUsers(updatedUsersList);
     const cleanUser = String(newUser.username || newUser.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
     
-    if (cleanUser && newUser.password) {
-      setExtensions((prevExts) => {
-        const extIdx = prevExts.findIndex((e) => e.extension.toLowerCase() === cleanUser);
-        const newExtObj: PjsipExtension = {
-          id: `ext-${cleanUser}`,
-          extension: cleanUser,
-          name: newUser.name,
-          secret: newUser.password,
-          context: 'from-internal',
-          transport: 'transport-udp',
-          port: 47923,
-          maxContacts: 10,
-          codecs: ['ulaw', 'alaw'],
-          status: 'registered',
-          callerId: `"${newUser.name}" <${(newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser}>`,
-          callerIdNum: (newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser,
-          callerIdName: newUser.name,
-        };
-        let updatedExts = [...prevExts];
-        if (extIdx >= 0) {
-          updatedExts[extIdx] = { ...updatedExts[extIdx], ...newExtObj };
-        } else {
-          updatedExts.push(newExtObj);
-        }
-        return updatedExts;
-      });
+    if (cleanUser) {
+      if (newUser.password) {
+        setExtensions((prevExts) => {
+          const extIdx = prevExts.findIndex((e) => e.extension.toLowerCase() === cleanUser);
+          const newExtObj: PjsipExtension = {
+            id: `ext-${cleanUser}`,
+            extension: cleanUser,
+            name: newUser.name,
+            secret: newUser.password,
+            context: 'from-internal',
+            transport: 'transport-udp',
+            port: 47923,
+            maxContacts: 10,
+            codecs: ['ulaw', 'alaw'],
+            status: 'registered',
+            callerId: `"${newUser.name}" <${(newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser}>`,
+            callerIdNum: (newUser.assignedExtensions && newUser.assignedExtensions[0]) || cleanUser,
+            callerIdName: newUser.name,
+          };
+          const updatedExts = [...prevExts];
+          if (extIdx >= 0) {
+            updatedExts[extIdx] = { ...updatedExts[extIdx], ...newExtObj };
+          } else {
+            updatedExts.push(newExtObj);
+          }
+          return updatedExts;
+        });
+      }
 
       // Synchronize immediately to /etc/asterisk/pjsip.conf, AstDB and hot reload Asterisk
       fetch('/api/users/sync-sip', {
@@ -1737,6 +1740,7 @@ export default function App() {
         }),
       })
         .then(() => {
+          lastServerTimestampRef.current = Date.now();
           refreshMembershipOverview();
           return fetch('/api/asterisk/extensions');
         })
