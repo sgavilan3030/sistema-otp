@@ -2384,7 +2384,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             setActiveCall((prev) => prev ? { ...prev, status: 'in_ivr', mode: (callState.mode as CallFlowMode) || prev.mode, answeredAt: callState.answeredAt || Date.now(), channel: callState.channel || prev.channel } : null);
           } else if (callState.status === 'ringing' && activeCall.status === 'dialing') {
             setActiveCall((prev) => prev ? { ...prev, status: 'ringing', channel: callState.channel || prev.channel } : null);
-          } else if (callState.status === 'machine') {
+          } else if (callState.status === 'retrying') {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: 'dialing',
+                  }
+                : null
+            );
+            setLaunchFeedback({
+              text: `🤖 Grabadora / Contestador detectado en ${activeCall.number} (${callState.cause || 'AMD'}). Reintentando automáticamente...`,
+              type: 'info',
+            });
+          } else if (callState.status === 'machine' || callState.status === 'machine_detected') {
             setActiveCall((prev) =>
               prev
                 ? {
@@ -2395,7 +2408,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 : null
             );
             setLaunchFeedback({
-              text: `📞 Contestadora automática o buzón de voz detectado en ${activeCall.number}. Asterisk colgó la llamada y el sistema se cerró automáticamente.`,
+              text: `🤖 Contestadora automática o buzón de voz detectado en ${activeCall.number}${callState.cause ? ` (${callState.cause})` : ''}. Asterisk colgó la llamada automáticamente.`,
               type: 'error',
             });
           } else if (callState.status === 'ended') {
@@ -2681,13 +2694,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           duration: 0,
         });
 
-        // Simulate progression to ringing and in_ivr based on Asterisk typical timing
+        // Only advance visual status if Asterisk hasn't already transitioned the call (e.g., to machine_detected, pressed_1, or ended)
         setTimeout(() => {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'ringing' } : null));
+          setActiveCall((prev) => (prev && prev.isActive && prev.status === 'dialing' ? { ...prev, status: 'ringing' } : prev));
         }, 3000);
 
         setTimeout(() => {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'in_ivr' } : null));
+          setActiveCall((prev) => (prev && prev.isActive && (prev.status === 'dialing' || prev.status === 'ringing') ? { ...prev, status: 'in_ivr' } : prev));
         }, 7000);
       } else {
         setLaunchFeedback({

