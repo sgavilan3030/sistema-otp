@@ -1706,14 +1706,6 @@ export default function App() {
         } else {
           updatedExts.push(newExtObj);
         }
-        if (Array.isArray(newUser.assignedExtensions)) {
-          updatedExts = updatedExts.map((e) => {
-            if (newUser.assignedExtensions.includes(e.extension)) {
-              return { ...e, secret: newUser.password };
-            }
-            return e;
-          });
-        }
         return updatedExts;
       });
 
@@ -1753,9 +1745,6 @@ export default function App() {
         const updatedExts = prevExts.map((e) => {
           if (e.extension.toLowerCase() === cleanUser) {
             return { ...e, secret: updatedUser.password, name: updatedUser.name };
-          }
-          if (Array.isArray(updatedUser.assignedExtensions) && updatedUser.assignedExtensions.includes(e.extension)) {
-            return { ...e, secret: updatedUser.password };
           }
           return e;
         });

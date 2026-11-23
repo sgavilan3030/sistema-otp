@@ -1613,7 +1613,7 @@ icesupport=no
     }
     ensureAsteriskCoreOptionsConf();
     if (hasLocalAsterisk && codecsUpdated) {
-      exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null; asterisk -rx "core reload" 2>/dev/null', () => {});
+      exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null; asterisk -rx "module reload codec_opus.so" 2>/dev/null; asterisk -rx "module reload codec_speex.so" 2>/dev/null', () => {});
     } else if (hasLocalAsterisk) {
       exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null', () => {});
     }
@@ -3015,19 +3015,35 @@ app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
       const activeUsers = lastSyncedUsers.length > 0 ? lastSyncedUsers : loadStoredUsers();
       syncTenantCarriersToAstDb(preservedTenants, activeCarriers).catch(() => {});
       try {
+        const normalizePjsipTxt = (txt: string) => txt.replace(/^; Fecha:.*$/gm, '').trim();
+        const normalizeDialplanTxt = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
         const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, activeUsers);
+        const prevPjsipDisk = fs.existsSync('/etc/asterisk/pjsip.conf') ? fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8') : '';
+        const pjsipChanged = normalizePjsipTxt(prevPjsipDisk) !== normalizePjsipTxt(updatedPjsip);
         lastGeneratedPjsip = updatedPjsip;
-        await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
-        await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+        if (pjsipChanged) {
+          await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+          await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+        }
 
         const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
+        const prevDialplanDisk = fs.existsSync('/etc/asterisk/extensions.conf') ? fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8') : '';
+        const dialplanChanged = normalizeDialplanTxt(prevDialplanDisk) !== normalizeDialplanTxt(updatedDialplan);
         lastGeneratedDialplan = updatedDialplan;
-        await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
-        await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
-        if (hasLocalAsterisk) {
-          exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+        if (dialplanChanged) {
+          await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
+          await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
         }
-        sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']).catch(() => {});
+        const reloadCmds: string[] = [];
+        if (pjsipChanged) reloadCmds.push('pjsip reload');
+        if (dialplanChanged) reloadCmds.push('dialplan reload');
+        if (reloadCmds.length > 0) {
+          if (hasLocalAsterisk) {
+            exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {});
+          } else {
+            sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds).catch(() => {});
+          }
+        }
       } catch (_) {}
       return res.json({ success: true, message: 'Tenants guardados y troncales sincronizadas en PJSIP + Dialplan.', count: preservedTenants.length });
     }
@@ -3066,13 +3082,41 @@ function loadStoredExtensions(): any[] {
 function saveStoredExtensions(extensions: any[]) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(EXTENSIONS_FILE, JSON.stringify(extensions, null, 2), 'utf8');
-    invalidateJsonFileCache(EXTENSIONS_FILE, extensions);
+    const prevSecretMap = new Map<string, string>();
+    const addPrevSecrets = (list: any[]) => {
+      if (!Array.isArray(list)) return;
+      for (const item of list) {
+        const key = String(item?.extension || item?.id || '').trim().toLowerCase();
+        const sec = typeof item?.secret === 'string' ? item.secret.trim() : '';
+        if (key && sec && !/^[*•]+$/.test(sec)) {
+          prevSecretMap.set(key, sec);
+        }
+      }
+    };
+    addPrevSecrets(defaultExtensionsList);
+    addPrevSecrets(readJsonFileCached<any[]>(EXTENSIONS_FILE) || []);
+    try {
+      if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
+        addPrevSecrets(parseExtensionsFromPjsip(fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8')));
+      }
+    } catch (_) {}
+
+    const safeExtensions = (Array.isArray(extensions) ? extensions : []).map((ext: any) => {
+      if (!ext || typeof ext !== 'object') return ext;
+      const key = String(ext.extension || ext.id || '').trim().toLowerCase();
+      const rawSec = typeof ext.secret === 'string' ? ext.secret.trim() : '';
+      const validIncoming = rawSec && !/^[*•]+$/.test(rawSec);
+      const preservedSecret = validIncoming ? rawSec : (prevSecretMap.get(key) || rawSec);
+      return preservedSecret ? { ...ext, secret: preservedSecret } : ext;
+    });
+
+    fs.writeFileSync(EXTENSIONS_FILE, JSON.stringify(safeExtensions, null, 2), 'utf8');
+    invalidateJsonFileCache(EXTENSIONS_FILE, safeExtensions);
     if (fs.existsSync(APP_STATE_FILE)) {
       try {
         const raw = fs.readFileSync(APP_STATE_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        parsed.extensions = extensions;
+        parsed.extensions = safeExtensions;
         parsed.lastUpdated = Date.now();
         fs.writeFileSync(APP_STATE_FILE, JSON.stringify(parsed, null, 2), 'utf8');
         invalidateJsonFileCache(APP_STATE_FILE, parsed);
@@ -3143,22 +3187,52 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   const baseExts = (Array.isArray(extensions) && extensions.length > 0) ? extensions : defaultExtensionsList;
   const mergedExtsMap = new Map<string, any>();
 
-  // 1. Process base extensions
+  // Recover existing auth passwords from disk pjsip.conf / extensions.json so stripped payloads never overwrite secrets
+  const diskSecretsMap = new Map<string, string>();
+  try {
+    if (fs.existsSync('/etc/asterisk/pjsip.conf')) {
+      const parsedDisk = parseExtensionsFromPjsip(fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8'));
+      for (const de of parsedDisk) {
+        const k = String(de?.extension || '').trim().toLowerCase();
+        if (k && de?.secret && !String(de.secret).startsWith('SecretPass#')) {
+          diskSecretsMap.set(k, de.secret);
+        }
+      }
+    }
+  } catch (_) {}
+  try {
+    const storedExtsDisk = readJsonFileCached<any[]>(EXTENSIONS_FILE);
+    if (Array.isArray(storedExtsDisk)) {
+      for (const se of storedExtsDisk) {
+        const k = String(se?.extension || '').trim().toLowerCase();
+        const sec = typeof se?.secret === 'string' ? se.secret.trim() : '';
+        if (k && sec && !/^[*•]+$/.test(sec) && !diskSecretsMap.has(k)) {
+          diskSecretsMap.set(k, sec);
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 1. Process base extensions (preserving real secrets)
   for (const ext of baseExts) {
     const rawVal = (ext.extension || ext.id || ext.number || ext.num || '').toString().trim();
     const cleanId = rawVal.replace(/[^a-zA-Z0-9_\-]/g, '') || '1001';
-    mergedExtsMap.set(cleanId.toLowerCase(), {
+    const key = cleanId.toLowerCase();
+    const rawSec = typeof ext.secret === 'string' ? ext.secret.trim() : (typeof ext.password === 'string' ? ext.password.trim() : '');
+    const effectiveSec = (rawSec && !/^[*•]+$/.test(rawSec)) ? rawSec : (diskSecretsMap.get(key) || '');
+    mergedExtsMap.set(key, {
       ...ext,
       extension: cleanId,
+      ...(effectiveSec ? { secret: effectiveSec } : {}),
     });
   }
 
-  // 2. Process extra users and stored users (so MicroSIP usernames and passwords work in Asterisk without 'contraseña incorrecta')
+  // 2. Process stored users and extra users (so MicroSIP usernames work with their own sipSecret without clobbering numeric extensions)
   const storedUsers = loadStoredUsers();
   const allUsersToProcess = [
-    ...(Array.isArray(extraUsers) ? extraUsers : []),
-    ...lastSyncedUsers,
     ...storedUsers,
+    ...lastSyncedUsers,
+    ...(Array.isArray(extraUsers) ? extraUsers : []),
   ];
 
   for (const u of allUsersToProcess) {
@@ -3196,13 +3270,26 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
         existing.name = u.name || existing.name;
       }
 
-      // Synchronize explicit password to any assigned numeric extensions only when set
+      // Create missing assigned numeric extensions only if absent; NEVER overwrite an existing numeric extension's password
       if (explicitUserPassword && Array.isArray(u.assignedExtensions)) {
         for (const assigned of u.assignedExtensions) {
-          const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
-          if (mergedExtsMap.has(cleanAssigned)) {
-            const extToSync = mergedExtsMap.get(cleanAssigned);
-            extToSync.secret = explicitUserPassword;
+          const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '');
+          const cleanAssignedKey = cleanAssigned.toLowerCase();
+          if (cleanAssigned && !mergedExtsMap.has(cleanAssignedKey)) {
+            mergedExtsMap.set(cleanAssignedKey, {
+              id: `ext-${cleanAssigned}`,
+              extension: cleanAssigned,
+              name: u.name || `Ext ${cleanAssigned}`,
+              secret: diskSecretsMap.get(cleanAssignedKey) || explicitUserPassword,
+              context: 'from-internal',
+              transport: 'transport-udp',
+              port: 47923,
+              maxContacts: 5,
+              codecs: ['ulaw', 'alaw'],
+              callerIdNum: cleanAssigned,
+              callerIdName: u.name || `Ext ${cleanAssigned}`,
+              status: 'registered',
+            });
           }
         }
       }
@@ -5430,10 +5517,13 @@ async function autoRepairAsteriskPjsipOnStartup() {
               detectedExternalIp = candidate;
               const updatedPjsip = generateCleanPjsipConf(loadStoredExtensions(), loadStoredCarriers(), loadStoredUsers());
               lastGeneratedPjsip = updatedPjsip;
-              writeAsteriskConfigFile(pjsipPath, updatedPjsip)
-                .then(() => exec('asterisk -rx "pjsip reload"', () => {}))
-                .catch(() => {});
-              console.log(`[PJSIP-NAT] ✓ IP pública detectada (${candidate}) y aplicada a external_media_address.`);
+              const prevPjsipDisk = fs.existsSync(pjsipPath) ? fs.readFileSync(pjsipPath, 'utf8') : '';
+              if (normalizePjsipDiff(prevPjsipDisk) !== normalizePjsipDiff(updatedPjsip)) {
+                writeAsteriskConfigFile(pjsipPath, updatedPjsip)
+                  .then(() => exec('asterisk -rx "pjsip reload"', () => {}))
+                  .catch(() => {});
+                console.log(`[PJSIP-NAT] ✓ IP pública detectada (${candidate}) y aplicada a external_media_address.`);
+              }
             }
           });
         });
@@ -6235,8 +6325,9 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
       return res.status(400).json({ success: false, error: 'extensions must be an array' });
     }
 
-    lastSyncedExtensions = extensions;
     saveStoredExtensions(extensions);
+    const persistedExtensions = loadStoredExtensions();
+    lastSyncedExtensions = persistedExtensions;
 
     const validCarriers = Array.isArray(carriers)
       ? carriers
@@ -6256,19 +6347,34 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
     const storedUsersList = loadStoredUsers();
     let usersToInclude = storedUsersList;
     if (Array.isArray(req.body.users) && req.body.users.length > 0) {
-      const mergedMap = new Map<string, any>();
-      for (const u of storedUsersList) {
-        if (u && (u.id || u.username)) mergedMap.set(String(u.id || u.username).toLowerCase(), u);
-      }
+      const mergedList = storedUsersList.map((u) => ({ ...u }));
+      const indexByKey = new Map<string, number>();
+      mergedList.forEach((u, idx) => {
+        if (u?.id) indexByKey.set(`id:${String(u.id).toLowerCase()}`, idx);
+        if (u?.username) indexByKey.set(`un:${String(u.username).toLowerCase()}`, idx);
+      });
       for (const u of req.body.users) {
-        if (u && (u.id || u.username)) {
-          const k = String(u.id || u.username).toLowerCase();
-          const prev = mergedMap.get(k);
-          const { effectiveMembership: _em, membership: _m, ...cleanIncoming } = u;
-          mergedMap.set(k, { ...(prev || {}), ...cleanIncoming, ...(prev?.membership ? { membership: prev.membership } : {}) });
+        if (!u || (!u.id && !u.username)) continue;
+        const idKey = u.id ? `id:${String(u.id).toLowerCase()}` : '';
+        const unKey = u.username ? `un:${String(u.username).toLowerCase()}` : '';
+        const matchedIdx = (idKey && indexByKey.has(idKey))
+          ? indexByKey.get(idKey)!
+          : (unKey && indexByKey.has(unKey) ? indexByKey.get(unKey)! : -1);
+        const { effectiveMembership: _em, membership: _m, ...cleanIncoming } = u;
+        if (matchedIdx >= 0) {
+          const prev = mergedList[matchedIdx];
+          mergedList[matchedIdx] = {
+            ...prev,
+            ...cleanIncoming,
+            ...(prev?.membership ? { membership: prev.membership } : {}),
+          };
+        } else {
+          const newIdx = mergedList.push(cleanIncoming) - 1;
+          if (idKey) indexByKey.set(idKey, newIdx);
+          if (unKey) indexByKey.set(unKey, newIdx);
         }
       }
-      saveStoredUsers(Array.from(mergedMap.values()));
+      saveStoredUsers(mergedList);
       usersToInclude = loadStoredUsers();
       lastSyncedUsers = usersToInclude;
     }
@@ -6286,25 +6392,31 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
     }
 
     // Generate clean pjsip.conf using validated Asterisk 20 generator
-    const pjsipContent = generateCleanPjsipConf(extensions, validCarriers, usersToInclude);
+    const pjsipContent = generateCleanPjsipConf(persistedExtensions, validCarriers, usersToInclude);
 
     // Generate extensions.conf (Dialplan) with outbound multi-carrier failover routing, tenant isolation and Ring-All support
-    const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body, extensions);
+    const dialplanContent = generateCleanDialplanConf(validCarriers, carrierHost, req.body, persistedExtensions);
 
     const asteriskPjsipPath = '/etc/asterisk/pjsip.conf';
     const asteriskDialplanPath = '/etc/asterisk/extensions.conf';
+    const normalizePjsipDiff = (txt: string) => txt.replace(/^; Fecha:.*$/gm, '').trim();
+    const normalizeDialplanDiff = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
+    const prevPjsipDisk = fs.existsSync(asteriskPjsipPath) ? fs.readFileSync(asteriskPjsipPath, 'utf8') : '';
+    const prevDialplanDisk = fs.existsSync(asteriskDialplanPath) ? fs.readFileSync(asteriskDialplanPath, 'utf8') : '';
+    const pjsipChanged = Boolean(req.body.forceReload) || normalizePjsipDiff(prevPjsipDisk) !== normalizePjsipDiff(pjsipContent);
+    const dialplanChanged = Boolean(req.body.forceReload) || normalizeDialplanDiff(prevDialplanDisk) !== normalizeDialplanDiff(dialplanContent);
 
     // 1. Ensure custom audio directory and native 8k WAV audios exist, plus AMD config
     ensureCustomAudioFilesExist();
     ensureAmdConfExists();
 
-    // 2. Safe write for PJSIP Configuration
-    const pjsipWritten = await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent);
+    // 2. Safe write for PJSIP Configuration (only rewrite when changed)
+    const pjsipWritten = pjsipChanged ? await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent) : false;
 
     // 3. Save each extension's assigned Carrier and Recording flag into AstDB (CallerID assigned by carrier)
     executeAsteriskCommand('database put spy_allowed 1000 "1"').catch(() => {});
-    if (Array.isArray(extensions)) {
-      for (const ext of extensions) {
+    if (Array.isArray(persistedExtensions)) {
+      for (const ext of persistedExtensions) {
         const extNum = ext.extension;
         // CallerID is assigned dynamically by the SIP carrier, delete any stale extension_cid override
         executeAsteriskCommand(`database deltree extension_cid/${extNum}`).catch(() => {});
@@ -6379,8 +6491,8 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
     lastGeneratedPjsip = pjsipContent;
     lastGeneratedDialplan = dialplanContent;
 
-    // 5. Safe write for Extensions Dialplan
-    const dialplanWritten = await writeAsteriskConfigFile(asteriskDialplanPath, dialplanContent);
+    // 5. Safe write for Extensions Dialplan (only rewrite when changed)
+    const dialplanWritten = dialplanChanged ? await writeAsteriskConfigFile(asteriskDialplanPath, dialplanContent) : false;
 
     // Also write to local app dir for safety
     try {
@@ -6388,29 +6500,31 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), dialplanContent, 'utf8');
     } catch (e) {}
 
-    // 6. Send Hot Reload to Asterisk AMI immediately
-    let amiOutput = '';
-    try {
-      amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, [
-        'pjsip reload',
-        'dialplan reload',
-        'pjsip show endpoints',
-        'dialplan show from-internal',
-      ]);
-    } catch (amiErr: any) {
-      amiOutput = amiErr.message;
-    }
+    // 6. Send ONE hot reload only for modules whose config actually changed (prevents PJSIP registration drops)
+    const reloadCmds: string[] = [];
+    if (pjsipChanged) reloadCmds.push('pjsip reload');
+    if (dialplanChanged) reloadCmds.push('dialplan reload');
 
-    // 7. Also execute reload via Asterisk CLI child_process
-    const cliOutput = hasLocalAsterisk
-      ? await new Promise<string>((resolve) => {
-          const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2000);
-          exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', (err, stdout) => {
+    let amiOutput = '';
+    let cliOutput = 'Sin cambios en PJSIP/Dialplan (AstDB actualizado sin interrumpir registros)';
+    if (reloadCmds.length > 0) {
+      if (hasLocalAsterisk) {
+        cliOutput = await new Promise<string>((resolve) => {
+          const timer = setTimeout(() => resolve('Dialplan y PJSIP recargados en caliente'), 2500);
+          exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), (err, stdout) => {
             clearTimeout(timer);
             resolve(stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente');
           });
-        })
-      : 'Dialplan y PJSIP sincronizados';
+        });
+      } else {
+        try {
+          amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
+          cliOutput = 'Dialplan y PJSIP recargados vía AMI';
+        } catch (amiErr: any) {
+          amiOutput = amiErr.message;
+        }
+      }
+    }
 
     // 8. Replicate configuration to remote Asterisk VPS if running through remote bridge without local Asterisk
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
@@ -7039,7 +7153,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
         if ((!curContent.includes('type = transport') && !curContent.includes('type=transport')) || curContent.includes('1001-aor')) {
           const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
           const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
-          const fixedPjsip = generateCleanPjsipConf(activeExts, activeCarriers);
+          const fixedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, loadStoredUsers());
           fs.writeFileSync(pjsipPath, fixedPjsip, 'utf8');
           fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), fixedPjsip, 'utf8');
           if (hasLocalAsterisk) {
@@ -11648,18 +11762,31 @@ app.post('/api/reseller/clients', requireGlobalAdmin, async (req, res) => {
       defaultExtensionsList.push(newExtObj as any);
     }
 
-    // Auto-update /etc/asterisk/pjsip.conf and /etc/asterisk/extensions.conf and reload
+    // Auto-update /etc/asterisk/pjsip.conf and /etc/asterisk/extensions.conf and reload only when changed
     try {
-      const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : defaultExtensionsList;
+      const normalizePjsipTxt = (txt: string) => txt.replace(/^; Fecha:.*$/gm, '').trim();
+      const normalizeDialplanTxt = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
+      const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
       const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
       const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, loadStoredUsers());
-      await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
-      await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+      const prevPjsipDisk = fs.existsSync('/etc/asterisk/pjsip.conf') ? fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8') : '';
+      const pjsipChanged = normalizePjsipTxt(prevPjsipDisk) !== normalizePjsipTxt(updatedPjsip);
+      if (pjsipChanged) {
+        await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+        await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+      }
       const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
-      await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
-      await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
-      if (hasLocalAsterisk) {
-        exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+      const prevDialplanDisk = fs.existsSync('/etc/asterisk/extensions.conf') ? fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8') : '';
+      const dialplanChanged = normalizeDialplanTxt(prevDialplanDisk) !== normalizeDialplanTxt(updatedDialplan);
+      if (dialplanChanged) {
+        await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
+        await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
+      }
+      const reloadCmds: string[] = [];
+      if (pjsipChanged) reloadCmds.push('pjsip reload');
+      if (dialplanChanged) reloadCmds.push('dialplan reload');
+      if (hasLocalAsterisk && reloadCmds.length > 0) {
+        exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {});
       }
     } catch (_) {}
 
@@ -11984,26 +12111,16 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       defaultExtensionsList.push(extObj as any);
     }
 
-    // 3. If user has assigned numeric extensions (e.g. 2001+ for clients, 1001+ for agents), sync/upsert into stored extensions too
+    // 3. If user has assigned numeric extensions (e.g. 2001+ for clients, 1001+ for agents), add missing ones ONLY without overwriting existing numeric extension passwords
     if (Array.isArray(targetUser.assignedExtensions)) {
       const currentStoredExts = lastSyncedExtensions.length > 0 ? [...lastSyncedExtensions] : [...loadStoredExtensions()];
       let changedStoredExts = false;
       for (const assigned of targetUser.assignedExtensions) {
-        const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+        const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '');
+        const cleanAssignedKey = cleanAssigned.toLowerCase();
         if (!cleanAssigned) continue;
-        const matched = defaultExtensionsList.find((e) => String(e.extension).toLowerCase() === cleanAssigned);
-        if (matched) {
-          matched.secret = password;
-        }
-        const storedIdx = currentStoredExts.findIndex((e: any) => String(e?.extension || '').toLowerCase() === cleanAssigned);
-        if (storedIdx >= 0) {
-          currentStoredExts[storedIdx] = {
-            ...currentStoredExts[storedIdx],
-            secret: password,
-            name: currentStoredExts[storedIdx].name || targetUser.name || cleanAssigned,
-          };
-          changedStoredExts = true;
-        } else {
+        const storedIdx = currentStoredExts.findIndex((e: any) => String(e?.extension || '').toLowerCase() === cleanAssignedKey);
+        if (storedIdx === -1) {
           currentStoredExts.push({
             id: `ext-${cleanAssigned}`,
             extension: cleanAssigned,
@@ -12025,8 +12142,8 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
         }
       }
       if (changedStoredExts) {
-        lastSyncedExtensions = currentStoredExts;
         saveStoredExtensions(currentStoredExts);
+        lastSyncedExtensions = loadStoredExtensions();
       }
     }
 
@@ -12095,25 +12212,40 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       }
     }
 
-    // 6. Generate and write clean pjsip.conf
+    // 6. Generate and write clean pjsip.conf / extensions.conf only when changed
+    const normalizePjsipTxt = (txt: string) => txt.replace(/^; Fecha:.*$/gm, '').trim();
+    const normalizeDialplanTxt = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
     const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
     const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
     const updatedPjsip = generateCleanPjsipConf(activeExts, activeCarriers, stored);
-    await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
-    await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+    const prevPjsipDisk = fs.existsSync('/etc/asterisk/pjsip.conf') ? fs.readFileSync('/etc/asterisk/pjsip.conf', 'utf8') : '';
+    const pjsipChanged = normalizePjsipTxt(prevPjsipDisk) !== normalizePjsipTxt(updatedPjsip);
+    if (pjsipChanged) {
+      await writeAsteriskConfigFile('/etc/asterisk/pjsip.conf', updatedPjsip);
+      await writeAsteriskConfigFile(path.join(process.cwd(), 'pjsip.conf'), updatedPjsip);
+    }
 
     // Also write extensions.conf to ensure dialplan supports manual dialing
     const updatedDialplan = generateCleanDialplanConf(activeCarriers, undefined, {}, activeExts);
-    await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
-    await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
+    const prevDialplanDisk = fs.existsSync('/etc/asterisk/extensions.conf') ? fs.readFileSync('/etc/asterisk/extensions.conf', 'utf8') : '';
+    const dialplanChanged = normalizeDialplanTxt(prevDialplanDisk) !== normalizeDialplanTxt(updatedDialplan);
+    if (dialplanChanged) {
+      await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
+      await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
+    }
 
-    // 7. Hot reload Asterisk (single reload via CLI locally or AMI remotely)
-    if (hasLocalAsterisk) {
-      exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
-    } else {
-      try {
-        await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']);
-      } catch (_) {}
+    // 7. Hot reload Asterisk (only reload modules that actually changed)
+    const reloadCmds: string[] = [];
+    if (pjsipChanged) reloadCmds.push('pjsip reload');
+    if (dialplanChanged) reloadCmds.push('dialplan reload');
+    if (reloadCmds.length > 0) {
+      if (hasLocalAsterisk) {
+        exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {});
+      } else {
+        try {
+          await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
+        } catch (_) {}
+      }
     }
 
     res.json({
