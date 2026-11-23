@@ -2213,12 +2213,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             const channel = String(ch.channel || '');
             const callerId = String(ch.callerId || ch.callerid || '').trim();
             const isIvrOrCapture =
-              exten.includes('7777') ||
               exten.includes('8888') ||
               /^4\d{3}$/.test(exten) ||
               context.includes('captura') ||
               context.includes('ivr') ||
-              channel.includes('7777') ||
               channel.includes('8888');
             if (!isIvrOrCapture) return false;
             if (assignedExts.length === 0) return true;
@@ -6038,11 +6036,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <div className="text-[11px] text-slate-400 mt-1">
                         {agentExtension === 'ringall' ? (
                           <span className="text-purple-300">
-                            ⚡ <strong>Ring-All Habilitado:</strong> Cuando el cliente pulse 1, timbrarán a la vez todas las extensiones ({extensions.map((e) => e.extension).join(', ')}). Si la llamada la contesta la extensión <strong>1002</strong> y ésta transfiere al cliente al sistema automático (Ext. 3333) para digitar su código, al validarse como aprobado la llamada <strong>retornará de forma exacta a la misma extensión 1002</strong>.
+                            ⚡ <strong>Ring-All Habilitado:</strong> Cuando el cliente pulse 1, timbrarán a la vez todas las extensiones ({extensions.map((e) => e.extension).join(', ')}). Si la llamada la contesta la extensión <strong>1002</strong> y ésta transfiere al cliente al sistema automático (Ext. 4001+) para digitar su código, al validarse como aprobado la llamada <strong>retornará de forma exacta a la misma extensión 1002</strong>.
                           </span>
                         ) : (
                           <span>
-                            🎯 <strong>Agente Específico:</strong> La llamada conectará directamente a la extensión <strong className="text-white font-mono">{agentExtension}</strong>. Si dicha extensión transfiere a la 3333 para OTP, tras la validación retornará a la extensión {agentExtension}.
+                            🎯 <strong>Agente Específico:</strong> La llamada conectará directamente a la extensión <strong className="text-white font-mono">{agentExtension}</strong>. Si dicha extensión transfiere a la 4001+ para OTP, tras la validación retornará a la extensión {agentExtension}.
                           </span>
                         )}
                       </div>

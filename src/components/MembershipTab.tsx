@@ -51,6 +51,7 @@ interface MembershipTabProps {
 const DEFAULT_SETTINGS: MembershipSettings = {
   enforceMembershipSystem: true,
   initialMonthDays: 30,
+  demoDays: 1,
   weekDays: 7,
   initialMonthPriceUsd: 150,
   weeklyPriceUsd: 45,
@@ -91,11 +92,17 @@ function getMembershipBadge(eff?: EffectiveMembershipStatus) {
   }
   if (eff.status === 'expired') {
     return {
-      label: 'Vencida',
+      label: !eff.initialMonthActivated && eff.demoUsed ? 'Demo Finalizado (1er Mes Pendiente)' : 'Vencida',
       classes: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     };
   }
   if (eff.status === 'active') {
+    if (eff.isDemo) {
+      return {
+        label: `DEMO • ${eff.remainingDays}d ${eff.remainingHours}h`,
+        classes: 'bg-violet-500/20 text-violet-300 border-violet-500/40',
+      };
+    }
     if (eff.remainingDays <= 3) {
       return {
         label: `Por Vencer • ${eff.remainingDays}d ${eff.remainingHours}h`,
@@ -220,7 +227,7 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
   const handleAdminActivate = async (
     targetType: 'tenant' | 'user',
     targetId: string,
-    action: 'initial_month' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset',
+    action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset',
     weeksCount?: number,
     extra?: { paymentMethod?: string; reference?: string; notes?: string; amountPaid?: number }
   ) => {
@@ -397,6 +404,8 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                   <h2 className="text-lg font-black text-white">
                     {myMembership?.status === 'suspended'
                       ? 'Cuenta Suspendida — Membresía Inactiva'
+                      : myMembership?.status === 'expired' && !clientInitialDone && myMembership?.demoUsed
+                      ? 'Demo de Prueba Finalizado — Activa tu 1er Mes Principal'
                       : myMembership?.status === 'expired'
                       ? 'Membresía Vencida — Renovación Requerida'
                       : 'Activación Inicial Requerida (Membresía 1 Mes)'}
@@ -404,6 +413,8 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                     {myMembership?.status === 'suspended'
                       ? 'Tu acceso operativo ha sido pausado temporalmente por el Administrador. Comunícate con soporte o verifica tu renovación.'
+                      : !clientInitialDone && myMembership?.demoUsed
+                      ? `Tu período Demo de ${settings.demoDays || 1} día(s) ha terminado. Para continuar usando el sistema, solicita o activa tu Membresía Principal de 1 Mes (${settings.initialMonthDays} días). Luego podrás renovar por 1 semana en adelante.`
                       : !clientInitialDone
                       ? `Para usar el sistema por primera vez debes activar tu Membresía Principal de 1 Mes (${settings.initialMonthDays} días). Una vez activado ese primer mes, podrás renovar por 1 semana en adelante contando por semanas.`
                       : 'Tu tiempo de membresía ha finalizado. Solicita o activa 1 semana o más para reanudar tus llamadas y operaciones.'}
@@ -474,6 +485,11 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     <span className="text-emerald-300">Activado</span>
                   </>
+                ) : myMembership?.isDemo && myMembership?.status === 'active' ? (
+                  <>
+                    <Sparkles className="w-4 h-4 text-violet-400" />
+                    <span className="text-violet-300">Demo Activo ({settings.demoDays || 1}d)</span>
+                  </>
                 ) : (
                   <>
                     <Lock className="w-4 h-4 text-amber-400" />
@@ -482,7 +498,11 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                 )}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">
-                {clientInitialDone ? formatDateTimeEs(myMembership?.initialActivatedAt) : 'Obligatorio al iniciar'}
+                {clientInitialDone
+                  ? formatDateTimeEs(myMembership?.initialActivatedAt)
+                  : myMembership?.isDemo && myMembership?.status === 'active'
+                  ? 'Prueba temporal vigente'
+                  : 'Obligatorio al iniciar'}
               </div>
             </div>
 
@@ -1014,25 +1034,42 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
 
                 <div className="space-y-2">
                   {!hasInitial ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={busyKey !== null}
-                        onClick={() => handleAdminActivate('tenant', tenant.id, 'initial_month')}
-                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>Activar 1er Mes Principal ({settings.initialMonthDays} días)</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        title="Primero debes activar la Membresía Principal de 1 Mes"
-                        className="py-2 px-3 rounded-xl bg-slate-950 text-slate-500 border border-slate-800 text-xs font-mono flex items-center gap-1 opacity-60 cursor-not-allowed"
-                      >
-                        <Lock className="w-3 h-3" />
-                        <span>+Semanas</span>
-                      </button>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={busyKey !== null}
+                          onClick={() => handleAdminActivate('tenant', tenant.id, 'initial_month')}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <Unlock className="w-3.5 h-3.5" />
+                          <span>Activar 1er Mes ({settings.initialMonthDays} días)</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyKey !== null || (eff?.isDemo && eff?.status === 'active')}
+                          onClick={() => handleAdminActivate('tenant', tenant.id, 'demo_1_day')}
+                          title={
+                            eff?.isDemo && eff?.status === 'active'
+                              ? 'Ya tiene un Demo activo en curso'
+                              : `Otorgar Demo de prueba por ${settings.demoDays || 1} día(s) (24h)`
+                          }
+                          className="py-2 px-3 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/40 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-violet-300" />
+                          <span>
+                            {eff?.isDemo && eff?.status === 'active'
+                              ? 'Demo Activo'
+                              : `Dar Demo (${settings.demoDays || 1} Día)`}
+                          </span>
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
+                        <span className="flex items-center gap-1">
+                          <Lock className="w-3 h-3 text-amber-400/70" />
+                          <span>+Semanas bloqueado hasta activar 1er Mes Principal</span>
+                        </span>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -1095,7 +1132,7 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                           <PlayCircle className="w-3.5 h-3.5" />
                           <span>Reactivar</span>
                         </button>
-                      ) : hasInitial ? (
+                      ) : hasInitial || eff?.isDemo ? (
                         <button
                           type="button"
                           disabled={busyKey !== null}
@@ -1107,7 +1144,7 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                         </button>
                       ) : null}
 
-                      {hasInitial && (
+                      {(hasInitial || eff?.isDemo || eff?.demoUsed) && (
                         <button
                           type="button"
                           disabled={busyKey !== null}
@@ -1184,15 +1221,35 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                 {!belongsToTenant && (
                   <div className="space-y-2 pt-2 border-t border-slate-800">
                     {!hasInitial ? (
-                      <button
-                        type="button"
-                        disabled={busyKey !== null}
-                        onClick={() => handleAdminActivate('user', user.id, 'initial_month')}
-                        className="w-full py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>Activar 1er Mes ({settings.initialMonthDays}d)</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={busyKey !== null}
+                          onClick={() => handleAdminActivate('user', user.id, 'initial_month')}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <Unlock className="w-3.5 h-3.5" />
+                          <span>1er Mes ({settings.initialMonthDays}d)</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyKey !== null || (eff?.isDemo && eff?.status === 'active')}
+                          onClick={() => handleAdminActivate('user', user.id, 'demo_1_day')}
+                          title={
+                            eff?.isDemo && eff?.status === 'active'
+                              ? 'Ya tiene un Demo activo'
+                              : `Otorgar Demo de prueba (${settings.demoDays || 1} día)`
+                          }
+                          className="py-2 px-3 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/40 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-violet-300" />
+                          <span>
+                            {eff?.isDemo && eff?.status === 'active'
+                              ? 'Demo Activo'
+                              : `Demo (${settings.demoDays || 1}d)`}
+                          </span>
+                        </button>
+                      </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-1.5">
                         {[1, 2, 4].map((w) => (
@@ -1250,7 +1307,7 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                           >
                             Reactivar
                           </button>
-                        ) : hasInitial ? (
+                        ) : hasInitial || eff?.isDemo ? (
                           <button
                             type="button"
                             onClick={() => handleAdminActivate('user', user.id, 'suspend')}
@@ -1260,7 +1317,7 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                           </button>
                         ) : null}
 
-                        {hasInitial && (
+                        {(hasInitial || eff?.isDemo || eff?.demoUsed) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1401,6 +1458,17 @@ export const MembershipTab: React.FC<MembershipTabProps> = ({
                 value={settingsForm.weekDays}
                 onChange={(e) => setSettingsForm({ ...settingsForm, weekDays: Math.max(1, Number(e.target.value) || 7) })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Días de Demo para Nuevos Clientes</label>
+              <input
+                type="number"
+                min={1}
+                max={14}
+                value={settingsForm.demoDays ?? 1}
+                onChange={(e) => setSettingsForm({ ...settingsForm, demoDays: Math.max(1, Math.min(14, Number(e.target.value) || 1)) })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-violet-500/40 text-violet-300 font-mono font-bold"
               />
             </div>
             <div>

@@ -110,16 +110,6 @@ export interface DynamicOtpExtension {
 }
 
 export interface ManualLockConfig {
-  welcome_6666?: boolean;
-  welcome_7777?: boolean;
-  welcome_5555?: boolean;
-  welcome_4444?: boolean;
-  welcome_3333?: boolean;
-  lock_7777?: boolean;
-  lock_6666?: boolean;
-  lock_5555?: boolean;
-  lock_4444?: boolean;
-  lock_3333?: boolean;
   ivr_entity?: boolean;
   [key: string]: boolean | undefined;
 }
@@ -128,56 +118,18 @@ export type AudioRole =
   | 'press1_welcome'
   | 'agent_transfer'
   | 'press1_invalid'
-  | 'welcome_7777'
-  | 'wait_7777'
-  | 'success_7777'
-  | 'failure_7777'
-  | 'welcome_6666'
-  | 'wait_6666'
-  | 'success_6666'
-  | 'failure_6666'
-  | 'welcome_5555'
-  | 'wait_5555'
-  | 'success_5555'
-  | 'failure_5555'
-  | 'welcome_4444'
-  | 'wait_4444'
-  | 'success_4444'
-  | 'failure_4444'
-  | 'welcome_3333'
-  | 'wait_3333'
-  | 'success_3333'
-  | 'failure_3333'
   | 'otp_welcome'
   | 'otp_wait'
   | 'otp_success'
   | 'otp_failure'
+  | 'hold_music'
+  | `${'welcome' | 'wait' | 'success' | 'failure' | 'prompt'}_${string}`
   | string;
 
 export interface ActiveAudioAssignments {
   press1_welcome: string;
   agent_transfer: string;
   press1_invalid: string;
-  welcome_7777: string;
-  wait_7777?: string;
-  success_7777?: string;
-  failure_7777?: string;
-  welcome_6666: string;
-  wait_6666?: string;
-  success_6666?: string;
-  failure_6666?: string;
-  welcome_5555: string;
-  wait_5555?: string;
-  success_5555?: string;
-  failure_5555?: string;
-  welcome_4444: string;
-  wait_4444?: string;
-  success_4444?: string;
-  failure_4444?: string;
-  welcome_3333: string;
-  wait_3333?: string;
-  success_3333?: string;
-  failure_3333?: string;
   otp_welcome: string;
   otp_wait: string;
   otp_success: string;
@@ -207,32 +159,13 @@ export interface AudioPrompt {
     | 'press1_welcome'
     | 'press1_invalid'
     | 'agent_transfer'
-    | 'welcome_7777'
-    | 'wait_7777'
-    | 'success_7777'
-    | 'failure_7777'
-    | 'welcome_6666'
-    | 'wait_6666'
-    | 'success_6666'
-    | 'failure_6666'
-    | 'welcome_5555'
-    | 'wait_5555'
-    | 'success_5555'
-    | 'failure_5555'
-    | 'welcome_4444'
-    | 'wait_4444'
-    | 'success_4444'
-    | 'failure_4444'
-    | 'welcome_3333'
-    | 'wait_3333'
-    | 'success_3333'
-    | 'failure_3333'
     | 'otp_welcome'
     | 'otp_wait'
     | 'otp_success'
     | 'otp_failure'
     | 'hold_music'
-    | 'custom';
+    | 'custom'
+    | string;
   fileName: string;
   fileSize: string;
   durationSec: number;
@@ -284,7 +217,7 @@ export interface ProductionTarget {
 
 export interface MembershipHistoryEntry {
   id: string;
-  action: 'initial_month' | 'weekly_extension' | 'suspended' | 'reactivated' | 'request_approved' | 'reset';
+  action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspended' | 'reactivated' | 'request_approved' | 'reset';
   weeksAdded?: number;
   daysAdded: number;
   previousExpiresAt?: string | null;
@@ -301,6 +234,9 @@ export interface MembershipInfo {
   status: 'unactivated' | 'active' | 'expired' | 'suspended';
   initialMonthActivated: boolean;
   initialActivatedAt?: string;
+  isDemo?: boolean;
+  demoUsed?: boolean;
+  demoActivatedAt?: string;
   expiresAt?: string;
   lastRenewedAt?: string;
   totalWeeksAdded?: number;
@@ -318,6 +254,8 @@ export interface EffectiveMembershipStatus {
   targetName: string;
   initialMonthActivated: boolean;
   initialActivatedAt?: string;
+  isDemo?: boolean;
+  demoUsed?: boolean;
   expiresAt?: string;
   remainingMs: number;
   remainingDays: number;
@@ -331,6 +269,7 @@ export interface EffectiveMembershipStatus {
 export interface MembershipSettings {
   enforceMembershipSystem: boolean;
   initialMonthDays: number;
+  demoDays?: number;
   weekDays: number;
   initialMonthPriceUsd: number;
   weeklyPriceUsd: number;

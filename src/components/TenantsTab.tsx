@@ -51,7 +51,7 @@ interface SimpleEntityOption {
 
 interface TenantsTabProps {
   tenants: CallCenterTenant[];
-  onAddTenant: (tenant: CallCenterTenant, activateInitialMonth?: boolean) => void;
+  onAddTenant: (tenant: CallCenterTenant, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean) => void;
   onUpdateTenant: (tenant: CallCenterTenant) => void;
   onDeleteTenant: (id: string) => void;
   onRechargeTenant: (tenantId: string, amountDollars: number, paymentMethod: 'zelle' | 'cash' | 'usdt_crypto' | 'bank_transfer' | 'credit_card', reference: string, notes?: string) => void;
@@ -169,7 +169,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     allowedCallFlowModes: ['press1'] as CallFlowMode[],
     allowMassCalls: false,
   });
-  const [activateInitialMonthOnCreate, setActivateInitialMonthOnCreate] = useState<boolean>(true);
+  const [activationModeOnCreate, setActivationModeOnCreate] = useState<'initial_month' | 'demo_1_day' | 'none'>('initial_month');
 
   // Recharge modal form
   const [rechargeAmount, setRechargeAmount] = useState<number>(50);
@@ -189,7 +189,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         tenantId: 'tenant-alpha',
         tenantName: 'Call Center Alpha (Ventas & OTP)',
         amountDollars: 100.0,
-        minutesAdded: 6666,
+        minutesAdded: 6500,
         paymentMethod: 'zelle',
         reference: 'ZLL-94810294',
         timestamp: '2026-10-25 14:32:00',
@@ -251,7 +251,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       allowedCallFlowModes: ['press1'],
       allowMassCalls: false,
     });
-    setActivateInitialMonthOnCreate(true);
+    setActivationModeOnCreate('initial_month');
     setEditingTenant(null);
     setIsCreateModalOpen(true);
   };
@@ -388,7 +388,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         allowedCallFlowModes: normalizedAllowedModes,
         allowMassCalls: Boolean(formData.allowMassCalls),
       };
-      onAddTenant(newTenant, activateInitialMonthOnCreate);
+      onAddTenant(newTenant, activationModeOnCreate);
     }
 
     setIsCreateModalOpen(false);
@@ -972,19 +972,25 @@ same => n,Hangup()
                         <div className="text-right">
                           <span
                             className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                              isActiveMem
+                              isActiveMem && eff?.isDemo
+                                ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                                : isActiveMem
                                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                                : mStatus === 'pending_initial'
+                                : mStatus === 'pending_initial' || mStatus === 'unactivated'
                                 ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                                 : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                             }`}
                           >
                             {isActiveMem
-                              ? `✓ Activa (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
-                              : mStatus === 'pending_initial'
+                              ? eff?.isDemo
+                                ? `★ DEMO (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
+                                : `✓ Activa (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
+                              : mStatus === 'pending_initial' || mStatus === 'unactivated'
                               ? '1er Mes Pendiente'
                               : mStatus === 'suspended'
                               ? 'Suspendida'
+                              : !eff?.initialMonthActivated && eff?.demoUsed
+                              ? 'Demo Finalizado'
                               : 'Vencida'}
                           </span>
                           {expStr && (
@@ -1677,23 +1683,58 @@ same => n,Hangup()
               </div>
 
               {!editingTenant && isAdmin && (
-                <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-500/35 flex items-start gap-2.5">
-                  <input
-                    id="tenantActivateInitialMonth"
-                    type="checkbox"
-                    checked={activateInitialMonthOnCreate}
-                    onChange={(e) => setActivateInitialMonthOnCreate(e.target.checked)}
-                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500"
-                  />
-                  <label htmlFor="tenantActivateInitialMonth" className="text-xs text-slate-200 cursor-pointer leading-snug">
-                    <span className="font-bold text-amber-300 flex items-center gap-1.5">
-                      <CalendarCheck className="w-3.5 h-3.5" />
-                      Activar Membresía Principal de 1 Mes (30 días) al crear Call Center
-                    </span>
-                    <span className="block text-[11px] text-slate-400 mt-0.5">
-                      Si se desmarca, los agentes de este Call Center quedarán bloqueados hasta activar su 1er mes obligatorio.
-                    </span>
-                  </label>
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/35 space-y-2.5">
+                  <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <CalendarCheck className="w-4 h-4" />
+                    <span>Licencia Inicial al Crear Call Center</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActivationModeOnCreate('initial_month')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        activationModeOnCreate === 'initial_month'
+                          ? 'bg-emerald-500/20 border-emerald-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-emerald-300">1 Mes Principal</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">30 días completos</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivationModeOnCreate('demo_1_day')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        activationModeOnCreate === 'demo_1_day'
+                          ? 'bg-violet-500/20 border-violet-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-violet-300">Demo (1 Día)</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Prueba 24h sin 1er mes</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivationModeOnCreate('none')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        activationModeOnCreate === 'none'
+                          ? 'bg-amber-500/20 border-amber-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-amber-300">Sin Activar</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Exige 1er mes al entrar</div>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-snug">
+                    {activationModeOnCreate === 'demo_1_day'
+                      ? 'El Call Center tendrá acceso completo por 1 día (24 horas) para pruebas. Al vencer el Demo, deberá activar su Membresía Principal de 1 Mes antes de renovar por semanas.'
+                      : activationModeOnCreate === 'initial_month'
+                      ? 'Se activará el 1er Mes Principal (30 días), habilitando renovaciones semanales desde la pestaña Membresías.'
+                      : 'Los usuarios de este Call Center quedarán bloqueados hasta que el Administrador active su Demo o 1er Mes.'}
+                  </p>
                 </div>
               )}
 

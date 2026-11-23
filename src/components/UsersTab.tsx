@@ -47,7 +47,7 @@ interface UsersTabProps {
   currentUserId: string;
   currentUser?: SystemUser;
   onSwitchUser: (userId: string) => void;
-  onAddUser: (user: SystemUser, activateInitialMonth?: boolean) => void;
+  onAddUser: (user: SystemUser, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
   onAddExtension?: (ext: PjsipExtension) => void;
@@ -98,7 +98,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
-  const [formActivateInitialMonth, setFormActivateInitialMonth] = useState<boolean>(true);
+  const [formActivationMode, setFormActivationMode] = useState<'initial_month' | 'demo_1_day' | 'none'>('initial_month');
 
   // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts)
   const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() => {
@@ -336,7 +336,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormAssignedEntityIds([]);
     setFormAssignedCallFlowMode('press1');
     setFormAllowedCallFlowModes(['press1']);
-    setFormActivateInitialMonth(true);
+    setFormActivationMode('initial_month');
     // Standalone non-Call-Center clients default to next free 2001+ extension
     const nextClientExt = getNextClientExtension2001();
     setSelectedExts([nextClientExt]);
@@ -519,17 +519,18 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       lastLogin: editingUser?.lastLogin || 'Pendiente primer inicio',
     };
 
-    const shouldActivateInitialMonth =
+    const resolvedActivationMode: 'initial_month' | 'demo_1_day' | 'none' =
       !editingUser &&
       isGlobalSuperAdmin &&
-      formActivateInitialMonth &&
       !targetIsGlobalSuperAdmin &&
-      !formTenantId;
+      !formTenantId
+        ? formActivationMode
+        : 'none';
 
     if (editingUser) {
       onUpdateUser(userObj);
     } else {
-      onAddUser(userObj, shouldActivateInitialMonth);
+      onAddUser(userObj, resolvedActivationMode);
     }
 
     // Ensure any assigned 2001+ client extension that doesn't yet exist in ExtensionsTab is created automatically
@@ -558,7 +559,11 @@ export const UsersTab: React.FC<UsersTabProps> = ({
 
     setSyncFeedback(
       `✓ Usuario "${usernameFinal}" (Ext: ${selectedExts.join(', ') || usernameFinal}) sincronizado en Asterisk PJSIP (Puerto 47923).${
-        shouldActivateInitialMonth ? ' Membresía Principal de 1 Mes activada.' : ''
+        resolvedActivationMode === 'initial_month'
+          ? ' Membresía Principal de 1 Mes activada.'
+          : resolvedActivationMode === 'demo_1_day'
+          ? ' Demo de Prueba (1 Día) activado.'
+          : ''
       }`
     );
     setTimeout(() => setSyncFeedback(null), 6000);
@@ -1020,12 +1025,13 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     : user.effectiveMembership;
                   const memStatus = eff?.status || (user.membership?.status) || (user.membership?.initialMonthActivated ? 'expired' : 'pending_initial');
                   const isActive = eff ? eff.isActive : (memStatus === 'active');
+                  const isDemo = Boolean(eff?.isDemo || (user.membership?.isDemo && !user.membership?.initialMonthActivated));
                   const remainingText = eff && eff.isActive
                     ? `${eff.remainingDays}d ${eff.remainingHours}h`
                     : memStatus === 'suspended'
                     ? 'Suspendida'
                     : memStatus === 'expired'
-                    ? 'Vencida'
+                    ? (!eff?.initialMonthActivated && eff?.demoUsed ? 'Demo Finalizado' : 'Vencida')
                     : '1er Mes Pendiente';
 
                   return (
@@ -1036,14 +1042,16 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       </span>
                       <span
                         className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                          isActive
+                          isActive && isDemo
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                            : isActive
                             ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                            : memStatus === 'pending_initial'
+                            : memStatus === 'pending_initial' || memStatus === 'unactivated'
                             ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                             : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                         }`}
                       >
-                        {isActive ? `✓ Activa (${remainingText})` : remainingText}
+                        {isActive ? (isDemo ? `★ DEMO (${remainingText})` : `✓ Activa (${remainingText})`) : remainingText}
                       </span>
                     </div>
                   );
@@ -1884,25 +1892,60 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                 </div>
               </div>
 
-              {/* Activar Membresía Principal de 1 Mes al crear usuario individual */}
+              {/* Licencia inicial (1 Mes Principal o Demo de 1 Día) al crear usuario individual */}
               {!editingUser && isGlobalSuperAdmin && !formTenantId && !(formAccountType === 'agent' && formRole === 'admin') && (
-                <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-500/35 flex items-start gap-2.5">
-                  <input
-                    id="userActivateInitialMonth"
-                    type="checkbox"
-                    checked={formActivateInitialMonth}
-                    onChange={(e) => setFormActivateInitialMonth(e.target.checked)}
-                    className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-amber-500"
-                  />
-                  <label htmlFor="userActivateInitialMonth" className="text-xs text-slate-200 cursor-pointer leading-snug">
-                    <span className="font-bold text-amber-300 flex items-center gap-1.5">
-                      <CalendarCheck className="w-3.5 h-3.5" />
-                      Activar Membresía Principal de 1 Mes (30 días) al crear
-                    </span>
-                    <span className="block text-[11px] text-slate-400 mt-0.5">
-                      Si se desmarca, el cliente quedará en espera de su 1ra activación mensual obligatoria antes de poder agregar semanas o realizar llamadas.
-                    </span>
-                  </label>
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/35 space-y-2.5">
+                  <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <CalendarCheck className="w-4 h-4" />
+                    <span>Licencia Inicial al Crear Cliente / Usuario</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormActivationMode('initial_month')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        formActivationMode === 'initial_month'
+                          ? 'bg-emerald-500/20 border-emerald-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-emerald-300">1 Mes Principal</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">30 días completos</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormActivationMode('demo_1_day')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        formActivationMode === 'demo_1_day'
+                          ? 'bg-violet-500/20 border-violet-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-violet-300">Demo (1 Día)</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Prueba 24h gratis</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormActivationMode('none')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        formActivationMode === 'none'
+                          ? 'bg-amber-500/20 border-amber-400 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-amber-300">Sin Activar</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Exige 1er mes al entrar</div>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-snug">
+                    {formActivationMode === 'demo_1_day'
+                      ? 'El cliente nuevo podrá probar el sistema durante 1 día (24h). Al terminar el Demo, deberá activar su 1er Mes Principal (30d) para continuar y desbloquear renovaciones semanales.'
+                      : formActivationMode === 'initial_month'
+                      ? 'Se activará la Membresía Principal de 1 Mes (30 días), permitiendo futuras renovaciones por semana.'
+                      : 'El cliente quedará en espera hasta que el Administrador active su Demo o 1er Mes obligatorio.'}
+                  </p>
                 </div>
               )}
 

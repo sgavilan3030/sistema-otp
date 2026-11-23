@@ -271,6 +271,7 @@ interface ServerMembershipSettings {
   enforceMembershipSystem: boolean;
   initialMonthDays: number;
   weekDays: number;
+  demoDays: number;
   initialMonthPriceUsd: number;
   weeklyPriceUsd: number;
   allowSelfRenewalFromBalance: boolean;
@@ -280,6 +281,7 @@ const DEFAULT_MEMBERSHIP_SETTINGS: ServerMembershipSettings = {
   enforceMembershipSystem: true,
   initialMonthDays: 30,
   weekDays: 7,
+  demoDays: 1,
   initialMonthPriceUsd: 150,
   weeklyPriceUsd: 45,
   allowSelfRenewalFromBalance: false,
@@ -294,6 +296,7 @@ function loadMembershipSettings(): ServerMembershipSettings {
           enforceMembershipSystem: raw.enforceMembershipSystem !== false,
           initialMonthDays: Math.max(1, Math.floor(Number(raw.initialMonthDays) || 30)),
           weekDays: Math.max(1, Math.floor(Number(raw.weekDays) || 7)),
+          demoDays: Math.max(1, Math.min(30, Math.floor(Number(raw.demoDays) || 1))),
           initialMonthPriceUsd: Math.max(0, Number(raw.initialMonthPriceUsd ?? 150)),
           weeklyPriceUsd: Math.max(0, Number(raw.weeklyPriceUsd ?? 45)),
           allowSelfRenewalFromBalance: Boolean(raw.allowSelfRenewalFromBalance),
@@ -313,6 +316,7 @@ function saveMembershipSettings(nextSettings: Partial<ServerMembershipSettings>)
         : current.enforceMembershipSystem,
     initialMonthDays: Math.max(1, Math.min(365, Math.floor(Number(nextSettings.initialMonthDays ?? current.initialMonthDays) || 30))),
     weekDays: Math.max(1, Math.min(31, Math.floor(Number(nextSettings.weekDays ?? current.weekDays) || 7))),
+    demoDays: Math.max(1, Math.min(30, Math.floor(Number(nextSettings.demoDays ?? current.demoDays) || 1))),
     initialMonthPriceUsd: Math.max(0, Number(nextSettings.initialMonthPriceUsd ?? current.initialMonthPriceUsd)),
     weeklyPriceUsd: Math.max(0, Number(nextSettings.weeklyPriceUsd ?? current.weeklyPriceUsd)),
     allowSelfRenewalFromBalance:
@@ -352,6 +356,8 @@ function evaluateMembershipRecord(
   const now = Date.now();
   const m = rawMembership && typeof rawMembership === 'object' ? rawMembership : null;
   const initialMonthActivated = Boolean(m?.initialMonthActivated);
+  const isDemo = Boolean(m?.isDemo && !initialMonthActivated);
+  const demoUsed = Boolean(m?.demoUsed || m?.isDemo);
   const expiresAt = m?.expiresAt ? String(m.expiresAt) : undefined;
   const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN;
   const hasFutureExpiry = !isNaN(expiresAtMs) && expiresAtMs > now;
@@ -359,12 +365,12 @@ function evaluateMembershipRecord(
   let status: 'unactivated' | 'active' | 'expired' | 'suspended' = 'unactivated';
   if (m?.status === 'suspended') {
     status = 'suspended';
-  } else if (!initialMonthActivated) {
-    status = 'unactivated';
-  } else if (hasFutureExpiry) {
+  } else if (hasFutureExpiry && (initialMonthActivated || isDemo)) {
     status = 'active';
-  } else {
+  } else if (initialMonthActivated || demoUsed) {
     status = 'expired';
+  } else {
+    status = 'unactivated';
   }
 
   const remainingMs = status === 'active' && !isNaN(expiresAtMs) ? Math.max(0, expiresAtMs - now) : 0;
@@ -381,6 +387,8 @@ function evaluateMembershipRecord(
     targetId,
     targetName,
     initialMonthActivated,
+    isDemo,
+    demoUsed,
     initialActivatedAt: m?.initialActivatedAt,
     expiresAt,
     remainingMs,
@@ -409,6 +417,8 @@ function resolveEffectiveMembershipForUser(
       targetId: String(user?.id || 'global'),
       targetName: String(user?.name || 'Super Administrador Global'),
       initialMonthActivated: true,
+      isDemo: false,
+      demoUsed: false,
       remainingMs: 0,
       remainingDays: 9999,
       remainingHours: 0,
@@ -445,7 +455,7 @@ function resolveEffectiveMembershipForUser(
 function applyMembershipActivation(
   currentMembership: any,
   params: {
-    action: 'initial_month' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset';
+    action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset';
     weeksCount?: number;
     amountPaid?: number;
     paymentMethod?: string;
@@ -460,6 +470,8 @@ function applyMembershipActivation(
   const prev = currentMembership && typeof currentMembership === 'object' ? { ...currentMembership } : {
     status: 'unactivated',
     initialMonthActivated: false,
+    isDemo: false,
+    demoUsed: false,
     totalWeeksAdded: 0,
     history: [],
   };
@@ -468,6 +480,45 @@ function applyMembershipActivation(
   const nowIso = new Date(now).toISOString();
   const prevExpiresMs = prev.expiresAt ? Date.parse(String(prev.expiresAt)) : NaN;
   const baseMs = !isNaN(prevExpiresMs) && prevExpiresMs > now ? prevExpiresMs : now;
+
+  if (params.action === 'demo_1_day') {
+    if (prev.initialMonthActivated) {
+      return {
+        ok: false,
+        error: 'Esta cuenta ya tiene su Membresía Principal activa; usa extensiones semanales.',
+      };
+    }
+    const demoDays = Math.max(1, Number(s.demoDays) || 1);
+    const newExpiresIso = new Date(baseMs + demoDays * 86400000).toISOString();
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: 'demo_1_day',
+      daysAdded: demoDays,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: newExpiresIso,
+      amountPaid: 0,
+      paymentMethod: 'demo',
+      reference: params.reference || 'DEMO',
+      notes: params.notes || `Demo de Prueba (${demoDays} ${demoDays === 1 ? 'Día' : 'Días'})`,
+      performedBy,
+      timestamp: nowIso,
+    };
+    return {
+      ok: true,
+      membership: {
+        ...prev,
+        status: 'active',
+        initialMonthActivated: false,
+        isDemo: true,
+        demoUsed: true,
+        demoActivatedAt: nowIso,
+        expiresAt: newExpiresIso,
+        lastRenewedAt: nowIso,
+        totalWeeksAdded: Number(prev.totalWeeksAdded) || 0,
+        history: [entry, ...prevHistory].slice(0, 60),
+      },
+    };
+  }
 
   if (params.action === 'initial_month') {
     const daysToAdd = s.initialMonthDays;
@@ -491,6 +542,7 @@ function applyMembershipActivation(
         ...prev,
         status: 'active',
         initialMonthActivated: true,
+        isDemo: false,
         initialActivatedAt: prev.initialActivatedAt || nowIso,
         expiresAt: newExpiresIso,
         lastRenewedAt: nowIso,
@@ -536,6 +588,7 @@ function applyMembershipActivation(
         ...prev,
         status: 'active',
         initialMonthActivated: true,
+        isDemo: false,
         expiresAt: newExpiresIso,
         lastRenewedAt: nowIso,
         totalWeeksAdded: (Number(prev.totalWeeksAdded) || 0) + weeks,
@@ -566,10 +619,10 @@ function applyMembershipActivation(
   }
 
   if (params.action === 'reactivate') {
-    if (!prev.initialMonthActivated) {
+    if (!prev.initialMonthActivated && !prev.demoUsed) {
       return {
         ok: false,
-        error: 'No se puede reactivar: esta cuenta aún no tiene activada su Membresía Principal de 1 Mes.',
+        error: 'No se puede reactivar: esta cuenta aún no tiene activado un Demo ni su Membresía Principal de 1 Mes.',
       };
     }
     const stillValid = !isNaN(prevExpiresMs) && prevExpiresMs > now;
@@ -609,6 +662,8 @@ function applyMembershipActivation(
       membership: {
         status: 'unactivated',
         initialMonthActivated: false,
+        isDemo: false,
+        demoUsed: false,
         totalWeeksAdded: 0,
         history: [entry, ...prevHistory].slice(0, 60),
       },
@@ -1100,25 +1155,26 @@ export async function executeAsteriskCommand(cmd: string): Promise<string> {
       try {
         isLocalCliRunning = true;
         const bin = getAsteriskBinary();
-        const localRes = await new Promise<string>((resolve) => {
+        const localExec = await new Promise<{ output: string; ok: boolean }>((resolve) => {
           execFile(bin, ['-rx', cleanCmd], { timeout: 2500 }, (err, stdout) => {
             if (!err && stdout !== undefined && stdout !== null) {
-              resolve(String(stdout).trim());
+              resolve({ output: String(stdout).trim(), ok: true });
             } else {
-              resolve('');
+              resolve({ output: '', ok: false });
             }
           });
         });
 
-        // Cache the result even if empty (0 channels or empty AstDB is a valid result that MUST be cached to prevent polling loops!)
-        if (isReadOnly) {
-          cliCommandCache.set(cleanCmd, { output: localRes, timestamp: Date.now() });
-        } else {
-          invalidateCliCache();
-          addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cleanCmd}`, localRes ? `Salida: ${localRes.substring(0, 100)}` : undefined, 'success');
+        // Cache ONLY valid (ok === true) read results; never cache failed/timed-out CLI calls
+        if (localExec.ok) {
+          if (isReadOnly) {
+            cliCommandCache.set(cleanCmd, { output: localExec.output, timestamp: Date.now() });
+          } else {
+            invalidateCliCache();
+            addServerTelemetryLog('CLI', `[CLI MUTACIÓN] ${cleanCmd}`, localExec.output ? `Salida: ${localExec.output.substring(0, 100)}` : undefined, 'success');
+          }
+          return localExec.output;
         }
-
-        return localRes;
       } catch (_) {}
       finally {
         isLocalCliRunning = false;
@@ -1401,7 +1457,10 @@ directory=${targetDir}
 sort=alpha
 `;
   try {
-    writeAsteriskConfigFile(mohPath, mohContent);
+    const existingMoh = fs.existsSync(mohPath) ? fs.readFileSync(mohPath, 'utf8') : '';
+    if (existingMoh.trim() !== mohContent.trim()) {
+      writeAsteriskConfigFile(mohPath, mohContent);
+    }
     try {
       fs.writeFileSync(path.join(process.cwd(), 'musiconhold.conf'), mohContent, 'utf8');
     } catch (_) {}
@@ -1558,9 +1617,12 @@ icesupport=no
     } else if (hasLocalAsterisk) {
       exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null', () => {});
     }
-    writeAsteriskConfigFile(rtpPath, rtpContent);
+    const existingRtp = fs.existsSync(rtpPath) ? fs.readFileSync(rtpPath, 'utf8') : '';
+    if (!existingRtp || existingRtp.trim() !== rtpContent.trim()) {
+      writeAsteriskConfigFile(rtpPath, rtpContent);
+      console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
+    }
     try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
-    console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
     const mgrPath = '/etc/asterisk/manager.conf';
     const mgrContent = `[general]\nenabled = yes\nport = ${AMI_PORT}\nbindaddr = 127.0.0.1\n\n[${AMI_USER}]\nsecret = ${AMI_SECRET}\nread = all\nwrite = all\n\n[admin]\nsecret = ${AMI_ADMIN_SECRET}\nread = all\nwrite = all\n`;
     let shouldWriteMgr = !fs.existsSync(mgrPath);
@@ -2101,8 +2163,6 @@ function ensureCustomAudioFilesExist() {
     { name: 'bienvenida_corporativa', text: 'Bienvenido a nuestro centro de atención al cliente.', freq: 520 },
     { name: 'bienvenida_press1', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
     { name: 'press1_welcome', text: 'Estimado cliente, detectamos una actividad inusual. Presione 1 para comunicarse con un asesor de seguridad.', freq: 520 },
-    { name: 'bienvenida_7777', text: 'Por favor digite su codigo de 6 digitos seguido del signo de numero.', freq: 680 },
-    { name: 'bienvenida_6666', text: 'Por favor digite su codigo de seguridad en el teclado.', freq: 680 },
     { name: 'opcion_invalida', text: 'La opcion ingresada no es valida. Por favor intente de nuevo.', freq: 440 },
     { name: 'prompt_otp_6_digitos', text: 'Por favor digite su codigo seguido de la tecla de numero.', freq: 680 },
     { name: 'por_favor_ingrese_su_clave', text: 'Por favor ingrese su clave o codigo de seguridad.', freq: 680 },
@@ -3105,37 +3165,44 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     if (!u) continue;
     const rawU = String(u.username || (u.email ? u.email.split('@')[0] : '') || u.name || '').trim();
     const cleanU = rawU.toLowerCase().replace(/[^a-z0-9_\-]/g, '');
-    const userPassword = u.sipSecret || u.password || crypto.randomBytes(8).toString('hex');
+    const explicitUserPassword =
+      (typeof u.sipSecret === 'string' && u.sipSecret.trim()) ||
+      (typeof u.password === 'string' && u.password.trim()) ||
+      '';
     if (cleanU) {
       const uKey = cleanU;
       if (!mergedExtsMap.has(uKey)) {
-        mergedExtsMap.set(uKey, {
-          id: `ext-${cleanU}`,
-          extension: cleanU,
-          name: u.name || cleanU,
-          secret: userPassword,
-          context: 'from-internal',
-          transport: 'transport-udp',
-          port: 47923,
-          maxContacts: 10,
-          codecs: ['ulaw', 'alaw'],
-          callerIdNum: (Array.isArray(u.assignedExtensions) && u.assignedExtensions[0]) || cleanU,
-          callerIdName: u.name || cleanU,
-          status: 'registered',
-        });
+        if (explicitUserPassword) {
+          mergedExtsMap.set(uKey, {
+            id: `ext-${cleanU}`,
+            extension: cleanU,
+            name: u.name || cleanU,
+            secret: explicitUserPassword,
+            context: 'from-internal',
+            transport: 'transport-udp',
+            port: 47923,
+            maxContacts: 10,
+            codecs: ['ulaw', 'alaw'],
+            callerIdNum: (Array.isArray(u.assignedExtensions) && u.assignedExtensions[0]) || cleanU,
+            callerIdName: u.name || cleanU,
+            status: 'registered',
+          });
+        }
       } else {
         const existing = mergedExtsMap.get(uKey);
-        existing.secret = userPassword;
+        if (explicitUserPassword) {
+          existing.secret = explicitUserPassword;
+        }
         existing.name = u.name || existing.name;
       }
 
-      // Also synchronize password to any assigned numeric extensions (e.g. 1001)
-      if (Array.isArray(u.assignedExtensions)) {
+      // Synchronize explicit password to any assigned numeric extensions only when set
+      if (explicitUserPassword && Array.isArray(u.assignedExtensions)) {
         for (const assigned of u.assignedExtensions) {
           const cleanAssigned = String(assigned).replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
           if (mergedExtsMap.has(cleanAssigned)) {
             const extToSync = mergedExtsMap.get(cleanAssigned);
-            extToSync.secret = userPassword;
+            extToSync.secret = explicitUserPassword;
           }
         }
       }
@@ -3740,13 +3807,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [STICKY-AGENT-SAVED] Extension \${PICKED_EXTEN} registrada como asesor exclusivo de la llamada ===)\n`;
   dialplanContent += ` same => n,Set(DB(last_picked_agent/\${ARG1})=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_picked_agent/\${ARG2})=\${PICKED_EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_picked_agent/3333)=\${PICKED_EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_picked_agent/7777)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_picked_agent/global)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${ARG1})=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${ARG2})=\${PICKED_EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/3333)=\${PICKED_EXTEN})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG1}_agent_exten)=\${PICKED_EXTEN})\n`;
   dialplanContent += ` same => n,Set(DB(ivr_vars/\${ARG2}_agent_exten)=\${PICKED_EXTEN})\n`;
@@ -3887,19 +3950,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [TRANSFERENCIA \${EXTEN}] Destino: \${TARGET_DEST} | CanalEP: \${CHAN_EP} | Cliente CID: \${CALLERID(num)} -> Asesor Exacto: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(__OTP_ENGINE_EXTEN=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(ivr-captura-vivo,s,1)\n\n`;
-
-  // Redirección de compatibilidad para extensiones legadas (333, 3333, 444, 4444, 555, 5555, 666, 6666, 777, 7777) hacia 4001
-  dialplanContent += `; Redireccion de compatibilidad legacy hacia 4001\n`;
-  dialplanContent += `exten => 333,1,Goto(from-internal,4001,1)\n`;
-  dialplanContent += `exten => 3333,1,Goto(from-internal,4001,1)\n`;
-  dialplanContent += `exten => 444,1,Goto(from-internal,4002,1)\n`;
-  dialplanContent += `exten => 4444,1,Goto(from-internal,4002,1)\n`;
-  dialplanContent += `exten => 555,1,Goto(from-internal,4003,1)\n`;
-  dialplanContent += `exten => 5555,1,Goto(from-internal,4003,1)\n`;
-  dialplanContent += `exten => 666,1,Goto(from-internal,4004,1)\n`;
-  dialplanContent += `exten => 6666,1,Goto(from-internal,4004,1)\n`;
-  dialplanContent += `exten => 777,1,Goto(from-internal,4001,1)\n`;
-  dialplanContent += `exten => 7777,1,Goto(from-internal,4001,1)\n\n`;
 
   dialplanContent += `; 2b. Acceso y Prueba Directa del IVR desde Softphone (Extension 8888)\n`;
   dialplanContent += `exten => 8888,1,NoOp(=== PRUEBA DIRECTA EXT 8888: INICIANDO IVR DIRECTO ===)\n`;
@@ -4469,8 +4519,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=ringall))\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/6666)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
@@ -4742,8 +4790,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=ringall))\n`;
   dialplanContent += ` same => n,Set(__LAST_AGENT=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/8888)=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/7777)=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,Set(DB(last_agent_call/6666)=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
@@ -5275,40 +5321,54 @@ async function autoRepairAsteriskPjsipOnStartup() {
       needsRepair = true;
     }
 
-    // Always generate pure up-to-date PJSIP config with all stored extensions, users & carriers and reload Asterisk
+    // Generate clean PJSIP config and reload Asterisk ONLY if configuration actually changed
     const storedUsers = loadStoredUsers();
     const storedExts = loadStoredExtensions();
     const storedCarriers = loadStoredCarriers();
     lastSyncedExtensions = storedExts;
     lastSyncedCarriers = storedCarriers;
     const cleanPjsip = generateCleanPjsipConf(storedExts, storedCarriers, storedUsers);
-    await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+    const normalizePjsipDiff = (txt: string) => txt.replace(/^; Fecha:.*$/gm, '').trim();
+    const existingPjsipRaw = fs.existsSync(pjsipPath) ? fs.readFileSync(pjsipPath, 'utf8') : '';
+    const pjsipChanged = needsRepair || normalizePjsipDiff(existingPjsipRaw) !== normalizePjsipDiff(cleanPjsip);
+
     try {
       fs.writeFileSync(path.join(process.cwd(), 'pjsip.conf'), cleanPjsip, 'utf8');
     } catch (_) {}
     lastGeneratedPjsip = cleanPjsip;
 
-    if (hasLocalAsterisk) {
-      exec('asterisk -rx "pjsip reload"', () => {});
+    if (pjsipChanged) {
+      await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
+      if (hasLocalAsterisk) {
+        exec('asterisk -rx "pjsip reload"', () => {});
+      } else {
+        try {
+          await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
+        } catch (_) {}
+      }
+      console.log('[PJSIP-INIT] ✓ /etc/asterisk/pjsip.conf actualizado y recargado.');
+    } else {
+      console.log('[PJSIP-INIT] ✓ /etc/asterisk/pjsip.conf ya está actualizado (sin recarga innecesaria).');
     }
-    try {
-      await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
-    } catch (_) {}
-    console.log('[PJSIP-INIT] ✓ /etc/asterisk/pjsip.conf sincronizado y recargado con éxito con todos los usuarios y carriers.');
 
     // Ensure AMD and Audio Codecs / RTP configuration exists
     ensureAmdConfExists();
     ensureAudioCodecsAndRtpConfExists();
 
-    // Auto-generate dialplan baseline and keep synced
+    // Auto-generate dialplan baseline and keep synced only when changed
     const cleanDialplan = generateCleanDialplanConf(storedCarriers, undefined, {}, storedExts);
     lastGeneratedDialplan = cleanDialplan;
     try {
       fs.writeFileSync(path.join(process.cwd(), 'extensions.conf'), cleanDialplan, 'utf8');
-      await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+      const existingDialplanRaw = fs.existsSync(dialplanPath) ? fs.readFileSync(dialplanPath, 'utf8') : '';
+      const normalizeDialplanDiff = (txt: string) => txt.replace(/^; Generado.*$/gm, '').trim();
+      if (normalizeDialplanDiff(existingDialplanRaw) !== normalizeDialplanDiff(cleanDialplan)) {
+        await writeAsteriskConfigFile(dialplanPath, cleanDialplan);
+        if (hasLocalAsterisk) {
+          exec('asterisk -rx "dialplan reload"', () => {});
+        }
+      }
       if (hasLocalAsterisk) {
-        exec('asterisk -rx "dialplan reload"', () => {});
-        // Purge any stuck zombie Local/8888 test channels from previous sessions
         exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
         exec('asterisk -rx "hangup request Local/8888" 2>/dev/null', () => {});
       }
@@ -5741,6 +5801,7 @@ app.post('/api/asterisk/extensions/repair', requireGlobalAdmin, async (req, res)
     ensureAudioCodecsAndRtpConfExists();
 
     let cliReload = '';
+    let amiReload = '';
     if (hasLocalAsterisk) {
       try {
         cliReload = await new Promise<string>((resolve) => {
@@ -5749,12 +5810,11 @@ app.post('/api/asterisk/extensions/repair', requireGlobalAdmin, async (req, res)
           });
         });
       } catch (_) {}
+    } else {
+      try {
+        amiReload = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
+      } catch (_) {}
     }
-
-    let amiReload = '';
-    try {
-      amiReload = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
-    } catch (_) {}
 
     // Wait briefly then read back state
     await new Promise((r) => setTimeout(r, 600));
@@ -6306,12 +6366,6 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
       `database put ivr_vars 8888_success "${defaultSuccess}"`,
       `database put ivr_vars 8888_agent "${defaultAgent}"`,
       `database put ivr_vars 8888_agent_exten "${persistedPress1Agent}"`,
-      `database put ivr_vars 7777_intro "${defaultIntro}"`,
-      `database put ivr_vars 7777_prompt "${defaultPrompt}"`,
-      `database put ivr_vars 7777_wait "${defaultWait}"`,
-      `database put ivr_vars 7777_success "${defaultSuccess}"`,
-      `database put ivr_vars 7777_agent "${defaultAgent}"`,
-      `database put ivr_vars 7777_agent_exten "${persistedPress1Agent}"`,
     ];
 
     (async () => {
@@ -6608,7 +6662,8 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
     }
 
     const isInternalOrTestCall =
-      ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) ||
+      ['8888', '8880', '*8888'].includes(cleanDest) ||
+      /^4\d{3}$/.test(cleanDest) ||
       cleanDest.endsWith('8888') ||
       cleanDest.length <= 4;
 
@@ -6995,7 +7050,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
     } catch (_) {}
 
     // Determine channel:
-    // If destination is an internal IVR test extension (8888, 7777, etc.), route to the agent softphone (PJSIP/1001)
+    // If destination is an internal IVR test extension (8888, 4001+, etc.), route to the agent softphone (PJSIP/1001)
     // so the softphone actually rings, answers, and connects to the IVR for audio testing!
     // If <= 4 digits (and not IVR extension), direct SIP endpoint (e.g. agent phone 1001)
     // Otherwise standard outbound call via Local NANP routing
@@ -7003,7 +7058,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
     const firstSingleAgent = (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
       ? effectiveAgentExten.split('&')[0].trim()
       : '1001';
-    if (['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) || cleanDest.endsWith('8888')) {
+    if (['8888', '8880', '*8888'].includes(cleanDest) || /^4\d{3}$/.test(cleanDest) || cleanDest.endsWith('8888')) {
       channel = `PJSIP/${firstSingleAgent || '1001'}`;
     } else if (cleanDest.length <= 4) {
       channel = `PJSIP/${cleanDest}`;
@@ -7047,7 +7102,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
     const callerLabelExt = (req.body.callerExtension && /^[a-zA-Z0-9_\-]{2,12}$/.test(String(req.body.callerExtension).trim()))
       ? String(req.body.callerExtension).trim()
       : '1001';
-    const isIvrTestExten = ['8888', '7777', '6666', '5555', '4444', '3333', '333', '777', '8880', '*8888'].includes(cleanDest) || cleanDest.endsWith('8888');
+    const isIvrTestExten = ['8888', '8880', '*8888'].includes(cleanDest) || /^4\d{3}$/.test(cleanDest) || cleanDest.endsWith('8888');
     const originateCallerId = channel.startsWith('PJSIP/')
       ? (cleanDest.length > 4 && !isIvrTestExten
           ? `"${cleanDest}" <${cleanDest}>`
@@ -7359,42 +7414,14 @@ app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ l
 const ACTIVE_AUDIOS_FILE = path.join(process.cwd(), 'data', 'active_audios.json');
 const AUDIO_LOCKS_FILE = path.join(process.cwd(), 'data', 'audio_locks.json');
 
+const LEGACY_OTP_KEY_RE = /^(welcome|wait|success|failure|prompt|lock)_(3333|4444|5555|6666|7777|333|444|555|666|777)$/;
+
 const DEFAULT_AUDIO_ASSIGNMENTS: Record<string, string> = {
   press1_welcome: 'custom/bienvenida_corporativa',
   agent_transfer: 'custom/conectar_asesor',
   press1_invalid: 'custom/opcion_invalida',
 
-  // Extension 7777
-  welcome_7777: 'custom/solicitar_codigo_otp',
-  wait_7777: 'custom/un_momento_validando_informacion',
-  success_7777: 'custom/operacion_bloqueada_exito',
-  failure_7777: 'custom/token_invalido_reintente',
-
-  // Extension 6666
-  welcome_6666: 'custom/solicitar_codigo_otp',
-  wait_6666: 'custom/un_momento_validando_informacion',
-  success_6666: 'custom/operacion_bloqueada_exito',
-  failure_6666: 'custom/token_invalido_reintente',
-
-  // Extension 5555
-  welcome_5555: 'custom/solicitar_codigo_otp',
-  wait_5555: 'custom/un_momento_validando_informacion',
-  success_5555: 'custom/operacion_bloqueada_exito',
-  failure_5555: 'custom/token_invalido_reintente',
-
-  // Extension 4444
-  welcome_4444: 'custom/solicitar_codigo_otp',
-  wait_4444: 'custom/un_momento_validando_informacion',
-  success_4444: 'custom/operacion_bloqueada_exito',
-  failure_4444: 'custom/token_invalido_reintente',
-
-  // Extension 3333
-  welcome_3333: 'custom/solicitar_codigo_otp',
-  wait_3333: 'custom/un_momento_validando_informacion',
-  success_3333: 'custom/operacion_bloqueada_exito',
-  failure_3333: 'custom/token_invalido_reintente',
-
-  // Generic system fallbacks
+  // Generic system fallbacks (las extensiones dinámicas usan 4001+)
   otp_welcome: 'custom/solicitar_codigo_otp',
   otp_wait: 'custom/un_momento_validando_informacion',
   otp_verify_wait: 'custom/enviando_codigo_verificacion',
@@ -7407,20 +7434,25 @@ function loadManualAudioLocks(): Record<string, boolean> {
   try {
     if (fs.existsSync(AUDIO_LOCKS_FILE)) {
       const raw = fs.readFileSync(AUDIO_LOCKS_FILE, 'utf-8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const cleaned: Record<string, boolean> = {};
+        let stripped = false;
+        for (const [k, v] of Object.entries(parsed)) {
+          if (LEGACY_OTP_KEY_RE.test(k)) {
+            stripped = true;
+            continue;
+          }
+          cleaned[k] = Boolean(v);
+        }
+        if (stripped) {
+          saveManualAudioLocks(cleaned);
+        }
+        return cleaned;
+      }
     }
   } catch (e) {}
   return {
-    welcome_7777: false,
-    welcome_6666: false,
-    welcome_5555: false,
-    welcome_4444: false,
-    welcome_3333: false,
-    lock_7777: false,
-    lock_6666: false,
-    lock_5555: false,
-    lock_4444: false,
-    lock_3333: false,
     ivr_entity: false,
   };
 }
@@ -7452,9 +7484,24 @@ function loadActiveAudioAssignments(): Record<string, string> {
     if (fs.existsSync(ACTIVE_AUDIOS_FILE)) {
       const raw = fs.readFileSync(ACTIVE_AUDIOS_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      const merged = { ...DEFAULT_AUDIO_ASSIGNMENTS, ...parsed };
+      const merged: Record<string, string> = { ...DEFAULT_AUDIO_ASSIGNMENTS };
+      let strippedLegacy = false;
+      if (parsed && typeof parsed === 'object') {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (LEGACY_OTP_KEY_RE.test(k)) {
+            strippedLegacy = true;
+            continue;
+          }
+          if (typeof v === 'string') {
+            merged[k] = v;
+          }
+        }
+      }
       if (!merged.hold_music || LEGACY_CUSTOM_HOLD_PATHS.has(merged.hold_music)) {
         merged.hold_music = 'default';
+        strippedLegacy = true;
+      }
+      if (strippedLegacy) {
         try {
           saveActiveAudioAssignments(merged);
         } catch (_) {}
@@ -7483,9 +7530,9 @@ let activeAudioAssignments: Record<string, string> = loadActiveAudioAssignments(
 
 let lastMohReloadTime = 0;
 let lastMohAppliedPath = '';
-let attemptedMohPackageRestore = false;
 
 // Restore Asterisk's native default Music on Hold (/var/lib/asterisk/moh)
+// IMPORTANT: Never invoke apt-get from Node runtime as dpkg hooks restart asterisk.service and drop PJSIP extensions.
 function restoreDefaultAsteriskMoh() {
   const mohDir = '/var/lib/asterisk/moh';
   const shareMohDir = '/usr/share/asterisk/moh';
@@ -7526,7 +7573,7 @@ function restoreDefaultAsteriskMoh() {
     } catch (_) {}
   }
 
-  // Restore original Asterisk default tracks if /usr/share/asterisk/moh is separate
+  // Copy original Asterisk default tracks if /usr/share/asterisk/moh is separate and target is missing
   const nativeAsteriskTracks = [
     'macroform-cold_day.wav',
     'manolo_camp-morning_coffee.wav',
@@ -7541,37 +7588,12 @@ function restoreDefaultAsteriskMoh() {
       for (const track of nativeAsteriskTracks) {
         const srcTrack = path.join(shareMohDir, track);
         const dstTrack = path.join(mohDir, track);
-        if (fs.existsSync(srcTrack)) {
+        if (fs.existsSync(srcTrack) && !fs.existsSync(dstTrack)) {
           fs.copyFileSync(srcTrack, dstTrack);
         }
       }
     }
   } catch (_) {}
-
-  // Check if default tracks were missing or previously overwritten by a custom file in SOUNDS_CUSTOM_DIR
-  if (hasLocalAsterisk && !attemptedMohPackageRestore) {
-    try {
-      const customSizes = new Set<number>();
-      if (fs.existsSync(SOUNDS_CUSTOM_DIR)) {
-        for (const f of fs.readdirSync(SOUNDS_CUSTOM_DIR)) {
-          if (f.endsWith('.wav')) {
-            try {
-              customSizes.add(fs.statSync(path.join(SOUNDS_CUSTOM_DIR, f)).size);
-            } catch (_) {}
-          }
-        }
-      }
-      const coldDayPath = path.join(mohDir, 'macroform-cold_day.wav');
-      const hasAnyNative = fs.existsSync(mohDir) && fs.readdirSync(mohDir).some((f) => /\.(wav|ulaw|alaw|gsm|g722|sln16)$/i.test(f));
-      const coldDayOverwritten = fs.existsSync(coldDayPath) && customSizes.has(fs.statSync(coldDayPath).size);
-      if (!hasAnyNative || coldDayOverwritten) {
-        attemptedMohPackageRestore = true;
-        exec('apt-get install --reinstall -y asterisk-moh-opsound-wav >/dev/null 2>&1 && asterisk -rx "moh reload"', () => {
-          console.log('[ASTERISK-MOH] ✓ Pistas nativas por defecto de Asterisk restauradas (asterisk-moh-opsound-wav).');
-        });
-      }
-    } catch (_) {}
-  }
 
   ensureMusiconholdConfExists(false);
 
@@ -7648,10 +7670,11 @@ function applyHoldMusicToAsteriskMoh(asteriskPath: string) {
   console.log(`[ASTERISK-MOH] ✓ Música de Hold personalizada sincronizada en ${customMohDir}: ${cleanPath}`);
 }
 
-function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
+function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string, options: { reloadDialplan?: boolean } = {}) {
+  if (LEGACY_OTP_KEY_RE.test(role)) {
+    return;
+  }
   const cleanPath = String(asteriskPath).replace(/\.wav$/, '');
-  // IMPORTANT: 7777 and 6666 are dedicated OTP capture extensions with their own independent audios!
-  // They must NEVER be contaminated by generic targets (default, 8888, 16104803845, etc.)
   const genericTargets = ['default', '8888', 'global', '16104803845'];
   const commands: string[] = [];
   const srcBaseName = cleanPath.replace(/^custom\//, '');
@@ -7709,167 +7732,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
       activeAudioAssignments.press1_invalid = cleanPath;
       break;
 
-    // --- EXTENSIÓN 7777 / 777 (Captura Primaria) ---
-    case 'welcome_7777':
-    case '7777':
-    case '777':
-    case 'capture_7777':
-    case 'prompt_7777':
-      commands.push(`database put ivr_vars 7777_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 7777_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 777_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 777_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_7777');
-      activeAudioAssignments.welcome_7777 = cleanPath;
-      break;
-
-    case 'wait_7777':
-      commands.push(`database put ivr_vars 7777_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 777_wait "${cleanPath}"`);
-      activeAudioAssignments.wait_7777 = cleanPath;
-      break;
-
-    case 'success_7777':
-      commands.push(`database put ivr_vars 7777_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 777_success "${cleanPath}"`);
-      activeAudioAssignments.success_7777 = cleanPath;
-      break;
-
-    case 'failure_7777':
-      commands.push(`database put ivr_vars 7777_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 777_failure "${cleanPath}"`);
-      activeAudioAssignments.failure_7777 = cleanPath;
-      break;
-
-    // --- EXTENSIÓN 6666 / 666 (Captura Secundaria / Token de Verificación) ---
-    case 'welcome_6666':
-    case '6666':
-    case '666':
-    case 'capture_6666':
-    case 'prompt_6666':
-      commands.push(`database put ivr_vars 6666_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 6666_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 666_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 666_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_6666');
-      activeAudioAssignments.welcome_6666 = cleanPath;
-      break;
-
-    case 'wait_6666':
-      commands.push(`database put ivr_vars 6666_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 666_wait "${cleanPath}"`);
-      activeAudioAssignments.wait_6666 = cleanPath;
-      break;
-
-    case 'success_6666':
-      commands.push(`database put ivr_vars 6666_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 666_success "${cleanPath}"`);
-      activeAudioAssignments.success_6666 = cleanPath;
-      break;
-
-    case 'failure_6666':
-      commands.push(`database put ivr_vars 6666_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 666_failure "${cleanPath}"`);
-      activeAudioAssignments.failure_6666 = cleanPath;
-      break;
-
-    // --- EXTENSIÓN 5555 / 555 (Captura 5555) ---
-    case 'welcome_5555':
-    case '5555':
-    case '555':
-    case 'capture_5555':
-    case 'prompt_5555':
-      commands.push(`database put ivr_vars 5555_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 5555_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_5555');
-      activeAudioAssignments.welcome_5555 = cleanPath;
-      break;
-
-    case 'wait_5555':
-      commands.push(`database put ivr_vars 5555_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_wait "${cleanPath}"`);
-      activeAudioAssignments.wait_5555 = cleanPath;
-      break;
-
-    case 'success_5555':
-      commands.push(`database put ivr_vars 5555_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_success "${cleanPath}"`);
-      activeAudioAssignments.success_5555 = cleanPath;
-      break;
-
-    case 'failure_5555':
-      commands.push(`database put ivr_vars 5555_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 555_failure "${cleanPath}"`);
-      activeAudioAssignments.failure_5555 = cleanPath;
-      break;
-
-    // --- EXTENSIÓN 4444 / 444 (Captura 4444) ---
-    case 'welcome_4444':
-    case '4444':
-    case '444':
-    case 'capture_4444':
-    case 'prompt_4444':
-      commands.push(`database put ivr_vars 4444_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 4444_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_4444');
-      activeAudioAssignments.welcome_4444 = cleanPath;
-      break;
-
-    case 'wait_4444':
-      commands.push(`database put ivr_vars 4444_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_wait "${cleanPath}"`);
-      activeAudioAssignments.wait_4444 = cleanPath;
-      break;
-
-    case 'success_4444':
-      commands.push(`database put ivr_vars 4444_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_success "${cleanPath}"`);
-      activeAudioAssignments.success_4444 = cleanPath;
-      break;
-
-    case 'failure_4444':
-      commands.push(`database put ivr_vars 4444_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 444_failure "${cleanPath}"`);
-      activeAudioAssignments.failure_4444 = cleanPath;
-      break;
-
-    // --- EXTENSIÓN 3333 / 333 (Captura 3333) ---
-    case 'welcome_3333':
-    case '3333':
-    case '333':
-    case 'capture_3333':
-    case 'prompt_3333':
-      commands.push(`database put ivr_vars 3333_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 3333_prompt "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_intro "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_prompt "${cleanPath}"`);
-      copyToFallback('bienvenida_3333');
-      activeAudioAssignments.welcome_3333 = cleanPath;
-      break;
-
-    case 'wait_3333':
-      commands.push(`database put ivr_vars 3333_wait "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_wait "${cleanPath}"`);
-      activeAudioAssignments.wait_3333 = cleanPath;
-      break;
-
-    case 'success_3333':
-      commands.push(`database put ivr_vars 3333_success "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_success "${cleanPath}"`);
-      activeAudioAssignments.success_3333 = cleanPath;
-      break;
-
-    case 'failure_3333':
-      commands.push(`database put ivr_vars 3333_failure "${cleanPath}"`);
-      commands.push(`database put ivr_vars 333_failure "${cleanPath}"`);
-      activeAudioAssignments.failure_3333 = cleanPath;
-      break;
-
-    // --- ROLES GENÉRICOS DE SISTEMA (Solo afectan destinos genéricos, no a las extensiones dedicadas) ---
+    // --- ROLES GENÉRICOS DE SISTEMA (Las extensiones dinámicas 4001+ usan _4XXX AstDB) ---
     case 'otp_welcome':
     case 'prompt':
       for (const tgt of genericTargets) {
@@ -7945,16 +7808,26 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string) {
 
   saveActiveAudioAssignments(activeAudioAssignments);
 
-  for (const cmd of commands) {
-    executeAsteriskCommand(cmd).catch(() => {});
+  if (options.reloadDialplan) {
+    for (const cmd of commands) {
+      executeAsteriskCommand(cmd).catch(() => {});
+    }
+    executeAsteriskCommand('dialplan reload').catch(() => {});
+  } else {
+    (async () => {
+      for (const cmd of commands) {
+        await executeAsteriskCommand(cmd).catch(() => {});
+      }
+    })();
   }
-  executeAsteriskCommand('dialplan reload').catch(() => {});
   console.log(`[AUDIO ASSIGNED] Rol ${role} actualizado a ${cleanPath}`);
 }
 
-function applyAllActiveAssignmentsToAsterisk() {
+async function applyAllActiveAssignmentsToAsterisk() {
   for (const [role, pathVal] of Object.entries(activeAudioAssignments)) {
-    applyAudioAssignmentToAsterisk(role, pathVal);
+    if (LEGACY_OTP_KEY_RE.test(role)) continue;
+    applyAudioAssignmentToAsterisk(role, pathVal, { reloadDialplan: false });
+    await new Promise((r) => setTimeout(r, 80));
   }
 }
 
@@ -8021,52 +7894,7 @@ app.post('/api/asterisk/audio/assign', requireAdminRole, (req, res) => {
   }
 });
 
-// Endpoint to retrieve currently assigned audio for extension 3333
-app.get('/api/asterisk/audio/current-3333', (req, res) => {
-  res.json({
-    success: true,
-    currentAudio: activeAudioAssignments.welcome_3333 || 'custom/solicitar_codigo_otp',
-    defaultAudio: 'custom/solicitar_codigo_otp'
-  });
-});
-
-// Endpoint to retrieve currently assigned audio for extension 4444
-app.get('/api/asterisk/audio/current-4444', (req, res) => {
-  res.json({
-    success: true,
-    currentAudio: activeAudioAssignments.welcome_4444 || 'custom/solicitar_codigo_otp',
-    defaultAudio: 'custom/solicitar_codigo_otp'
-  });
-});
-
-// Endpoint to retrieve currently assigned audio for extension 5555
-app.get('/api/asterisk/audio/current-5555', (req, res) => {
-  res.json({
-    success: true,
-    currentAudio: activeAudioAssignments.welcome_5555 || 'custom/solicitar_codigo_otp',
-    defaultAudio: 'custom/solicitar_codigo_otp'
-  });
-});
-
-// Endpoint to retrieve currently assigned audio for extension 6666
-app.get('/api/asterisk/audio/current-6666', (req, res) => {
-  res.json({
-    success: true,
-    currentAudio: activeAudioAssignments.welcome_6666 || 'custom/solicitar_codigo_otp',
-    defaultAudio: 'custom/solicitar_codigo_otp'
-  });
-});
-
-// Endpoint to retrieve currently assigned audio for extension 7777
-app.get('/api/asterisk/audio/current-7777', (req, res) => {
-  res.json({
-    success: true,
-    currentAudio: activeAudioAssignments.welcome_7777 || 'custom/solicitar_codigo_otp',
-    defaultAudio: 'custom/solicitar_codigo_otp'
-  });
-});
-
-// Endpoint to save and lock individual audio configuration for a specific OTP extension (7777, 6666, 5555, 4444, 3333, etc.)
+// Endpoint to save and lock individual audio configuration for a specific OTP extension (4001+)
 app.post('/api/asterisk/audio/save-extension-config', requireAdminRole, (req, res) => {
   try {
     const { extension, prompt, wait, success, failure, isLocked = true } = req.body;
@@ -8107,57 +7935,33 @@ app.post('/api/asterisk/audio/save-extension-config', requireAdminRole, (req, re
   }
 });
 
-// Endpoint to explicitly save & lock audio configurations for OTP extensions (3333, 4444, 5555, 6666, 7777)
+// Endpoint to save & lock audio configurations for dynamic OTP extensions (4001+)
 app.post('/api/asterisk/audio/save-otp-extensions', requireAdminRole, (req, res) => {
   try {
-    const {
-      welcome_3333, wait_3333, success_3333, failure_3333,
-      welcome_4444, wait_4444, success_4444, failure_4444,
-      welcome_5555, wait_5555, success_5555, failure_5555,
-      welcome_6666, wait_6666, success_6666, failure_6666,
-      welcome_7777, wait_7777, success_7777, failure_7777,
-      isLocked, lockedRoles
-    } = req.body;
-
-    if (welcome_3333) applyAudioAssignmentToAsterisk('welcome_3333', welcome_3333);
-    if (wait_3333) applyAudioAssignmentToAsterisk('wait_3333', wait_3333);
-    if (success_3333) applyAudioAssignmentToAsterisk('success_3333', success_3333);
-    if (failure_3333) applyAudioAssignmentToAsterisk('failure_3333', failure_3333);
-
-    if (welcome_4444) applyAudioAssignmentToAsterisk('welcome_4444', welcome_4444);
-    if (wait_4444) applyAudioAssignmentToAsterisk('wait_4444', wait_4444);
-    if (success_4444) applyAudioAssignmentToAsterisk('success_4444', success_4444);
-    if (failure_4444) applyAudioAssignmentToAsterisk('failure_4444', failure_4444);
-
-    if (welcome_5555) applyAudioAssignmentToAsterisk('welcome_5555', welcome_5555);
-    if (wait_5555) applyAudioAssignmentToAsterisk('wait_5555', wait_5555);
-    if (success_5555) applyAudioAssignmentToAsterisk('success_5555', success_5555);
-    if (failure_5555) applyAudioAssignmentToAsterisk('failure_5555', failure_5555);
-
-    if (welcome_6666) applyAudioAssignmentToAsterisk('welcome_6666', welcome_6666);
-    if (wait_6666) applyAudioAssignmentToAsterisk('wait_6666', wait_6666);
-    if (success_6666) applyAudioAssignmentToAsterisk('success_6666', success_6666);
-    if (failure_6666) applyAudioAssignmentToAsterisk('failure_6666', failure_6666);
-
-    if (welcome_7777) applyAudioAssignmentToAsterisk('welcome_7777', welcome_7777);
-    if (wait_7777) applyAudioAssignmentToAsterisk('wait_7777', wait_7777);
-    if (success_7777) applyAudioAssignmentToAsterisk('success_7777', success_7777);
-    if (failure_7777) applyAudioAssignmentToAsterisk('failure_7777', failure_7777);
-
+    const { isLocked, lockedRoles, ...roleEntries } = req.body || {};
     const lockVal = typeof isLocked === 'boolean' ? isLocked : true;
-    manualAudioLocks.welcome_7777 = lockVal;
-    manualAudioLocks.welcome_6666 = lockVal;
-    manualAudioLocks.welcome_5555 = lockVal;
-    manualAudioLocks.welcome_4444 = lockVal;
-    manualAudioLocks.welcome_3333 = lockVal;
-    manualAudioLocks.lock_7777 = lockVal;
-    manualAudioLocks.lock_6666 = lockVal;
-    manualAudioLocks.lock_5555 = lockVal;
-    manualAudioLocks.lock_4444 = lockVal;
-    manualAudioLocks.lock_3333 = lockVal;
+    const savedExts = new Set<string>();
+
+    for (const [key, val] of Object.entries(roleEntries)) {
+      if (typeof val !== 'string' || !val.trim()) continue;
+      const m = key.match(/^(welcome|wait|success|failure|prompt)_(\d{4,6})$/);
+      if (m && !LEGACY_OTP_KEY_RE.test(key)) {
+        applyAudioAssignmentToAsterisk(key, val);
+        savedExts.add(m[2]);
+      }
+    }
+
+    for (const extNum of savedExts) {
+      manualAudioLocks[`lock_${extNum}`] = lockVal;
+      manualAudioLocks[`welcome_${extNum}`] = lockVal;
+    }
 
     if (lockedRoles && typeof lockedRoles === 'object') {
-      Object.assign(manualAudioLocks, lockedRoles);
+      for (const [k, v] of Object.entries(lockedRoles)) {
+        if (!LEGACY_OTP_KEY_RE.test(k)) {
+          manualAudioLocks[k] = Boolean(v);
+        }
+      }
     }
 
     saveActiveAudioAssignments(activeAudioAssignments);
@@ -8165,7 +7969,7 @@ app.post('/api/asterisk/audio/save-otp-extensions', requireAdminRole, (req, res)
 
     res.json({
       success: true,
-      message: 'Configuración de extensiones OTP (7777, 6666, 5555, 4444, 3333) guardada y blindada en Asterisk AstDB.',
+      message: `Configuración de extensiones OTP (4001+) guardada y blindada en Asterisk AstDB.`,
       assignments: activeAudioAssignments,
       manualLocks: manualAudioLocks,
     });
@@ -9451,7 +9255,7 @@ EOF_MGR
 chmod 640 /etc/asterisk/manager.conf 2>/dev/null || true
 
 echo "=== [3/5] Descargando y verificando audios de IVR en /var/lib/asterisk/sounds/custom/ ==="
-AUDIOS=("banrearreglado" "alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos" "bienvenida_7777" "bienvenida_6666" "bienvenida_5555" "bienvenida_4444" "bienvenida_3333")
+AUDIOS=("banrearreglado" "alerta_banco_antifraude" "solicitar_codigo_otp" "digite_token_6_digitos" "token_invalido_reintente" "un_momento_validando_informacion" "operacion_bloqueada_exito" "conectar_asesor_banco" "bienvenida_corporativa" "prompt_otp_6_digitos")
 for aud in "\${AUDIOS[@]}"; do
   file_size=0
   if [ -f "/var/lib/asterisk/sounds/custom/\${aud}.wav" ]; then
@@ -9473,31 +9277,6 @@ asterisk -rx 'database put ivr_vars default_wait custom/un_momento_validando_inf
 asterisk -rx 'database put ivr_vars default_success custom/operacion_bloqueada_exito' || true
 asterisk -rx 'database put ivr_vars default_agent custom/conectar_asesor' || true
 asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
-
-asterisk -rx 'database put ivr_vars 7777_intro custom/bienvenida_7777' || true
-asterisk -rx 'database put ivr_vars 7777_prompt custom/bienvenida_7777' || true
-asterisk -rx 'database put ivr_vars 777_intro custom/bienvenida_7777' || true
-asterisk -rx 'database put ivr_vars 777_prompt custom/bienvenida_7777' || true
-
-asterisk -rx 'database put ivr_vars 6666_intro custom/bienvenida_6666' || true
-asterisk -rx 'database put ivr_vars 6666_prompt custom/bienvenida_6666' || true
-asterisk -rx 'database put ivr_vars 666_intro custom/bienvenida_6666' || true
-asterisk -rx 'database put ivr_vars 666_prompt custom/bienvenida_6666' || true
-
-asterisk -rx 'database put ivr_vars 5555_intro custom/bienvenida_5555' || true
-asterisk -rx 'database put ivr_vars 5555_prompt custom/bienvenida_5555' || true
-asterisk -rx 'database put ivr_vars 555_intro custom/bienvenida_5555' || true
-asterisk -rx 'database put ivr_vars 555_prompt custom/bienvenida_5555' || true
-
-asterisk -rx 'database put ivr_vars 4444_intro custom/bienvenida_4444' || true
-asterisk -rx 'database put ivr_vars 4444_prompt custom/bienvenida_4444' || true
-asterisk -rx 'database put ivr_vars 444_intro custom/bienvenida_4444' || true
-asterisk -rx 'database put ivr_vars 444_prompt custom/bienvenida_4444' || true
-
-asterisk -rx 'database put ivr_vars 3333_intro custom/bienvenida_3333' || true
-asterisk -rx 'database put ivr_vars 3333_prompt custom/bienvenida_3333' || true
-asterisk -rx 'database put ivr_vars 333_intro custom/bienvenida_3333' || true
-asterisk -rx 'database put ivr_vars 333_prompt custom/bienvenida_3333' || true
 
 asterisk -rx 'database put ivr_vars 8888_intro custom/notificacion_servicio' || true
 asterisk -rx 'database put ivr_vars 8888_prompt custom/solicitar_codigo_otp' || true
@@ -9588,7 +9367,7 @@ app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) =>
   }
   if ((!agent || agent === 'ringall' || agent === 'all') && callerid && /^[0-9]{3,5}$/.test(String(callerid).trim())) {
     const cidTrim = String(callerid).trim();
-    if (!/^4\d{3}$/.test(cidTrim) && !['3333', '7777', '6666', '5555', '4444', '8888'].includes(cidTrim)) {
+    if (!/^4\d{3}$/.test(cidTrim) && cidTrim !== '8888') {
       agent = cidTrim;
     }
   }
@@ -9951,7 +9730,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
 
         const storedTenants = loadStoredTenants();
         const isEngineExt = (n: string) =>
-          /^4\d{3}$/.test(n) || ['333', '3333', '444', '4444', '555', '5555', '666', '6666', '777', '7777', '8888'].includes(n);
+          /^4\d{3}$/.test(n) || n === '8888';
 
         if (codesOutput) {
           const lines = codesOutput.split('\n');
@@ -9960,7 +9739,7 @@ app.get('/api/asterisk/otp/records', async (req, res) => {
             const match = cleanLine.match(/^\/otp_codes\/([^\s:]+)\s*:\s*([0-9*#]+)/);
             if (match) {
               const num = match[1].trim();
-              if (isEngineExt(num)) continue; // Ignore shared IVR engine extension keys (4001, 7777, etc.)
+              if (isEngineExt(num)) continue; // Ignore shared IVR engine extension keys (4001+, 8888)
               const code = match[2].trim();
               const resolvedAgent =
                 agentMap[num] ||
@@ -11186,12 +10965,12 @@ app.post('/api/asterisk/call/purge-zombies', requireAdminRole, async (req, res) 
   }
 });
 
-// Endpoint to transfer an active live call directly to the automated OTP capture system (Ext. 3333)
+// Endpoint to transfer an active live call directly to the automated OTP capture system (Ext. 4001+)
 app.post('/api/asterisk/call/transfer-otp', requireActiveMembership, async (req, res) => {
   try {
     const authUser = (req as any).authUser;
-    const { channel, number, exten = '3333', agent } = req.body || {};
-    const targetExten = String(exten || '3333').replace(/[^0-9]/g, '');
+    const { channel, number, exten = '4001', agent } = req.body || {};
+    const targetExten = String(exten || '4001').replace(/[^0-9]/g, '');
     if (!targetExten || targetExten.length < 2 || targetExten.length > 6) {
       return res.status(400).json({ success: false, error: 'Extensión destino de captura OTP inválida.' });
     }
@@ -12128,10 +11907,21 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
 
     const { membership: _discardM, effectiveMembership: _discardEm, ...cleanTargetFields } = targetUser;
     let preservedMembership = prevUser?.membership;
-    if (!prevUser && authIsGlobalAdmin && req.body.activateInitialMonth === true) {
+    const requestedInitMode: 'initial_month' | 'demo_1_day' | 'none' =
+      req.body.initialActivationMode === 'demo_1_day' || req.body.initialActivationMode === 'initial_month' || req.body.initialActivationMode === 'none'
+        ? req.body.initialActivationMode
+        : (req.body.activateInitialMonth === true ? 'initial_month' : 'none');
+
+    if (!prevUser && authIsGlobalAdmin && (requestedInitMode === 'initial_month' || requestedInitMode === 'demo_1_day')) {
       const mRes = applyMembershipActivation(
         undefined,
-        { action: 'initial_month', notes: 'Activación inicial de 1 Mes al crear usuario' },
+        {
+          action: requestedInitMode,
+          notes:
+            requestedInitMode === 'demo_1_day'
+              ? 'Demo de Prueba (1 Día) activado al crear usuario'
+              : 'Activación inicial de 1 Mes al crear usuario',
+        },
         authUser.username || 'admin'
       );
       if (mRes.ok && mRes.membership) {
@@ -12317,13 +12107,14 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
     await writeAsteriskConfigFile('/etc/asterisk/extensions.conf', updatedDialplan);
     await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
 
-    // 7. Hot reload Asterisk
+    // 7. Hot reload Asterisk (single reload via CLI locally or AMI remotely)
     if (hasLocalAsterisk) {
       exec('asterisk -rx "pjsip reload" && asterisk -rx "dialplan reload"', () => {});
+    } else {
+      try {
+        await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']);
+      } catch (_) {}
     }
-    try {
-      await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload', 'dialplan reload']);
-    } catch (_) {}
 
     res.json({
       success: true,
@@ -12490,7 +12281,7 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
     if (!targetId) {
       return res.status(400).json({ success: false, error: 'targetId es requerido.' });
     }
-    if (!['initial_month', 'weekly_extension', 'suspend', 'reactivate', 'reset'].includes(String(action))) {
+    if (!['initial_month', 'demo_1_day', 'weekly_extension', 'suspend', 'reactivate', 'reset'].includes(String(action))) {
       return res.status(400).json({ success: false, error: 'Acción de membresía no válida.' });
     }
 
@@ -12529,7 +12320,9 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
         target: { ...tenantsList[idx], effectiveMembership },
         effectiveMembership,
         message:
-          action === 'initial_month'
+          action === 'demo_1_day'
+            ? `Demo de Prueba (${settings.demoDays} ${settings.demoDays === 1 ? 'día' : 'días'}) activado para ${targetTenant.name}.`
+            : action === 'initial_month'
             ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetTenant.name}.`
             : action === 'weekly_extension'
             ? `Membresía de ${targetTenant.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
@@ -12566,7 +12359,9 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
       target: sanitized,
       effectiveMembership: sanitized.effectiveMembership,
       message:
-        action === 'initial_month'
+        action === 'demo_1_day'
+          ? `Demo de Prueba (${settings.demoDays} ${settings.demoDays === 1 ? 'día' : 'días'}) activado para ${targetUser.name}.`
+          : action === 'initial_month'
           ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetUser.name}.`
           : action === 'weekly_extension'
           ? `Membresía de ${targetUser.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
