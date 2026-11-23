@@ -1911,19 +1911,21 @@ function writeAsteriskConfigFile(filePath: string, content: string): Promise<boo
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
       }
-      fs.writeFileSync(filePath, content, 'utf8');
+      fs.writeFileSync(filePath, content, { encoding: 'utf8', mode: 0o644 });
+      try { fs.chmodSync(filePath, 0o644); } catch (_) {}
       console.log(`[ASTERISK-SYNC] ✓ Archivo escrito directamente: ${filePath}`);
       return resolve(true);
     } catch (err: any) {
       console.warn(`[ASTERISK-SYNC] Escritura directa no disponible en ${filePath} (${err.message}). Intentando fallback...`);
       const tempPath = `/tmp/${fileName}_${Date.now()}`;
       try {
-        fs.writeFileSync(tempPath, content, { encoding: 'utf8', mode: 0o640 });
+        fs.writeFileSync(tempPath, content, { encoding: 'utf8', mode: 0o644 });
         try {
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
           }
           fs.copyFileSync(tempPath, filePath);
+          try { fs.chmodSync(filePath, 0o644); } catch (_) {}
           console.log(`[ASTERISK-SYNC] ✓ Archivo actualizado vía copia fallback: ${filePath}`);
           return resolve(true);
         } catch (copyErr: any) {
@@ -3440,7 +3442,6 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `allow = ${codecs}\n`;
     pjsipContent += `incoming_call_offer_pref = local_first\n`;
     pjsipContent += `outgoing_call_offer_pref = local_first\n`;
-    pjsipContent += `preferred_codec_only = yes\n`;
     pjsipContent += `auth = ${num}-auth\n`;
     pjsipContent += `aors = ${num}\n`;
     pjsipContent += `callerid = ${callerId}\n`;
@@ -5433,7 +5434,8 @@ async function autoRepairAsteriskPjsipOnStartup() {
     if (pjsipChanged) {
       await writeAsteriskConfigFile(pjsipPath, cleanPjsip);
       if (hasLocalAsterisk) {
-        exec('asterisk -rx "pjsip reload"', () => {});
+        const bin = getAsteriskBinary();
+        exec(`"${bin}" -rx "pjsip reload"`, () => {});
       } else {
         try {
           await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
@@ -5965,9 +5967,10 @@ app.post('/api/asterisk/extensions/repair', requireGlobalAdmin, async (req, res)
     let amiReload = '';
     if (hasLocalAsterisk) {
       try {
+        const bin = getAsteriskBinary();
         cliReload = await new Promise<string>((resolve) => {
-          exec('asterisk -rx "pjsip reload"', { timeout: 3500 }, (err, stdout) => {
-            resolve(stdout ? stdout.trim() : 'PJSIP recargado en Asterisk');
+          exec(`"${bin}" -rx "pjsip reload"`, { timeout: 6000 }, (err, stdout, stderr) => {
+            resolve((stdout || stderr || (err ? err.message : 'PJSIP recargado en Asterisk')).trim());
           });
         });
       } catch (_) {}
@@ -5976,6 +5979,8 @@ app.post('/api/asterisk/extensions/repair', requireGlobalAdmin, async (req, res)
         amiReload = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, ['pjsip reload']);
       } catch (_) {}
     }
+    cachedPjsipEndpoints = null;
+    invalidateCliCache();
 
     // Wait briefly then read back state
     await new Promise((r) => setTimeout(r, 600));
@@ -6586,32 +6591,6 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     let amiOutput = '';
     let cliOutput = 'Sin cambios en PJSIP/Dialplan (AstDB actualizado sin interrumpir registros)';
     let reloadError = '';
-    if (reloadCmds.length > 0) {
-      if (hasLocalAsterisk) {
-        const bin = getAsteriskBinary();
-        const reloadRes = await new Promise<{ out: string; errMsg: string }>((resolve) => {
-          const timer = setTimeout(() => resolve({ out: 'Dialplan y PJSIP recargados en caliente', errMsg: '' }), 4000);
-          exec(reloadCmds.map((c) => `"${bin}" -rx "${c}"`).join(' && '), (err, stdout, stderr) => {
-            clearTimeout(timer);
-            if (err) {
-              resolve({ out: stdout ? stdout.trim() : '', errMsg: (stderr || err.message || 'Error ejecutando asterisk -rx').trim() });
-            } else {
-              resolve({ out: stdout ? stdout.trim() : 'Dialplan y PJSIP recargados en caliente', errMsg: '' });
-            }
-          });
-        });
-        cliOutput = reloadRes.out || reloadRes.errMsg;
-        reloadError = reloadRes.errMsg;
-      } else {
-        try {
-          amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
-          cliOutput = 'Dialplan y PJSIP recargados vía AMI';
-        } catch (amiErr: any) {
-          amiOutput = amiErr.message;
-        }
-      }
-    }
-
     if (hasLocalAsterisk && pjsipChanged && !pjsipWritten) {
       return res.status(500).json({
         success: false,
@@ -6621,10 +6600,73 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       });
     }
 
+    if (reloadCmds.length > 0) {
+      if (hasLocalAsterisk) {
+        const bin = getAsteriskBinary();
+        const reloadRes = await new Promise<{ out: string; errMsg: string }>((resolve) => {
+          const timer = setTimeout(() => resolve({ out: '', errMsg: 'Timeout ejecutando recarga de Asterisk (>6s).' }), 6000);
+          exec(reloadCmds.map((c) => `"${bin}" -rx "${c}"`).join(' && '), (err, stdout, stderr) => {
+            clearTimeout(timer);
+            const combinedOut = (stdout || '').trim();
+            const combinedErr = (stderr || '').trim();
+            if (err) {
+              resolve({ out: combinedOut, errMsg: (combinedErr || err.message || 'Error ejecutando asterisk -rx').trim() });
+            } else if (/failed|error/i.test(combinedOut) && !/reloaded successfully/i.test(combinedOut)) {
+              resolve({ out: combinedOut, errMsg: combinedOut });
+            } else {
+              resolve({ out: combinedOut || 'Dialplan y PJSIP recargados en caliente', errMsg: '' });
+            }
+          });
+        });
+        cliOutput = reloadRes.out || reloadRes.errMsg;
+        reloadError = reloadRes.errMsg;
+
+        // Verify Asterisk actually loaded the synced endpoints into PJSIP memory (catches silent sorcery/pjsip.conf rejections)
+        if (!reloadError && pjsipChanged && persistedExtensions.length > 0) {
+          await new Promise((r) => setTimeout(r, 250));
+          const loadedCheck = await new Promise<string>((resolve) => {
+            exec(`"${bin}" -rx "pjsip show endpoints"`, { timeout: 4000 }, (_err, stdout) => {
+              resolve(String(stdout || ''));
+            });
+          });
+          const expectedIds = persistedExtensions
+            .map((e: any) => String(e?.extension || e?.id || e?.number || e?.num || '').trim().replace(/[^a-zA-Z0-9_\-]/g, ''))
+            .filter(Boolean);
+          const missingIds = expectedIds.filter((extId) => {
+            const escaped = extId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return !new RegExp(`Endpoint:\\s*${escaped}(?:\\/|\\s|$)`).test(loadedCheck);
+          });
+          if (missingIds.length > 0) {
+            let logHint = '';
+            try {
+              if (fs.existsSync('/var/log/asterisk/messages')) {
+                const lines = fs.readFileSync('/var/log/asterisk/messages', 'utf8').split('\n').slice(-80);
+                const matches = lines.filter((l) => /res_pjsip|sorcery|pjsip\.conf|ERROR/i.test(l)).slice(-4);
+                if (matches.length > 0) {
+                  logHint = ` | Log Asterisk: ${matches.join(' || ')}`;
+                }
+              }
+            } catch (_) {}
+            reloadError = `Asterisk escribió /etc/asterisk/pjsip.conf pero NO cargó en memoria las extensiones (${missingIds.join(', ')}).${logHint}`;
+            console.error(`[ASTERISK-SYNC] ${reloadError}`);
+          }
+        }
+      } else {
+        try {
+          amiOutput = await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
+          cliOutput = 'Dialplan y PJSIP recargados vía AMI';
+        } catch (amiErr: any) {
+          amiOutput = amiErr.message;
+        }
+      }
+      cachedPjsipEndpoints = null;
+      invalidateCliCache();
+    }
+
     if (hasLocalAsterisk && reloadError) {
       return res.status(500).json({
         success: false,
-        error: `pjsip.conf escrito pero falló la recarga de Asterisk: ${reloadError}`,
+        error: `pjsip.conf escrito pero falló la carga en Asterisk: ${reloadError}`,
         pjsipWritten,
         dialplanWritten,
         cliOutput,
@@ -11906,7 +11948,10 @@ app.post('/api/reseller/clients', requireGlobalAdmin, async (req, res) => {
       if (pjsipChanged) reloadCmds.push('pjsip reload');
       if (dialplanChanged) reloadCmds.push('dialplan reload');
       if (hasLocalAsterisk && reloadCmds.length > 0) {
-        exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {});
+        const bin = getAsteriskBinary();
+        exec(reloadCmds.map((c) => `"${bin}" -rx "${c}"`).join(' && '), () => {});
+        cachedPjsipEndpoints = null;
+        invalidateCliCache();
       }
     } catch (_) {}
 
@@ -12360,9 +12405,10 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
     if (dialplanChanged) reloadCmds.push('dialplan reload');
     if (reloadCmds.length > 0) {
       if (hasLocalAsterisk) {
+        const bin = getAsteriskBinary();
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(() => resolve(), 2500);
-          exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {
+          const timer = setTimeout(() => resolve(), 5000);
+          exec(reloadCmds.map((c) => `"${bin}" -rx "${c}"`).join(' && '), () => {
             clearTimeout(timer);
             resolve();
           });
@@ -12372,6 +12418,8 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
           await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);
         } catch (_) {}
       }
+      cachedPjsipEndpoints = null;
+      invalidateCliCache();
     }
 
     res.json({
