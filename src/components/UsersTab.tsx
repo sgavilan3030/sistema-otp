@@ -50,7 +50,7 @@ interface UsersTabProps {
   onAddUser: (user: SystemUser, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
-  onAddExtension?: (ext: PjsipExtension) => void;
+  onAddExtension?: (ext: PjsipExtension, skipRemoteSync?: boolean) => void;
   onNavigateToProduction?: () => void;
   onManageMembership?: () => void;
   onRefreshMembership?: () => void;
@@ -533,26 +533,30 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       onAddUser(userObj, resolvedActivationMode);
     }
 
-    // Ensure any assigned 2001+ client extension that doesn't yet exist in ExtensionsTab is created automatically
-    if (onAddExtension) {
+    // Server (/api/users/sync-sip) creates missing assigned extensions atomically and App.tsx refreshes /api/asterisk/extensions.
+    // Optimistically reflect newly assigned 2001+ extension locally only when passwordFinal is known, without firing a racing sync request.
+    if (onAddExtension && passwordFinal) {
       selectedExts.forEach((extNum) => {
         const cleanNum = String(extNum).trim();
         if (!/^\d{4,}$/.test(cleanNum)) return;
         const alreadyExists = extensions.some((ext) => ext.extension === cleanNum);
         if (!alreadyExists) {
-          onAddExtension({
-            id: `ext-${cleanNum}`,
-            extension: cleanNum,
-            name: `${formName} (Cliente ${cleanNum})`,
-            secret: passwordFinal || '',
-            context: 'from-internal',
-            transport: 'transport-udp',
-            port: 47923,
-            maxContacts: 5,
-            codecs: ['ulaw', 'alaw'],
-            status: 'unknown',
-            tenantId: formTenantId || undefined,
-          });
+          onAddExtension(
+            {
+              id: `ext-${cleanNum}`,
+              extension: cleanNum,
+              name: `${formName} (Cliente ${cleanNum})`,
+              secret: passwordFinal,
+              context: 'from-internal',
+              transport: 'transport-udp',
+              port: 47923,
+              maxContacts: 5,
+              codecs: ['ulaw', 'alaw'],
+              status: 'unknown',
+              tenantId: formTenantId || undefined,
+            },
+            true
+          );
         }
       });
     }

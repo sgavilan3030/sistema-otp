@@ -1041,7 +1041,7 @@ export default function App() {
         newExts.map((e) => `Ext ${e.extension}: ${e.name} (Context: ${e.context})`).join('\n')
       );
       showToast(`${newExts.length} extensiones generadas para "${tenant.name}".`);
-      handleQuickSync([...extensions, ...newExts]);
+      handleQuickSync([...extensions, ...newExts], carriers, true);
     } else {
       showToast(`Todas las extensiones del rango ${start}-${end} ya existen en el sistema.`, 'info');
     }
@@ -1311,7 +1311,7 @@ export default function App() {
     const now = Date.now();
     const state = amiBackoffRef.current;
 
-    // Check if AMI circuit is currently in exponential backoff (bypass if user explicitly mutated carriers/config)
+    // Check if AMI circuit is currently in exponential backoff (bypass if user explicitly mutated extensions/carriers/config)
     if (!forceSync && state.isBackoffActive && now < state.nextAllowedTime) {
       const remainingSec = Math.max(1, Math.ceil((state.nextAllowedTime - now) / 1000));
       addLog(
@@ -1333,7 +1333,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const res = await fetch('/api/asterisk/sync/extensions', {
         method: 'POST',
@@ -1343,59 +1343,76 @@ export default function App() {
           carriers: carriersToSync,
           users: users,
           tenants: tenants,
+          forceReload: forceSync,
         }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success !== false) {
         recordAmiSuccessClient();
         addLog(
           'AMI',
           `Black Hat Dialer System Actualizado: ${data.message || 'Recarga en caliente exitosa'}`,
-          data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
+          data.cliOutput || data.amiOutput || `Module 'res_pjsip.so' reloaded with ${extsToSync.length} endpoints.`
         );
-        showToast(`Black Hat Dialer System sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
+        showToast(`Asterisk sincronizado: ${extsToSync.length} extensiones y ${carriersToSync.length} troncales`);
       } else {
-        throw new Error('Servidor Asterisk no disponible');
+        throw new Error(data?.error || `HTTP ${res.status} al sincronizar con Asterisk`);
       }
     } catch (err: any) {
-      recordAmiFailureClient(err.message || 'Fallo de sincronización AMI');
+      const reason = err?.name === 'AbortError'
+        ? 'Tiempo de espera agotado al sincronizar con Asterisk (12s)'
+        : (err?.message || 'Fallo de sincronización AMI');
+      recordAmiFailureClient(reason);
       addLog(
         'AMI',
-        'PJSIP reloaded locally (offline cache active).',
-        `Output: Cambios guardados en memoria local. Cooldown aplicado para evitar saturación de red.`
+        `Error sincronizando PJSIP con Asterisk: ${reason}`,
+        `Los cambios se guardaron localmente, pero debes reintentar "Aplicar a Asterisk" para escribir /etc/asterisk/pjsip.conf.`,
+        'failed'
       );
-      showToast('Sincronización local completada (Asterisk offline)');
+      showToast(`Error al aplicar en Asterisk: ${reason}`, 'error');
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Extension Handlers (Enforces 1001+)
-  const handleAddExtension = (newExt: PjsipExtension) => {
-    const updated = [...extensions, newExt];
+  // Extension Handlers (Enforces 1000+)
+  const handleAddExtension = (newExt: PjsipExtension, skipRemoteSync = false) => {
+    const normalizedExt: PjsipExtension = {
+      ...newExt,
+      port: Number(newExt.port) > 0 ? Number(newExt.port) : 47923,
+      secret: String(newExt.secret || '').replace(/[\r\n;]/g, '').trim(),
+    };
+    const updated = [...extensions, normalizedExt];
     setExtensions(updated);
     try {
       localStorage.setItem('ast20_extensions', JSON.stringify(updated));
     } catch (e) {}
     addLog(
       'PJSIP',
-      `Nueva extensión PJSIP creada: ${newExt.extension} (${newExt.name})`,
-      `Endpoint: [${newExt.extension}]\nAuth: [${newExt.extension}-auth]\nAor: [${newExt.extension}]`
+      `Nueva extensión PJSIP creada: ${normalizedExt.extension} (${normalizedExt.name})`,
+      `Endpoint: [${normalizedExt.extension}]\nAuth: [${normalizedExt.extension}-auth]\nPuerto: ${normalizedExt.port}`
     );
-    handleQuickSync(updated);
+    if (!skipRemoteSync) {
+      handleQuickSync(updated, carriers, true);
+    }
   };
 
   const handleUpdateExtension = (updatedExt: PjsipExtension) => {
-    const updated = extensions.map((e) => (e.id === updatedExt.id ? updatedExt : e));
+    const normalizedExt: PjsipExtension = {
+      ...updatedExt,
+      port: Number(updatedExt.port) > 0 ? Number(updatedExt.port) : 47923,
+      secret: String(updatedExt.secret || '').replace(/[\r\n;]/g, '').trim(),
+    };
+    const updated = extensions.map((e) => (e.id === normalizedExt.id ? normalizedExt : e));
     setExtensions(updated);
     try {
       localStorage.setItem('ast20_extensions', JSON.stringify(updated));
     } catch (e) {}
-    addLog('PJSIP', `Extensión PJSIP modificada: ${updatedExt.extension}`);
-    handleQuickSync(updated);
+    addLog('PJSIP', `Extensión PJSIP modificada: ${normalizedExt.extension}`);
+    handleQuickSync(updated, carriers, true);
   };
 
   const handleDeleteExtension = (id: string) => {
@@ -1407,7 +1424,7 @@ export default function App() {
     } catch (e) {}
     if (ext) {
       addLog('PJSIP', `Extensión PJSIP eliminada del sistema: ${ext.extension}`);
-      handleQuickSync(updated);
+      handleQuickSync(updated, carriers, true);
     }
   };
 
@@ -1418,7 +1435,7 @@ export default function App() {
     } catch (e) {}
     showToast('Extensiones oficiales (1000 Espía, 1001, 1002, 1003) restauradas con éxito.', 'success');
     addLog('PJSIP', 'Cargadas extensiones 1000 (Espía Admin), 1001, 1002 y 1003 en memoria y sincronizadas.');
-    handleQuickSync(initialExtensions);
+    handleQuickSync(initialExtensions, carriers, true);
   };
 
   const handleSimulateQualify = (extNumber: string) => {
@@ -1719,7 +1736,17 @@ export default function App() {
           activateInitialMonth: resolvedActivationMode === 'initial_month',
         }),
       })
-        .then(() => refreshMembershipOverview())
+        .then(() => {
+          refreshMembershipOverview();
+          return fetch('/api/asterisk/extensions');
+        })
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((extData) => {
+          if (extData?.success && Array.isArray(extData.extensions) && extData.extensions.length > 0) {
+            setExtensions(extData.extensions);
+            try { localStorage.setItem('ast20_extensions', JSON.stringify(extData.extensions)); } catch (_) {}
+          }
+        })
         .catch(() => {});
     }
 
@@ -1757,7 +1784,16 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: updatedUser }),
-      }).catch(() => {});
+      })
+        .then(() => fetch('/api/asterisk/extensions'))
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((extData) => {
+          if (extData?.success && Array.isArray(extData.extensions) && extData.extensions.length > 0) {
+            setExtensions(extData.extensions);
+            try { localStorage.setItem('ast20_extensions', JSON.stringify(extData.extensions)); } catch (_) {}
+          }
+        })
+        .catch(() => {});
     }
 
     addLog('SYSTEM', `[USUARIOS] Permisos y credenciales PJSIP actualizadas para: ${updatedUser.name}`);
@@ -2232,7 +2268,7 @@ export default function App() {
             onUpdateExtension={handleUpdateExtension}
             onDeleteExtension={handleDeleteExtension}
             onSimulateQualify={handleSimulateQualify}
-            onSyncAsterisk={() => handleQuickSync(extensions)}
+            onSyncAsterisk={() => handleQuickSync(extensions, carriers, true)}
             onResetDefaultExtensions={handleResetDefaultExtensions}
             isSyncing={isSyncing}
           />
@@ -2250,7 +2286,7 @@ export default function App() {
             carriers={carriers}
             users={users}
             currentUser={currentUser}
-            onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
+            onSyncAsterisk={() => handleQuickSync(extensions, carriers, true)}
             onNavigateToManualDialer={() => setActiveTab('manual-dialer')}
             onManageMembership={() => setActiveTab('membership')}
           />
@@ -2265,7 +2301,7 @@ export default function App() {
             onPingCarrier={handlePingCarrier}
             onToggleCarrier={handleToggleCarrier}
             onReorderCarriers={handleReorderCarriers}
-            onSyncAsterisk={() => handleQuickSync(extensions, carriers)}
+            onSyncAsterisk={() => handleQuickSync(extensions, carriers, true)}
             isSyncing={isSyncing}
           />
         )}

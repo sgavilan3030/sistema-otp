@@ -1925,14 +1925,15 @@ function writeAsteriskConfigFile(filePath: string, content: string): Promise<boo
           }
           fs.copyFileSync(tempPath, filePath);
           console.log(`[ASTERISK-SYNC] ✓ Archivo actualizado vía copia fallback: ${filePath}`);
-        } catch (_) {
-          console.log(`[ASTERISK-SYNC] Nota: ${filePath} sincronizado localmente en ${localCopy} (sistema de archivos protegido o sin PBX local).`);
+          return resolve(true);
+        } catch (copyErr: any) {
+          console.warn(`[ASTERISK-SYNC] No se pudo escribir ${filePath} (${copyErr?.message || 'sin permisos'}). Guardado en ${localCopy}.`);
+          return resolve(false);
         } finally {
           try { fs.unlinkSync(tempPath); } catch (_) {}
         }
-        resolve(true);
       } catch (subErr) {
-        resolve(true);
+        return resolve(false);
       }
     }
   });
@@ -3402,14 +3403,17 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     const rawVal = (ext.extension || ext.id || ext.number || ext.num || '').toString().trim();
     // Permitir tanto números (1001) como nombres alfanuméricos para MicroSIP (ej. juan_perez, agente1)
     const num = rawVal.replace(/[^a-zA-Z0-9_\-]/g, '') || '1001';
-    const pass = ext.secret || ext.password || 'Secr3tP@ssw0rd!1001';
+    // Strip Asterisk .conf inline comment chars (;) and newlines from password so Asterisk never truncates it
+    const rawPass = String(ext.secret || ext.password || 'Secr3tP@ssw0rd!1001').replace(/[\r\n;]/g, '').trim();
+    const pass = rawPass || 'Secr3tP@ssw0rd!1001';
     let cleanCidName = ext.name || ext.callerIdName || `Extension ${num}`;
     if (cleanCidName === 'Seguridad Bancaria' || cleanCidName === 'BANRESERVAS' || cleanCidName === 'Atención al Cliente') {
       cleanCidName = ext.name || `Extension ${num}`;
     }
     const cleanCidNum = (ext.callerIdNum && !String(ext.callerIdNum).includes('5550199') && !String(ext.callerIdNum).includes('Asignado')) ? ext.callerIdNum : num;
     const callerId = `"${cleanCidName}" <${cleanCidNum}>`;
-    const extPort = parseInt(ext.port, 10) || activePort;
+    const parsedExtPort = parseInt(ext.port, 10);
+    const extPort = (!isNaN(parsedExtPort) && parsedExtPort > 0 && parsedExtPort <= 65535) ? parsedExtPort : activePort;
 
     let transport = 'transport-udp';
     if (ext.transport === 'transport-wss') {
@@ -3418,6 +3422,8 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
       transport = 'transport-tcp';
     } else if (ext.transport === 'transport-tls') {
       transport = 'transport-tls';
+    } else if (extPort === 5060 && activePort !== 5060) {
+      transport = 'transport-udp-5060';
     } else {
       transport = 'transport-udp';
     }
@@ -5741,7 +5747,26 @@ function parseExtensionsFromPjsip(content: string): any[] {
     }
   }
 
-  const endpoints = sections.filter((s) => /^\d{3,5}$/.test(s.name) && s.props.type === 'endpoint');
+  const transportPorts = new Map<string, number>();
+  for (const s of sections) {
+    if (s.props.type === 'transport' && s.props.bind) {
+      const portMatch = String(s.props.bind).match(/:(\d{1,5})\s*$/);
+      if (portMatch) {
+        const parsedPort = parseInt(portMatch[1], 10);
+        if (!isNaN(parsedPort) && parsedPort > 0) {
+          transportPorts.set(s.name, parsedPort);
+        }
+      }
+    }
+  }
+
+  const endpoints = sections.filter(
+    (s) =>
+      s.props.type === 'endpoint' &&
+      !s.name.startsWith('carrier_') &&
+      !s.name.startsWith('trunk_') &&
+      (/^\d{3,6}$/.test(s.name) || Boolean(s.props.auth))
+  );
   const auths = sections.filter((s) => s.props.type === 'auth');
   const aors = sections.filter((s) => s.props.type === 'aor');
 
@@ -5760,6 +5785,8 @@ function parseExtensionsFromPjsip(content: string): any[] {
         callerIdNum = m[2].trim();
       }
     }
+    const transportName = props.transport === 'transport-udp-5060' ? 'transport-udp' : (props.transport || 'transport-udp');
+    const resolvedPort = transportPorts.get(props.transport || 'transport-udp') || transportPorts.get('transport-udp') || 47923;
     exts.push({
       id: `ext-${secName}`,
       extension: secName,
@@ -5768,10 +5795,12 @@ function parseExtensionsFromPjsip(content: string): any[] {
       context: props.context || 'from-internal',
       codecs: props.allow ? props.allow.split(',').map((c: string) => c.trim()) : ['ulaw', 'alaw'],
       maxContacts: parseInt(aorSec.max_contacts || props.max_contacts || '5', 10),
-      transport: props.transport || 'transport-udp',
+      transport: transportName,
+      port: resolvedPort,
       callerId: props.callerid || '',
       callerIdNum: callerIdNum || secName,
       callerIdName: callerIdName || `Ext ${secName}`,
+      isSpyOnly: secName === '1000',
       status: 'registered',
     });
   }
@@ -5801,8 +5830,29 @@ app.get('/api/asterisk/extensions', async (req, res) => {
       pjsipContent = lastGeneratedPjsip;
     }
 
-    const parsedExtensions = parseExtensionsFromPjsip(pjsipContent);
-    const rawExtensions = parsedExtensions.length > 0 ? parsedExtensions : defaultExtensionsList;
+    const storedExts = loadStoredExtensions();
+    const storedByExt = new Map<string, any>(
+      (Array.isArray(storedExts) ? storedExts : [])
+        .filter((e: any) => e && e.extension)
+        .map((e: any) => [String(e.extension).trim().toLowerCase(), e])
+    );
+
+    const parsedExtensions = parseExtensionsFromPjsip(pjsipContent).map((pe: any) => {
+      const storedMeta = storedByExt.get(String(pe.extension).trim().toLowerCase());
+      if (!storedMeta) return pe;
+      return {
+        ...storedMeta,
+        ...pe,
+        id: storedMeta.id || pe.id,
+        name: storedMeta.name || pe.name,
+        port: pe.port || storedMeta.port || 47923,
+        recordCalls: typeof storedMeta.recordCalls === 'boolean' ? storedMeta.recordCalls : pe.recordCalls,
+        isSpyOnly: typeof storedMeta.isSpyOnly === 'boolean' ? storedMeta.isSpyOnly : pe.isSpyOnly,
+        carrierId: storedMeta.carrierId || pe.carrierId,
+        tenantId: storedMeta.tenantId || pe.tenantId,
+      };
+    });
+    const rawExtensions = parsedExtensions.length > 0 ? parsedExtensions : storedExts;
     const safeExtensions = allowSecrets
       ? rawExtensions
       : rawExtensions.map((ext: any) => {
@@ -5841,24 +5891,29 @@ app.get(['/api/asterisk/extensions/diagnostic', '/api/asterisk/diagnostic'], req
     const hasDuplicateSections = currentConfig.includes('[1001]\ntype = auth') || currentConfig.includes('[1001]\ntype=auth') || currentConfig.includes('[1002]\ntype = auth');
 
     const parsedExts = parseExtensionsFromPjsip(currentConfig);
-    const activeList = parsedExts.length > 0 ? parsedExts : defaultExtensionsList;
+    const activeList = parsedExts.length > 0 ? parsedExts : loadStoredExtensions();
 
-    const softphoneCredentials = activeList.map((ext: any) => ({
-      extension: ext.extension,
-      name: ext.name,
-      secret: ext.secret,
-      transport: ext.transport,
-      port: 5060,
-      callerId: `"${ext.callerIdName}" <${ext.callerIdNum}>`,
-      setupGuide: {
-        username: ext.extension,
-        authorizationName: ext.extension,
-        password: ext.secret,
-        domain: ASTERISK_HOST,
-        proxy: '',
-        transport: 'UDP',
-      },
-    }));
+    const softphoneCredentials = activeList.map((ext: any) => {
+      const activeExtPort = parseInt(ext.port, 10) || 47923;
+      const protoLabel = ext.transport === 'transport-tcp' ? 'TCP' : ext.transport === 'transport-tls' ? 'TLS' : ext.transport === 'transport-wss' ? 'WSS' : 'UDP';
+      return {
+        extension: ext.extension,
+        name: ext.name,
+        secret: ext.secret,
+        transport: ext.transport,
+        port: activeExtPort,
+        callerId: `"${ext.callerIdName}" <${ext.callerIdNum}>`,
+        setupGuide: {
+          username: ext.extension,
+          authorizationName: ext.extension,
+          password: ext.secret,
+          domain: `${ASTERISK_HOST}:${activeExtPort}`,
+          port: activeExtPort,
+          proxy: '',
+          transport: protoLabel,
+        },
+      };
+    });
 
     res.json({
       success: true,
@@ -6317,8 +6372,15 @@ app.get('/api/system/telemetry', requireAdminRole, async (req, res) => {
 });
 
 // Endpoint to sync all extensions directly into /etc/asterisk/pjsip.conf and reload
-app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) => {
+app.post('/api/asterisk/sync/extensions', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const isMasterAdmin = isGlobalAdminUser(authUser);
+    const canSyncExtensions = isMasterAdmin || (authUser?.role !== 'agent' && Boolean(authUser?.permissions?.canManageExtensions));
+    if (!canSyncExtensions) {
+      return res.status(403).json({ success: false, error: 'Permisos insuficientes para sincronizar extensiones en Asterisk.' });
+    }
+
     const { extensions, carriers } = req.body;
 
     if (!Array.isArray(extensions)) {
@@ -6329,11 +6391,11 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
     const persistedExtensions = loadStoredExtensions();
     lastSyncedExtensions = persistedExtensions;
 
-    const validCarriers = Array.isArray(carriers)
+    const validCarriers = (isMasterAdmin && Array.isArray(carriers))
       ? carriers
       : (lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers());
     lastSyncedCarriers = validCarriers;
-    if (Array.isArray(carriers)) {
+    if (isMasterAdmin && Array.isArray(carriers)) {
       saveStoredCarriers(validCarriers);
     }
     const enabledCarriers = validCarriers.filter((c: any) => c && c.name && c.enabled !== false && c.status !== 'disabled');
@@ -6346,7 +6408,7 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
 
     const storedUsersList = loadStoredUsers();
     let usersToInclude = storedUsersList;
-    if (Array.isArray(req.body.users) && req.body.users.length > 0) {
+    if (isMasterAdmin && Array.isArray(req.body.users) && req.body.users.length > 0) {
       const mergedList = storedUsersList.map((u) => ({ ...u }));
       const indexByKey = new Map<string, number>();
       mergedList.forEach((u, idx) => {
@@ -6380,14 +6442,14 @@ app.post('/api/asterisk/sync/extensions', requireGlobalAdmin, async (req, res) =
     }
 
     const storedTenantsList = loadStoredTenants();
-    const tenantsToSync = Array.isArray(req.body.tenants) && req.body.tenants.length > 0
+    const tenantsToSync = (isMasterAdmin && Array.isArray(req.body.tenants) && req.body.tenants.length > 0)
       ? req.body.tenants.map((t: any) => {
           const prevT = storedTenantsList.find((st: any) => st && String(st.id) === String(t?.id));
           const { effectiveMembership: _em, membership: _m, ...cleanT } = t || {};
           return { ...cleanT, ...(prevT?.membership ? { membership: prevT.membership } : {}) };
         })
       : storedTenantsList;
-    if (Array.isArray(req.body.tenants) && req.body.tenants.length > 0) {
+    if (isMasterAdmin && Array.isArray(req.body.tenants) && req.body.tenants.length > 0) {
       saveStoredTenants(tenantsToSync);
     }
 
@@ -12234,13 +12296,19 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       await writeAsteriskConfigFile(path.join(process.cwd(), 'extensions.conf'), updatedDialplan);
     }
 
-    // 7. Hot reload Asterisk (only reload modules that actually changed)
+    // 7. Hot reload Asterisk (only reload modules that actually changed, and await completion)
     const reloadCmds: string[] = [];
     if (pjsipChanged) reloadCmds.push('pjsip reload');
     if (dialplanChanged) reloadCmds.push('dialplan reload');
     if (reloadCmds.length > 0) {
       if (hasLocalAsterisk) {
-        exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {});
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => resolve(), 2500);
+          exec(reloadCmds.map((c) => `asterisk -rx "${c}"`).join(' && '), () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
       } else {
         try {
           await sendAmiAction('127.0.0.1', AMI_PORT, AMI_USER, AMI_SECRET, reloadCmds);

@@ -113,7 +113,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
           name: e.name,
           secret: e.secret,
           transport: e.transport,
-          port: e.port || 5060,
+          port: e.port || 47923,
           callerId: `"${e.callerIdName || e.name}" <${e.callerIdNum || e.extension}>`,
           setupGuide: {
             username: e.extension,
@@ -358,6 +358,16 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
       return;
     }
 
+    const cleanSecret = extSecret.trim();
+    if (!cleanSecret) {
+      setValidationError('La contraseña SIP es obligatoria.');
+      return;
+    }
+    if (cleanSecret.includes(';') || /[\r\n]/.test(cleanSecret)) {
+      setValidationError('La contraseña SIP no puede contener el carácter ";" ni saltos de línea (Asterisk interpreta ";" como comentario en pjsip.conf).');
+      return;
+    }
+
     const effectiveCidNum = (extCallerIdNum || rawExt).trim();
     const effectiveCidName = (extCallerIdName || extName || `Ext ${rawExt}`).trim();
     const callerId = `"${effectiveCidName}" <${effectiveCidNum}>`;
@@ -374,7 +384,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         ...editingExt,
         extension: rawExt,
         name: extName || (isPureDigits ? `Ext ${rawExt}` : rawExt),
-        secret: extSecret,
+        secret: cleanSecret,
         context: extContext,
         transport: extTransport,
         port: portNum,
@@ -394,7 +404,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
         id: `ext-${rawExt}-${Date.now()}`,
         extension: rawExt,
         name: extName || (isPureDigits ? `Ext ${rawExt}` : rawExt),
-        secret: extSecret,
+        secret: cleanSecret,
         context: extContext,
         transport: extTransport,
         port: portNum,
@@ -833,7 +843,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
                   <div className="flex items-center justify-between bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
                     <span className="text-slate-400 font-sans text-[10px]">Puerto / Red:</span>
                     <span className="text-slate-300 text-[10px] font-mono flex items-center gap-1">
-                      <span className="text-sky-400 font-bold">{ext.port || 5060}</span>
+                      <span className="text-sky-400 font-bold">{ext.port || 47923}</span>
                       <span>({ext.transport === 'transport-tcp' ? 'TCP' : ext.transport === 'transport-tls' ? 'TLS' : ext.transport === 'transport-wss' ? 'WSS' : 'UDP'} - PJSIP)</span>
                     </span>
                   </div>
@@ -1228,7 +1238,7 @@ export const ExtensionsTab: React.FC<ExtensionsTabProps> = ({
 {`[transport-udp]
 type=transport
 protocol=udp
-bind=0.0.0.0:${previewExt.port || 5060}
+bind=0.0.0.0:${previewExt.port || 47923}
 
 [${previewExt.extension}]
 type=endpoint
@@ -1354,15 +1364,23 @@ qualify_frequency=60`}
               <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
                 <span className="text-slate-400 font-sans">Dominio / Servidor SIP:</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sky-300 font-bold font-mono">IP_DE_TU_VPS:{softphoneModalExt.port || 5060}</span>
-                  <span className="text-[10px] text-slate-500 font-sans">(Tu servidor Asterisk)</span>
+                  <span className="text-sky-300 font-bold font-mono">
+                    {(typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'IP_DE_TU_VPS'}:{softphoneModalExt.port || 47923}
+                  </span>
+                  <button
+                    onClick={() => handleCopy(`${(typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'IP_DE_TU_VPS'}:${softphoneModalExt.port || 47923}`, 'm-server')}
+                    className="text-slate-400 hover:text-emerald-400"
+                    title="Copiar Servidor:Puerto"
+                  >
+                    {copiedKey === 'm-server' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
               </div>
 
               <div className="flex items-center justify-between py-1">
                 <span className="text-slate-400 font-sans">Puerto y Protocolo:</span>
                 <span className="text-sky-300 font-mono font-bold">
-                  {softphoneModalExt.port || 5060} ({softphoneModalExt.transport.replace('transport-', '').toUpperCase()})
+                  {softphoneModalExt.port || 47923} ({softphoneModalExt.transport.replace('transport-', '').toUpperCase()})
                 </span>
               </div>
             </div>
@@ -1374,11 +1392,11 @@ qualify_frequency=60`}
                 <div className="font-bold text-white flex items-center gap-2">
                   <span>Puerto PJSIP de esta extensión:</span>
                   <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono font-bold border border-sky-500/40">
-                    {softphoneModalExt.port || 5060}
+                    {softphoneModalExt.port || 47923}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-normal">
-                  Al registrar tu Softphone (MicroSIP / Zoiper / GS Wave), debes especificar el puerto <b className="text-sky-300 font-mono">:{softphoneModalExt.port || 5060}</b> en el campo de Dominio o Proxy saliente para conectar con éxito y evadir escaneos en el puerto 5060.
+                  Al registrar tu Softphone (MicroSIP / Zoiper / GS Wave), debes escribir obligatoriamente el puerto <b className="text-sky-300 font-mono">:{softphoneModalExt.port || 47923}</b> en Servidor SIP y Dominio (ej: <code className="text-emerald-300">{(typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'IP_VPS'}:{softphoneModalExt.port || 47923}</code>). Si omites el puerto, MicroSIP enviará al 5060 y Asterisk responderá Contraseña incorrecta (401).
                 </p>
               </div>
             </div>
@@ -1395,7 +1413,7 @@ qualify_frequency=60`}
                   <ul className="text-slate-400 list-disc list-inside space-y-0.5 font-mono">
                     <li>Username: <b className="text-white">{softphoneModalExt.extension}</b></li>
                     <li>Password: <b className="text-white">{softphoneModalExt.secret}</b></li>
-                    <li>Domain/Host: <b className="text-sky-300">IP_VPS:{softphoneModalExt.port || 5060}</b></li>
+                    <li>Domain/Host: <b className="text-sky-300">{(typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'IP_VPS'}:{softphoneModalExt.port || 47923}</b></li>
                     <li>Transport: <b className="text-white">{softphoneModalExt.transport.replace('transport-', '').toUpperCase()}</b></li>
                   </ul>
                 </div>
@@ -1408,7 +1426,7 @@ qualify_frequency=60`}
                   <ul className="text-slate-400 list-disc list-inside space-y-0.5 font-mono">
                     <li>User ID: <b className="text-white">{softphoneModalExt.extension}</b></li>
                     <li>Auth Name: <b className="text-white">{softphoneModalExt.extension}</b></li>
-                    <li>Proxy: <b className="text-sky-300">IP_VPS:{softphoneModalExt.port || 5060}</b></li>
+                    <li>Proxy: <b className="text-sky-300">{(typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : 'IP_VPS'}:{softphoneModalExt.port || 47923}</b></li>
                     <li>STUN: <b className="text-white">Desactivado</b></li>
                   </ul>
                 </div>
