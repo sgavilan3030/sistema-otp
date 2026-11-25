@@ -151,7 +151,7 @@ export const AmdConfigModal: React.FC<AmdConfigModalProps> = ({
                 <p className="text-xs text-slate-400 leading-relaxed">
                   {amdEnabled
                     ? 'Al contestar, el IVR entra inmediatamente desde que el cliente hable. Si detecta correo de voz o contestador, colgará y reintentará.'
-                    : 'La detección está desactivada: al contestar el cliente, esperará 1.2 segundos antes de iniciar el IVR sin filtrar contestadores.'}
+                    : 'La detección está desactivada: al contestar el cliente, esperará 2 segundos antes de iniciar el IVR sin filtrar contestadores.'}
                 </p>
               </div>
 
