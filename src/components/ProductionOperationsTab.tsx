@@ -619,6 +619,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const isFetchingIvrWsRef = useRef<boolean>(false);
 
   const resolvedWorkspaceTenantId = React.useMemo(() => {
+    if (isSuperAdmin) return '';
     if (activeUser?.tenantId) return activeUser.tenantId;
     const firstExtNum = parseInt(String(activeUser?.assignedExtensions?.[0] || '').trim(), 10);
     if (!isNaN(firstExtNum) && Array.isArray(tenants)) {
@@ -626,7 +627,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       if (matched?.id) return matched.id;
     }
     return '';
-  }, [activeUser?.tenantId, activeUser?.assignedExtensions, tenants]);
+  }, [isSuperAdmin, activeUser?.tenantId, activeUser?.assignedExtensions, tenants]);
 
   const [tenantServerAssignedIds, setTenantServerAssignedIds] = useState<string[] | null>(null);
 
@@ -641,13 +642,25 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       try {
         const uId = activeUser?.id || 'user-admin';
         const uName = activeUser?.username || 'admin';
+        const entitiesToPush = overrides?.campaignEntities ?? campaignEntities;
         const workspace = {
-          campaignEntities: overrides?.campaignEntities ?? campaignEntities,
+          campaignEntities: entitiesToPush,
           selectedService: overrides?.selectedService ?? selectedService,
           dialingCampaigns: overrides?.dialingCampaigns ?? dialingCampaigns,
           selectedCampaignId: overrides?.selectedCampaignId ?? selectedCampaignId,
           callFlowMode: overrides?.callFlowMode ?? callFlowMode,
         };
+        if (isSuperAdmin && Array.isArray(entitiesToPush) && entitiesToPush.length > 0) {
+          fetch('/api/app/master-entities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entities: entitiesToPush }),
+          })
+            .then(() => {
+              window.dispatchEvent(new CustomEvent('master-entities-updated'));
+            })
+            .catch(() => {});
+        }
         const res = await fetch('/api/app/ivr-workspace', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -670,7 +683,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }
       } catch (_) {}
     },
-    [activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
+    [isSuperAdmin, activeUser?.id, activeUser?.username, resolvedWorkspaceTenantId, campaignEntities, selectedService, dialingCampaigns, selectedCampaignId, callFlowMode]
   );
 
   const fetchIvrWorkspaceFromServer = React.useCallback(async (forceFull = false) => {
@@ -1471,19 +1484,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   ]);
 
   useEffect(() => {
-    fetch('/api/asterisk/otp-extensions')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.extensions) && data.extensions.length > 0) {
-          setDynamicOtpList(
-            data.extensions.map((e: any) => ({
+    const loadDynamicOtpExtensions = () => {
+      fetch('/api/asterisk/otp-extensions')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.extensions) && data.extensions.length > 0) {
+            const list = data.extensions.map((e: any) => ({
               extension: String(e.extension),
               name: e.name || `Ext. ${e.extension}`,
-            }))
-          );
-        }
-      })
-      .catch(() => {});
+            }));
+            setDynamicOtpList(list);
+            setSelectedOtpExten((prev) =>
+              list.some((item: { extension: string }) => item.extension === prev)
+                ? prev
+                : list[0].extension
+            );
+          }
+        })
+        .catch(() => {});
+    };
+
+    loadDynamicOtpExtensions();
+    window.addEventListener('otp-extensions-updated', loadDynamicOtpExtensions);
+    return () => {
+      window.removeEventListener('otp-extensions-updated', loadDynamicOtpExtensions);
+    };
   }, []);
 
   // Audio tone generator for Press 1 detection chime
@@ -1706,24 +1731,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
 
   const defaultAssignedCarrier = React.useMemo(() => {
-    if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
-      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
-      const byTenant = carriers.find(
+    const userCarrierRef = activeUser?.carrierId || activeUser?.assignedCarrierId;
+    if (userCarrierRef && userCarrierRef !== 'auto' && userCarrierRef !== 'pool') {
+      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const byUser = carriers.find(
         (c) =>
-          c.id === userTenant.carrierId ||
-          c.name === userTenant.carrierId ||
+          c.id === userCarrierRef ||
+          c.name === userCarrierRef ||
           c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
       );
-      if (byTenant) return byTenant;
+      if (byUser) return byUser;
     }
-    const userCarrierRef = activeUser?.carrierId || activeUser?.assignedCarrierId;
-    if (userCarrierRef && userCarrierRef !== 'auto') {
-      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (userTenant?.carrierId && userTenant.carrierId !== 'auto' && userTenant.carrierId !== 'pool') {
+      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       return (
         carriers.find(
           (c) =>
-            c.id === userCarrierRef ||
-            c.name === userCarrierRef ||
+            c.id === userTenant.carrierId ||
+            c.name === userTenant.carrierId ||
             c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
         ) || null
       );
@@ -1734,20 +1759,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   const [selectedCarrierName, setSelectedCarrierName] = useState<string>('auto');
   const lastCarrierInitUserRef = useRef<string>('');
 
-  const assignedClientCarrierName =
-    defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled'
-      ? defaultAssignedCarrier.name
-      : enabledCarriers[0]?.name || 'auto';
+  const assignedClientCarrierName = defaultAssignedCarrier
+    ? defaultAssignedCarrier.name
+    : (enabledCarriers[0]?.name || 'auto');
 
   useEffect(() => {
     const uid = activeUser?.id || '';
     if (uid && lastCarrierInitUserRef.current !== uid) {
       lastCarrierInitUserRef.current = uid;
-      if (
-        defaultAssignedCarrier &&
-        defaultAssignedCarrier.enabled !== false &&
-        defaultAssignedCarrier.status !== 'disabled'
-      ) {
+      if (defaultAssignedCarrier) {
         setSelectedCarrierName(defaultAssignedCarrier.name);
       } else if (!isSuperAdmin && enabledCarriers[0]?.name) {
         setSelectedCarrierName(enabledCarriers[0].name);
@@ -1983,14 +2003,36 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     targetNum?: string,
     recordId?: string
   ) => {
+    const normLast10 = (v?: string) => String(v || '').replace(/[^0-9]/g, '').slice(-10);
     const num = targetNum || (activeCall ? activeCall.number : '');
     const otp = targetOtp || (activeCall ? activeCall.capturedOtp : '');
-    const rec = otpRecords.find((r) => (recordId && r.id === recordId) || (num && r.number.includes(num)) || (otp && r.otp === otp));
-    const targetAgent = rec?.agent || activeCall?.agent || (activeCall?.agentExten !== 'ringall' ? activeCall?.agentExten : undefined) || (agentExtension !== 'ringall' ? agentExtension : '1001');
+    const num10 = normLast10(num);
+    const matchesRec = (r: any) => {
+      if (recordId && r.id === recordId) return true;
+      const r10 = normLast10(r.number);
+      const numMatch =
+        !!num &&
+        (r.number === num ||
+          (num10.length >= 7 && r10 === num10) ||
+          r.number.includes(num) ||
+          num.includes(r.number));
+      const otpMatch = !!otp && r.otp === otp;
+      if (num && otp) return numMatch && otpMatch;
+      return numMatch || otpMatch;
+    };
+    const rec = otpRecords.find(matchesRec);
+    const effectiveNumber = rec?.number || num;
+    const effectiveId = recordId || rec?.id;
+    const targetAgent =
+      rec?.agent ||
+      activeCall?.agent ||
+      (activeCall?.agentExten !== 'ringall' ? activeCall?.agentExten : undefined) ||
+      (agentExtension !== 'ringall' ? agentExtension : '1001');
 
     if (status === 'valid') {
-      if (recordId) validRecordIdsRef.current.add(recordId);
+      if (effectiveId) validRecordIdsRef.current.add(effectiveId);
       if (otp) validRecordIdsRef.current.add(otp);
+      if (effectiveNumber) validRecordIdsRef.current.add(effectiveNumber);
       if (num) validRecordIdsRef.current.add(num);
 
       // Quitar del HUD de llamada activa la sección de dígitos en tiempo real
@@ -2043,18 +2085,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     // Immediate UI update in list (permanece visible en el monitor del agente y en el registro histórico)
     setOtpRecords((prev) =>
       prev.map((r) =>
-        (recordId && r.id === recordId) || (num && r.number.includes(num)) || (otp && r.otp === otp)
-          ? { ...r, status, agent: targetAgent || r.agent }
-          : r
+        matchesRec(r) ? { ...r, status, agent: targetAgent || r.agent } : r
       )
     );
 
     try {
-      await fetch('/api/asterisk/otp/decision', {
+      const res = await fetch('/api/asterisk/otp/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: recordId, number: num, otp, status, agent: targetAgent }),
+        body: JSON.stringify({
+          id: effectiveId,
+          number: effectiveNumber,
+          otp,
+          status,
+          agent: targetAgent,
+          action: status === 'invalid' ? 'request_retry' : undefined,
+        }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        fetchCapturedOtps(true);
+      }
     } catch (e) {
       console.warn('Error syncing OTP decision:', e);
     }

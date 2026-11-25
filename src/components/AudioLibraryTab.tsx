@@ -367,6 +367,13 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
     }
   };
 
+  const sanitizeSoundRef = (val?: string) =>
+    String(val || '')
+      .trim()
+      .replace(/^\/?(?:var\/lib|usr\/share)\/asterisk\/sounds\/(?:[a-z]{2}\/)?/i, '')
+      .replace(/(?:custom\/)+/gi, 'custom/')
+      .replace(/\.(?:wav|ulaw|alaw|gsm|sln16|sln)$/i, '');
+
   const handleCreateOtpExtension = async (e: React.FormEvent) => {
     e.preventDefault();
     const extNumber = parseInt(newExtNum, 10);
@@ -384,10 +391,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
           name: newExtName || `Extensión ${extNumber}`,
           purpose: newExtPurpose,
           badge: newExtBadge || `Ext. ${extNumber}`,
-          promptAudio: newExtPrompt,
-          waitAudio: newExtWait,
-          successAudio: newExtSuccess,
-          failureAudio: newExtFailure,
+          promptAudio: sanitizeSoundRef(newExtPrompt),
+          waitAudio: sanitizeSoundRef(newExtWait),
+          successAudio: sanitizeSoundRef(newExtSuccess),
+          failureAudio: sanitizeSoundRef(newExtFailure),
           isLocked: true,
         }),
       });
@@ -400,6 +407,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         setTimeout(() => setFeedbackMsg(null), 5000);
         setIsCreateModalOpen(false);
         await fetchDynamicOtpExtensions();
+        window.dispatchEvent(new CustomEvent('otp-extensions-updated'));
         setFeaturedExtTab(String(extNumber));
       } else {
         alert(data.error || 'Error al crear la extensión');
@@ -425,6 +433,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         });
         setTimeout(() => setFeedbackMsg(null), 4000);
         await fetchDynamicOtpExtensions();
+        window.dispatchEvent(new CustomEvent('otp-extensions-updated'));
         if (featuredExtTab === ext) setFeaturedExtTab('all');
       }
     } catch (e: any) {
@@ -493,10 +502,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
   const handleSaveConfigExtension = async (ext: string) => {
     setIsSavingExt((prev) => ({ ...prev, [ext]: true }));
     try {
-      const prompt = activeAssignments[`welcome_${ext}`] || `custom/solicitar_codigo_otp`;
-      const wait = activeAssignments[`wait_${ext}`] || `custom/un_momento_validando_informacion`;
-      const success = activeAssignments[`success_${ext}`] || `custom/operacion_bloqueada_exito`;
-      const failure = activeAssignments[`failure_${ext}`] || `custom/token_invalido_reintente`;
+      const prompt = sanitizeSoundRef(activeAssignments[`welcome_${ext}`]) || `custom/solicitar_codigo_otp`;
+      const wait = sanitizeSoundRef(activeAssignments[`wait_${ext}`]) || `custom/un_momento_validando_informacion`;
+      const success = sanitizeSoundRef(activeAssignments[`success_${ext}`]) || `custom/operacion_bloqueada_exito`;
+      const failure = sanitizeSoundRef(activeAssignments[`failure_${ext}`]) || `custom/token_invalido_reintente`;
 
       const res = await fetch('/api/asterisk/audio/save-extension-config', {
         method: 'POST',
@@ -523,6 +532,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         if (data.assignments) {
           setActiveAssignments(data.assignments);
         }
+        window.dispatchEvent(new CustomEvent('otp-extensions-updated'));
         setFeedbackMsg({
           text: `✓ Configuración de audios para Extensión ${ext} guardada y bloqueada manualmente (isLocked: true). Ningún auto-sync la sobrescribirá.`,
           type: 'success',
@@ -618,10 +628,10 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       extList.forEach((ext) => {
         lockedRoles[`lock_${ext}`] = true;
         lockedRoles[`welcome_${ext}`] = true;
-        payload[`welcome_${ext}`] = activeAssignments[`welcome_${ext}`] || 'custom/solicitar_codigo_otp';
-        payload[`wait_${ext}`] = activeAssignments[`wait_${ext}`] || 'custom/un_momento_validando_informacion';
-        payload[`success_${ext}`] = activeAssignments[`success_${ext}`] || 'custom/operacion_bloqueada_exito';
-        payload[`failure_${ext}`] = activeAssignments[`failure_${ext}`] || 'custom/token_invalido_reintente';
+        payload[`welcome_${ext}`] = sanitizeSoundRef(activeAssignments[`welcome_${ext}`]) || 'custom/solicitar_codigo_otp';
+        payload[`wait_${ext}`] = sanitizeSoundRef(activeAssignments[`wait_${ext}`]) || 'custom/un_momento_validando_informacion';
+        payload[`success_${ext}`] = sanitizeSoundRef(activeAssignments[`success_${ext}`]) || 'custom/operacion_bloqueada_exito';
+        payload[`failure_${ext}`] = sanitizeSoundRef(activeAssignments[`failure_${ext}`]) || 'custom/token_invalido_reintente';
       });
 
       const res = await fetch('/api/asterisk/audio/save-otp-extensions', {
@@ -646,6 +656,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
         if (data.assignments) {
           setActiveAssignments(data.assignments);
         }
+        window.dispatchEvent(new CustomEvent('otp-extensions-updated'));
 
         setFeedbackMsg({
           text: `✓ Todas las extensiones OTP (${extList.join(', ')}) guardadas y blindadas en AstDB sin cruce de audios.`,

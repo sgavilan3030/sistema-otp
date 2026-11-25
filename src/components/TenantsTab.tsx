@@ -105,12 +105,33 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     fetch('/api/app/master-entities')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
-          setAvailableEntities(
-            data.entities
-              .filter((e: any) => e && e.id && e.isActive !== false)
-              .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }))
-          );
+        const serverList: SimpleEntityOption[] =
+          data.success && Array.isArray(data.entities)
+            ? data.entities
+                .filter((e: any) => e && e.id && e.isActive !== false)
+                .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon }))
+            : [];
+        if (serverList.length > 0) {
+          if (isAdmin) {
+            try {
+              const saved = localStorage.getItem('prod_campaign_entities_v3');
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                  const map = new Map<string, SimpleEntityOption>();
+                  serverList.forEach((e) => map.set(e.id, e));
+                  parsed
+                    .filter((e: any) => e && e.id && e.isActive !== false && String(e.id).startsWith('custom_'))
+                    .forEach((e: any) => {
+                      if (!map.has(e.id)) map.set(e.id, { id: e.id, name: e.name, subtitle: e.subtitle, icon: e.icon });
+                    });
+                  setAvailableEntities(Array.from(map.values()));
+                  return;
+                }
+              }
+            } catch (_) {}
+          }
+          setAvailableEntities(serverList);
         } else if (isAdmin) {
           try {
             const saved = localStorage.getItem('prod_campaign_entities_v3');
@@ -133,8 +154,18 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
   useEffect(() => {
     refreshMasterEntities();
     const onFocus = () => refreshMasterEntities();
+    const onEntitiesUpdated = () => refreshMasterEntities();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'prod_campaign_entities_v3') refreshMasterEntities();
+    };
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    window.addEventListener('master-entities-updated', onEntitiesUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('master-entities-updated', onEntitiesUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [refreshMasterEntities]);
 
   // Modal states

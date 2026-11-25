@@ -1,0 +1,139 @@
+ -- PJSIP/1002-00000016 answered
+    -- Executing [s@ivr-press1:1] NoOp("PJSIP/1002-00000016", "=== [IVR-PRESS1]                                                                                                              INICIO MODO PRESS 1 CON AUDIO HD ===") in new stack
+    -- Executing [s@ivr-press1:2] Answer("PJSIP/1002-00000016", "") in new stack
+    -- Executing [s@ivr-press1:3] Set("PJSIP/1002-00000016", "TARGET_DEST=1002")                                                                                                              in new stack
+    -- Executing [s@ivr-press1:4] Set("PJSIP/1002-00000016", "__TARGET_NUM=1002"                                                                                                             ) in new stack
+    -- Executing [s@ivr-press1:5] Set("PJSIP/1002-00000016", "__CUSTOMER_NUM=100                                                                                                             2") in new stack
+    -- Executing [s@ivr-press1:6] Set("PJSIP/1002-00000016", "__TARGET_DEST=1002                                                                                                             ") in new stack
+    -- Executing [s@ivr-press1:7] Set("PJSIP/1002-00000016", "__CALL_DEST=1002")                                                                                                              in new stack
+    -- Executing [s@ivr-press1:8] Set("PJSIP/1002-00000016", "AMD_ACTIVE=1") in                                                                                                              new stack
+    -- Executing [s@ivr-press1:9] ExecIf("PJSIP/1002-00000016", "1?Set(AMD_ACTIV                                                                                                             E=1)") in new stack
+    -- Executing [s@ivr-press1:10] GotoIf("PJSIP/1002-00000016", "1?skip_amd_pre                                                                                                             ss1") in new stack
+    -- Goto (ivr-press1,s,19)
+    -- Executing [s@ivr-press1:19] NoOp("PJSIP/1002-00000016", "=== [AMD OMITIDO                                                                                                             ] Prueba local o detección apagada -> Inicio rápido de audio ===") in new stack
+    -- Executing [s@ivr-press1:20] ExecIf("PJSIP/1002-00000016", "1?Wait(0.3):Wa                                                                                                             it(1.2)") in new stack
+    -- Executing [s@ivr-press1:21] Set("PJSIP/1002-00000016", "DB(call_status/10                                                                                                             02)=in_ivr") in new stack
+    -- Executing [s@ivr-press1:22] System("PJSIP/1002-00000016", "curl -s -H "X-                                                                                                             Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://                                                                                                             127.0.0.1:3000/api/asterisk/call/status/update?number=1002&status=in_ivr&channel                                                                                                             =PJSIP%2F1002-00000016" &") in new stack
+    -- Executing [s@ivr-press1:23] UserEvent("PJSIP/1002-00000016", "CallAnswere                                                                                                             d,Number=1002,Context=ivr-press1,Channel=PJSIP/1002-00000016") in new stack
+    -- Executing [s@ivr-press1:24] Set("PJSIP/1002-00000016", "TIMEOUT(digit)=1"                                                                                                             ) in new stack
+    -- Digit timeout set to 1.000
+    -- Executing [s@ivr-press1:25] Set("PJSIP/1002-00000016", "TIMEOUT(response)                                                                                                             =4") in new stack
+    -- Response timeout set to 4.000
+    -- Executing [s@ivr-press1:26] Set("PJSIP/1002-00000016", "TIMEOUT(absolute)                                                                                                             =180") in new stack
+    -- Channel will hangup at 2026-11-23 16:58:07.928 AST.
+    -- Executing [s@ivr-press1:27] Set("PJSIP/1002-00000016", "FINAL_AGENT=1001"                                                                                                             ) in new stack
+    -- Executing [s@ivr-press1:28] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=1002)") in new stack
+    -- Executing [s@ivr-press1:29] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=1001)") in new stack
+    -- Executing [s@ivr-press1:30] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=1001)") in new stack
+    -- Executing [s@ivr-press1:31] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=1001)") in new stack
+    -- Executing [s@ivr-press1:32] Set("PJSIP/1002-00000016", "IVR_INTRO=custom/                                                                                                             popular_usa_press1") in new stack
+    -- Executing [s@ivr-press1:33] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=)") in new stack
+    -- Executing [s@ivr-press1:34] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/popular_usa_press1)") in new stack
+    -- Executing [s@ivr-press1:35] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/popular_usa_press1)") in new stack
+    -- Executing [s@ivr-press1:36] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/popular_usa_press1)") in new stack
+    -- Executing [s@ivr-press1:37] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/popular_usa_press1)") in new stack
+    -- Executing [s@ivr-press1:38] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/popular_usa_press1)") in new stack
+    -- Executing [s@ivr-press1:39] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1:40] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1:41] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=)") in new stack
+    -- Executing [s@ivr-press1:42] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/bienvenida_corporativa)") in new stack
+    -- Executing [s@ivr-press1:43] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_INTR                                                                                                             O=custom/bienvenida_press1)") in new stack
+    -- Executing [s@ivr-press1:44] Set("PJSIP/1002-00000016", "IVR_INTRO=custom/                                                                                                             popular_usa_press1") in new stack
+    -- Executing [s@ivr-press1:45] Set("PJSIP/1002-00000016", "IVR_INTRO=custom/                                                                                                             popular_usa_press1") in new stack
+    -- Executing [s@ivr-press1:46] Set("PJSIP/1002-00000016", "IVR_INTRO=custom/                                                                                                             popular_usa_press1") in new stack
+    -- Executing [s@ivr-press1:47] Set("PJSIP/1002-00000016", "IVR_INTRO=custom/                                                                                                             popular_usa_press1") in new stack
+    -- Executing [s@ivr-press1:48] NoOp("PJSIP/1002-00000016", "=== [IVR-AUDIO]                                                                                                              Reproduciendo Audio Intro UNA VEZ: custom/popular_usa_press1 para Agente: 1001 |                                                                                                              Destino: 1002 ===") in new stack
+    -- Executing [s@ivr-press1:49] BackGround("PJSIP/1002-00000016", "custom/pop                                                                                                             ular_usa_press1") in new stack
+    -- <PJSIP/1002-00000016> Playing 'custom/popular_usa_press1' (format 'ulaw',                                                                                                              language 'es')
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Executing [1@ivr-press1:1] NoOp("PJSIP/1002-00000016", "=== [IVR-PRESS1]                                                                                                              DIGITO 1 DETECTADO -> CLIENTE PRESIONO 1 ===") in new stack
+    -- Executing [1@ivr-press1:2] Set("PJSIP/1002-00000016", "PRESSED_DIGIT=1")                                                                                                              in new stack
+    -- Executing [1@ivr-press1:3] Set("PJSIP/1002-00000016", "PRESSED_DIGIT=1")                                                                                                              in new stack
+    -- Executing [1@ivr-press1:4] Set("PJSIP/1002-00000016", "TARGET_NUM=1002")                                                                                                              in new stack
+    -- Executing [1@ivr-press1:5] Set("PJSIP/1002-00000016", "__TARGET_NUM=1002"                                                                                                             ) in new stack
+    -- Executing [1@ivr-press1:6] Set("PJSIP/1002-00000016", "__TARGET_DEST=1002                                                                                                             ") in new stack
+    -- Executing [1@ivr-press1:7] Set("PJSIP/1002-00000016", "__CALL_DEST=1002")                                                                                                              in new stack
+    -- Executing [1@ivr-press1:8] Set("PJSIP/1002-00000016", "__CUSTOMER_NUM=100                                                                                                             2") in new stack
+    -- Executing [1@ivr-press1:9] Set("PJSIP/1002-00000016", "CALLERID(pres)=all                                                                                                             owed_not_screened") in new stack
+    -- Executing [1@ivr-press1:10] Set("PJSIP/1002-00000016", "CALLERID(num-pres                                                                                                             )=allowed_not_screened") in new stack
+    -- Executing [1@ivr-press1:11] Set("PJSIP/1002-00000016", "CALLERID(name-pre                                                                                                             s)=allowed_not_screened") in new stack
+    -- Executing [1@ivr-press1:12] Set("PJSIP/1002-00000016", "CALLERID(num)=100                                                                                                             2") in new stack
+    -- Executing [1@ivr-press1:13] Set("PJSIP/1002-00000016", "CALLERID(name)=10                                                                                                             02") in new stack
+    -- Executing [1@ivr-press1:14] Set("PJSIP/1002-00000016", "CALLERID(all)="10                                                                                                             02" <1002>") in new stack
+    -- Executing [1@ivr-press1:15] Set("PJSIP/1002-00000016", "CONNECTEDLINE(num                                                                                                             ,i)=1002") in new stack
+    -- Executing [1@ivr-press1:16] Set("PJSIP/1002-00000016", "CONNECTEDLINE(nam                                                                                                             e,i)=1002") in new stack
+    -- Executing [1@ivr-press1:17] Set("PJSIP/1002-00000016", "CONNECTEDLINE(all                                                                                                             ,i)="1002" <1002>") in new stack
+    -- Executing [1@ivr-press1:18] Set("PJSIP/1002-00000016", "DB(call_status/10                                                                                                             02)=pressed_1") in new stack
+    -- Executing [1@ivr-press1:19] Set("PJSIP/1002-00000016", "DB(call_digit/100                                                                                                             2)=1") in new stack
+    -- Executing [1@ivr-press1:20] UserEvent("PJSIP/1002-00000016", "Press1Detec                                                                                                             ted,Number=1002,Digit=1,Channel=PJSIP/1002-00000016") in new stack
+    -- Executing [1@ivr-press1:21] System("PJSIP/1002-00000016", "curl -s -H "X-                                                                                                             Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://                                                                                                             127.0.0.1:3000/api/asterisk/call/status/update?number=1002&status=pressed_1&digi                                                                                                             t=1&channel=PJSIP%2F1002-00000016" &") in new stack
+    -- Executing [1@ivr-press1:22] Wait("PJSIP/1002-00000016", "0.4") in new sta                                                                                                             ck
+    -- Executing [1@ivr-press1:23] Set("PJSIP/1002-00000016", "IVR_AGENT=custom/                                                                                                             porfavor_espere_popular_usa") in new stack
+    -- Executing [1@ivr-press1:24] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=)") in new stack
+    -- Executing [1@ivr-press1:25] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=custom/porfavor_espere_popular_usa)") in new stack
+    -- Executing [1@ivr-press1:26] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=custom/porfavor_espere_popular_usa)") in new stack
+    -- Executing [1@ivr-press1:27] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=custom/porfavor_espere_popular_usa)") in new stack
+    -- Executing [1@ivr-press1:28] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=custom/conectar_asesor_banco)") in new stack
+    -- Executing [1@ivr-press1:29] ExecIf("PJSIP/1002-00000016", "0?Set(IVR_AGEN                                                                                                             T=custom/conectar_asesor)") in new stack
+    -- Executing [1@ivr-press1:30] Set("PJSIP/1002-00000016", "IVR_AGENT=custom/                                                                                                             porfavor_espere_popular_usa") in new stack
+    -- Executing [1@ivr-press1:31] Set("PJSIP/1002-00000016", "IVR_AGENT=custom/                                                                                                             porfavor_espere_popular_usa") in new stack
+    -- Executing [1@ivr-press1:32] Playback("PJSIP/1002-00000016", "custom/porfa                                                                                                             vor_espere_popular_usa") in new stack
+    -- <PJSIP/1002-00000016> Playing 'custom/porfavor_espere_popular_usa' (forma                                                                                                             t 'ulaw', language 'es')
+<--- Transmitting SIP request (491 bytes) to UDP:152.0.89.203:65067 --->
+OPTIONS sip:1002@152.0.89.203:65067;rinstance=7965c6529f914c2b SIP/2.0
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport;branch=z9hG4bKPj4e99e711-0046-498d-b5                                                                                                             a0-e6b8ba993d86
+From: <sip:1002@169.58.66.206>;tag=62a1ec7d-66f7-496c-b6a3-46671ea35315
+To: <sip:1002@152.0.89.203;rinstance=7965c6529f914c2b>
+Contact: <sip:1002@169.58.66.206:47923>
+Call-ID: 219cfbc7-7552-4edb-9e0c-c1378e5d08a7
+CSeq: 46600 OPTIONS
+Max-Forwards: 70
+User-Agent: Asterisk PBX GIT-20-352e66b114
+Content-Length:  0
+
+
+<--- Received SIP response (705 bytes) from UDP:152.0.89.203:65067 --->
+SIP/2.0 200 OK
+Via: SIP/2.0/UDP 169.58.66.206:47923;rport=47923;branch=z9hG4bKPj4e99e711-0046-4                                                                                                             98d-b5a0-e6b8ba993d86
+Contact: <sip:192.168.100.7:65067>
+To: <sip:1002@152.0.89.203;rinstance=7965c6529f914c2b>;tag=463d7f2f
+From: <sip:1002@169.58.66.206>;tag=62a1ec7d-66f7-496c-b6a3-46671ea35315
+Call-ID: 219cfbc7-7552-4edb-9e0c-c1378e5d08a7
+CSeq: 46600 OPTIONS
+Accept: application/sdp
+Accept-Language: en
+Allow: INVITE, ACK, CANCEL, BYE, NOTIFY, REFER, MESSAGE, OPTIONS, INFO, SUBSCRIB                                                                                                             E
+Supported: replaces, norefersub, extended-refer, timer, sec-agree, outbound, pat                                                                                                             h, X-cisco-serviceuri
+User-Agent: Zoiper v2.10.20.4_1
+Allow-Events: presence, kpml, talk, as-feature-event
+Content-Length: 0
+
+
+    -- Executing [1@ivr-press1:33] Set("PJSIP/1002-00000016", "FINAL_AGENT=1001"                                                                                                             ) in new stack
+    -- Executing [1@ivr-press1:34] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=1001)") in new stack
+    -- Executing [1@ivr-press1:35] ExecIf("PJSIP/1002-00000016", "0?Set(FINAL_AG                                                                                                             ENT=ringall)") in new stack
+    -- Executing [1@ivr-press1:36] Set("PJSIP/1002-00000016", "__LAST_AGENT=1001                                                                                                             ") in new stack
+    -- Executing [1@ivr-press1:37] Set("PJSIP/1002-00000016", "DB(last_agent_cal                                                                                                             l/8888)=1001") in new stack
+    -- Executing [1@ivr-press1:38] Set("PJSIP/1002-00000016", "DB(last_agent_cal                                                                                                             l/1002)=1001") in new stack
+    -- Executing [1@ivr-press1:39] Set("PJSIP/1002-00000016", "DB(last_agent_cal                                                                                                             l/1002)=1001") in new stack
+    -- Executing [1@ivr-press1:40] Set("PJSIP/1002-00000016", "DB(call_status/10                                                                                                             02)=transferred") in new stack
+    -- Executing [1@ivr-press1:41] System("PJSIP/1002-00000016", "curl -s -H "X-                                                                                                             Internal-Webhook-Key: 45463eeecf3e3a8d1e9de63df95345f7e0122581ffd930d3" "http://                                                                                                             127.0.0.1:3000/api/asterisk/call/status/update?number=1002&status=transferred&ag                                                                                                             ent=1001&channel=PJSIP%2F1002-00000016" &") in new stack
+    -- Executing [1@ivr-press1:42] GotoIf("PJSIP/1002-00000016", "0?dial_press1_                                                                                                             ringall:dial_press1_single") in new stack
+    -- Goto (ivr-press1,1,43)
+    -- Executing [1@ivr-press1:43] NoOp("PJSIP/1002-00000016", "=== [PRESS-1 ASE                                                                                                             SOR O EXTENSIONES ESPECIFICAS] Marcando a: 1001 ===") in new stack
+    -- Executing [1@ivr-press1:44] Set("PJSIP/1002-00000016", "DIAL_AGENTS=PJSIP                                                                                                             /1001") in new stack
+    -- Executing [1@ivr-press1:45] ExecIf("PJSIP/1002-00000016", "0?Set(DIAL_AGE                                                                                                             NTS=1001)") in new stack
+    -- Executing [1@ivr-press1:46] NoOp("PJSIP/1002-00000016", "=== [PRESS-1 DIA                                                                                                             L STRING] Marcando simultaneamente a: PJSIP/1001 ===") in new stack
+    -- Executing [1@ivr-press1:47] Dial("PJSIP/1002-00000016", "PJSIP/1001,60,Tt                                                                                                             b(sub-audio-quality^s^1(1002))U(sub-record-picked-agent^1002^1002)") in new stac                                                                                                             k
+[2026-11-23 16:55:17.324] ERROR[107892]: res_pjsip.c:991 ast_sip_create_dialog_u                                                                                                             ac: Endpoint '1001': Could not create dialog to invalid URI '1001'.  Is endpoint                                                                                                              registered and reachable?
+[2026-11-23 16:55:17.324] ERROR[107892]: chan_pjsip.c:2843 request: Failed to cr                                                                                                             eate outgoing session to endpoint '1001'
+  == Everyone is busy/congested at this time (1:0/0/1)
+    -- Executing [1@ivr-press1:48] GotoIf("PJSIP/1002-00000016", "1?press1_agent                                                                                                             _retry") in new stack
+    -- Goto (ivr-press1,1,54)
+    -- Executing [1@ivr-press1:54] NoOp("PJSIP/1002-00000016", "=== [PRESS-1 ESP                                                                                                             ERA AGENTE] Ningún softphone disponible (CHANUNAVAIL) -> Reintento breve antes d                                                                                                             e finalizar ===") in new stack
+    -- Executing [1@ivr-press1:55] Playback("PJSIP/1002-00000016", "custom/un_mo                                                                                                             mento_por_favor") in new stack
+    -- <PJSIP/1002-00000016> Playing 'custom/un_momento_por_favor' (format 'ulaw                                                                                                             ', language 'es')
+    -- Remote UNIX connection
+    -- Remote UNIX connection disconnected
+    -- Executing [1@ivr-press1:56] Wait("PJSIP/1002-00000016", "2.5") in new sta          

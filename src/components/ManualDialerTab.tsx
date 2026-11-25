@@ -255,24 +255,24 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   );
 
   const defaultAssignedCarrier = React.useMemo(() => {
-    if (userTenant?.carrierId && userTenant.carrierId !== 'auto') {
-      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
-      const byTenant = carriers.find(
+    const userCarrierRef = currentUser?.carrierId || currentUser?.assignedCarrierId;
+    if (userCarrierRef && userCarrierRef !== 'auto' && userCarrierRef !== 'pool') {
+      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      const byUser = carriers.find(
         (c) =>
-          c.id === userTenant.carrierId ||
-          c.name === userTenant.carrierId ||
+          c.id === userCarrierRef ||
+          c.name === userCarrierRef ||
           c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
       );
-      if (byTenant) return byTenant;
+      if (byUser) return byUser;
     }
-    const userCarrierRef = currentUser?.carrierId || currentUser?.assignedCarrierId;
-    if (userCarrierRef && userCarrierRef !== 'auto') {
-      const refSlug = String(userCarrierRef).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (userTenant?.carrierId && userTenant.carrierId !== 'auto' && userTenant.carrierId !== 'pool') {
+      const refSlug = String(userTenant.carrierId).toLowerCase().replace(/[^a-z0-9_]/g, '_');
       return (
         carriers.find(
           (c) =>
-            c.id === userCarrierRef ||
-            c.name === userCarrierRef ||
+            c.id === userTenant.carrierId ||
+            c.name === userTenant.carrierId ||
             c.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') === refSlug
         ) || null
       );
@@ -280,13 +280,12 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     return null;
   }, [userTenant, carriers, currentUser?.carrierId, currentUser?.assignedCarrierId]);
 
-  const assignedClientCarrierName =
-    defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled'
-      ? defaultAssignedCarrier.name
-      : enabledCarriers[0]?.name || 'auto';
+  const assignedClientCarrierName = defaultAssignedCarrier
+    ? defaultAssignedCarrier.name
+    : (enabledCarriers[0]?.name || 'auto');
 
   const [selectedCarrier, setSelectedCarrier] = useState<string>(() => {
-    if (defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled') {
+    if (defaultAssignedCarrier) {
       return defaultAssignedCarrier.name;
     }
     const active = carriers.find((c) => c.enabled !== false && c.status !== 'disabled');
@@ -298,7 +297,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     const uid = currentUser?.id || '';
     if (uid && lastInitializedUserRef.current !== uid) {
       lastInitializedUserRef.current = uid;
-      if (defaultAssignedCarrier && defaultAssignedCarrier.enabled !== false && defaultAssignedCarrier.status !== 'disabled') {
+      if (defaultAssignedCarrier) {
         setSelectedCarrier(defaultAssignedCarrier.name);
       } else {
         const active = enabledCarriers[0];
@@ -410,6 +409,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
   };
 
   // Active Call State
+  const [dialError, setDialError] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<{
     lead: ManualDialerLead;
     startTime: number;
@@ -471,6 +471,7 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
       return;
     }
 
+    setDialError(null);
     setCallDuration(0);
     setActiveCall({
       lead,
@@ -531,19 +532,16 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setActiveCall((prev) => (prev ? { ...prev, status: 'connected', channel: data.channelId } : null));
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success !== false) {
+        setActiveCall((prev) => (prev ? { ...prev, status: 'connected', channel: data.channelId || data.channel } : null));
       } else {
-        // Fallback simulation in dev
-        setTimeout(() => {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
-        }, 1500);
+        setActiveCall(null);
+        setDialError(data?.error || `No se pudo iniciar la llamada por el carrier "${effectiveCarrier}" (HTTP ${res.status}).`);
       }
-    } catch (_) {
-      setTimeout(() => {
-        setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
-      }, 1500);
+    } catch (err: any) {
+      setActiveCall(null);
+      setDialError(err?.message || 'Error de red comunicando con el servidor Asterisk.');
     }
   };
 
@@ -791,6 +789,18 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {dialError && (
+        <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/40 text-xs text-rose-200 flex items-center justify-between gap-3">
+          <span>{dialError}</span>
+          <button
+            type="button"
+            onClick={() => setDialError(null)}
+            className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 font-semibold cursor-pointer shrink-0"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
       {/* Top Banner & Module Selector */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 shadow-xl">
         <div className="flex items-center gap-3.5">

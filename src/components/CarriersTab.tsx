@@ -106,7 +106,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
   const [inboundContext, setInboundContext] = useState('trunkinbound');
   const [outboundCallerId, setOutboundCallerId] = useState('');
   const [selectedCodecs, setSelectedCodecs] = useState<string[]>(['ulaw', 'alaw']);
-  const [qualifyFreq, setQualifyFreq] = useState(60);
+  const [qualifyFreq, setQualifyFreq] = useState(0);
   const [fromuser, setFromuser] = useState('');
   const [sendrpid, setSendrpid] = useState<'yes' | 'no'>('yes');
   const [trustrpid, setTrustrpid] = useState<'yes' | 'no'>('yes');
@@ -173,7 +173,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setInboundContext('trunkinbound');
     setOutboundCallerId('');
     setSelectedCodecs(['ulaw', 'alaw']);
-    setQualifyFreq(60);
+    setQualifyFreq(0);
     setFromuser('');
     setSendrpid('yes');
     setTrustrpid('yes');
@@ -197,7 +197,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
     setInboundContext(c.inboundContext || 'trunkinbound');
     setOutboundCallerId(c.outboundCallerId || '');
     setSelectedCodecs(c.codecs);
-    setQualifyFreq(c.qualifyFreq);
+    setQualifyFreq(c.qualifyFreq !== undefined && c.qualifyFreq !== null ? Math.max(0, Number(c.qualifyFreq) || 0) : 0);
     setFromuser(c.fromuser || '');
     setSendrpid(c.sendrpid || 'yes');
     setTrustrpid(c.trustrpid || 'yes');
@@ -276,7 +276,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         inboundContext: inboundContext.trim() || 'trunkinbound',
         outboundCallerId: outboundCallerId.trim(),
         codecs: selectedCodecs,
-        qualifyFreq: Number(qualifyFreq) || 60,
+        qualifyFreq: Math.max(0, Number(qualifyFreq) || 0),
         fromuser: fromuser.trim(),
         sendrpid,
         trustrpid,
@@ -298,7 +298,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
         inboundContext: inboundContext.trim() || 'trunkinbound',
         outboundCallerId: outboundCallerId.trim(),
         codecs: selectedCodecs,
-        qualifyFreq: Number(qualifyFreq) || 60,
+        qualifyFreq: Math.max(0, Number(qualifyFreq) || 0),
         status: isEnabled ? 'reachable' : 'disabled',
         fromuser: fromuser.trim(),
         sendrpid,
@@ -346,7 +346,7 @@ export const CarriersTab: React.FC<CarriersTabProps> = ({
       text += `; --- REGISTRO SIP SALIENTE (USUARIO & CONTRASEÑA) ---\n` +
               `[reg_${slug}]\n` +
               `type = registration\n` +
-              `transport = transport-udp\n` +
+              `transport = transport-udp-5060\n` +
               `outbound_auth = auth_${slug}\n` +
               `server_uri = sip:${c.host}:${c.port}\n` +
               `client_uri = sip:${c.username || slug}@${c.host}:${c.port}\n` +
@@ -1311,8 +1311,8 @@ ${cidLines} same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
                 </div>
               </div>
 
-              {/* RPID settings */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* RPID & Qualify settings */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">sendrpid</label>
                   <select
@@ -1333,6 +1333,18 @@ ${cidLines} same => n,Dial(PJSIP/\${EXTEN}@${carrierName},60,${flags})
                   >
                     <option value="yes">yes</option>
                     <option value="no">no</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Qualify (OPTIONS)</label>
+                  <select
+                    value={qualifyFreq}
+                    onChange={(e) => setQualifyFreq(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-800 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  >
+                    <option value={0}>Desactivado (Recomendado)</option>
+                    <option value={30}>Cada 30s</option>
+                    <option value={60}>Cada 60s</option>
                   </select>
                 </div>
               </div>

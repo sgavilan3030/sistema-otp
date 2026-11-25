@@ -101,7 +101,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [formActivationMode, setFormActivationMode] = useState<'initial_month' | 'demo_1_day' | 'none'>('initial_month');
 
   // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts)
-  const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() => {
+  const readLocalActiveEntities = useCallback((): { id: string; name: string; subtitle?: string }[] => {
     try {
       const saved = localStorage.getItem('prod_campaign_entities_v3');
       if (saved) {
@@ -114,42 +114,81 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       }
     } catch (_) {}
     return [];
-  });
+  }, []);
+
+  const [availableEntities, setAvailableEntities] = useState<{ id: string; name: string; subtitle?: string }[]>(() =>
+    readLocalActiveEntities()
+  );
+  const [isLoadingEntities, setIsLoadingEntities] = useState(false);
 
   const refreshMasterEntities = useCallback(() => {
+    setIsLoadingEntities(true);
     fetch('/api/app/master-entities')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.entities) && data.entities.length > 0) {
-          setAvailableEntities(
-            data.entities
-              .filter((e: any) => e && e.id && e.isActive !== false)
-              .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
-          );
-        } else if (isGlobalSuperAdmin) {
-          try {
-            const saved = localStorage.getItem('prod_campaign_entities_v3');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed)) {
-                setAvailableEntities(
-                  parsed
-                    .filter((e: any) => e && e.id && e.isActive !== false)
-                    .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
-                );
+        const serverList: { id: string; name: string; subtitle?: string }[] =
+          data?.success && Array.isArray(data.entities)
+            ? data.entities
+                .filter((e: any) => e && e.id && e.isActive !== false)
+                .map((e: any) => ({ id: e.id, name: e.name, subtitle: e.subtitle }))
+            : [];
+
+        if (isGlobalSuperAdmin) {
+          const localList = readLocalActiveEntities();
+          if (serverList.length === 0 && localList.length > 0) {
+            setAvailableEntities(localList);
+            try {
+              const rawSaved = localStorage.getItem('prod_campaign_entities_v3');
+              if (rawSaved) {
+                const fullParsed = JSON.parse(rawSaved);
+                if (Array.isArray(fullParsed) && fullParsed.length > 0) {
+                  fetch('/api/app/master-entities', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entities: fullParsed }),
+                  }).catch(() => {});
+                }
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          } else if (serverList.length > 0) {
+            // Merge any locally created Super Admin entities not yet persisted on server
+            const mergedMap = new Map<string, { id: string; name: string; subtitle?: string }>();
+            serverList.forEach((e) => mergedMap.set(e.id, e));
+            localList.forEach((e) => {
+              if (!mergedMap.has(e.id) && String(e.id).startsWith('custom_')) {
+                mergedMap.set(e.id, e);
+              }
+            });
+            setAvailableEntities(Array.from(mergedMap.values()));
+          }
+        } else if (serverList.length > 0) {
+          setAvailableEntities(serverList);
         }
       })
-      .catch(() => {});
-  }, [isGlobalSuperAdmin]);
+      .catch(() => {
+        if (isGlobalSuperAdmin) {
+          const localList = readLocalActiveEntities();
+          if (localList.length > 0) setAvailableEntities(localList);
+        }
+      })
+      .finally(() => setIsLoadingEntities(false));
+  }, [isGlobalSuperAdmin, readLocalActiveEntities]);
 
   useEffect(() => {
     refreshMasterEntities();
     const onFocus = () => refreshMasterEntities();
+    const onEntitiesUpdated = () => refreshMasterEntities();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'prod_campaign_entities_v3') refreshMasterEntities();
+    };
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    window.addEventListener('master-entities-updated', onEntitiesUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('master-entities-updated', onEntitiesUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [refreshMasterEntities]);
 
   // Modals for MicroSIP setup and scripts assignment
@@ -1711,22 +1750,36 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                         : 'Guiones tomados desde el usuario Administrador. Selecciona cuáles podrá usar este cliente sin mezclarse con otros.'}
                     </p>
                   </div>
-                  {!(formRole === 'admin' && !formTenantId) && availableEntities.length > 0 && (
+                  {!(formRole === 'admin' && !formTenantId) && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setFormAssignedEntityIds(availableEntities.map((e) => e.id))}
-                        className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                        onClick={refreshMasterEntities}
+                        disabled={isLoadingEntities}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 cursor-pointer disabled:opacity-50"
+                        title="Recargar guiones creados por el Super Administrador"
                       >
-                        Todos
+                        <RefreshCw className={`w-3 h-3 ${isLoadingEntities ? 'animate-spin' : ''}`} />
+                        <span>Actualizar</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormAssignedEntityIds([])}
-                        className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
-                      >
-                        Ninguno
-                      </button>
+                      {availableEntities.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setFormAssignedEntityIds(availableEntities.map((e) => e.id))}
+                            className="px-2 py-1 rounded text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 cursor-pointer"
+                          >
+                            Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormAssignedEntityIds([])}
+                            className="px-2 py-1 rounded text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                          >
+                            Ninguno
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

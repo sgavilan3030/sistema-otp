@@ -415,10 +415,16 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     setDecidingKey(itemKey);
 
     // 1. Immediate optimistic UI update (mirrors floating notification banner responsiveness)
+    const p10 = payload.number.replace(/[^0-9]/g, '').slice(-10);
+    const matchesPayloadRecord = (r: { id?: string; number: string; otp: string }) => {
+      if (payload.id && r.id === payload.id) return true;
+      const r10 = r.number.replace(/[^0-9]/g, '').slice(-10);
+      const numMatch = r.number === payload.number || (p10.length >= 7 && r10 === p10);
+      return numMatch && r.otp === payload.otp;
+    };
+
     setOtpRecords((prev) => {
-      const exists = prev.some(
-        (r) => (payload.id && r.id === payload.id) || (r.number === payload.number && r.otp === payload.otp)
-      );
+      const exists = prev.some(matchesPayloadRecord);
       if (!exists) {
         return [
           {
@@ -435,9 +441,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
         ];
       }
       return prev.map((r) =>
-        (payload.id && r.id === payload.id) || (r.number === payload.number && r.otp === payload.otp)
-          ? { ...r, status: decision }
-          : r
+        matchesPayloadRecord(r) ? { ...r, status: decision } : r
       );
     });
 
