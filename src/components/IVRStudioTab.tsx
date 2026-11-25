@@ -498,7 +498,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
     }
   }, []);
 
-  const [testPhone, setTestPhone] = useState('16104803845');
+  const [testPhone, setTestPhone] = useState('');
   const [isTriggeringCall, setIsTriggeringCall] = useState(false);
   const [callFeedback, setCallFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -1080,7 +1080,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     handleOriginateTestCall();
                   }
                 }}
-                placeholder="ej. 16104803845"
+                placeholder="ej. 18095550199"
                 className="flex-1 px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500 focus:outline-none"
               />
               <button

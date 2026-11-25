@@ -218,7 +218,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   }, [activeUser?.id]);
 
   // Single launch state
-  const [targetNumber, setTargetNumber] = useState('16104803845');
+  const [targetNumber, setTargetNumber] = useState('');
   const [targetName, setTargetName] = useState('');
   const [selectedService, setSelectedService] = useState<ServiceCampaignKey>(() => {
     try {
@@ -259,8 +259,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   };
 
   // Mass Campaign State (Donde se activa el Ring-All para que timbren todas las extensiones)
-  const [massNumbersText, setMassNumbersText] = useState('16104803845\n18005550199');
+  const [massNumbersText, setMassNumbersText] = useState('');
   const [massDelaySeconds, setMassDelaySeconds] = useState(5);
+  const [massAutoRetry, setMassAutoRetry] = useState(false);
   const [isMassRunning, setIsMassRunning] = useState(false);
   const [massCurrentIndex, setMassCurrentIndex] = useState(0);
   const [massTotalCount, setMassTotalCount] = useState(0);
@@ -478,7 +479,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       callerIdName: '',
       status: 'active',
       leads: [
-        { id: 'lead-1', number: '16104803845', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Solicitud de información' },
+        { id: 'lead-1', number: '18095550101', name: 'Juan Pérez (Caso #8492)', status: 'pending', notes: 'Solicitud de información' },
         { id: 'lead-2', number: '18095550199', name: 'Carlos Alcántara', status: 'pending', notes: 'Confirmación de cuenta' },
         { id: 'lead-3', number: '18295551234', name: 'María Santana', status: 'pending', notes: 'Atención al cliente' },
       ],
@@ -993,7 +994,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           cancelWait: current.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: current.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
           holdMusic: current.holdMusicAudioPath || 'default',
-          destination: targetNumber.trim() || '16104803845',
+          destination: targetNumber.trim() || '8888',
           agentId: targetAgent,
           tenantId: resolvedWorkspaceTenantId || undefined,
           isManualSave: true,
@@ -1194,7 +1195,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         agent: slot === 'agentAudioPath' ? cleanPath : (current?.agentAudioPath || ''),
         cancelWait: slot === 'cancelCodeAudioPath' ? cleanPath : (current?.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'),
         otpVerifyWait: slot === 'otpVerifyWaitAudioPath' ? cleanPath : (current?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'),
-        destination: targetNumber.trim() || '16104803845',
+        destination: targetNumber.trim() || '8888',
       };
       
       try {
@@ -1278,7 +1279,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             agent: normalizedEntity.agentAudioPath,
             cancelWait: normalizedEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
             otpVerifyWait: normalizedEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-            destination: targetNumber.trim() || '16104803845',
+            destination: targetNumber.trim() || '8888',
           }),
         });
         setAudioSyncFeedback(`✓ Guión "${normalizedEntity.name}" guardado y aplicado en Asterisk AstDB.`);
@@ -1312,7 +1313,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           cancelWait: entity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: entity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
           holdMusic: entity.holdMusicAudioPath || 'default',
-          destination: targetNumber.trim() || '16104803845',
+          destination: targetNumber.trim() || '8888',
           agentId: targetAgent,
           tenantId: resolvedWorkspaceTenantId || undefined,
           isAdmin: isSuperAdmin,
@@ -2637,7 +2638,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           agent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          destination: targetNumber.trim() || '16104803845',
+          destination: targetNumber.trim() || '8888',
         }),
       });
 
@@ -2983,7 +2984,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           mode: callFlowMode,
           amdEnabled,
           agentExten: userTenant && tenantScopedExtensions.length > 0 ? tenantScopedExtensions.join('&') : 'ringall', // Ring-All aislado al rango del Call Center!
-          autoRetry: amdEnabled, // ONLY auto-retry if AMD / reintentos is enabled by user!
+          autoRetry: massAutoRetry, // Strictly opt-in: never auto-redial voicemail unless operator explicitly enables it
           audioIntro: currentAudios.introAudioPath,
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
@@ -4135,7 +4136,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
                   <span>Número de Teléfono del Objetivo</span>
-                  <span className="text-slate-500 font-mono text-[11px]">Formato: 16104803845</span>
+                  <span className="text-slate-500 font-mono text-[11px]">Formato: 18095550199</span>
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -4149,7 +4150,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         handleLaunchProductionCall();
                       }
                     }}
-                    placeholder="ej. 16104803845"
+                    placeholder="ej. 18095550199"
                     className="flex-1 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-lg font-bold focus:border-emerald-500 focus:outline-none"
                   />
                   <input
@@ -4982,7 +4983,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 value={massNumbersText}
                 onChange={(e) => setMassNumbersText(e.target.value)}
                 disabled={isMassRunning}
-                placeholder="Pega aquí los números (uno por línea o separados por coma):&#10;16104803845&#10;18005550199&#10;18295551234"
+                placeholder="Pega aquí los números (uno por línea o separados por coma):&#10;18095550199&#10;18005550199&#10;18295551234"
                 className="w-full p-4 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-purple-500 focus:outline-none transition-all disabled:opacity-50"
               />
 
@@ -4993,7 +4994,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       type="button"
                       onClick={() => {
                         setUploadedFileName(null);
-                        setMassNumbersText('16104803845\n18005550199\n18099602110');
+                        setMassNumbersText('18095550199\n18005550199\n18295551234');
                       }}
                       disabled={isMassRunning}
                       className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-all cursor-pointer disabled:opacity-50"
@@ -5014,19 +5015,31 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-400 font-mono">Intervalo entre llamadas:</label>
-                  <select
-                    value={massDelaySeconds}
-                    onChange={(e) => setMassDelaySeconds(Number(e.target.value))}
-                    disabled={isMassRunning}
-                    className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-purple-300 font-mono font-bold focus:outline-none"
-                  >
-                    <option value={2}>2 segundos</option>
-                    <option value={5}>5 segundos</option>
-                    <option value={10}>10 segundos</option>
-                    <option value={15}>15 segundos</option>
-                  </select>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={massAutoRetry}
+                      onChange={(e) => setMassAutoRetry(e.target.checked)}
+                      disabled={isMassRunning}
+                      className="accent-purple-500 rounded"
+                    />
+                    <span>Reintentar 1 vez si sale buzón / no contesta</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-400 font-mono">Intervalo entre llamadas:</label>
+                    <select
+                      value={massDelaySeconds}
+                      onChange={(e) => setMassDelaySeconds(Number(e.target.value))}
+                      disabled={isMassRunning}
+                      className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-purple-300 font-mono font-bold focus:outline-none"
+                    >
+                      <option value={2}>2 segundos</option>
+                      <option value={5}>5 segundos</option>
+                      <option value={10}>10 segundos</option>
+                      <option value={15}>15 segundos</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -6985,7 +6998,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   required
                   value={newLeadNumber}
                   onChange={(e) => setNewLeadNumber(e.target.value)}
-                  placeholder="ej. 16104803845 o 18099602110"
+                  placeholder="ej. 18095550199 o 18295551234"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-emerald-500 font-bold"
                   autoFocus
                 />

@@ -1744,10 +1744,10 @@ function ensureAmdConfExists() {
 ; y filtrar contestadores / buzones de voz cortos en EE. UU.
 ; ========================================================
 [general]
-initial_silence = 2500
+initial_silence = 2000
 greeting = 1500
 after_greeting_silence = 800
-total_analysis_time = 5000
+total_analysis_time = 4500
 min_word_length = 100
 between_words_silence = 50
 maximum_number_of_words = 4
@@ -1762,15 +1762,19 @@ maximum_word_length = 5000
         current.includes('total_analysis_time = 3500') ||
         current.includes('total_analysis_time = 2400') ||
         current.includes('total_analysis_time = 2000') ||
+        current.includes('total_analysis_time = 5000') ||
+        current.includes('total_analysis_time = 5500') ||
         current.includes('greeting = 1100') ||
         current.includes('greeting = 2200') ||
         current.includes('maximum_number_of_words = 3') ||
         current.includes('maximum_number_of_words = 7') ||
+        current.includes('initial_silence = 2500') ||
+        current.includes('initial_silence = 3200') ||
         current.includes('initial_silence = 3500') ||
         current.includes('silence_threshold = 384') ||
         current.includes('maximum_on_length') ||
-        !current.includes('total_analysis_time = 5000') ||
-        !current.includes('initial_silence = 2500') ||
+        !current.includes('total_analysis_time = 4500') ||
+        !current.includes('initial_silence = 2000') ||
         !current.includes('greeting = 1500') ||
         !current.includes('maximum_number_of_words = 4')
       ) {
@@ -1779,7 +1783,7 @@ maximum_word_length = 5000
     }
     if (shouldWrite) {
       writeAsteriskConfigFile(amdPath, amdContent);
-      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD EE. UU.: initial=2500, greeting=1500, max_words=4, total=5000, silence=256)');
+      console.log('✓ Configuración /etc/asterisk/amd.conf optimizada (AMD EE. UU.: initial=2000, greeting=1500, max_words=4, total=4500, silence=256)');
       if (hasLocalAsterisk) {
         const bin = getAsteriskBinary();
         exec(`"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null`, () => {});
@@ -4627,7 +4631,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => _011X.,1,NoOp(Marcación saliente con prefijo 011 normalizada: \${EXTEN:3})\n`;
   dialplanContent += ` same => n,Goto(from-internal,\${EXTEN:3},1)\n\n`;
 
-  dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 16104803845) con Multi-Carrier Failover\n`;
+  dialplanContent += `; 3. Regla Saliente USA / Canada / RD 11 digitos (ej. 18494386040 o 18005550199) con Multi-Carrier Failover\n`;
   dialplanContent += `exten => _1XXXXXXXXXX,1,NoOp(Llamada Saliente 11 digitos a \${EXTEN})\n`;
   dialplanContent += ` same => n,Set(CALLING_USER=\${IF($["\${CALLING_AGENT}" != ""]?\${CALLING_AGENT}:\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${CHANNEL(channeltype)}" = "PJSIP"]?Set(CALLING_USER=\${CHANNEL(endpoint)}))\n`;
@@ -4937,12 +4941,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_press1)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_press1)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
-  dialplanContent += ` same => n(amd_silence_human_press1),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
+  dialplanContent += ` same => n(amd_silence_human_press1),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR interactivo (sin retorno al asesor si no marca) ===)\n`;
   dialplanContent += ` same => n(amd_ok_press1),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_press1)\n`;
@@ -4977,10 +4981,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-AUDIO] Reproduciendo Audio Intro UNA VEZ: \${IVR_INTRO} para Agente: \${FINAL_AGENT} | Destino: \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n(menu),Background(\${IVR_INTRO})\n`;
-  dialplanContent += ` same => n,WaitExten(4)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1] Sin respuesta DTMF tras 4s -> Transfiriendo a operador sin repetir ===)\n`;
-  dialplanContent += ` same => n,Set(PRESSED_DIGIT=timeout)\n`;
-  dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
+  dialplanContent += ` same => n,WaitExten(6)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1] Sin respuesta DTMF tras 6s -> Colgando sin regresar al asesor (evita rebote de buzon) ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -5059,12 +5062,10 @@ export function generateCleanDialplanConf(
   dialplanContent += `exten => #,1,NoOp(=== [IVR-PRESS1] Tecla # presionada -> Transfiriendo a operador ===)\n`;
   dialplanContent += ` same => n,Set(PRESSED_DIGIT=#)\n`;
   dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
-  dialplanContent += `exten => i,1,NoOp(=== [IVR-PRESS1] Entrada alternativa -> Transfiriendo a operador ===)\n`;
-  dialplanContent += ` same => n,Set(PRESSED_DIGIT=other)\n`;
-  dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
-  dialplanContent += `exten => t,1,NoOp(=== [IVR-PRESS1] Timeout WaitExten -> Transfiriendo a operador sin repetir IVR ===)\n`;
-  dialplanContent += ` same => n,Set(PRESSED_DIGIT=timeout)\n`;
-  dialplanContent += ` same => n,Goto(1,transfer_operator)\n\n`;
+  dialplanContent += `exten => i,1,NoOp(=== [IVR-PRESS1] Entrada invalida -> Colgando para evitar rebote de buzon ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += `exten => t,1,NoOp(=== [IVR-PRESS1] Timeout WaitExten -> Colgando sin transferir al asesor ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [IVR-PRESS1 HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -5086,12 +5087,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} (humano vs contestador) ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
-  dialplanContent += ` same => n(amd_silence_human_otp),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano para evitar corte ===)\n`;
+  dialplanContent += ` same => n(amd_silence_human_otp),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR OTP (sin retorno al asesor si no marca) ===)\n`;
   dialplanContent += ` same => n(amd_ok_otp),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_otp)\n`;
@@ -5197,11 +5198,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(ask_input),NoOp(=== [IVR] Solicitando Codigo OTP o Presione 1: \${IVR_PROMPT} ===)\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
   dialplanContent += ` same => n,Background(\${IVR_PROMPT})\n`;
-  dialplanContent += ` same => n,WaitExten(4)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-OTP] Sin respuesta DTMF tras 4s -> Transfiriendo al operador sin repetir ===)\n`;
-  dialplanContent += ` same => n,Goto(1,1)\n\n`;
-  dialplanContent += ` same => n(max_timeouts_otp),NoOp(=== [IVR-OTP] Tiempo superado -> Transfiriendo al operador ===)\n`;
-  dialplanContent += ` same => n,Goto(1,1)\n\n`;
+  dialplanContent += ` same => n,WaitExten(6)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP] Sin respuesta DTMF tras 6s -> Colgando sin regresar al asesor ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
+  dialplanContent += ` same => n(max_timeouts_otp),NoOp(=== [IVR-OTP] Tiempo superado -> Colgando sin transferir ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_otp),NoOp(=== [AMD OPERADORA DETECTADA] Grabadora o contestador en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -5333,10 +5334,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
   dialplanContent += `exten => _XXXXXXXX,1,Set(USER_DIGITS=\${EXTEN})\n`;
   dialplanContent += ` same => n,Goto(s,otp_confirm)\n`;
-  dialplanContent += `exten => i,1,NoOp(=== [IVR-OTP] Otra tecla (\${EXTEN}) -> Transfiriendo a operador ===)\n`;
-  dialplanContent += ` same => n,Goto(1,1)\n`;
-  dialplanContent += `exten => t,1,NoOp(=== [IVR-OTP] Timeout -> Transfiriendo a operador ===)\n`;
-  dialplanContent += ` same => n,Goto(1,1)\n\n`;
+  dialplanContent += `exten => i,1,NoOp(=== [IVR-OTP] Entrada invalida (\${EXTEN}) -> Colgando sin regresar al asesor ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n`;
+  dialplanContent += `exten => t,1,NoOp(=== [IVR-OTP] Timeout -> Colgando sin regresar al asesor ===)\n`;
+  dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [IVR-OTP HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
@@ -5361,12 +5362,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_dpb)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Playback hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_dpb)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_dpb)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_dpb)\n`;
-  dialplanContent += ` same => n(amd_silence_human_dpb),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
+  dialplanContent += ` same => n(amd_silence_human_dpb),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido para reproducir audio ===)\n`;
   dialplanContent += ` same => n(amd_ok_dpb),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_dpb)\n`;
@@ -5424,13 +5425,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_ata)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Audio+Agent hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_ata)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
-  dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
-  dialplanContent += ` same => n(amd_silence_human_ata),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
-  dialplanContent += ` same => n(amd_ok_ata),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
+  dialplanContent += ` same => n,Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_ata)\n`;
   dialplanContent += ` same => n(skip_amd_ata),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
@@ -5480,7 +5478,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n`;
   dialplanContent += `exten => h,1,NoOp(=== [1-CLICK AUDIO+AGENT HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_ata)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | "\${AMDSTATUS}" = "MACHINE"]?h_keep_machine_ata)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_ata),NoOp()\n\n`;
@@ -5501,12 +5499,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_p1c)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_p1c)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_p1c)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
-  dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
+  dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Cancelacion (solo avanza con tecla 1) ===)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_p1c)\n`;
@@ -5682,12 +5680,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${AMD_ENABLED}" != ""]?Set(AMD_ACTIVE=\${AMD_ENABLED}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4 | "\${AMD_ACTIVE}" = "0" | "\${AMD_ACTIVE}" = "disabled" | "\${AMD_ACTIVE}" = "off" | "\${AMD_ACTIVE}" = ""]?skip_amd_otp_v)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada IVR Captura OTP hacia \${TARGET_DEST} ===)\n`;
-  dialplanContent += ` same => n,AMD(2500,1500,800,5000,100,50,4,256,5000)\n`;
+  dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_otp_v)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
-  dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) tratado como humano ===)\n`;
+  dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Captura OTP (solo avanza con tecla 1) ===)\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
   dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_otp_v)\n`;
@@ -7394,10 +7392,17 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
     const clean10 = cleanDest.length === 11 && cleanDest.startsWith('1') ? cleanDest.substring(1) : cleanDest;
     const formattedDestNANP = clean10.length === 10 ? `1${clean10}` : clean10;
     
-    // Unblock any previous cancellation
+    // Unblock any previous cancellation & clear stale retry timers for this number
     cancelledNumbers.delete(cleanDest);
     cancelledNumbers.delete(clean10);
     cancelledNumbers.delete(formattedDestNANP);
+    [cleanDest, clean10, formattedDestNANP].forEach((k) => {
+      if (k && pendingRetryTimers.has(k)) {
+        const t = pendingRetryTimers.get(k);
+        if (t) clearTimeout(t);
+        pendingRetryTimers.delete(k);
+      }
+    });
 
     // Forward to remote Asterisk if on cloud preview without local Asterisk
     if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
@@ -7723,6 +7728,11 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
 
     // Save campaign-selected audio, CallerID and Carrier configuration to AstDB for this destination number
     const astDbCommands: string[] = [
+      `database del ivr_vars ${cleanDest}_cancelled`,
+      `database del ivr_vars ${clean10}_cancelled`,
+      `database del ivr_vars ${formattedDest}_cancelled`,
+      `database put call_status ${cleanDest} "dialing"`,
+      `database put call_status ${formattedDest} "dialing"`,
       `database put ivr_vars ${cleanDest}_mode "${mode || 'press1'}"`,
       `database put ivr_vars ${cleanDest}_agent_exten "${effectiveAgentExten}"`,
       `database put ivr_vars ${formattedDest}_mode "${mode || 'press1'}"`,
@@ -8554,7 +8564,7 @@ function applyAudioAssignmentToAsterisk(role: string, asteriskPath: string, opti
     return Promise.resolve();
   }
   const cleanPath = sanitizeAsteriskSoundPath(asteriskPath, 'custom/solicitar_codigo_otp');
-  const genericTargets = ['default', '8888', 'global', '16104803845'];
+  const genericTargets = ['default', '8888', 'global'];
   const commands: string[] = [];
   const srcBaseName = cleanPath.replace(/^custom\//, '');
   const srcFile = path.join(SOUNDS_CUSTOM_DIR, `${srcBaseName}.wav`);
@@ -9864,8 +9874,6 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       secondaryTargets.add('*8888');
       secondaryTargets.add('8880');
       secondaryTargets.add('global');
-      secondaryTargets.add('16104803845');
-      secondaryTargets.add('6104803845');
     }
 
     const buildCommands = (tgts: Set<string>) => {
@@ -10307,10 +10315,6 @@ asterisk -rx 'database put ivr_vars 8888_wait custom/un_momento_validando_inform
 asterisk -rx 'database put ivr_vars 8888_success custom/operacion_bloqueada_exito' || true
 asterisk -rx 'database put ivr_vars 8888_agent custom/conectar_asesor' || true
 asterisk -rx 'database put ivr_vars 8888_agent_exten 1001' || true
-
-asterisk -rx 'database put 16104803845_intro custom/notificacion_servicio' || true
-asterisk -rx 'database put 16104803845_prompt custom/solicitar_codigo_otp' || true
-asterisk -rx 'database put 16104803845_wait custom/un_momento_validando_informacion' || true
 
 asterisk -rx 'database deltree extension_cid/1001' || true
 
@@ -11470,10 +11474,10 @@ async function collectAmdDiagnostic() {
     appRegistered,
     amdConfExists,
     amdParams: {
-      initial_silence: parseParam('initial_silence') || '2500',
+      initial_silence: parseParam('initial_silence') || '2000',
       greeting: parseParam('greeting') || '1500',
       after_greeting_silence: parseParam('after_greeting_silence') || '800',
-      total_analysis_time: parseParam('total_analysis_time') || '5000',
+      total_analysis_time: parseParam('total_analysis_time') || '4500',
       min_word_length: parseParam('min_word_length') || '100',
       between_words_silence: parseParam('between_words_silence') || '50',
       maximum_number_of_words: parseParam('maximum_number_of_words') || '4',
@@ -12203,6 +12207,16 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
       pendingRetryTimers.clear();
       callRetryAttempts.clear();
       lastOriginatePayloads.clear();
+      try {
+        const spoolDir = '/var/spool/asterisk/outgoing';
+        if (hasLocalAsterisk && fs.existsSync(spoolDir)) {
+          for (const f of fs.readdirSync(spoolDir)) {
+            if (f.endsWith('.call')) {
+              try { fs.unlinkSync(path.join(spoolDir, f)); } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
     } else {
       targetNumberKeys.forEach((key) => {
         cancelledNumbers.set(key, now);
@@ -12526,7 +12540,17 @@ app.post('/api/asterisk/call/purge-zombies', requireAdminRole, async (req, res) 
         }
       }
     }
-    // Also execute generic hangup for Local/8888 pattern
+    // Also clean any leftover .call files in Asterisk spooler and hangup Local/8888 pattern
+    try {
+      const spoolDir = '/var/spool/asterisk/outgoing';
+      if (hasLocalAsterisk && fs.existsSync(spoolDir)) {
+        for (const f of fs.readdirSync(spoolDir)) {
+          if (f.endsWith('.call')) {
+            try { fs.unlinkSync(path.join(spoolDir, f)); } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
     if (hasLocalAsterisk) {
       exec('asterisk -rx "channel request hangup Local/8888" 2>/dev/null', () => {});
       exec('asterisk -rx "dialplan reload" 2>/dev/null', () => {});
