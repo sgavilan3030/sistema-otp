@@ -36,7 +36,8 @@ import {
   Headphones,
   Music,
   Lock,
-  ExternalLink
+  ExternalLink,
+  BellRing
 } from 'lucide-react';
 import {
   CarrierTrunk,
@@ -414,13 +415,38 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
     lead: ManualDialerLead;
     startTime: number;
     channel?: string;
-    status: 'dialing' | 'ringing' | 'connected' | 'ended';
+    status: 'dialing' | 'ringing' | 'in_ivr' | 'pressed_1' | 'transferred' | 'connected' | 'ended';
     callMode?: ManualDialerCallMode;
     audioName?: string;
+    pressed1Detected?: boolean;
+    pressed1Time?: string;
   } | null>(null);
 
   const [callDuration, setCallDuration] = useState<number>(0);
   const timerRef = useRef<any>(null);
+
+  const playManualPress1Chime = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      [587.33, 783.99, 1046.5].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.11);
+        gain.gain.setValueAtTime(0.08, now + idx * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.11);
+        osc.stop(now + idx * 0.11 + 0.24);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 750);
+    } catch (_) {}
+  };
 
   // Chronometer for active call
   useEffect(() => {
@@ -435,6 +461,54 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [activeCall]);
+
+  // Real-time status polling for active manual dialer call (Press-1, answered, hangup)
+  useEffect(() => {
+    if (!activeCall || activeCall.status === 'ended') return;
+    const cleanNum = String(activeCall.lead?.number || '').replace(/[^0-9]/g, '');
+    if (!cleanNum) return;
+
+    const statusPoll = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const res = await fetch(`/api/asterisk/call/status?number=${encodeURIComponent(cleanNum)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success || !data.call) return;
+        const c = data.call;
+        const hitPress1 = c.status === 'pressed_1' || (c.digit === '1' && c.status !== 'ended' && c.status !== 'machine' && c.status !== 'machine_detected');
+
+        setActiveCall((prev) => {
+          if (!prev) return null;
+          if (hitPress1 && !prev.pressed1Detected) {
+            playManualPress1Chime();
+          }
+          if (c.status === 'ended' || c.status === 'machine' || c.status === 'machine_detected') {
+            return { ...prev, status: 'ended', channel: c.channel || prev.channel };
+          }
+          const nextStatus =
+            c.status === 'pressed_1'
+              ? 'pressed_1'
+              : c.status === 'transferred' || c.status === 'talking'
+              ? 'transferred'
+              : c.status === 'in_ivr' || c.status === 'playing_audio'
+              ? 'in_ivr'
+              : c.status === 'ringing'
+              ? 'ringing'
+              : prev.status;
+          return {
+            ...prev,
+            status: nextStatus,
+            channel: c.channel || prev.channel,
+            pressed1Detected: prev.pressed1Detected || hitPress1,
+            pressed1Time: prev.pressed1Time || (hitPress1 ? new Date(c.pressed1At || Date.now()).toLocaleTimeString() : undefined),
+          };
+        });
+      } catch (_) {}
+    }, 1500);
+
+    return () => clearInterval(statusPoll);
+  }, [activeCall?.lead?.number, activeCall?.status]);
 
   // Post-Call Disposition Modal / Drawer State
   const [dispositionLead, setDispositionLead] = useState<ManualDialerLead | null>(null);
@@ -876,17 +950,39 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
       {/* FLOATING / TOP ACTIVE CALL NOTIFICATION BAR */}
       {activeCall && (
-        <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border-2 border-emerald-500 animate-pulse shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+        <div
+          className={`p-4 rounded-xl border-2 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4 ${
+            activeCall.pressed1Detected || activeCall.status === 'pressed_1'
+              ? 'bg-gradient-to-r from-amber-950/95 via-amber-900/50 to-slate-950 border-amber-400 shadow-amber-500/30'
+              : 'bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border-emerald-500 animate-pulse'
+          }`}
+        >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 animate-bounce">
-              <PhoneCall className="w-6 h-6" />
-            </div>
+            {activeCall.pressed1Detected || activeCall.status === 'pressed_1' ? (
+              <div className="w-12 h-12 rounded-xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shadow-lg shadow-amber-400/50 animate-bounce shrink-0">
+                <span className="text-2xl leading-none">1</span>
+                <span className="text-[8px] uppercase font-extrabold">DTMF</span>
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 animate-bounce">
+                <PhoneCall className="w-6 h-6" />
+              </div>
+            )}
             <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-xs font-black tracking-wider uppercase text-emerald-300">
-                  Llamada en Curso ({activeCall.status === 'dialing' ? 'Marcando...' : 'Conectada'})
-                </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {activeCall.pressed1Detected || activeCall.status === 'pressed_1' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1">
+                    <BellRing className="w-3 h-3 animate-spin" />
+                    ¡CLIENTE PRESIONÓ 1 EN VIVO! {activeCall.pressed1Time ? `(${activeCall.pressed1Time})` : ''}
+                  </span>
+                ) : (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span className="text-xs font-black tracking-wider uppercase text-emerald-300">
+                      Llamada en Curso ({activeCall.status === 'dialing' ? 'Marcando...' : activeCall.status === 'ringing' ? 'Timbrando...' : activeCall.status === 'in_ivr' ? 'En IVR...' : activeCall.status === 'ended' ? 'Finalizada' : 'Conectada'})
+                    </span>
+                  </>
+                )}
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 font-mono">
                   Extensión: {selectedExtension}
                 </span>

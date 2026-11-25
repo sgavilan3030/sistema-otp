@@ -1488,11 +1488,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     channel?: string;
     pressed1Time?: string;
     pressed1At?: number;
+    pressed1Detected?: boolean;
     startedAt?: number;
     answeredAt?: number;
     agentExten?: string;
     agent?: string;
   } | null>(null);
+  const [dismissedPress1GlobalKeys, setDismissedPress1GlobalKeys] = useState<string[]>([]);
 
   const [isTransferringToOtp, setIsTransferringToOtp] = useState(false);
   const [selectedOtpExten, setSelectedOtpExten] = useState<string>('4001');
@@ -2339,7 +2341,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return () => clearInterval(chanInterval);
   }, [activeUser?.id, activeUser?.assignedExtensions?.join(','), activeCall?.isActive]);
 
-  // Check if there is an active call running on Asterisk on mount (strictly scoped to user's assigned extensions)
+  // Check if there is an active call running on Asterisk on mount / user switch (strictly scoped to user's role & extensions)
   useEffect(() => {
     fetch('/api/asterisk/call/latest-active')
       .then((res) => res.json())
@@ -2347,29 +2349,38 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         if (data.success && data.call && (!activeCallRef.current || !activeCallRef.current.isActive)) {
           const c = data.call;
           const u = activeUserRef.current || activeUser;
+          const isRoleAdmin = u?.role === 'admin' || u?.isSuperAdmin === true;
           const assignedExts = Array.isArray(u?.assignedExtensions)
             ? u.assignedExtensions.map((x: string) => String(x).trim()).filter(Boolean)
             : [];
-          if (assignedExts.length > 0 && c.agent && c.agent !== 'ringall' && !assignedExts.includes(String(c.agent).trim())) {
-            return;
+          if (!isRoleAdmin && assignedExts.length > 0 && c.agent && c.agent !== 'ringall' && c.agent !== 'all') {
+            const agentParts = String(c.agent).split('&').map((s: string) => s.trim()).filter(Boolean);
+            const matchesAny = agentParts.length === 0 || agentParts.some((ext: string) => assignedExts.includes(ext));
+            const isOwnCall = Boolean(c.userId && u?.id && String(c.userId) === String(u.id));
+            if (!matchesAny && !isOwnCall) {
+              return;
+            }
           }
+          const hasPressed1 = c.status === 'pressed_1' || (c.digit === '1' && !!c.pressed1At);
           setActiveCall({
             isActive: true,
             number: c.number,
             name: undefined,
             service: selectedService || 'bank',
+            mode: (c.mode as CallFlowMode) || undefined,
             status: c.status === 'pressed_1' ? 'pressed_1' : (c.status || 'in_ivr'),
             channel: c.channel,
             duration: c.duration || 0,
             pressed1At: c.pressed1At,
             pressed1Time: c.pressed1At ? new Date(c.pressed1At).toLocaleTimeString() : undefined,
+            pressed1Detected: hasPressed1,
             agentExten: c.agent || '1001',
             agent: c.agent,
           });
         }
       })
       .catch(() => {});
-  }, []);
+  }, [activeUser?.id, activeUser?.tenantId, activeUser?.assignedExtensions?.join(',')]);
 
   // Monitoreo en tiempo real del estado de la llamada activa (Corte, Contestadora, y Detección de DTMF 1)
   useEffect(() => {
@@ -2384,18 +2395,30 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         const data = await res.json();
         if (data.success && data.call) {
           const callState = data.call;
+          const isPress1Event =
+            callState.status === 'pressed_1' ||
+            (callState.digit === '1' &&
+              callState.status !== 'asking_cancel_code' &&
+              callState.status !== 'cancel_valid' &&
+              callState.status !== 'cancel_invalid' &&
+              callState.status !== 'otp_valid' &&
+              callState.status !== 'otp_invalid' &&
+              callState.status !== 'ended' &&
+              callState.status !== 'machine' &&
+              callState.status !== 'machine_detected');
 
           // 1. Detección en vivo de cuando el cliente presiona la tecla 1
-          if (callState.status === 'pressed_1' || (callState.digit === '1' && callState.status !== 'asking_cancel_code' && callState.status !== 'cancel_valid' && callState.status !== 'cancel_invalid')) {
+          if (callState.status === 'pressed_1' || (isPress1Event && callState.status !== 'transferred' && callState.status !== 'talking')) {
             setActiveCall((prev) => {
               if (!prev) return null;
-              if (prev.status !== 'pressed_1') {
+              if (!prev.pressed1Detected && prev.status !== 'pressed_1') {
                 playPress1Chime();
               }
               return {
                 ...prev,
                 status: 'pressed_1',
                 mode: (callState.mode as CallFlowMode) || prev.mode,
+                pressed1Detected: true,
                 pressed1At: callState.pressed1At || prev.pressed1At || Date.now(),
                 pressed1Time: prev.pressed1Time || new Date(callState.pressed1At || Date.now()).toLocaleTimeString(),
                 duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
@@ -2441,13 +2464,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   }
                 : null
             );
-          } else if (callState.status === 'transferred') {
+          } else if (callState.status === 'transferred' || callState.status === 'talking') {
             setActiveCall((prev) => {
               if (!prev) return null;
+              const hitPress1 = prev.pressed1Detected || callState.digit === '1' || !!callState.pressed1At;
+              if (hitPress1 && !prev.pressed1Detected && prev.status !== 'pressed_1') {
+                playPress1Chime();
+              }
               return {
                 ...prev,
                 status: 'transferred',
+                mode: (callState.mode as CallFlowMode) || prev.mode,
+                pressed1Detected: hitPress1,
+                pressed1At: callState.pressed1At || prev.pressed1At || (hitPress1 ? Date.now() : undefined),
+                pressed1Time: prev.pressed1Time || (hitPress1 ? new Date(callState.pressed1At || Date.now()).toLocaleTimeString() : undefined),
                 agentExten: callState.agent || prev.agentExten || '1001',
+                agent: callState.agent || prev.agent,
                 duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
                 channel: callState.channel || prev.channel,
               };
@@ -2517,22 +2549,41 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return () => clearInterval(watcherInterval);
   }, [activeCall?.isActive, activeCall?.number, activeCall?.status]);
 
-  // Audible chime alert for any cancel_code call pressing 1 in globalLiveCalls (mass campaigns or background)
-  const pendingCancelPress1Global = React.useMemo(() => {
+  // Audible chime & priority alert for ANY active call pressing 1 in globalLiveCalls (all modes, mass campaigns or background)
+  const pendingPress1Global = React.useMemo(() => {
     if (!Array.isArray(globalLiveCalls)) return [];
     const activeNumClean = activeCall?.isActive ? activeCall.number.replace(/[^0-9]/g, '') : '';
     return globalLiveCalls.filter((c: any) => {
-      if (c.status !== 'pressed_1' || c.mode !== 'cancel_code') return false;
+      const isAlive = c.status !== 'ended' && c.status !== 'machine' && c.status !== 'machine_detected';
+      if (!isAlive || c.capturedOtp) return false;
+      const isPress1 =
+        c.status === 'pressed_1' ||
+        (c.digit === '1' &&
+          !!c.pressed1At &&
+          c.status !== 'asking_cancel_code' &&
+          c.status !== 'cancel_valid' &&
+          c.status !== 'cancel_invalid' &&
+          c.status !== 'otp_valid' &&
+          c.status !== 'otp_invalid');
+      if (!isPress1) return false;
       const cNum = String(c.number || '').replace(/[^0-9]/g, '');
-      if (activeNumClean && cNum === activeNumClean && activeCall?.status === 'pressed_1') return false;
+      if (
+        activeNumClean &&
+        cNum === activeNumClean &&
+        (activeCall?.status === 'pressed_1' || (activeCall?.pressed1Detected && activeCall?.status === 'transferred'))
+      ) {
+        return false;
+      }
+      const dismissKey = `${c.id || cNum}_${c.pressed1At || c.startTime || ''}`;
+      if (dismissedPress1GlobalKeys.includes(dismissKey)) return false;
       return true;
     });
-  }, [globalLiveCalls, activeCall?.isActive, activeCall?.number, activeCall?.status]);
+  }, [globalLiveCalls, activeCall?.isActive, activeCall?.number, activeCall?.status, activeCall?.pressed1Detected, dismissedPress1GlobalKeys]);
 
   useEffect(() => {
-    if (pendingCancelPress1Global.length === 0) return;
+    if (pendingPress1Global.length === 0) return;
     let shouldPlay = false;
-    for (const c of pendingCancelPress1Global) {
+    for (const c of pendingPress1Global) {
       const k = `${c.number}_${c.pressed1At || c.startTime || ''}`;
       if (!notifiedCancelPress1Ref.current.has(k)) {
         notifiedCancelPress1Ref.current.add(k);
@@ -2540,7 +2591,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       }
     }
     if (shouldPlay) playPress1Chime();
-  }, [pendingCancelPress1Global]);
+  }, [pendingPress1Global]);
 
   // Duration timer for active call
   useEffect(() => {
@@ -3227,10 +3278,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               channel: live.channel,
               agent: liveAgent,
               agentName: liveAgentName,
-              statusDetail: isSpecificExt ? `En Línea (${liveAgentName})` : 'En Línea con Asesor',
-              msg: isSpecificExt
-                ? `Llamada contestada. Atendiendo en vivo en ${liveAgentName}`
-                : 'Llamada contestada por asesor en Ring-All',
+              statusDetail: live.digit === '1'
+                ? `¡Presionó 1! • En Línea (${liveAgentName})`
+                : (isSpecificExt ? `En Línea (${liveAgentName})` : 'En Línea con Asesor'),
+              msg: live.digit === '1'
+                ? `¡Cliente presionó 1! Atendiendo en vivo en ${liveAgentName}`
+                : (isSpecificExt
+                    ? `Llamada contestada. Atendiendo en vivo en ${liveAgentName}`
+                    : 'Llamada contestada por asesor en Ring-All'),
             };
           }
           if (live.status === 'transferred') {
@@ -3241,8 +3296,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               channel: live.channel,
               agent: liveAgent,
               agentName: liveAgentName,
-              statusDetail: `Conectada con ${liveAgentName}`,
-              msg: `Llamada conectada en ${liveAgentName}`,
+              statusDetail: live.digit === '1'
+                ? `¡Presionó 1! • Conectada con ${liveAgentName}`
+                : `Conectada con ${liveAgentName}`,
+              msg: live.digit === '1'
+                ? `¡Cliente presionó 1! Llamada conectada en ${liveAgentName}`
+                : `Llamada conectada en ${liveAgentName}`,
             };
           }
           if (live.status === 'pressed_1') {
@@ -3414,15 +3473,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         </div>
       </div>
 
-      {/* ALERTA PRIORITARIA: CLIENTE PRESIONÓ 1 EN MODO CÓDIGO DE CANCELACIÓN (MASIVAS / SEGUNDO PLANO) */}
-      {pendingCancelPress1Global.length > 0 && (
+      {/* ALERTA PRIORITARIA: CLIENTE PRESIONÓ 1 EN VIVO (TODOS LOS MODOS / MASIVAS / SEGUNDO PLANO) */}
+      {pendingPress1Global.length > 0 && (
         <div className="space-y-3">
-          {pendingCancelPress1Global.map((call: any) => {
+          {pendingPress1Global.map((call: any) => {
             const cNum = String(call.number || '').replace(/[^0-9]/g, '');
+            const dismissKey = `${call.id || cNum}_${call.pressed1At || call.startTime || ''}`;
             const isSending = sendingCancelCodeNum === cNum;
+            const isCancelMode = call.mode === 'cancel_code';
+            const isOtpVerifyMode = call.mode === 'otp_press1';
             return (
               <div
-                key={`cancel-alert-${call.id || cNum}`}
+                key={`press1-alert-${dismissKey}`}
                 className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/95 via-amber-900/60 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/30 animate-fadeIn"
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -3435,26 +3497,57 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center gap-1">
                           <BellRing className="w-3 h-3 animate-spin" />
-                          ¡CLIENTE PRESIONÓ 1 — ENVÍALE EL CÓDIGO DE CANCELACIÓN!
+                          {isCancelMode
+                            ? '¡CLIENTE PRESIONÓ 1 — ENVÍALE EL CÓDIGO DE CANCELACIÓN!'
+                            : isOtpVerifyMode
+                            ? '¡CLIENTE PRESIONÓ 1 — SOLICITANDO CÓDIGO OTP!'
+                            : '¡CLIENTE PRESIONÓ 1 EN VIVO!'}
                         </span>
                         <span className="font-mono text-xs font-bold text-white bg-slate-900/80 px-2 py-0.5 rounded border border-amber-400/40">
                           {call.number}
                         </span>
+                        {call.agentName && (
+                          <span className="font-mono text-[11px] font-bold text-amber-200 bg-slate-900/70 px-2 py-0.5 rounded border border-amber-400/30">
+                            {call.agentName}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-amber-100 mt-1.5 leading-relaxed">
-                        El sistema le dijo: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em> y lo mantiene en espera. Envíale el código al cliente y presiona el botón para que lo digite:
+                        {isCancelMode ? (
+                          <>
+                            El sistema le dijo: <em>&quot;Un momento por favor, le estamos enviando un código de cancelación&quot;</em> y lo mantiene en espera. Envíale el código al cliente y presiona el botón para que lo digite:
+                          </>
+                        ) : isOtpVerifyMode ? (
+                          'El cliente presionó la tecla 1 en su teléfono. El IVR está solicitando el código de verificación en este momento.'
+                        ) : (
+                          <>
+                            El cliente marcó la tecla <strong>1</strong> en su teléfono. Transfiriendo / timbrando en tu extensión (<strong>{call.agentName || `Ext. ${call.agent || 'Ring-All'}`}</strong>).
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={isSending}
-                    onClick={() => handleNotifyCancelCodeSent(cNum, call.agent)}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-xl shadow-emerald-500/30 shrink-0 cursor-pointer disabled:opacity-60"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>{isSending ? 'Notificando a Asterisk...' : 'Ya Envié el Código → Pedir que Digite'}</span>
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isCancelMode && (
+                      <button
+                        type="button"
+                        disabled={isSending}
+                        onClick={() => handleNotifyCancelCodeSent(cNum, call.agent)}
+                        className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-xl shadow-emerald-500/30 cursor-pointer disabled:opacity-60"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>{isSending ? 'Notificando a Asterisk...' : 'Ya Envié el Código → Pedir que Digite'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDismissedPress1GlobalKeys((prev) => [...prev, dismissKey])}
+                      className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
+                      title="Ocultar aviso"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -3824,7 +3917,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           </div>
 
           {/* BANNER GIGANTE Y ALERTA: CLIENTE PRESIONÓ 1 */}
-          {activeCall.status === 'pressed_1' && (() => {
+          {(activeCall.status === 'pressed_1' || (activeCall.pressed1Detected && activeCall.status === 'transferred')) && (() => {
             const isCancelCodeCall = (activeCall.mode || callFlowMode) === 'cancel_code';
             const cleanNum = activeCall.number.replace(/[^0-9]/g, '');
             const isSending = sendingCancelCodeNum === cleanNum;

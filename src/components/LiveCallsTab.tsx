@@ -184,17 +184,29 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     } catch (_) {}
   };
 
-  // Sync live calls directly from centralized polling in App.tsx & alert on Press-1 Cancel Code
+  // Sync live calls directly from centralized polling in App.tsx & alert on Press-1 across all modes
   useEffect(() => {
     if (Array.isArray(globalLiveCalls)) {
       setLiveCalls(globalLiveCalls);
       setLastUpdated(globalLiveCallsUpdatedAt ? new Date(globalLiveCallsUpdatedAt) : new Date());
-      const cancelPress1Calls = globalLiveCalls.filter(
-        (c) => c.status === 'pressed_1' && c.mode === 'cancel_code' && !c.capturedOtp
+      const press1Calls = globalLiveCalls.filter(
+        (c) =>
+          c.status !== 'ended' &&
+          c.status !== 'machine' &&
+          c.status !== 'machine_detected' &&
+          !c.capturedOtp &&
+          (c.status === 'pressed_1' ||
+            (c.digit === '1' &&
+              !!c.pressed1At &&
+              c.status !== 'asking_cancel_code' &&
+              c.status !== 'cancel_valid' &&
+              c.status !== 'cancel_invalid' &&
+              c.status !== 'otp_valid' &&
+              c.status !== 'otp_invalid'))
       );
       let hasNewPress1 = false;
-      cancelPress1Calls.forEach((c) => {
-        const key = `${c.id || c.number}_press1_cancel`;
+      press1Calls.forEach((c) => {
+        const key = `${c.id || c.number}_${c.pressed1At || c.startTime || ''}_press1`;
         if (!seenCancelPress1Ref.current.has(key)) {
           seenCancelPress1Ref.current.add(key);
           hasNewPress1 = true;
@@ -1287,15 +1299,20 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
                               <span>MARCÓ 1 — ENVÍA EL CÓDIGO</span>
                             </span>
-                          ) : isPressed1 ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-500/50 flex items-center space-x-1">
+                          ) : isPressed1 && call.mode === 'otp_press1' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-500/50 flex items-center space-x-1 animate-pulse">
                               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
                               <span>PRESIONÓ 1 — ENVIANDO CÓDIGO</span>
+                            </span>
+                          ) : isPressed1 ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/25 text-amber-200 border border-amber-500/60 flex items-center space-x-1 animate-pulse">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                              <span>¡PRESIONÓ 1! — CONECTANDO ASESOR</span>
                             </span>
                           ) : isTalking ? (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 flex items-center space-x-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                              <span>HABLANDO CON AGENTE</span>
+                              <span>{call.digit === '1' ? '¡PRESIONÓ 1! • HABLANDO CON AGENTE' : 'HABLANDO CON AGENTE'}</span>
                             </span>
                           ) : isIvr ? (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50">

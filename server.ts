@@ -4793,7 +4793,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_from_internal)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${CALLING_USER})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_from_internal),System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/reseller/deduct?client=\${URIENCODE(\${CALLING_AGENT})}&secs=\${CDR(billsec)}&dest=\${URIENCODE(\${TARGET_NUM})}&tenant=\${URIENCODE(\${TENANT_ID})}" &)\n\n`;
 
   dialplanContent += `[from-trunk]\n`;
@@ -4960,7 +4960,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(DB(otp_status/\${CALLERID(num)})=done))\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=done)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=otp_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=otp_valid&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=otp_valid&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
@@ -4984,14 +4984,14 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(DB(otp_status/\${CALLERID(num)})=pending))\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${USER_DIGITS})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=otp_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=otp_invalid&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=otp_invalid&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${AUDIO_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(pedir_codigo)\n\n`;
 
   dialplanContent += `exten => h,1,NoOp(=== [CAPTURA-DINAMICA HANGUP] Cliente colgo canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n\n`;
 
 
   dialplanContent += `; ========================================================\n`;
@@ -5020,17 +5020,17 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_ok_press1),Goto(ivr_ready_press1)\n`;
   dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Estabilizacion breve post-contestacion (0.3s) antes de iniciar IVR ===)\n`;
   dialplanContent += ` same => n,Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n(ivr_ready_press1),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
@@ -5058,7 +5058,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_press1),NoOp(=== [AMD-OPERADORA] Operadora automatica o contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${IVR_AGENT_EXTEN})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_press1)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5086,7 +5086,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=\${PRESSED_DIGIT})\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=\${PRESSED_DIGIT},Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=\${URIENCODE(\${PRESSED_DIGIT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=\${URIENCODE(\${PRESSED_DIGIT})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
@@ -5115,7 +5115,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all" | "\${FINAL_AGENT}" = "hunt"]?dial_press1_ringall:dial_press1_single)\n`;
   dialplanContent += ` same => n(dial_press1_single),NoOp(=== [PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando directo a: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
@@ -5152,7 +5152,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_press1)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_press1),NoOp()\n\n`;
 
   dialplanContent += `[ivr-otp]\n`;
@@ -5178,18 +5178,18 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_ok_otp),Goto(ivr_ready_otp)\n`;
   dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Estabilizacion breve post-contestacion (0.3s) antes de iniciar IVR ===)\n`;
   dialplanContent += ` same => n,Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n(ivr_ready_otp),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(response)=4)\n`;
   dialplanContent += ` same => n,Set(TIMEOUT(absolute)=180)\n`;
   dialplanContent += ` same => n,Set(OTP_LOOP_COUNT=0)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
@@ -5324,7 +5324,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_otp),NoOp(=== [AMD OPERADORA DETECTADA] Grabadora o contestador en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_otp)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_otp)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5410,7 +5410,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
@@ -5433,7 +5433,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${TARGET_DEST})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLERID(num)})=\${FINAL_AGENT})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=transferred)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=transferred&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all" | "\${FINAL_AGENT}" = "hunt"]?dial_otp_ringall:dial_otp_single)\n`;
   dialplanContent += ` same => n(dial_otp_single),NoOp(=== [OTP PRESS-1 ASESOR O EXTENSIONES ESPECIFICAS] Marcando directo a: \${FINAL_AGENT} ===)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})\n`;
@@ -5469,7 +5469,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_otp)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_otp),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -5497,10 +5497,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_silence_human_dpb),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido para reproducir audio ===)\n`;
   dialplanContent += ` same => n(amd_ok_dpb),Goto(ivr_ready_dpb)\n`;
   dialplanContent += ` same => n(skip_amd_dpb),Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_dpb),Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n(ivr_ready_dpb),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_PROMPT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${CALL_INTRO}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = "" & "\${TENANT_ID}" != ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
@@ -5524,11 +5524,11 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=audio_completed)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=audio_completed&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=audio_completed&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Hangup()\n`;
   dialplanContent += ` same => n(amd_machine_dpb),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_dpb)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_dpb)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5538,7 +5538,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_dpb)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_dpb),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -5602,7 +5602,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(all,i)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=talking_agent)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=talking_agent&agent=\${URIENCODE(\${FINAL_AGENT})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=talking_agent&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all" | "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
   dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,GotoIf($["\${DIALSTATUS}" = "CHANUNAVAIL" | "\${DIALSTATUS}" = "CONGESTION"]?ata_agent_retry:ata_finish)\n`;
@@ -5611,7 +5611,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(ata_finish),Hangup()\n`;
   dialplanContent += ` same => n(amd_machine_ata),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_ata)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_ata)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5621,7 +5621,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_ata)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&mode=\${URIENCODE(\${IVR_MODE})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_ata),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -5649,19 +5649,19 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Cancelacion (solo avanza con tecla 1) ===)\n`;
   dialplanContent += ` same => n(amd_ok_p1c),Goto(ivr_ready_p1c)\n`;
   dialplanContent += ` same => n(skip_amd_p1c),Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
-  dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_DEST})=waiting_press1)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1-cancel,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n(ivr_ready_p1c),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
+  dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_DEST})=waiting_press1)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1-cancel,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
@@ -5751,7 +5751,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_p1c),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_p1c)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_p1c)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5772,7 +5772,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=cancel_code,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_CANCEL_WAIT})\n`;
   dialplanContent += ` same => n,Set(SEND_WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(wait_agent_send_code),Set(SEND_WAIT_LOOP=$[\${SEND_WAIT_LOOP} + 1])\n`;
@@ -5789,7 +5789,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Goto(wait_agent_send_code)\n`;
   dialplanContent += ` same => n(agent_ready_ask_code),NoOp(=== [IVR-PRESS1-CANCEL] Agente envio el codigo -> Solicitando al cliente que lo digite ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=asking_cancel_code)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_cancel_code&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_cancel_code&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(CANCEL_RETRIES=0)\n`;
   dialplanContent += ` same => n(ask_cancel_code),Set(CANCEL_RETRIES=$[\${CANCEL_RETRIES} + 1])\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
@@ -5826,7 +5826,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=cancel_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_valid&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_valid&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -5834,7 +5834,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=cancel_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_invalid&mode=cancel_code&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=cancel_invalid&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(ask_cancel_code)\n\n`;
   dialplanContent += ` same => n(cancel_timeout),Playback(custom/intentos_superados)\n`;
@@ -5847,7 +5847,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_p1c)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&mode=cancel_code&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_p1c),NoOp()\n\n`;
 
   dialplanContent += `; ========================================================\n`;
@@ -5875,18 +5875,18 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Captura OTP (solo avanza con tecla 1) ===)\n`;
   dialplanContent += ` same => n(amd_ok_otp_v),Goto(ivr_ready_otp_v)\n`;
   dialplanContent += ` same => n(skip_amd_otp_v),Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
-  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp-verify,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n(ivr_ready_otp_v),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = "" & "\${CHANNEL(channeltype)}" = "PJSIP"]?Set(FINAL_AGENT=\${CHANNEL(endpoint)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
+  dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp-verify,Channel=\${CHANNEL})\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
@@ -5976,7 +5976,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(amd_machine_otp_v),NoOp(=== [AMD-OPERADORA] Contestador detectado en \${TARGET_DEST} -> Colgando ===)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_DEST})=machine_detected)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=machine_detected&cause=\${URIENCODE(\${AMDCAUSE})}&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AUTO_RETRY}" != "1"]?no_retry_amd_otp_v)\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_DEST})}" = "operator_hangup" | "\${DB(call_status/\${TARGET_DEST})}" = "ended" | "\${DB(ivr_vars/\${TARGET_DEST}_cancelled)}" = "1"]?no_retry_amd_otp_v)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/retry?number=\${URIENCODE(\${TARGET_DEST})}&cause=\${URIENCODE(\${AMDCAUSE})}" &)\n`;
@@ -5995,7 +5995,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=otp_press1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_OTP_VERIFY_WAIT})\n`;
   dialplanContent += ` same => n,Wait(2)\n`;
   dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
@@ -6037,7 +6037,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_valid&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_valid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -6045,7 +6045,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_invalid&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_invalid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Goto(ask_otp_verify)\n\n`;
   dialplanContent += ` same => n(otp_verify_timeout),Playback(custom/intentos_superados)\n`;
@@ -6058,7 +6058,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_otp_v)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_otp_v),NoOp()\n\n`;
 
   dialplanContent += `; Alias de compatibilidad para modo hybrid hacia ivr-otp\n`;
@@ -8241,6 +8241,8 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       ...(cleanOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: cleanOtpVerifyWait } : {}),
       ...(retryHoldMusic ? { CALL_HOLD_MUSIC: retryHoldMusic, __CALL_HOLD_MUSIC: retryHoldMusic } : {}),
       IVR_MODE: enforcedMode || 'press1',
+      __IVR_MODE: enforcedMode || 'press1',
+      ...(effectiveUserId || authUser?.id ? { CALL_USER_ID: String(effectiveUserId || authUser?.id), __CALL_USER_ID: String(effectiveUserId || authUser?.id) } : {}),
       ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       __ASSIGNED_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
       OUTBOUND_CARRIER: (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') ? cleanCarrier : '',
@@ -11241,24 +11243,54 @@ app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async 
 function canUserAccessCall(authUser: any, call: any): boolean {
   if (!authUser) return false;
   if (isGlobalAdminUser(authUser)) return true;
+
+  const isOwnCall = Boolean(call?.userId && authUser.id && String(call.userId) === String(authUser.id));
+  const userAssignedExts = Array.isArray(authUser.assignedExtensions)
+    ? authUser.assignedExtensions.map((x: any) => String(x).trim()).filter(Boolean)
+    : [];
+  const callAgent = String(call?.agent || '').trim();
+  const callAgentParts = callAgent && callAgent !== 'ringall' && callAgent !== 'all'
+    ? callAgent.split('&').map((s: string) => s.trim()).filter(Boolean)
+    : [];
+
   if (authUser.tenantId) {
-    if (call?.tenantId && String(call.tenantId) !== String(authUser.tenantId)) {
-      return false;
+    if (call?.tenantId) {
+      if (String(call.tenantId) !== String(authUser.tenantId)) {
+        return false;
+      }
+    } else if (!isOwnCall) {
+      const tenantObj = loadStoredTenants().find((t: any) => String(t.id) === String(authUser.tenantId));
+      const inTenantRange = Boolean(
+        tenantObj &&
+        callAgentParts.some((ext: string) => {
+          const n = parseInt(ext, 10);
+          return !isNaN(n) && n >= Number(tenantObj.extensionStart) && n <= Number(tenantObj.extensionEnd);
+        })
+      );
+      const inAssigned = userAssignedExts.length > 0 && callAgentParts.some((ext: string) => userAssignedExts.includes(ext));
+      if (!inTenantRange && !inAssigned) {
+        return false;
+      }
     }
   } else {
     if (call?.tenantId) return false;
-    if (call?.userId && authUser.id && String(call.userId) !== String(authUser.id)) {
-      return false;
-    }
-  }
-  if (!isAdminUser(authUser) && Array.isArray(authUser.assignedExtensions) && authUser.assignedExtensions.length > 0) {
-    const allowed = new Set(authUser.assignedExtensions.map(String));
-    const callAgent = String(call?.agent || '').trim();
-    if (callAgent && callAgent !== 'ringall' && callAgent !== 'all') {
-      const parts = callAgent.split('&').map((s: string) => s.trim()).filter(Boolean);
-      if (parts.length > 0 && !parts.some((ext: string) => allowed.has(ext))) {
+    if (call?.userId && authUser.id) {
+      if (String(call.userId) !== String(authUser.id)) return false;
+    } else if (!isOwnCall) {
+      if (userAssignedExts.length > 0 && callAgentParts.length > 0) {
+        if (!callAgentParts.some((ext: string) => userAssignedExts.includes(ext))) {
+          return false;
+        }
+      } else {
         return false;
       }
+    }
+  }
+
+  if (!isAdminUser(authUser) && userAssignedExts.length > 0 && !isOwnCall) {
+    const allowed = new Set(userAssignedExts);
+    if (callAgentParts.length > 0 && !callAgentParts.some((ext: string) => allowed.has(ext))) {
+      return false;
     }
   }
   return true;
@@ -11334,9 +11366,36 @@ app.get('/api/asterisk/live/channels', async (req, res) => {
 });
 
 // Endpoint to query current state of a destination number
-app.get('/api/asterisk/call/status', (req, res) => {
+app.get('/api/asterisk/call/status', async (req, res) => {
   const authUser = (req as any).authUser;
   const number = String(req.query.number || '').trim().replace(/[^0-9]/g, '');
+
+  if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const qs = number ? `?number=${encodeURIComponent(number)}` : '';
+      const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/status${qs}`, {
+        headers: buildRemoteAuthHeaders(req),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (remoteResp.ok) {
+        const remoteJson = (await remoteResp.json()) as any;
+        if (remoteJson && remoteJson.success) {
+          if (number) {
+            const safeCall = remoteJson.call && canUserAccessCall(authUser, remoteJson.call) ? remoteJson.call : null;
+            return res.json({ success: true, call: safeCall });
+          }
+          const safeCalls = Array.isArray(remoteJson.calls)
+            ? remoteJson.calls.filter((c: any) => canUserAccessCall(authUser, c))
+            : [];
+          return res.json({ success: true, calls: safeCalls });
+        }
+      }
+    } catch (_) {}
+  }
+
   if (!number) {
     const list = Array.from(callStatusStore.values())
       .filter((c) => canUserAccessCall(authUser, c))
@@ -11362,8 +11421,28 @@ app.get('/api/asterisk/call/status', (req, res) => {
 });
 
 // Endpoint to get the currently running active call across all tabs
-app.get('/api/asterisk/call/latest-active', (req, res) => {
+app.get('/api/asterisk/call/latest-active', async (req, res) => {
   const authUser = (req as any).authUser;
+
+  if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/latest-active`, {
+        headers: buildRemoteAuthHeaders(req),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (remoteResp.ok) {
+        const remoteJson = (await remoteResp.json()) as any;
+        if (remoteJson && remoteJson.success) {
+          const safeCall = remoteJson.call && canUserAccessCall(authUser, remoteJson.call) ? remoteJson.call : null;
+          return res.json({ success: true, call: safeCall });
+        }
+      }
+    } catch (_) {}
+  }
+
   const allCalls = Array.from(callStatusStore.values()).filter((c) => canUserAccessCall(authUser, c));
   const active = allCalls.reverse().find(
     (c) => c.status !== 'ended' && c.status !== 'machine' && Date.now() - c.timestamp < 1800000
@@ -11388,6 +11467,7 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
   const agent = String(req.query.agent || req.body?.agent || '').trim();
   const tenant = String(req.query.tenant || req.body?.tenant || '').trim();
   const modeParam = String(req.query.mode || req.body?.mode || '').trim();
+  const userid = String(req.query.userid || req.body?.userid || '').trim();
 
   if (number) {
     const clean10 = number.length === 11 && number.startsWith('1') ? number.substring(1) : number;
@@ -11425,12 +11505,17 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
       existing?.channel &&
       !/^PJSIP\/\d{2,6}-/i.test(existing.channel);
 
+    const resolvedAgent =
+      (agent && agent !== 'ringall' && agent !== 'all')
+        ? agent
+        : (existing?.agent || agent || undefined);
+
     const callState: CallState = {
       number,
       channel: isAgentTalkingChannel ? existing!.channel : (channel || existing?.channel || ''),
       status: effectiveStatus as any,
       cause: effectiveCause,
-      agent: agent || existing?.agent,
+      agent: resolvedAgent,
       digit: digit || existing?.digit || (effectiveStatus === 'pressed_1' ? '1' : undefined),
       timestamp: Date.now(),
       startTime,
@@ -11438,7 +11523,7 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
       pressed1At,
       duration,
       tenantId: tenant || existing?.tenantId,
-      userId: existing?.userId,
+      userId: userid || existing?.userId,
       mode: modeParam || existing?.mode,
       cancelDecision: (effectiveStatus === 'cancel_valid' || effectiveStatus === 'otp_valid')
         ? 'valid'
@@ -11655,6 +11740,8 @@ app.all('/api/asterisk/call/retry', requireInternalOrGlobalAdmin, async (req, re
           ...(retryOtpVerifyWait ? { CALL_OTP_VERIFY_WAIT: retryOtpVerifyWait, __CALL_OTP_VERIFY_WAIT: retryOtpVerifyWait } : {}),
           ...(retryHoldMusic ? { CALL_HOLD_MUSIC: retryHoldMusic, __CALL_HOLD_MUSIC: retryHoldMusic } : {}),
           IVR_MODE: payload.mode || 'press1',
+          __IVR_MODE: payload.mode || 'press1',
+          ...(payload.userId || memCall?.userId ? { CALL_USER_ID: String(payload.userId || memCall?.userId), __CALL_USER_ID: String(payload.userId || memCall?.userId) } : {}),
           ASSIGNED_CARRIER: retryCarrier,
           __ASSIGNED_CARRIER: retryCarrier,
           OUTBOUND_CARRIER: retryCarrier,
@@ -12075,6 +12162,28 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+
+    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const queryIdx = req.originalUrl.indexOf('?');
+        const qs = queryIdx >= 0 ? req.originalUrl.slice(queryIdx) : '';
+        const remoteResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/live/calls${qs}`, {
+          headers: buildRemoteAuthHeaders(req),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (remoteResp.ok) {
+          const remoteJson = (await remoteResp.json()) as any;
+          if (remoteJson && remoteJson.success && Array.isArray(remoteJson.calls)) {
+            const safeCalls = remoteJson.calls.filter((c: any) => canUserAccessCall(authUser, c));
+            return res.json({ success: true, calls: safeCalls });
+          }
+        }
+      } catch (_) {}
+    }
+
     const list: any[] = [];
     const now = Date.now();
     const rawQueryTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : '';
@@ -12116,6 +12225,10 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
     for (const [key, call] of callStatusStore.entries()) {
       // Avoid duplicate keys for same call (e.g. 10d vs 11d)
       if (key.startsWith('1') && key.length === 11 && callStatusStore.has(key.substring(1))) {
+        continue;
+      }
+
+      if (!canUserAccessCall(authUser, call)) {
         continue;
       }
 
@@ -12200,11 +12313,14 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         bridgedChannel: call.bridgedChannel || '',
         trunk: call.trunk || 'televox',
         digit: call.digit,
+        pressed1At: call.pressed1At,
+        cause: call.cause,
         isOnHold: !!call.isOnHold,
         holdStartedAt: call.holdStartedAt,
         callerId: call.callerId,
         mode: call.mode,
         tenantId: call.tenantId,
+        userId: call.userId,
         capturedOtp: matchedOtp?.otp,
         otpStatus: effectiveOtpStatus,
         otpRecordId: matchedOtp?.id,
@@ -12217,6 +12333,9 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
     try {
       let amiOutput = await executeAsteriskCommand('core show channels concise');
       if (amiOutput) {
+        const tenantScopeObj = (!authIsGlobalAdmin && authUser?.tenantId)
+          ? loadStoredTenants().find((t: any) => String(t.id) === String(authUser.tenantId))
+          : null;
         const lines = amiOutput.split('\n');
         for (const line of lines) {
           const trimmed = line.trim();
@@ -12235,9 +12354,19 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
             );
             if (!existing && (callerIdNum || exten)) {
               const num = callerIdNum || exten;
-              const chanAgent = exten.length === 4 ? exten : '1001';
-              if (allowedExts.length > 0 && !allowedExts.includes(chanAgent)) {
-                continue;
+              const chanMatch = chanName.match(/^PJSIP\/([0-9]{2,6})-/i);
+              const chanAgent = exten.length <= 5 && /^[0-9]+$/.test(exten) ? exten : (chanMatch?.[1] || '1001');
+              if (!authIsGlobalAdmin) {
+                if (allowedExts.length > 0) {
+                  if (!allowedExts.includes(chanAgent)) continue;
+                } else if (tenantScopeObj) {
+                  const extN = parseInt(chanAgent, 10);
+                  if (isNaN(extN) || extN < Number(tenantScopeObj.extensionStart) || extN > Number(tenantScopeObj.extensionEnd)) {
+                    continue;
+                  }
+                } else {
+                  continue;
+                }
               }
               const matchedOtp = findMatchingOtp(num, chanAgent);
               list.push({
