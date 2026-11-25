@@ -130,6 +130,8 @@ chown -R asterisk:asterisk /var/lib/asterisk/sounds /usr/share/asterisk/sounds 2
 # Recargar Asterisk y módulo de timing de alta precisión
 echo "Recargando Asterisk Timing, PJSIP, RTP, Dialplan y Manager..."
 asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null || true
+asterisk -rx "module reload res_rtp_asterisk.so" 2>/dev/null || true
+asterisk -rx "module reload app_amd.so" 2>/dev/null || true
 asterisk -rx "core reload" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true

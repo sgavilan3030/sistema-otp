@@ -1895,9 +1895,13 @@ icesupport=no
       exec('asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null', () => {});
     }
     const existingRtp = fs.existsSync(rtpPath) ? fs.readFileSync(rtpPath, 'utf8') : '';
-    if (!existingRtp || existingRtp.trim() !== rtpContent.trim()) {
+    const rtpUpdated = !existingRtp || existingRtp.trim() !== rtpContent.trim();
+    if (rtpUpdated) {
       writeAsteriskConfigFile(rtpPath, rtpContent);
       console.log('✓ Configuración /etc/asterisk/rtp.conf actualizada para audio inmediato');
+    }
+    if (hasLocalAsterisk && rtpUpdated) {
+      exec('asterisk -rx "module reload res_rtp_asterisk.so" 2>/dev/null || true', () => {});
     }
     try { fs.writeFileSync(path.join(process.cwd(), 'rtp.conf'), rtpContent, 'utf8'); } catch (_) {}
     const mgrPath = '/etc/asterisk/manager.conf';
@@ -1959,6 +1963,44 @@ function getLocalPublicIpv4Sync(): string {
 }
 
 let detectedExternalIp: string = getLocalPublicIpv4Sync();
+
+async function resolvePublicIpv4Async(): Promise<string> {
+  if (isPublicIpv4(detectedExternalIp)) return detectedExternalIp;
+  const freshSync = getLocalPublicIpv4Sync();
+  if (isPublicIpv4(freshSync)) {
+    detectedExternalIp = freshSync;
+    return detectedExternalIp;
+  }
+  const providers = [
+    'https://api.ipify.org',
+    'https://ifconfig.me/ip',
+    'https://icanhazip.com',
+    'https://checkip.amazonaws.com',
+  ];
+  for (const url of providers) {
+    const ip = await new Promise<string>((resolve) => {
+      try {
+        const req = https.get(url, { timeout: 1800, headers: { 'User-Agent': 'curl/8.0' } }, (res) => {
+          let body = '';
+          res.on('data', (c) => { body += c; });
+          res.on('end', () => {
+            const candidate = body.trim();
+            resolve(isPublicIpv4(candidate) ? candidate : '');
+          });
+        });
+        req.on('error', () => resolve(''));
+        req.on('timeout', () => { try { req.destroy(); } catch (_) {} resolve(''); });
+      } catch (_) {
+        resolve('');
+      }
+    });
+    if (ip) {
+      detectedExternalIp = ip;
+      return ip;
+    }
+  }
+  return '';
+}
 
 function prioritizeZeroTranscodeCodecs(raw: string, isCarrierTrunk = false, isWebRtc = false): string {
   const rawList = raw
@@ -2219,7 +2261,7 @@ function writeAsteriskConfigFile(filePath: string, content: string): Promise<boo
 }
 
 // Helper to generate native 8kHz 16-bit Mono PCM WAV buffer for Asterisk compatibility
-function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
+function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440, silent = false): Buffer {
   const sampleRate = 8000;
   const numSamples = Math.floor(sampleRate * durationSeconds);
   const dataSize = numSamples * 2;
@@ -2243,6 +2285,11 @@ function generatePcm8kWaveBuffer(durationSeconds = 3, freq = 440): Buffer {
   // data subchunk
   buffer.write('data', 36);
   buffer.writeUInt32LE(dataSize, 40);
+
+  if (silent) {
+    // Low-amplitude comfort silence PCM (already zeroed by Buffer.alloc)
+    return buffer;
+  }
 
   // Smooth sinusoidal audio waveform
   for (let i = 0; i < numSamples; i++) {
@@ -2532,6 +2579,23 @@ function ensureCustomAudioFilesExist() {
       } catch (_) {}
     }
   }
+
+  // Ensure silent 250ms RTP priming audio exists to immediately punch NAT/SBC pinholes upon Answer()
+  try {
+      const primeWav = path.join(customDir, 'rtp_prime.wav');
+      const primeEsWav = path.join(esCustomDir, 'rtp_prime.wav');
+      const primeEnWav = path.join(enCustomDir, 'rtp_prime.wav');
+      const primeRootWav = '/var/lib/asterisk/sounds/rtp_prime.wav';
+      if (!fs.existsSync(primeWav) || fs.statSync(primeWav).size < 1000) {
+        const primeBuf = generatePcm8kWaveBuffer(0.25, 0, true);
+        fs.writeFileSync(primeWav, primeBuf);
+        try { fs.chmodSync(primeWav, 0o644); } catch (_) {}
+      }
+      if (!fs.existsSync(primeEsWav)) { try { fs.copyFileSync(primeWav, primeEsWav); } catch (_) {} }
+      if (!fs.existsSync(primeEnWav)) { try { fs.copyFileSync(primeWav, primeEnWav); } catch (_) {} }
+      if (!fs.existsSync(primeRootWav)) { try { fs.copyFileSync(primeWav, primeRootWav); } catch (_) {} }
+    ensureNativeUlawFromWav(primeWav, [esCustomDir, enCustomDir, '/var/lib/asterisk/sounds']);
+  } catch (_) {}
 }
 
 // ==========================================
@@ -3722,6 +3786,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `type = transport\n`;
   pjsipContent += `protocol = udp\n`;
   pjsipContent += `bind = 0.0.0.0:${activePort}\n`;
+  pjsipContent += `allow_reload = yes\n`;
   pjsipContent += `local_net = 127.0.0.0/8\n`;
   pjsipContent += `local_net = 10.0.0.0/8\n`;
   pjsipContent += `local_net = 172.16.0.0/12\n`;
@@ -3738,6 +3803,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
     pjsipContent += `type = transport\n`;
     pjsipContent += `protocol = udp\n`;
     pjsipContent += `bind = 0.0.0.0:5060\n`;
+    pjsipContent += `allow_reload = yes\n`;
     pjsipContent += `local_net = 127.0.0.0/8\n`;
     pjsipContent += `local_net = 10.0.0.0/8\n`;
     pjsipContent += `local_net = 172.16.0.0/12\n`;
@@ -3753,6 +3819,7 @@ export function generateCleanPjsipConf(extensions: any[] = defaultExtensionsList
   pjsipContent += `type = transport\n`;
   pjsipContent += `protocol = tcp\n`;
   pjsipContent += `bind = 0.0.0.0:${activePort}\n`;
+  pjsipContent += `allow_reload = yes\n`;
   pjsipContent += `local_net = 127.0.0.0/8\n`;
   pjsipContent += `local_net = 10.0.0.0/8\n`;
   pjsipContent += `local_net = 172.16.0.0/12\n`;
@@ -4233,7 +4300,6 @@ export function generateCleanDialplanConf(
   dialplanContent += `; Subrutina Pre-Dial para preparacion de audio en canal saliente real (CallerID asignado por el proveedor SIP)\n`;
   dialplanContent += `[sub-pjsip-outbound]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [OUTBOUND PRE-DIAL] Canal: \${CHANNEL} | CID Carrier=\${ARG1} | TrunkUser=\${ARG2} ===)\n`;
-  dialplanContent += ` same => n,Set(JITTERBUFFER(fixed)=60,150)\n`;
   dialplanContent += ` same => n,Set(CALLERID(pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(num-pres)=allowed_not_screened)\n`;
   dialplanContent += ` same => n,Set(CALLERID(name-pres)=allowed_not_screened)\n`;
@@ -4931,6 +4997,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-press1]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1] INICIO MODO PRESS 1 CON AUDIO HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -4947,11 +5014,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_press1)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_press1)\n`;
   dialplanContent += ` same => n(amd_silence_human_press1),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR interactivo (sin retorno al asesor si no marca) ===)\n`;
-  dialplanContent += ` same => n(amd_ok_press1),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_press1)\n`;
-  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Espera de 2 segundos post-contestacion antes de iniciar IVR ===)\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(amd_ok_press1),Goto(ivr_ready_press1)\n`;
+  dialplanContent += ` same => n(skip_amd_press1),NoOp(=== [AMD OMITIDO] Estabilizacion breve post-contestacion (0.3s) antes de iniciar IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_press1),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-press1,Channel=\${CHANNEL})\n`;
@@ -4976,9 +5041,13 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-AUDIO] Reproduciendo Audio Intro UNA VEZ: \${IVR_INTRO} para Agente: \${FINAL_AGENT} | Destino: \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n(menu),Background(\${IVR_INTRO})\n`;
   dialplanContent += ` same => n,WaitExten(6)\n`;
@@ -5077,6 +5146,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-otp]\n`;
   dialplanContent += `exten => s,1,NoOp(=== IVR INTERACTIVO CON AUDIOS PREGRABADOS Y CALIDAD HD ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -5093,11 +5163,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp)\n`;
   dialplanContent += ` same => n(amd_silence_human_otp),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR OTP (sin retorno al asesor si no marca) ===)\n`;
-  dialplanContent += ` same => n(amd_ok_otp),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_otp)\n`;
-  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Espera de 2 segundos post-contestacion antes de iniciar IVR ===)\n`;
-  dialplanContent += ` same => n,ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(amd_ok_otp),Goto(ivr_ready_otp)\n`;
+  dialplanContent += ` same => n(skip_amd_otp),NoOp(=== [AMD OMITIDO] Estabilizacion breve post-contestacion (0.3s) antes de iniciar IVR ===)\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_otp),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp,Channel=\${CHANNEL})\n`;
@@ -5181,7 +5249,19 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=\${DB(ivr_vars/default_invalid)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INVALID}" = ""]?Set(IVR_INVALID=custom/opcion_invalida))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
   dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_PROMPT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_PROMPT}.ulaw)} = 0]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
@@ -5352,6 +5432,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-direct-playback]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [1-CLICK PLAYBACK] AUDIO AL DESCOLGAR PARA DESTINO \${CALLERID(num)} ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -5368,10 +5449,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_dpb)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_dpb)\n`;
   dialplanContent += ` same => n(amd_silence_human_dpb),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido para reproducir audio ===)\n`;
-  dialplanContent += ` same => n(amd_ok_dpb),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_dpb)\n`;
-  dialplanContent += ` same => n(skip_amd_dpb),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(amd_ok_dpb),Goto(ivr_ready_dpb)\n`;
+  dialplanContent += ` same => n(skip_amd_dpb),Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_dpb),Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
@@ -5387,7 +5466,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/default_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${PLAY_AUDIO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${PLAY_AUDIO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${PLAY_AUDIO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${PLAY_AUDIO}.ulaw)} = 0]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
   dialplanContent += ` same => n,NoOp(=== [1-CLICK PLAYBACK] Reproduciendo: \${PLAY_AUDIO} a \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
@@ -5415,6 +5499,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-audio-then-agent]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [1-CLICK AUDIO+AGENT] AUDIO INTRO Y LUEGO CONEXION CON ASESOR ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -5428,10 +5513,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
-  dialplanContent += ` same => n,Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
   dialplanContent += ` same => n,Goto(ivr_ready_ata)\n`;
-  dialplanContent += ` same => n(skip_amd_ata),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(skip_amd_ata),Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
@@ -5443,7 +5526,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/default_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,/var/lib/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${STRREPLACE(PLAY_AUDIO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${PLAY_AUDIO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${PLAY_AUDIO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${PLAY_AUDIO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${PLAY_AUDIO}.ulaw)} = 0]?Set(PLAY_AUDIO=custom/banrearreglado))\n`;
   dialplanContent += ` same => n,NoOp(=== [1-CLICK AUDIO+AGENT] Reproduciendo intro: \${PLAY_AUDIO} ===)\n`;
   dialplanContent += ` same => n,Playback(\${PLAY_AUDIO})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
@@ -5489,6 +5577,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-press1-cancel]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [IVR-PRESS1-CANCEL] INICIO FLUJO PRESS 1 + CODIGO DE CANCELACION ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -5505,10 +5594,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_p1c)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_p1c)\n`;
   dialplanContent += ` same => n(amd_silence_human_p1c),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Cancelacion (solo avanza con tecla 1) ===)\n`;
-  dialplanContent += ` same => n(amd_ok_p1c),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_p1c)\n`;
-  dialplanContent += ` same => n(skip_amd_p1c),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(amd_ok_p1c),Goto(ivr_ready_p1c)\n`;
+  dialplanContent += ` same => n(skip_amd_p1c),Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_p1c),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,Set(DB(cancel_send/\${TARGET_DEST})=waiting_press1)\n`;
@@ -5551,6 +5638,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
@@ -5670,6 +5763,7 @@ export function generateCleanDialplanConf(
   dialplanContent += `[ivr-otp-verify]\n`;
   dialplanContent += `exten => s,1,NoOp(=== [IVR-OTP-VERIFY] INICIO FLUJO IVR DE CAPTURA OTP (PRESS 1 + VERIFICACION) ===)\n`;
   dialplanContent += ` same => n,Answer()\n`;
+  dialplanContent += ` same => n,Playback(custom/rtp_prime)\n`;
   dialplanContent += ` same => n,Set(ANSWER_EPOCH=\${EPOCH})\n`;
   dialplanContent += ` same => n,Set(TARGET_DEST=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_DEST})\n`;
@@ -5686,10 +5780,8 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_otp_v)\n`;
   dialplanContent += ` same => n,Goto(amd_ok_otp_v)\n`;
   dialplanContent += ` same => n(amd_silence_human_otp_v),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en IVR Captura OTP (solo avanza con tecla 1) ===)\n`;
-  dialplanContent += ` same => n(amd_ok_otp_v),Set(POST_ANSWER_ELAPSED=$[\${EPOCH} - \${ANSWER_EPOCH}])\n`;
-  dialplanContent += ` same => n,ExecIf($[\${LEN(\${TARGET_DEST})} > 4 & "\${IS_TEST_CALL}" != "1" & \${POST_ANSWER_ELAPSED} >= 0 & \${POST_ANSWER_ELAPSED} < 2]?Wait($[2 - \${POST_ANSWER_ELAPSED}]))\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_otp_v)\n`;
-  dialplanContent += ` same => n(skip_amd_otp_v),ExecIf($["\${IS_TEST_CALL}" = "1" | \${LEN(\${TARGET_DEST})} <= 4]?Wait(0.3):Wait(2))\n`;
+  dialplanContent += ` same => n(amd_ok_otp_v),Goto(ivr_ready_otp_v)\n`;
+  dialplanContent += ` same => n(skip_amd_otp_v),Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_otp_v),Set(DB(call_status/\${TARGET_DEST})=in_ivr)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
@@ -5731,6 +5823,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.wav,)})\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
@@ -5895,6 +5993,11 @@ async function autoRepairAsteriskPjsipOnStartup() {
       needsRepair = true;
     }
 
+    // Resolver IP pública real ANTES de generar pjsip.conf para incluir external_media_address desde el arranque
+    if (!isPublicIpv4(detectedExternalIp)) {
+      await resolvePublicIpv4Async().catch(() => '');
+    }
+
     // Generate clean PJSIP config and reload Asterisk ONLY if configuration actually changed
     const storedUsers = loadStoredUsers();
     const storedExts = loadStoredExtensions();
@@ -5995,31 +6098,20 @@ async function autoRepairAsteriskPjsipOnStartup() {
     syncTenantCarriersToAstDb(loadStoredTenants(), storedCarriers).catch(() => {});
     syncOtpExtensionsToAstDb().catch(() => {});
 
-    // Si el VPS está detrás de NAT 1:1 y la interfaz local solo tiene IP privada, detectar IP pública en segundo plano
-    if (hasLocalAsterisk && !detectedExternalIp) {
-      try {
-        const ipReq = https.get('https://api.ipify.org', { timeout: 2500 }, (ipRes) => {
-          let rawIp = '';
-          ipRes.on('data', (chunk) => { rawIp += chunk; });
-          ipRes.on('end', () => {
-            const candidate = rawIp.trim();
-            if (isPublicIpv4(candidate) && candidate !== detectedExternalIp) {
-              detectedExternalIp = candidate;
-              const updatedPjsip = generateCleanPjsipConf(loadStoredExtensions(), loadStoredCarriers(), loadStoredUsers());
-              lastGeneratedPjsip = updatedPjsip;
-              const prevPjsipDisk = fs.existsSync(pjsipPath) ? fs.readFileSync(pjsipPath, 'utf8') : '';
-              if (normalizePjsipDiff(prevPjsipDisk) !== normalizePjsipDiff(updatedPjsip)) {
-                writeAsteriskConfigFile(pjsipPath, updatedPjsip)
-                  .then(() => exec('asterisk -rx "pjsip reload"', () => {}))
-                  .catch(() => {});
-                console.log(`[PJSIP-NAT] ✓ IP pública detectada (${candidate}) y aplicada a external_media_address.`);
-              }
-            }
-          });
-        });
-        ipReq.on('error', () => {});
-        ipReq.on('timeout', () => { try { ipReq.destroy(); } catch (_) {} });
-      } catch (_) {}
+    // Reintento diferido si la red pública aún no estaba lista al arrancar el servidor
+    if (hasLocalAsterisk && !isPublicIpv4(detectedExternalIp)) {
+      resolvePublicIpv4Async().then(async (candidate) => {
+        if (isPublicIpv4(candidate)) {
+          const updatedPjsip = generateCleanPjsipConf(loadStoredExtensions(), loadStoredCarriers(), loadStoredUsers());
+          lastGeneratedPjsip = updatedPjsip;
+          const prevPjsipDisk = fs.existsSync(pjsipPath) ? fs.readFileSync(pjsipPath, 'utf8') : '';
+          if (normalizePjsipDiff(prevPjsipDisk) !== normalizePjsipDiff(updatedPjsip)) {
+            await writeAsteriskConfigFile(pjsipPath, updatedPjsip);
+            exec('asterisk -rx "pjsip reload"', () => {});
+            console.log(`[PJSIP-NAT] ✓ IP pública detectada (${candidate}) y aplicada a external_media_address.`);
+          }
+        }
+      }).catch(() => {});
     }
   } catch (err: any) {
     console.warn('[PJSIP-REPAIR] Aviso en auto-reparación inicial:', err.message);
@@ -6956,6 +7048,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
       saveStoredTenants(tenantsToSync);
     }
 
+    if (!detectedExternalIp) {
+      await resolvePublicIpv4Async().catch(() => '');
+    }
+
     // Generate clean pjsip.conf using validated Asterisk 20 generator
     const pjsipContent = generateCleanPjsipConf(persistedExtensions, validCarriers, usersToInclude);
 
@@ -6971,9 +7067,10 @@ app.post('/api/asterisk/sync/extensions', async (req, res) => {
     const pjsipChanged = Boolean(req.body.forceReload) || normalizePjsipDiff(prevPjsipDisk) !== normalizePjsipDiff(pjsipContent);
     const dialplanChanged = Boolean(req.body.forceReload) || normalizeDialplanDiff(prevDialplanDisk) !== normalizeDialplanDiff(dialplanContent);
 
-    // 1. Ensure custom audio directory and native 8k WAV audios exist, plus AMD config
+    // 1. Ensure custom audio directory, native 8k WAV+ULAW audios, RTP/Codecs, and AMD config exist
     ensureCustomAudioFilesExist();
     ensureAmdConfExists();
+    ensureAudioCodecsAndRtpConfExists();
 
     // 2. Safe write for PJSIP Configuration (only rewrite when changed)
     const pjsipWritten = pjsipChanged ? await writeAsteriskConfigFile(asteriskPjsipPath, pjsipContent) : false;
@@ -8205,14 +8302,28 @@ app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ l
       }
     };
 
+    const mirrorUploadedWav = (srcWav: string) => {
+      for (const dstDir of ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']) {
+        try {
+          if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true, mode: 0o755 });
+          fs.copyFileSync(srcWav, path.join(dstDir, targetWavName));
+        } catch (_) {}
+      }
+      ensureNativeUlawFromWav(srcWav, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
+      for (const staleGsm of [
+        srcWav.replace(/\.wav$/i, '.gsm'),
+        path.join('/var/lib/asterisk/sounds/es/custom', `${cleanBaseName}.gsm`),
+        path.join('/var/lib/asterisk/sounds/en/custom', `${cleanBaseName}.gsm`),
+        path.join('/var/lib/asterisk/sounds', `${cleanBaseName}.gsm`),
+      ]) {
+        try { if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm); } catch (_) {}
+      }
+    };
+
     execFile('ffmpeg', ['-y', '-i', tempRawPath, '-ar', '8000', '-ac', '1', '-c:a', 'pcm_s16le', targetPath], (ffmpegErr) => {
       if (!ffmpegErr) {
         try { fs.unlinkSync(tempRawPath); } catch (e) {}
-        ensureNativeUlawFromWav(targetPath, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
-        try {
-          const staleGsm = targetPath.replace(/\.wav$/i, '.gsm');
-          if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm);
-        } catch (_) {}
+        mirrorUploadedWav(targetPath);
         console.log(`[AUDIO OK - ffmpeg] Convertido a ${targetPath} (+ .ulaw nativo)`);
         onAudioSavedSuccess('ffmpeg');
         return res.json({
@@ -8228,11 +8339,7 @@ app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ l
       execFile('sox', [tempRawPath, '-r', '8000', '-c', '1', '-b', '16', targetPath], (soxErr) => {
         if (!soxErr) {
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
-          ensureNativeUlawFromWav(targetPath, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
-          try {
-            const staleGsm = targetPath.replace(/\.wav$/i, '.gsm');
-            if (fs.existsSync(staleGsm)) fs.unlinkSync(staleGsm);
-          } catch (_) {}
+          mirrorUploadedWav(targetPath);
           console.log(`[AUDIO OK - sox] Convertido a ${targetPath} (+ .ulaw nativo)`);
           onAudioSavedSuccess('sox');
           return res.json({
@@ -8248,6 +8355,7 @@ app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ l
         try {
           fs.writeFileSync(targetPath, buffer, { mode: 0o644 });
           try { fs.unlinkSync(tempRawPath); } catch (e) {}
+          mirrorUploadedWav(targetPath);
           onAudioSavedSuccess('direct');
           return res.json({
             success: true,
@@ -10188,8 +10296,11 @@ write = all
 EOF_MGR
 chmod 640 /etc/asterisk/manager.conf 2>/dev/null || true
 
-echo "Recargando Asterisk PJSIP, Dialplan y Audio Natural..."
+echo "Recargando Asterisk PJSIP, RTP, AMD, Dialplan y Audio Natural..."
 asterisk -rx "database deltree voice_changer" 2>/dev/null || true
+asterisk -rx "module load res_timing_timerfd.so" 2>/dev/null || true
+asterisk -rx "module reload res_rtp_asterisk.so" 2>/dev/null || true
+asterisk -rx "module reload app_amd.so" 2>/dev/null || true
 asterisk -rx "pjsip reload" 2>/dev/null || true
 asterisk -rx "dialplan reload" 2>/dev/null || true
 asterisk -rx "manager reload" 2>/dev/null || true
@@ -11537,8 +11648,14 @@ app.post('/api/asterisk/amd/verify', requireAdminRole, async (req, res) => {
       } catch (_) {}
     }
 
+    ensureCustomAudioFilesExist();
+    ensureAudioCodecsAndRtpConfExists();
     ensureAmdConfExists();
     await executeAsteriskCommand(`database put ivr_vars amd_enabled "${isAmdEnabled ? '1' : '0'}"`).catch(() => {});
+
+    if (!detectedExternalIp) {
+      await resolvePublicIpv4Async().catch(() => '');
+    }
 
     const activeCarriers = lastSyncedCarriers.length > 0 ? lastSyncedCarriers : loadStoredCarriers();
     const activeExts = lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions();
@@ -11557,7 +11674,7 @@ app.post('/api/asterisk/amd/verify', requireAdminRole, async (req, res) => {
       const bin = getAsteriskBinary();
       await new Promise<void>((resolve) => {
         exec(
-          `"${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null${dialplanUpdated ? `; "${bin}" -rx "dialplan reload" 2>/dev/null` : ''}`,
+          `"${bin}" -rx "module reload res_rtp_asterisk.so" 2>/dev/null; "${bin}" -rx "module load app_amd.so" 2>/dev/null; "${bin}" -rx "module reload app_amd.so" 2>/dev/null${dialplanUpdated ? `; "${bin}" -rx "dialplan reload" 2>/dev/null` : ''}`,
           { timeout: 5000 },
           () => resolve()
         );
