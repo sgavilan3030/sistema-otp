@@ -217,12 +217,13 @@ export interface ProductionTarget {
 
 export interface MembershipHistoryEntry {
   id: string;
-  action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspended' | 'reactivated' | 'request_approved' | 'reset';
+  action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspended' | 'reactivated' | 'request_approved' | 'plan_update' | 'reset';
   weeksAdded?: number;
   daysAdded: number;
   previousExpiresAt?: string | null;
   newExpiresAt: string;
   amountPaid?: number;
+  licensedAgents?: number;
   paymentMethod?: string;
   reference?: string;
   notes?: string;
@@ -241,6 +242,13 @@ export interface MembershipInfo {
   lastRenewedAt?: string;
   totalWeeksAdded?: number;
   independent?: boolean;
+  planCategory?: 'individual' | 'call_center';
+  licensedAgents?: number;
+  initialActivationPriceUsd?: number;
+  lastPaidAmountUsd?: number;
+  totalPaidUsd?: number;
+  customMonthPriceUsd?: number;
+  customWeeklyPriceUsd?: number;
   history?: MembershipHistoryEntry[];
 }
 
@@ -263,6 +271,14 @@ export interface EffectiveMembershipStatus {
   totalWeeksAdded: number;
   canActivateWeeks: boolean;
   mustActivateInitialMonth: boolean;
+  planCategory?: 'individual' | 'call_center';
+  licensedAgents?: number;
+  activeAgentsCount?: number;
+  initialActivationPriceUsd?: number;
+  lastPaidAmountUsd?: number;
+  totalPaidUsd?: number;
+  customMonthPriceUsd?: number;
+  customWeeklyPriceUsd?: number;
   history: MembershipHistoryEntry[];
 }
 
@@ -273,6 +289,10 @@ export interface MembershipSettings {
   weekDays: number;
   initialMonthPriceUsd: number;
   weeklyPriceUsd: number;
+  callCenterBasePriceUsd?: number;
+  callCenterPerAgentMonthPriceUsd?: number;
+  callCenterPerAgentWeekPriceUsd?: number;
+  defaultCallCenterAgents?: number;
   allowSelfRenewalFromBalance: boolean;
 }
 
@@ -286,7 +306,9 @@ export interface MembershipRenewalRequest {
   planType: 'initial_month' | 'weekly_extension';
   weeksCount: number;
   daysCount: number;
+  licensedAgents?: number;
   estimatedPriceUsd: number;
+  approvedAmountUsd?: number;
   paymentMethod: string;
   reference: string;
   notes?: string;
@@ -623,6 +645,7 @@ export interface CallCenterTenant {
   assignedCallFlowMode?: CallFlowMode; // Plan de marcación principal asignado por el Administrador
   allowedCallFlowModes?: CallFlowMode[]; // Planes de marcación permitidos por el Administrador
   allowMassCalls?: boolean; // Acceso al Centro de Llamadas Masivas otorgado exclusivamente por el Administrador
+  licensedAgents?: number; // Cantidad de agentes contratados en el Plan Call Center
   membership?: MembershipInfo;
   effectiveMembership?: EffectiveMembershipStatus;
 }

@@ -359,17 +359,23 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
 
   const handleHangupCall = async (call: LiveCallItem) => {
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: call.number,
           channel: call.channel,
+          all: false,
         }),
       });
-      setLiveCalls((prev) => prev.filter((c) => c.id !== call.id && c.number !== call.number));
-      setFeedbackMsg({ text: `Llamada con ${call.number} finalizada correctamente.`, type: 'info' });
-      if (onRefreshLiveTelemetry) onRefreshLiveTelemetry();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setFeedbackMsg({ text: data?.error || `No se pudo colgar el canal (HTTP ${res.status}).`, type: 'error' });
+      } else {
+        setLiveCalls((prev) => prev.filter((c) => c.id !== call.id && c.number !== call.number));
+        setFeedbackMsg({ text: `Llamada con ${call.number} finalizada correctamente.`, type: 'info' });
+        if (onRefreshLiveTelemetry) onRefreshLiveTelemetry();
+      }
     } catch (_) {
       setFeedbackMsg({ text: 'Error al colgar canal en Asterisk.', type: 'error' });
     }

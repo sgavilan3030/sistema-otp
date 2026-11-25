@@ -274,6 +274,10 @@ interface ServerMembershipSettings {
   demoDays: number;
   initialMonthPriceUsd: number;
   weeklyPriceUsd: number;
+  callCenterBasePriceUsd: number;
+  callCenterPerAgentMonthPriceUsd: number;
+  callCenterPerAgentWeekPriceUsd: number;
+  defaultCallCenterAgents: number;
   allowSelfRenewalFromBalance: boolean;
 }
 
@@ -284,8 +288,83 @@ const DEFAULT_MEMBERSHIP_SETTINGS: ServerMembershipSettings = {
   demoDays: 1,
   initialMonthPriceUsd: 150,
   weeklyPriceUsd: 45,
+  callCenterBasePriceUsd: 0,
+  callCenterPerAgentMonthPriceUsd: 25,
+  callCenterPerAgentWeekPriceUsd: 8,
+  defaultCallCenterAgents: 5,
   allowSelfRenewalFromBalance: false,
 };
+
+function roundUsd(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function sanitizeOptionalUsdAmount(val: unknown): { valid: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null || val === '') return { valid: true, value: undefined };
+  const num = Number(val);
+  if (!Number.isFinite(num) || num < 0 || num > 1000000) {
+    return { valid: false, error: 'El monto en USD debe ser un número válido entre 0 y 1,000,000.' };
+  }
+  return { valid: true, value: roundUsd(num) };
+}
+
+function sanitizeOptionalAgentCount(val: unknown): { valid: boolean; value?: number; error?: string } {
+  if (val === undefined || val === null || val === '') return { valid: true, value: undefined };
+  const num = Number(val);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 1 || num > 1000) {
+    return { valid: false, error: 'La cantidad de agentes debe ser un número entero entre 1 y 1000.' };
+  }
+  return { valid: true, value: num };
+}
+
+function countActiveAgentsForTenant(tenantId: string, usersList?: any[]): number {
+  if (!tenantId) return 0;
+  const list = Array.isArray(usersList) ? usersList : loadStoredUsers();
+  return list.filter(
+    (u: any) => u && String(u.tenantId || '') === String(tenantId) && !isGlobalAdminUser(u)
+  ).length;
+}
+
+function calculateSuggestedMembershipPrice(
+  scope: 'tenant' | 'user',
+  action: 'initial_month' | 'weekly_extension',
+  membership: any,
+  settings: ServerMembershipSettings,
+  weeksCount = 1,
+  overrideAgents?: number
+): number {
+  if (scope === 'tenant') {
+    const agents = Math.max(
+      1,
+      Math.floor(Number(overrideAgents ?? membership?.licensedAgents ?? settings.defaultCallCenterAgents ?? 5) || 5)
+    );
+    if (action === 'initial_month') {
+      if (typeof membership?.customMonthPriceUsd === 'number' && Number.isFinite(membership.customMonthPriceUsd) && overrideAgents === undefined) {
+        return roundUsd(Math.max(0, membership.customMonthPriceUsd));
+      }
+      return roundUsd(
+        Math.max(0, (Number(settings.callCenterBasePriceUsd) || 0) + agents * (Number(settings.callCenterPerAgentMonthPriceUsd) || 0))
+      );
+    }
+    const w = Math.max(1, Math.floor(weeksCount || 1));
+    if (typeof membership?.customWeeklyPriceUsd === 'number' && Number.isFinite(membership.customWeeklyPriceUsd) && overrideAgents === undefined) {
+      return roundUsd(Math.max(0, w * membership.customWeeklyPriceUsd));
+    }
+    return roundUsd(Math.max(0, w * agents * (Number(settings.callCenterPerAgentWeekPriceUsd) || 0)));
+  }
+
+  if (action === 'initial_month') {
+    if (typeof membership?.customMonthPriceUsd === 'number' && Number.isFinite(membership.customMonthPriceUsd)) {
+      return roundUsd(Math.max(0, membership.customMonthPriceUsd));
+    }
+    return roundUsd(Math.max(0, Number(settings.initialMonthPriceUsd) || 0));
+  }
+  const w = Math.max(1, Math.floor(weeksCount || 1));
+  if (typeof membership?.customWeeklyPriceUsd === 'number' && Number.isFinite(membership.customWeeklyPriceUsd)) {
+    return roundUsd(Math.max(0, w * membership.customWeeklyPriceUsd));
+  }
+  return roundUsd(Math.max(0, w * (Number(settings.weeklyPriceUsd) || 0)));
+}
 
 function loadMembershipSettings(): ServerMembershipSettings {
   try {
@@ -297,8 +376,12 @@ function loadMembershipSettings(): ServerMembershipSettings {
           initialMonthDays: Math.max(1, Math.floor(Number(raw.initialMonthDays) || 30)),
           weekDays: Math.max(1, Math.floor(Number(raw.weekDays) || 7)),
           demoDays: Math.max(1, Math.min(30, Math.floor(Number(raw.demoDays) || 1))),
-          initialMonthPriceUsd: Math.max(0, Number(raw.initialMonthPriceUsd ?? 150)),
-          weeklyPriceUsd: Math.max(0, Number(raw.weeklyPriceUsd ?? 45)),
+          initialMonthPriceUsd: roundUsd(Math.max(0, Number(raw.initialMonthPriceUsd ?? 150))),
+          weeklyPriceUsd: roundUsd(Math.max(0, Number(raw.weeklyPriceUsd ?? 45))),
+          callCenterBasePriceUsd: roundUsd(Math.max(0, Number(raw.callCenterBasePriceUsd ?? 0))),
+          callCenterPerAgentMonthPriceUsd: roundUsd(Math.max(0, Number(raw.callCenterPerAgentMonthPriceUsd ?? 25))),
+          callCenterPerAgentWeekPriceUsd: roundUsd(Math.max(0, Number(raw.callCenterPerAgentWeekPriceUsd ?? 8))),
+          defaultCallCenterAgents: Math.max(1, Math.min(1000, Math.floor(Number(raw.defaultCallCenterAgents ?? 5) || 5))),
           allowSelfRenewalFromBalance: Boolean(raw.allowSelfRenewalFromBalance),
         };
       }
@@ -317,8 +400,12 @@ function saveMembershipSettings(nextSettings: Partial<ServerMembershipSettings>)
     initialMonthDays: Math.max(1, Math.min(365, Math.floor(Number(nextSettings.initialMonthDays ?? current.initialMonthDays) || 30))),
     weekDays: Math.max(1, Math.min(31, Math.floor(Number(nextSettings.weekDays ?? current.weekDays) || 7))),
     demoDays: Math.max(1, Math.min(30, Math.floor(Number(nextSettings.demoDays ?? current.demoDays) || 1))),
-    initialMonthPriceUsd: Math.max(0, Number(nextSettings.initialMonthPriceUsd ?? current.initialMonthPriceUsd)),
-    weeklyPriceUsd: Math.max(0, Number(nextSettings.weeklyPriceUsd ?? current.weeklyPriceUsd)),
+    initialMonthPriceUsd: roundUsd(Math.max(0, Math.min(1000000, Number(nextSettings.initialMonthPriceUsd ?? current.initialMonthPriceUsd) || 0))),
+    weeklyPriceUsd: roundUsd(Math.max(0, Math.min(1000000, Number(nextSettings.weeklyPriceUsd ?? current.weeklyPriceUsd) || 0))),
+    callCenterBasePriceUsd: roundUsd(Math.max(0, Math.min(1000000, Number(nextSettings.callCenterBasePriceUsd ?? current.callCenterBasePriceUsd) || 0))),
+    callCenterPerAgentMonthPriceUsd: roundUsd(Math.max(0, Math.min(1000000, Number(nextSettings.callCenterPerAgentMonthPriceUsd ?? current.callCenterPerAgentMonthPriceUsd) || 0))),
+    callCenterPerAgentWeekPriceUsd: roundUsd(Math.max(0, Math.min(1000000, Number(nextSettings.callCenterPerAgentWeekPriceUsd ?? current.callCenterPerAgentWeekPriceUsd) || 0))),
+    defaultCallCenterAgents: Math.max(1, Math.min(1000, Math.floor(Number(nextSettings.defaultCallCenterAgents ?? current.defaultCallCenterAgents) || 5))),
     allowSelfRenewalFromBalance:
       typeof nextSettings.allowSelfRenewalFromBalance === 'boolean'
         ? nextSettings.allowSelfRenewalFromBalance
@@ -351,7 +438,9 @@ function evaluateMembershipRecord(
   settings: ServerMembershipSettings,
   scope: 'tenant' | 'user',
   targetId: string,
-  targetName: string
+  targetName: string,
+  activeAgentsCount?: number,
+  tenantObj?: any
 ) {
   const now = Date.now();
   const m = rawMembership && typeof rawMembership === 'object' ? rawMembership : null;
@@ -378,6 +467,43 @@ function evaluateMembershipRecord(
   const remainingHours = Math.floor((remainingMs % 86400000) / 3600000);
   const isActive = settings.enforceMembershipSystem ? status === 'active' : status !== 'suspended';
 
+  const history: any[] = Array.isArray(m?.history) ? m.history : [];
+  const paidEntries = history.filter((h) => typeof h?.amountPaid === 'number' && Number.isFinite(h.amountPaid) && h.action !== 'demo_1_day');
+  const firstInitialPaidEntry = [...paidEntries]
+    .reverse()
+    .find((h) => h.action === 'initial_month' || h.action === 'request_approved');
+  const latestPaidEntry = paidEntries[0];
+  const computedTotalPaid = roundUsd(
+    paidEntries.reduce((sum, h) => sum + Math.max(0, Number(h.amountPaid) || 0), 0)
+  );
+
+  const initialActivationPriceUsd =
+    typeof m?.initialActivationPriceUsd === 'number' && Number.isFinite(m.initialActivationPriceUsd)
+      ? roundUsd(m.initialActivationPriceUsd)
+      : firstInitialPaidEntry
+      ? roundUsd(Number(firstInitialPaidEntry.amountPaid) || 0)
+      : undefined;
+
+  const lastPaidAmountUsd =
+    typeof m?.lastPaidAmountUsd === 'number' && Number.isFinite(m.lastPaidAmountUsd)
+      ? roundUsd(m.lastPaidAmountUsd)
+      : latestPaidEntry
+      ? roundUsd(Number(latestPaidEntry.amountPaid) || 0)
+      : undefined;
+
+  const totalPaidUsd =
+    typeof m?.totalPaidUsd === 'number' && Number.isFinite(m.totalPaidUsd)
+      ? roundUsd(m.totalPaidUsd)
+      : computedTotalPaid;
+
+  const rawLicensedAgents = m?.licensedAgents ?? tenantObj?.licensedAgents;
+  const licensedAgents =
+    scope === 'tenant'
+      ? (typeof rawLicensedAgents === 'number' && Number.isFinite(rawLicensedAgents) && rawLicensedAgents > 0
+          ? Math.floor(rawLicensedAgents)
+          : undefined)
+      : undefined;
+
   return {
     enforceSystem: settings.enforceMembershipSystem,
     exempt: false,
@@ -397,14 +523,29 @@ function evaluateMembershipRecord(
     totalWeeksAdded: Number(m?.totalWeeksAdded) || 0,
     canActivateWeeks: initialMonthActivated,
     mustActivateInitialMonth: !initialMonthActivated,
-    history: Array.isArray(m?.history) ? m.history : [],
+    planCategory: scope === 'tenant' ? 'call_center' as const : 'individual' as const,
+    licensedAgents,
+    activeAgentsCount: scope === 'tenant' ? (typeof activeAgentsCount === 'number' ? activeAgentsCount : 0) : undefined,
+    initialActivationPriceUsd,
+    lastPaidAmountUsd,
+    totalPaidUsd,
+    customMonthPriceUsd:
+      typeof m?.customMonthPriceUsd === 'number' && Number.isFinite(m.customMonthPriceUsd)
+        ? roundUsd(m.customMonthPriceUsd)
+        : undefined,
+    customWeeklyPriceUsd:
+      typeof m?.customWeeklyPriceUsd === 'number' && Number.isFinite(m.customWeeklyPriceUsd)
+        ? roundUsd(m.customWeeklyPriceUsd)
+        : undefined,
+    history,
   };
 }
 
 function resolveEffectiveMembershipForUser(
   user: any,
   tenantsList?: any[],
-  settings?: ServerMembershipSettings
+  settings?: ServerMembershipSettings,
+  usersList?: any[]
 ) {
   const s = settings || loadMembershipSettings();
   if (!user || isGlobalAdminUser(user)) {
@@ -433,12 +574,15 @@ function resolveEffectiveMembershipForUser(
     const tList = Array.isArray(tenantsList) ? tenantsList : loadStoredTenants();
     const matchedTenant = tList.find((t: any) => t && String(t.id) === String(user.tenantId));
     if (matchedTenant) {
+      const activeAgents = countActiveAgentsForTenant(String(matchedTenant.id), usersList);
       return evaluateMembershipRecord(
         matchedTenant.membership,
         s,
         'tenant',
         String(matchedTenant.id),
-        String(matchedTenant.name || matchedTenant.code || matchedTenant.id)
+        String(matchedTenant.name || matchedTenant.code || matchedTenant.id),
+        activeAgents,
+        matchedTenant
       );
     }
   }
@@ -455,9 +599,14 @@ function resolveEffectiveMembershipForUser(
 function applyMembershipActivation(
   currentMembership: any,
   params: {
-    action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspend' | 'reactivate' | 'reset';
+    action: 'initial_month' | 'demo_1_day' | 'weekly_extension' | 'suspend' | 'reactivate' | 'plan_update' | 'reset';
+    scope?: 'tenant' | 'user';
     weeksCount?: number;
     amountPaid?: number;
+    licensedAgents?: number;
+    customMonthPriceUsd?: number;
+    customWeeklyPriceUsd?: number;
+    clearCustomPrices?: boolean;
     paymentMethod?: string;
     reference?: string;
     notes?: string;
@@ -467,12 +616,14 @@ function applyMembershipActivation(
   settings?: ServerMembershipSettings
 ): { ok: boolean; error?: string; membership?: any } {
   const s = settings || loadMembershipSettings();
+  const scope: 'tenant' | 'user' = params.scope === 'tenant' ? 'tenant' : 'user';
   const prev = currentMembership && typeof currentMembership === 'object' ? { ...currentMembership } : {
     status: 'unactivated',
     initialMonthActivated: false,
     isDemo: false,
     demoUsed: false,
     totalWeeksAdded: 0,
+    totalPaidUsd: 0,
     history: [],
   };
   const prevHistory = Array.isArray(prev.history) ? [...prev.history] : [];
@@ -480,6 +631,27 @@ function applyMembershipActivation(
   const nowIso = new Date(now).toISOString();
   const prevExpiresMs = prev.expiresAt ? Date.parse(String(prev.expiresAt)) : NaN;
   const baseMs = !isNaN(prevExpiresMs) && prevExpiresMs > now ? prevExpiresMs : now;
+
+  const resolvedAgents =
+    scope === 'tenant'
+      ? (typeof params.licensedAgents === 'number' && Number.isFinite(params.licensedAgents) && params.licensedAgents >= 1
+          ? Math.floor(params.licensedAgents)
+          : (typeof prev.licensedAgents === 'number' && prev.licensedAgents >= 1
+              ? Math.floor(prev.licensedAgents)
+              : undefined))
+      : undefined;
+
+  const nextCustomMonth = params.clearCustomPrices
+    ? undefined
+    : (typeof params.customMonthPriceUsd === 'number' && Number.isFinite(params.customMonthPriceUsd)
+        ? roundUsd(Math.max(0, params.customMonthPriceUsd))
+        : prev.customMonthPriceUsd);
+
+  const nextCustomWeekly = params.clearCustomPrices
+    ? undefined
+    : (typeof params.customWeeklyPriceUsd === 'number' && Number.isFinite(params.customWeeklyPriceUsd)
+        ? roundUsd(Math.max(0, params.customWeeklyPriceUsd))
+        : prev.customWeeklyPriceUsd);
 
   if (params.action === 'demo_1_day') {
     if (prev.initialMonthActivated) {
@@ -497,6 +669,7 @@ function applyMembershipActivation(
       previousExpiresAt: prev.expiresAt || null,
       newExpiresAt: newExpiresIso,
       amountPaid: 0,
+      ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
       paymentMethod: 'demo',
       reference: params.reference || 'DEMO',
       notes: params.notes || `Demo de Prueba (${demoDays} ${demoDays === 1 ? 'Día' : 'Días'})`,
@@ -515,6 +688,8 @@ function applyMembershipActivation(
         expiresAt: newExpiresIso,
         lastRenewedAt: nowIso,
         totalWeeksAdded: Number(prev.totalWeeksAdded) || 0,
+        planCategory: scope === 'tenant' ? 'call_center' : 'individual',
+        ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
         history: [entry, ...prevHistory].slice(0, 60),
       },
     };
@@ -523,32 +698,60 @@ function applyMembershipActivation(
   if (params.action === 'initial_month') {
     const daysToAdd = s.initialMonthDays;
     const newExpiresIso = new Date(baseMs + daysToAdd * 86400000).toISOString();
+    const suggested = calculateSuggestedMembershipPrice(scope, 'initial_month', prev, s, 1, resolvedAgents);
+    const chargedAmount =
+      typeof params.amountPaid === 'number' && Number.isFinite(params.amountPaid)
+        ? roundUsd(Math.max(0, params.amountPaid))
+        : suggested;
+    const prevTotal =
+      typeof prev.totalPaidUsd === 'number' && Number.isFinite(prev.totalPaidUsd)
+        ? prev.totalPaidUsd
+        : prevHistory
+            .filter((h) => typeof h?.amountPaid === 'number' && h.action !== 'demo_1_day')
+            .reduce((acc, h) => acc + Math.max(0, Number(h.amountPaid) || 0), 0);
+    const nextTotalPaid = roundUsd(prevTotal + chargedAmount);
+
     const entry = {
       id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
       action: params.requestApproved ? 'request_approved' : 'initial_month',
       daysAdded: daysToAdd,
       previousExpiresAt: prev.expiresAt || null,
       newExpiresAt: newExpiresIso,
-      amountPaid: typeof params.amountPaid === 'number' ? params.amountPaid : s.initialMonthPriceUsd,
+      amountPaid: chargedAmount,
+      ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
       paymentMethod: params.paymentMethod || 'admin',
       reference: params.reference || '',
-      notes: params.notes || `Activación Membresía Principal de 1 Mes (${daysToAdd} días)`,
+      notes:
+        params.notes ||
+        (scope === 'tenant' && resolvedAgents
+          ? `Activación Plan Call Center (${resolvedAgents} agentes, ${daysToAdd} días) — $${chargedAmount} USD`
+          : `Activación Membresía Principal de 1 Mes (${daysToAdd} días) — $${chargedAmount} USD`),
       performedBy,
       timestamp: nowIso,
     };
+    const nextMembership: any = {
+      ...prev,
+      status: 'active',
+      initialMonthActivated: true,
+      isDemo: false,
+      initialActivatedAt: prev.initialActivatedAt || nowIso,
+      expiresAt: newExpiresIso,
+      lastRenewedAt: nowIso,
+      totalWeeksAdded: Number(prev.totalWeeksAdded) || 0,
+      planCategory: scope === 'tenant' ? 'call_center' : 'individual',
+      initialActivationPriceUsd: chargedAmount,
+      lastPaidAmountUsd: chargedAmount,
+      totalPaidUsd: nextTotalPaid,
+      history: [entry, ...prevHistory].slice(0, 60),
+    };
+    if (resolvedAgents) nextMembership.licensedAgents = resolvedAgents;
+    if (nextCustomMonth !== undefined) nextMembership.customMonthPriceUsd = nextCustomMonth;
+    else delete nextMembership.customMonthPriceUsd;
+    if (nextCustomWeekly !== undefined) nextMembership.customWeeklyPriceUsd = nextCustomWeekly;
+    else delete nextMembership.customWeeklyPriceUsd;
     return {
       ok: true,
-      membership: {
-        ...prev,
-        status: 'active',
-        initialMonthActivated: true,
-        isDemo: false,
-        initialActivatedAt: prev.initialActivatedAt || nowIso,
-        expiresAt: newExpiresIso,
-        lastRenewedAt: nowIso,
-        totalWeeksAdded: Number(prev.totalWeeksAdded) || 0,
-        history: [entry, ...prevHistory].slice(0, 60),
-      },
+      membership: nextMembership,
     };
   }
 
@@ -568,6 +771,19 @@ function applyMembershipActivation(
     }
     const daysToAdd = weeks * s.weekDays;
     const newExpiresIso = new Date(baseMs + daysToAdd * 86400000).toISOString();
+    const suggested = calculateSuggestedMembershipPrice(scope, 'weekly_extension', prev, s, weeks, resolvedAgents);
+    const chargedAmount =
+      typeof params.amountPaid === 'number' && Number.isFinite(params.amountPaid)
+        ? roundUsd(Math.max(0, params.amountPaid))
+        : suggested;
+    const prevTotal =
+      typeof prev.totalPaidUsd === 'number' && Number.isFinite(prev.totalPaidUsd)
+        ? prev.totalPaidUsd
+        : prevHistory
+            .filter((h) => typeof h?.amountPaid === 'number' && h.action !== 'demo_1_day')
+            .reduce((acc, h) => acc + Math.max(0, Number(h.amountPaid) || 0), 0);
+    const nextTotalPaid = roundUsd(prevTotal + chargedAmount);
+
     const entry = {
       id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
       action: params.requestApproved ? 'request_approved' : 'weekly_extension',
@@ -575,25 +791,72 @@ function applyMembershipActivation(
       daysAdded: daysToAdd,
       previousExpiresAt: prev.expiresAt || null,
       newExpiresAt: newExpiresIso,
-      amountPaid: typeof params.amountPaid === 'number' ? params.amountPaid : weeks * s.weeklyPriceUsd,
+      amountPaid: chargedAmount,
+      ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
       paymentMethod: params.paymentMethod || 'admin',
       reference: params.reference || '',
-      notes: params.notes || `Extensión de +${weeks} ${weeks === 1 ? 'semana' : 'semanas'} (${daysToAdd} días)`,
+      notes:
+        params.notes ||
+        (scope === 'tenant' && resolvedAgents
+          ? `Extensión Call Center +${weeks} ${weeks === 1 ? 'sem' : 'sems'} (${resolvedAgents} agentes, ${daysToAdd}d) — $${chargedAmount} USD`
+          : `Extensión de +${weeks} ${weeks === 1 ? 'semana' : 'semanas'} (${daysToAdd} días) — $${chargedAmount} USD`),
       performedBy,
       timestamp: nowIso,
     };
+    const nextMembership: any = {
+      ...prev,
+      status: 'active',
+      initialMonthActivated: true,
+      isDemo: false,
+      expiresAt: newExpiresIso,
+      lastRenewedAt: nowIso,
+      totalWeeksAdded: (Number(prev.totalWeeksAdded) || 0) + weeks,
+      planCategory: scope === 'tenant' ? 'call_center' : 'individual',
+      lastPaidAmountUsd: chargedAmount,
+      totalPaidUsd: nextTotalPaid,
+      history: [entry, ...prevHistory].slice(0, 60),
+    };
+    if (resolvedAgents) nextMembership.licensedAgents = resolvedAgents;
+    if (nextCustomMonth !== undefined) nextMembership.customMonthPriceUsd = nextCustomMonth;
+    else delete nextMembership.customMonthPriceUsd;
+    if (nextCustomWeekly !== undefined) nextMembership.customWeeklyPriceUsd = nextCustomWeekly;
+    else delete nextMembership.customWeeklyPriceUsd;
     return {
       ok: true,
-      membership: {
-        ...prev,
-        status: 'active',
-        initialMonthActivated: true,
-        isDemo: false,
-        expiresAt: newExpiresIso,
-        lastRenewedAt: nowIso,
-        totalWeeksAdded: (Number(prev.totalWeeksAdded) || 0) + weeks,
-        history: [entry, ...prevHistory].slice(0, 60),
-      },
+      membership: nextMembership,
+    };
+  }
+
+  if (params.action === 'plan_update') {
+    const descParts: string[] = [];
+    if (scope === 'tenant' && resolvedAgents) descParts.push(`${resolvedAgents} agentes`);
+    if (nextCustomMonth !== undefined) descParts.push(`1er Mes $${nextCustomMonth} USD`);
+    if (nextCustomWeekly !== undefined) descParts.push(`Semanal $${nextCustomWeekly} USD`);
+    if (params.clearCustomPrices) descParts.push('Tarifas personalizadas restablecidas a estándar');
+    const entry = {
+      id: `mem-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      action: 'plan_update',
+      daysAdded: 0,
+      previousExpiresAt: prev.expiresAt || null,
+      newExpiresAt: prev.expiresAt || nowIso,
+      ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
+      notes: params.notes || `Actualización de plan/precios (${descParts.join(' · ') || 'Configuración'})`,
+      performedBy,
+      timestamp: nowIso,
+    };
+    const nextMembership: any = {
+      ...prev,
+      planCategory: scope === 'tenant' ? 'call_center' : 'individual',
+      history: [entry, ...prevHistory].slice(0, 60),
+    };
+    if (resolvedAgents) nextMembership.licensedAgents = resolvedAgents;
+    if (nextCustomMonth !== undefined) nextMembership.customMonthPriceUsd = nextCustomMonth;
+    else delete nextMembership.customMonthPriceUsd;
+    if (nextCustomWeekly !== undefined) nextMembership.customWeeklyPriceUsd = nextCustomWeekly;
+    else delete nextMembership.customWeeklyPriceUsd;
+    return {
+      ok: true,
+      membership: nextMembership,
     };
   }
 
@@ -665,6 +928,9 @@ function applyMembershipActivation(
         isDemo: false,
         demoUsed: false,
         totalWeeksAdded: 0,
+        planCategory: scope === 'tenant' ? 'call_center' : 'individual',
+        ...(resolvedAgents ? { licensedAgents: resolvedAgents } : {}),
+        ...(typeof prev.totalPaidUsd === 'number' ? { totalPaidUsd: prev.totalPaidUsd } : {}),
         history: [entry, ...prevHistory].slice(0, 60),
       },
     };
@@ -1409,6 +1675,7 @@ export interface CallState {
   trunk?: string;
   callerId?: string;
   tenantId?: string;
+  userId?: string;
   isOnHold?: boolean;
   holdStartedAt?: number;
   mode?: string;
@@ -2975,9 +3242,18 @@ function isMassCallsAllowedForUser(user?: any, tenant?: any): boolean {
 app.get('/api/tenants', (req, res) => {
   const authUser = (req as any).authUser;
   const settings = loadMembershipSettings();
+  const usersList = loadStoredUsers();
   const tenants = loadStoredTenants().map((t: any) => ({
     ...t,
-    effectiveMembership: evaluateMembershipRecord(t?.membership, settings, 'tenant', String(t?.id || ''), String(t?.name || t?.code || '')),
+    effectiveMembership: evaluateMembershipRecord(
+      t?.membership,
+      settings,
+      'tenant',
+      String(t?.id || ''),
+      String(t?.name || t?.code || ''),
+      countActiveAgentsForTenant(String(t?.id || ''), usersList),
+      t
+    ),
   }));
   if (isGlobalAdminUser(authUser)) {
     return res.json({ success: true, tenants });
@@ -3001,8 +3277,28 @@ app.post('/api/tenants', requireGlobalAdmin, async (req, res) => {
         if (!t || typeof t !== 'object') return t;
         const { effectiveMembership: _em, ...cleanTenant } = t;
         const prevT = t.id ? prevById.get(String(t.id)) : null;
+        const agentCheck = sanitizeOptionalAgentCount(cleanTenant.licensedAgents);
+        const normalizedAgents =
+          agentCheck.valid && agentCheck.value !== undefined
+            ? agentCheck.value
+            : (typeof prevT?.licensedAgents === 'number' ? prevT.licensedAgents : prevT?.membership?.licensedAgents);
         if (prevT?.membership) {
-          cleanTenant.membership = prevT.membership;
+          cleanTenant.membership = {
+            ...prevT.membership,
+            ...(normalizedAgents ? { licensedAgents: normalizedAgents } : {}),
+            planCategory: 'call_center',
+          };
+        } else if (normalizedAgents) {
+          cleanTenant.membership = {
+            status: 'unactivated',
+            initialMonthActivated: false,
+            planCategory: 'call_center',
+            licensedAgents: normalizedAgents,
+            history: [],
+          };
+        }
+        if (normalizedAgents) {
+          cleanTenant.licensedAgents = normalizedAgents;
         }
         return cleanTenant;
       });
@@ -7568,6 +7864,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       trunk: cleanCarrier || 'auto',
       callerId: effectiveCidNum || 'Asignado por Proveedor',
       tenantId: tenantResolution.tenant?.id,
+      userId: effectiveUserId || authUser?.id,
       mode: enforcedMode,
       startTime: Date.now(),
       timestamp: Date.now(),
@@ -8945,7 +9242,12 @@ app.post('/api/app/state', (req, res) => {
     if (authIsGlobalAdmin) {
       fs.writeFileSync(APP_STATE_FILE, JSON.stringify(stateWithTimestamp, null, 2), 'utf-8');
       if (Array.isArray(state.users) && state.users.length > 0) {
-        saveStoredUsers(state.users);
+        const usersWithoutClientMembership = state.users.map((u: any) => {
+          if (!u || typeof u !== 'object') return u;
+          const { membership: _m, effectiveMembership: _em, ...rest } = u;
+          return rest;
+        });
+        saveStoredUsers(usersWithoutClientMembership);
         lastSyncedUsers = loadStoredUsers();
       }
     }
@@ -10541,8 +10843,15 @@ app.all(['/api/asterisk/otp/records/clear', '/api/asterisk/otp/records'], async 
 function canUserAccessCall(authUser: any, call: any): boolean {
   if (!authUser) return false;
   if (isGlobalAdminUser(authUser)) return true;
-  if (authUser.tenantId && call?.tenantId && String(call.tenantId) !== String(authUser.tenantId)) {
-    return false;
+  if (authUser.tenantId) {
+    if (call?.tenantId && String(call.tenantId) !== String(authUser.tenantId)) {
+      return false;
+    }
+  } else {
+    if (call?.tenantId) return false;
+    if (call?.userId && authUser.id && String(call.userId) !== String(authUser.id)) {
+      return false;
+    }
   }
   if (!isAdminUser(authUser) && Array.isArray(authUser.assignedExtensions) && authUser.assignedExtensions.length > 0) {
     const allowed = new Set(authUser.assignedExtensions.map(String));
@@ -10731,6 +11040,7 @@ app.all('/api/asterisk/call/status/update', requireInternalOrGlobalAdmin, (req, 
       pressed1At,
       duration,
       tenantId: tenant || existing?.tenantId,
+      userId: existing?.userId,
       mode: modeParam || existing?.mode,
       cancelDecision: (effectiveStatus === 'cancel_valid' || effectiveStatus === 'otp_valid')
         ? 'valid'
@@ -11628,165 +11938,360 @@ app.post('/api/asterisk/audio/sync-hold-music', requireAdminRole, async (req, re
   }
 });
 
-// Endpoint to hangup an active call (individual or all mass campaign calls)
+// Endpoint to hangup an active call (individual or scoped/all mass campaign calls)
 app.post('/api/asterisk/call/hangup', async (req, res) => {
   const authUser = (req as any).authUser;
-  const { channel, number, destination, all } = req.body;
+  const { channel, number, destination, all } = req.body || {};
+  const authIsGlobalAdmin = isGlobalAdminUser(authUser);
+  const isAllRequest = all === true || all === 'true';
+  const ASTERISK_CHAN_RE = /^(?:Local|PJSIP|SIP|DAHDI|Async)\/[A-Za-z0-9_.\-@\/;]+$/;
+
   try {
-    if (all && !isAdminUser(authUser)) {
-      return res.status(403).json({ success: false, error: 'Solo administradores o supervisores pueden colgar todas las llamadas.' });
-    }
     const rawNum = String(number || destination || '').trim().replace(/[^0-9]/g, '');
     const clean10 = rawNum.length === 11 && rawNum.startsWith('1') ? rawNum.substring(1) : rawNum;
     const formattedDest = clean10.length === 10 ? `1${clean10}` : clean10;
+    const rawChanStr = typeof channel === 'string' ? channel.trim() : '';
+    const sanitizedReqChannel = rawChanStr && ASTERISK_CHAN_RE.test(rawChanStr) ? rawChanStr : '';
 
-    if (!all && rawNum) {
-      const ownedCheck = callStatusStore.get(clean10) || callStatusStore.get(formattedDest) || callStatusStore.get(rawNum);
-      if (ownedCheck && !canUserAccessCall(authUser, ownedCheck)) {
-        return res.status(403).json({ success: false, error: 'No autorizado para colgar llamadas de otro Call Center o extensión.' });
+    if (!isAllRequest && !rawNum && !sanitizedReqChannel) {
+      return res.status(400).json({
+        success: false,
+        error: 'Debes indicar el número o canal de la llamada que deseas colgar.',
+      });
+    }
+
+    const existingByNumber =
+      (clean10 && callStatusStore.get(clean10)) ||
+      (formattedDest && callStatusStore.get(formattedDest)) ||
+      (rawNum && callStatusStore.get(rawNum)) ||
+      undefined;
+
+    // Ownership checks for individual hangup requests
+    if (!isAllRequest && !authIsGlobalAdmin) {
+      if (existingByNumber && !canUserAccessCall(authUser, existingByNumber)) {
+        return res.status(403).json({
+          success: false,
+          error: 'No autorizado para colgar llamadas de otro Call Center o extensión.',
+        });
+      }
+      if (sanitizedReqChannel) {
+        const chanBase = sanitizedReqChannel.replace(/\/n$/, '').replace(/;[12]$/, '');
+        const matchingOwnedCalls = Array.from(callStatusStore.values()).filter((c) => {
+          const ch = String(c.channel || '');
+          const bch = String(c.bridgedChannel || '');
+          return (
+            ch === sanitizedReqChannel ||
+            bch === sanitizedReqChannel ||
+            (chanBase && (ch.startsWith(chanBase) || bch.startsWith(chanBase)))
+          );
+        });
+        if (matchingOwnedCalls.some((c) => !canUserAccessCall(authUser, c))) {
+          return res.status(403).json({
+            success: false,
+            error: 'No autorizado para colgar llamadas de otro Call Center o extensión.',
+          });
+        }
+        const pjsipExtMatch = sanitizedReqChannel.match(/^PJSIP\/([A-Za-z0-9_.\-]+?)(?:-[0-9a-f]+)?$/i);
+        if (
+          pjsipExtMatch &&
+          !isAdminUser(authUser) &&
+          Array.isArray(authUser?.assignedExtensions) &&
+          authUser.assignedExtensions.length > 0 &&
+          !authUser.assignedExtensions.map(String).includes(pjsipExtMatch[1])
+        ) {
+          return res.status(403).json({
+            success: false,
+            error: 'No autorizado para colgar canales de otra extensión.',
+          });
+        }
+      }
+    }
+
+    // Determine target numbers & channel prefixes strictly within the caller's authorized scope
+    const targetNumberKeys = new Set<string>();
+    const targetChannelHints = new Set<string>();
+    const addNumberVariants = (numVal?: string) => {
+      const d = String(numVal || '').trim().replace(/[^0-9]/g, '');
+      if (!d) return;
+      const d10 = d.length === 11 && d.startsWith('1') ? d.substring(1) : d;
+      const d11 = d10.length === 10 ? `1${d10}` : d10;
+      targetNumberKeys.add(d);
+      if (d10) targetNumberKeys.add(d10);
+      if (d11) targetNumberKeys.add(d11);
+    };
+    const addChannelHint = (chVal?: string) => {
+      const c = String(chVal || '').trim();
+      if (!c || !ASTERISK_CHAN_RE.test(c)) return;
+      targetChannelHints.add(c);
+      if (c.endsWith('/n')) targetChannelHints.add(c.replace(/\/n$/, ''));
+      if (c.includes(';1')) targetChannelHints.add(c.replace(';1', ';2'));
+      if (c.includes(';2')) targetChannelHints.add(c.replace(';2', ';1'));
+    };
+
+    if (isAllRequest && !authIsGlobalAdmin) {
+      // Scoped "hangup all": ONLY calls and extensions owned by this client/agent/tenant
+      for (const call of callStatusStore.values()) {
+        if (call.status !== 'ended' && canUserAccessCall(authUser, call)) {
+          addNumberVariants(call.number);
+          addChannelHint(call.channel);
+          addChannelHint(call.bridgedChannel);
+        }
+      }
+      if (rawNum && (!existingByNumber || canUserAccessCall(authUser, existingByNumber))) {
+        addNumberVariants(rawNum);
+      }
+      if (sanitizedReqChannel) {
+        addChannelHint(sanitizedReqChannel);
+      }
+      if (Array.isArray(authUser?.assignedExtensions)) {
+        authUser.assignedExtensions.forEach((ext: any) => {
+          const cleanExt = String(ext || '').trim();
+          if (cleanExt) targetChannelHints.add(`PJSIP/${cleanExt}`);
+        });
+      }
+      if (isAdminUser(authUser) && authUser?.tenantId) {
+        const tenantObj = loadStoredTenants().find((t) => String(t.id) === String(authUser.tenantId));
+        if (tenantObj) {
+          const tStart = Number(tenantObj.extensionStart);
+          const tEnd = Number(tenantObj.extensionEnd);
+          if (!isNaN(tStart) && !isNaN(tEnd) && tEnd >= tStart && tEnd - tStart <= 200) {
+            for (let ext = tStart; ext <= tEnd; ext++) {
+              targetChannelHints.add(`PJSIP/${ext}`);
+            }
+          }
+        }
+      }
+    } else if (!isAllRequest) {
+      addNumberVariants(rawNum);
+      if (existingByNumber) {
+        addNumberVariants(existingByNumber.number);
+        addChannelHint(existingByNumber.channel);
+        addChannelHint(existingByNumber.bridgedChannel);
+      }
+      if (sanitizedReqChannel) {
+        addChannelHint(sanitizedReqChannel);
       }
     }
 
     // 1. Immediately register cancellation to permanently block any retry from dialplan
     const now = Date.now();
-    if (clean10) cancelledNumbers.set(clean10, now);
-    if (formattedDest) cancelledNumbers.set(formattedDest, now);
-    if (rawNum) cancelledNumbers.set(rawNum, now);
-
-    // Cancel any scheduled retry timer
-    [rawNum, clean10, formattedDest].forEach((key) => {
-      if (key && pendingRetryTimers.has(key)) {
-        const t = pendingRetryTimers.get(key);
-        if (t) clearTimeout(t);
-        pendingRetryTimers.delete(key);
-        console.log(`[HANGUP] Cancelado temporizador de reintento para ${key}`);
+    if (isAllRequest && authIsGlobalAdmin) {
+      if (clean10) cancelledNumbers.set(clean10, now);
+      if (formattedDest) cancelledNumbers.set(formattedDest, now);
+      if (rawNum) cancelledNumbers.set(rawNum, now);
+      for (const call of callStatusStore.values()) {
+        if (call.number) cancelledNumbers.set(call.number, now);
       }
-      if (key) {
-        callRetryAttempts.delete(key);
-        lastOriginatePayloads.delete(key);
-      }
-    });
-
-    if (all) {
       for (const t of pendingRetryTimers.values()) {
         clearTimeout(t);
       }
       pendingRetryTimers.clear();
       callRetryAttempts.clear();
       lastOriginatePayloads.clear();
+    } else {
+      targetNumberKeys.forEach((key) => {
+        cancelledNumbers.set(key, now);
+        if (pendingRetryTimers.has(key)) {
+          const t = pendingRetryTimers.get(key);
+          if (t) clearTimeout(t);
+          pendingRetryTimers.delete(key);
+          console.log(`[HANGUP] Cancelado temporizador de reintento para ${key}`);
+        }
+        callRetryAttempts.delete(key);
+        lastOriginatePayloads.delete(key);
+      });
     }
 
     // 2. Mark AstDB immediately so Asterisk dialplan suppresses any redial / retry curl
-    if (clean10) {
-      executeAsteriskCommand(`database put call_status "${clean10}" "operator_hangup"`).catch(() => {});
-      executeAsteriskCommand(`database put ivr_vars "${clean10}_cancelled" "1"`).catch(() => {});
-    }
-    if (formattedDest) {
-      executeAsteriskCommand(`database put call_status "${formattedDest}" "operator_hangup"`).catch(() => {});
-      executeAsteriskCommand(`database put ivr_vars "${formattedDest}_cancelled" "1"`).catch(() => {});
-    }
+    const astDbKeys = new Set<string>(targetNumberKeys);
+    if (clean10) astDbKeys.add(clean10);
+    if (formattedDest) astDbKeys.add(formattedDest);
+    astDbKeys.forEach((key) => {
+      if (/^[0-9]{3,16}$/.test(key)) {
+        executeAsteriskCommand(`database put call_status "${key}" "operator_hangup"`).catch(() => {});
+        executeAsteriskCommand(`database put ivr_vars "${key}_cancelled" "1"`).catch(() => {});
+      }
+    });
 
     // 3. Replicate hangup order to remote VPS if running from cloud preview
-    if (!hasLocalAsterisk && REMOTE_ASTERISK_HTTP && !REMOTE_ASTERISK_HTTP.includes('localhost') && !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') && !req.headers['x-governor-fwd']) {
+    if (
+      !hasLocalAsterisk &&
+      REMOTE_ASTERISK_HTTP &&
+      !REMOTE_ASTERISK_HTTP.includes('localhost') &&
+      !REMOTE_ASTERISK_HTTP.includes('127.0.0.1') &&
+      !req.headers['x-governor-fwd']
+    ) {
       try {
-        await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/hangup`, {
+        const fwdResp = await fetch(`${REMOTE_ASTERISK_HTTP}/api/asterisk/call/hangup`, {
           method: 'POST',
           headers: buildRemoteAuthHeaders(req, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify(all ? { ...req.body, all: true } : req.body),
-        }).catch(() => {});
-      } catch (_) {}
+          body: JSON.stringify(isAllRequest ? { ...req.body, all: true } : req.body),
+        });
+        if (!fwdResp.ok) {
+          console.warn(`[HANGUP FORWARD WARNING] Remote Asterisk respondió HTTP ${fwdResp.status}`);
+        }
+      } catch (fwdErr: any) {
+        console.warn('[HANGUP FORWARD WARNING]', fwdErr?.message || fwdErr);
+      }
     }
 
     const channelsToHangup = new Set<string>();
+    const addConcreteChannel = (chName?: string) => {
+      const c = String(chName || '').trim();
+      if (!c || !ASTERISK_CHAN_RE.test(c)) return;
+      channelsToHangup.add(c);
+      if (c.includes(';1')) channelsToHangup.add(c.replace(';1', ';2'));
+      if (c.includes(';2')) channelsToHangup.add(c.replace(';2', ';1'));
+    };
 
-    // 4. Add explicitly passed channel
-    if (channel && typeof channel === 'string' && channel.trim()) {
-      const cleanChan = channel.trim();
-      channelsToHangup.add(cleanChan);
-      if (cleanChan.endsWith('/n')) {
-        channelsToHangup.add(cleanChan.replace(/\/n$/, ''));
-      }
-      if (cleanChan.includes(';1')) {
-        channelsToHangup.add(cleanChan.replace(';1', ';2'));
-      } else if (cleanChan.includes(';2')) {
-        channelsToHangup.add(cleanChan.replace(';2', ';1'));
-      }
+    // Add explicit/stored concrete channel IDs (with unique Asterisk suffix) and template hints
+    if (!isAllRequest || !authIsGlobalAdmin) {
+      targetChannelHints.forEach((hint) => addConcreteChannel(hint));
     }
 
-    // 5. Inspect existing channels in memory store
-    const existing = (clean10 && callStatusStore.get(clean10)) || (formattedDest && callStatusStore.get(formattedDest)) || (rawNum && callStatusStore.get(rawNum));
-    if (existing?.channel) {
-      channelsToHangup.add(existing.channel);
-      if (existing.channel.endsWith('/n')) channelsToHangup.add(existing.channel.replace(/\/n$/, ''));
-      if (existing.channel.includes(';1')) channelsToHangup.add(existing.channel.replace(';1', ';2'));
-      if (existing.channel.includes(';2')) channelsToHangup.add(existing.channel.replace(';2', ';1'));
-    }
-    if (existing?.bridgedChannel) {
-      channelsToHangup.add(existing.bridgedChannel);
-    }
-
-    // 6. Invalidate cache to ensure 100% fresh channel discovery from Asterisk
+    // 4. Invalidate cache to ensure 100% fresh channel discovery from Asterisk
     cliCommandCache.delete('core show channels');
     cliCommandCache.delete('core show channels concise');
     cliCommandCache.delete('pjsip show channels');
 
-    const allActiveAsteriskChannels = new Set<string>();
+    const matchesScopedHint = (haystack: string, chanName: string): boolean => {
+      if (isAllRequest && authIsGlobalAdmin) return true;
+      for (const numKey of targetNumberKeys) {
+        if (numKey.length >= 4 && haystack.includes(numKey)) {
+          return true;
+        }
+      }
+      for (const hint of targetChannelHints) {
+        const cleanBase = hint.replace(/\/n$/, '').replace(/;[12]$/, '');
+        if (
+          chanName === hint ||
+          chanName === cleanBase ||
+          chanName.startsWith(`${cleanBase}-`) ||
+          chanName.startsWith(`${cleanBase};`) ||
+          haystack.includes(cleanBase)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Primary channel discovery via 'core show channels concise' (preserves full untruncated channel names & bridged legs)
+    interface ConciseChannelRow {
+      channel: string;
+      context: string;
+      extension: string;
+      data: string;
+      callerId: string;
+      bridgedChannel: string;
+      rawLine: string;
+    }
+    const conciseRows: ConciseChannelRow[] = [];
+    try {
+      const conciseOut = await executeAsteriskCommand('core show channels concise');
+      if (conciseOut) {
+        for (const line of conciseOut.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('Output:') || trimmed.startsWith('Privilege:')) continue;
+          const parts = trimmed.split('!');
+          const chName = (parts[0] || '').trim();
+          if (!chName || !ASTERISK_CHAN_RE.test(chName)) continue;
+          conciseRows.push({
+            channel: chName,
+            context: (parts[1] || '').trim(),
+            extension: (parts[2] || '').trim(),
+            data: (parts[6] || '').trim(),
+            callerId: (parts[7] || '').trim(),
+            bridgedChannel: (parts[11] || '').trim(),
+            rawLine: trimmed,
+          });
+        }
+      }
+    } catch (e: any) {
+      console.warn('[HANGUP CONCISE QUERY WARNING]', e.message);
+    }
+
+    const matchedLiveChannels = new Set<string>();
+    for (const row of conciseRows) {
+      const rowText = `${row.channel} ${row.extension} ${row.data} ${row.callerId} ${row.bridgedChannel}`;
+      if (matchesScopedHint(rowText, row.channel)) {
+        addConcreteChannel(row.channel);
+        matchedLiveChannels.add(row.channel);
+        if (row.bridgedChannel && ASTERISK_CHAN_RE.test(row.bridgedChannel)) {
+          addConcreteChannel(row.bridgedChannel);
+          matchedLiveChannels.add(row.bridgedChannel);
+        }
+      }
+    }
+
+    // Second pass: include any reverse-bridged or Local ;1/;2 peer rows in concise output
+    if (matchedLiveChannels.size > 0) {
+      const matchedBases = new Set(
+        Array.from(matchedLiveChannels).map((c) => c.replace(/;[12]$/, ''))
+      );
+      for (const row of conciseRows) {
+        const chBase = row.channel.replace(/;[12]$/, '');
+        if (
+          matchedLiveChannels.has(row.bridgedChannel) ||
+          matchedBases.has(chBase)
+        ) {
+          addConcreteChannel(row.channel);
+          if (row.bridgedChannel && ASTERISK_CHAN_RE.test(row.bridgedChannel)) {
+            addConcreteChannel(row.bridgedChannel);
+          }
+        }
+      }
+    }
+
+    // Secondary discovery via 'core show channels' and 'pjsip show channels' (line-scoped)
     try {
       const channelsOutput = await executeAsteriskCommand('core show channels');
       if (channelsOutput) {
-        // Robust Asterisk 20 channel regex: matches Local/..., PJSIP/..., SIP/...
-        const matches = channelsOutput.match(/(?:Local|PJSIP|SIP|DAHDI|Async)\/[a-zA-Z0-9_\-@\.;]+/g);
-        if (matches) {
-          matches.forEach((m) => {
+        for (const line of channelsOutput.split('\n')) {
+          const matches = line.match(/(?:Local|PJSIP|SIP|DAHDI|Async)\/[A-Za-z0-9_.\-@\/;]+/g);
+          if (!matches) continue;
+          for (const m of matches) {
             const cleanM = m.trim();
-            allActiveAsteriskChannels.add(cleanM);
-            if (cleanM.includes(';1')) allActiveAsteriskChannels.add(cleanM.replace(';1', ';2'));
-            if (cleanM.includes(';2')) allActiveAsteriskChannels.add(cleanM.replace(';2', ';1'));
-            if (all || (clean10 && cleanM.includes(clean10)) || (formattedDest && cleanM.includes(formattedDest))) {
-              channelsToHangup.add(cleanM);
+            if (matchesScopedHint(line, cleanM)) {
+              addConcreteChannel(cleanM);
             }
-          });
+          }
         }
       }
     } catch (e: any) {
       console.warn('[HANGUP QUERY WARNING]', e.message);
     }
 
-    // Also query pjsip show channels to catch any trunk or extension SIP legs
     try {
       const pjsipChansOutput = await executeAsteriskCommand('pjsip show channels');
       if (pjsipChansOutput) {
-        const matches = pjsipChansOutput.match(/PJSIP\/[a-zA-Z0-9_\-\.]+/g);
-        if (matches) {
-          matches.forEach((m) => {
-            allActiveAsteriskChannels.add(m);
-            if (all || (clean10 && pjsipChansOutput.includes(clean10)) || (formattedDest && pjsipChansOutput.includes(formattedDest))) {
-              channelsToHangup.add(m);
+        for (const line of pjsipChansOutput.split('\n')) {
+          const matches = line.match(/PJSIP\/[A-Za-z0-9_.\-]+/g);
+          if (!matches) continue;
+          for (const m of matches) {
+            const cleanM = m.trim();
+            if (matchesScopedHint(line, cleanM)) {
+              addConcreteChannel(cleanM);
             }
-          });
+          }
         }
       }
     } catch (_) {}
 
-    // Fallback: If operator clicked COLGAR on an active call, hang up all active channels
-    if (all || channelsToHangup.size === 0) {
-      allActiveAsteriskChannels.forEach((ch) => channelsToHangup.add(ch));
-    }
+    console.log(
+      `[HANGUP TARGETS] Modo: ${isAllRequest ? (authIsGlobalAdmin ? 'GLOBAL_ALL' : 'SCOPED_ALL') : 'SINGLE'} | Usuario: ${authUser?.username || 'N/A'} | Destino: ${clean10 || 'N/A'} | Canales:`,
+      Array.from(channelsToHangup)
+    );
 
-    console.log(`[HANGUP TARGETS] Destino: ${clean10 || 'ALL'}. Canales encontrados a colgar:`, Array.from(channelsToHangup));
-
-    // 7. Terminate all identified channels via native AMI Hangup AND Asterisk CLI with awaited execution
+    // 5. Terminate identified channels via native AMI Hangup AND safe execFile Asterisk CLI
     const hungupList: string[] = [];
     const hangupPromises = Array.from(channelsToHangup).map(async (ch) => {
+      if (!ASTERISK_CHAN_RE.test(ch)) return;
       try {
         console.log(`[HANGUP EXECUTE] Colgando canal: ${ch}`);
         await amiHangupChannel(ch);
         await executeAsteriskCommand(`channel request hangup ${ch}`);
         await executeAsteriskCommand(`hangup request ${ch}`);
-        if (hasLocalAsterisk) {
-          exec(`asterisk -rx "channel request hangup ${ch}"`, () => {});
-          exec(`asterisk -rx "hangup request ${ch}"`, () => {});
-        }
         hungupList.push(ch);
       } catch (err: any) {
         console.warn(`[HANGUP CHANNEL ERR] ${ch}:`, err.message);
@@ -11795,47 +12300,84 @@ app.post('/api/asterisk/call/hangup', async (req, res) => {
 
     await Promise.allSettled(hangupPromises);
 
-    // Unconditionally terminate any remaining or stuck channels in Asterisk
-    await executeAsteriskCommand('channel request hangup all').catch(() => {});
-    await executeAsteriskCommand('hangup request all').catch(() => {});
-    if (hasLocalAsterisk) {
-      exec('asterisk -rx "channel request hangup all"', () => {});
-      exec('asterisk -rx "hangup request all"', () => {});
+    // Global 'hangup all' is restricted strictly to Global Super Admin when explicitly requesting all:true
+    if (isAllRequest && authIsGlobalAdmin) {
+      await executeAsteriskCommand('channel request hangup all').catch(() => {});
+      await executeAsteriskCommand('hangup request all').catch(() => {});
     }
 
     // Invalidate channels cache so subsequent status checks immediately reflect ended state
+    cliCommandCache.delete('core show channels');
     cliCommandCache.delete('core show channels concise');
     cliCommandCache.delete('pjsip show channels');
 
-    // 8. Update in-memory call state
-    const endedState: CallState = {
-      number: clean10 || rawNum || 'N/A',
-      channel: '',
-      status: 'ended',
-      cause: 'Operador colgó la llamada manualmente desde el panel',
-      timestamp: Date.now(),
-    };
-
-    if (all) {
+    // 6. Update in-memory call state strictly within caller's scope
+    if (isAllRequest && authIsGlobalAdmin) {
       for (const [k, v] of callStatusStore.entries()) {
         if (v.status !== 'ended') {
           callStatusStore.set(k, {
             ...v,
+            channel: '',
+            bridgedChannel: undefined,
             status: 'ended',
             cause: 'Operador colgó todas las llamadas desde el panel',
             timestamp: Date.now(),
           });
         }
       }
+    } else if (isAllRequest) {
+      for (const [k, v] of callStatusStore.entries()) {
+        if (v.status !== 'ended' && canUserAccessCall(authUser, v)) {
+          callStatusStore.set(k, {
+            ...v,
+            channel: '',
+            bridgedChannel: undefined,
+            status: 'ended',
+            cause: 'Operador colgó sus llamadas desde el panel',
+            timestamp: Date.now(),
+          });
+        }
+      }
     } else {
-      if (clean10) callStatusStore.set(clean10, endedState);
-      if (formattedDest) callStatusStore.set(formattedDest, endedState);
-      if (rawNum) callStatusStore.set(rawNum, endedState);
+      const endedCause = 'Operador colgó la llamada manualmente desde el panel';
+      targetNumberKeys.forEach((key) => {
+        const prev = callStatusStore.get(key);
+        callStatusStore.set(key, {
+          ...(prev || {}),
+          number: prev?.number || clean10 || rawNum || key,
+          channel: '',
+          bridgedChannel: undefined,
+          status: 'ended',
+          cause: endedCause,
+          timestamp: Date.now(),
+        });
+      });
+      if (!targetNumberKeys.size && sanitizedReqChannel) {
+        const chanBase = sanitizedReqChannel.replace(/\/n$/, '').replace(/;[12]$/, '');
+        for (const [k, v] of callStatusStore.entries()) {
+          if (
+            v.status !== 'ended' &&
+            canUserAccessCall(authUser, v) &&
+            (v.channel === sanitizedReqChannel ||
+              v.bridgedChannel === sanitizedReqChannel ||
+              (chanBase && (String(v.channel || '').startsWith(chanBase) || String(v.bridgedChannel || '').startsWith(chanBase))))
+          ) {
+            callStatusStore.set(k, {
+              ...v,
+              channel: '',
+              bridgedChannel: undefined,
+              status: 'ended',
+              cause: endedCause,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
     }
 
     res.json({
       success: true,
-      message: `Llamada colgada exitosamente.`,
+      message: 'Llamada colgada exitosamente.',
       channelsHungup: hungupList,
     });
   } catch (err: any) {
@@ -12869,6 +13411,28 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
       }
     }
 
+    const assignedTenantId = authIsGlobalAdmin
+      ? (targetUser.tenantId ? String(targetUser.tenantId) : '')
+      : String(authUser?.tenantId || '');
+    const targetIsGlobalAdmin = (targetUser.role === 'admin' && !assignedTenantId);
+    if (assignedTenantId && !targetIsGlobalAdmin) {
+      const tenantsListForSeatCheck = loadStoredTenants();
+      const matchedTenantForSeat = tenantsListForSeatCheck.find((t: any) => t && String(t.id) === assignedTenantId);
+      const seatLimit = Number(matchedTenantForSeat?.membership?.licensedAgents ?? matchedTenantForSeat?.licensedAgents ?? 0);
+      if (Number.isFinite(seatLimit) && seatLimit > 0) {
+        const isAlreadyInThisTenant = Boolean(prevUser && String(prevUser.tenantId || '') === assignedTenantId);
+        if (!isAlreadyInThisTenant) {
+          const currentUsedSeats = countActiveAgentsForTenant(assignedTenantId, stored);
+          if (currentUsedSeats >= seatLimit) {
+            return res.status(400).json({
+              success: false,
+              error: `El Call Center "${matchedTenantForSeat?.name || assignedTenantId}" alcanzó su límite contratado de ${seatLimit} agente(s). Amplía la cantidad de agentes en Membresías para agregar más.`,
+            });
+          }
+        }
+      }
+    }
+
     const existingResellerClient = resellerStore.clients.find((c) => String(c.sipUsername || '').toLowerCase() === cleanUser);
     const hasNewPass = typeof targetUser.password === 'string' && targetUser.password.trim().length > 0;
     const password = hasNewPass
@@ -12883,10 +13447,16 @@ app.post('/api/users/sync-sip', requireAdminRole, async (req, res) => {
         : (req.body.activateInitialMonth === true ? 'initial_month' : 'none');
 
     if (!prevUser && authIsGlobalAdmin && (requestedInitMode === 'initial_month' || requestedInitMode === 'demo_1_day')) {
+      const initPriceCheck = sanitizeOptionalUsdAmount(req.body.amountPaid);
+      if (!initPriceCheck.valid) {
+        return res.status(400).json({ success: false, error: initPriceCheck.error });
+      }
       const mRes = applyMembershipActivation(
         undefined,
         {
           action: requestedInitMode,
+          scope: 'user',
+          amountPaid: initPriceCheck.value,
           notes:
             requestedInitMode === 'demo_1_day'
               ? 'Demo de Prueba (1 Día) activado al crear usuario'
@@ -13189,7 +13759,7 @@ app.get('/api/membership/overview', (req, res) => {
     const tenantsList = loadStoredTenants();
     const usersList = loadStoredUsers();
     const requests = loadMembershipRequests();
-    const myMembership = resolveEffectiveMembershipForUser(authUser, tenantsList, settings);
+    const myMembership = resolveEffectiveMembershipForUser(authUser, tenantsList, settings, usersList);
 
     if (isGlobalAdminUser(authUser)) {
       const enrichedTenants = tenantsList.map((t: any) => ({
@@ -13199,7 +13769,9 @@ app.get('/api/membership/overview', (req, res) => {
           settings,
           'tenant',
           String(t?.id || ''),
-          String(t?.name || t?.code || '')
+          String(t?.name || t?.code || ''),
+          countActiveAgentsForTenant(String(t?.id || ''), usersList),
+          t
         ),
       }));
       const enrichedUsers = usersList.map((u: any) => sanitizeUserForClient(u));
@@ -13238,7 +13810,7 @@ app.post('/api/membership/settings', requireGlobalAdmin, (req, res) => {
     return res.json({
       success: true,
       settings: updated,
-      message: 'Configuración global de membresías guardada.',
+      message: 'Configuración global de membresías y planes Call Center guardada.',
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
@@ -13254,6 +13826,10 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
       action,
       weeksCount,
       amountPaid,
+      licensedAgents,
+      customMonthPriceUsd,
+      customWeeklyPriceUsd,
+      clearCustomPrices,
       paymentMethod,
       reference,
       notes,
@@ -13265,8 +13841,25 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
     if (!targetId) {
       return res.status(400).json({ success: false, error: 'targetId es requerido.' });
     }
-    if (!['initial_month', 'demo_1_day', 'weekly_extension', 'suspend', 'reactivate', 'reset'].includes(String(action))) {
+    if (!['initial_month', 'demo_1_day', 'weekly_extension', 'suspend', 'reactivate', 'plan_update', 'reset'].includes(String(action))) {
       return res.status(400).json({ success: false, error: 'Acción de membresía no válida.' });
+    }
+
+    const priceCheck = sanitizeOptionalUsdAmount(amountPaid);
+    if (!priceCheck.valid) {
+      return res.status(400).json({ success: false, error: priceCheck.error });
+    }
+    const customMonthCheck = sanitizeOptionalUsdAmount(customMonthPriceUsd);
+    if (!customMonthCheck.valid) {
+      return res.status(400).json({ success: false, error: customMonthCheck.error });
+    }
+    const customWeeklyCheck = sanitizeOptionalUsdAmount(customWeeklyPriceUsd);
+    if (!customWeeklyCheck.valid) {
+      return res.status(400).json({ success: false, error: customWeeklyCheck.error });
+    }
+    const agentsCheck = sanitizeOptionalAgentCount(licensedAgents);
+    if (!agentsCheck.valid) {
+      return res.status(400).json({ success: false, error: agentsCheck.error });
     }
 
     const settings = loadMembershipSettings();
@@ -13281,14 +13874,31 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
       const targetTenant = tenantsList[idx];
       const result = applyMembershipActivation(
         targetTenant.membership,
-        { action, weeksCount, amountPaid, paymentMethod, reference, notes },
+        {
+          action,
+          scope: 'tenant',
+          weeksCount,
+          amountPaid: priceCheck.value,
+          licensedAgents: agentsCheck.value ?? targetTenant.licensedAgents,
+          customMonthPriceUsd: customMonthCheck.value,
+          customWeeklyPriceUsd: customWeeklyCheck.value,
+          clearCustomPrices: Boolean(clearCustomPrices),
+          paymentMethod,
+          reference,
+          notes,
+        },
         performer,
         settings
       );
       if (!result.ok) {
         return res.status(400).json({ success: false, error: result.error });
       }
-      tenantsList[idx] = { ...targetTenant, membership: result.membership };
+      const nextLicensedAgents = result.membership?.licensedAgents ?? targetTenant.licensedAgents;
+      tenantsList[idx] = {
+        ...targetTenant,
+        ...(nextLicensedAgents ? { licensedAgents: nextLicensedAgents } : {}),
+        membership: result.membership,
+      };
       saveStoredTenants(tenantsList);
       syncMembershipToAstDb('tenant', String(targetTenant.id), result.membership);
       const effectiveMembership = evaluateMembershipRecord(
@@ -13296,7 +13906,9 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
         settings,
         'tenant',
         String(targetTenant.id),
-        String(targetTenant.name || targetTenant.code || '')
+        String(targetTenant.name || targetTenant.code || ''),
+        countActiveAgentsForTenant(String(targetTenant.id)),
+        tenantsList[idx]
       );
       return res.json({
         success: true,
@@ -13307,9 +13919,11 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
           action === 'demo_1_day'
             ? `Demo de Prueba (${settings.demoDays} ${settings.demoDays === 1 ? 'día' : 'días'}) activado para ${targetTenant.name}.`
             : action === 'initial_month'
-            ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetTenant.name}.`
+            ? `Plan Call Center activado para ${targetTenant.name} ($${effectiveMembership.initialActivationPriceUsd ?? 0} USD${effectiveMembership.licensedAgents ? ` • ${effectiveMembership.licensedAgents} agentes` : ''}).`
             : action === 'weekly_extension'
-            ? `Membresía de ${targetTenant.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
+            ? `Membresía de ${targetTenant.name} extendida por +${Math.floor(Number(weeksCount))} semana(s) ($${effectiveMembership.lastPaidAmountUsd ?? 0} USD).`
+            : action === 'plan_update'
+            ? `Plan y precios personalizados actualizados para ${targetTenant.name}.`
             : `Estado de membresía actualizado para ${targetTenant.name}.`,
       });
     }
@@ -13325,7 +13939,18 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
     }
     const result = applyMembershipActivation(
       targetUser.membership,
-      { action, weeksCount, amountPaid, paymentMethod, reference, notes },
+      {
+        action,
+        scope: 'user',
+        weeksCount,
+        amountPaid: priceCheck.value,
+        customMonthPriceUsd: customMonthCheck.value,
+        customWeeklyPriceUsd: customWeeklyCheck.value,
+        clearCustomPrices: Boolean(clearCustomPrices),
+        paymentMethod,
+        reference,
+        notes,
+      },
       performer,
       settings
     );
@@ -13346,9 +13971,11 @@ app.post('/api/membership/activate', requireGlobalAdmin, (req, res) => {
         action === 'demo_1_day'
           ? `Demo de Prueba (${settings.demoDays} ${settings.demoDays === 1 ? 'día' : 'días'}) activado para ${targetUser.name}.`
           : action === 'initial_month'
-          ? `Membresía Principal de 1 Mes (${settings.initialMonthDays} días) activada para ${targetUser.name}.`
+          ? `Membresía Principal activada para ${targetUser.name} ($${sanitized.effectiveMembership?.initialActivationPriceUsd ?? 0} USD).`
           : action === 'weekly_extension'
-          ? `Membresía de ${targetUser.name} extendida por +${Math.floor(Number(weeksCount))} semana(s).`
+          ? `Membresía de ${targetUser.name} extendida por +${Math.floor(Number(weeksCount))} semana(s) ($${sanitized.effectiveMembership?.lastPaidAmountUsd ?? 0} USD).`
+          : action === 'plan_update'
+          ? `Tarifa personalizada actualizada para ${targetUser.name}.`
           : `Estado de membresía actualizado para ${targetUser.name}.`,
     });
   } catch (err: any) {
@@ -13369,7 +13996,7 @@ app.post('/api/membership/bulk-activate-legacy', requireGlobalAdmin, (req, res) 
       if (t && !t.membership?.initialMonthActivated) {
         const resAct = applyMembershipActivation(
           t.membership,
-          { action: 'initial_month', amountPaid: 0, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
+          { action: 'initial_month', scope: 'tenant', amountPaid: 0, licensedAgents: t.licensedAgents, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
           performer,
           settings
         );
@@ -13388,7 +14015,7 @@ app.post('/api/membership/bulk-activate-legacy', requireGlobalAdmin, (req, res) 
       if (u && !isGlobalAdminUser(u) && !u.tenantId && !u.membership?.initialMonthActivated) {
         const resAct = applyMembershipActivation(
           u.membership,
-          { action: 'initial_month', amountPaid: 0, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
+          { action: 'initial_month', scope: 'user', amountPaid: 0, paymentMethod: 'legacy_migration', notes: 'Activación masiva inicial (1 Mes)' },
           performer,
           settings
         );
@@ -13441,7 +14068,8 @@ app.post('/api/membership/request-renewal', (req, res) => {
 
     const settings = loadMembershipSettings();
     const tenantsList = loadStoredTenants();
-    const effective = resolveEffectiveMembershipForUser(authUser, tenantsList, settings);
+    const usersList = loadStoredUsers();
+    const effective = resolveEffectiveMembershipForUser(authUser, tenantsList, settings, usersList);
     if (effective.scope === 'global_admin') {
       return res.status(400).json({ success: false, error: 'Cuenta exenta.' });
     }
@@ -13462,7 +14090,22 @@ app.post('/api/membership/request-renewal', (req, res) => {
     }
 
     const daysCount = planType === 'initial_month' ? settings.initialMonthDays : normalizedWeeks * settings.weekDays;
-    const estimatedPriceUsd = planType === 'initial_month' ? settings.initialMonthPriceUsd : normalizedWeeks * settings.weeklyPriceUsd;
+    const targetTenantForReq =
+      effective.scope === 'tenant'
+        ? tenantsList.find((t: any) => t && String(t.id) === String(effective.targetId))
+        : null;
+    const reqLicensedAgents =
+      effective.scope === 'tenant'
+        ? (effective.licensedAgents || settings.defaultCallCenterAgents || 5)
+        : undefined;
+    const estimatedPriceUsd = calculateSuggestedMembershipPrice(
+      effective.scope,
+      planType,
+      effective.scope === 'tenant' ? targetTenantForReq?.membership : effective,
+      settings,
+      normalizedWeeks || 1,
+      reqLicensedAgents
+    );
 
     // Optional instant self-activation from account balance if enabled by Super Admin
     if (payWithBalance && settings.allowSelfRenewalFromBalance) {
@@ -13474,8 +14117,10 @@ app.post('/api/membership/request-renewal', (req, res) => {
             targetTenant.membership,
             {
               action: planType,
+              scope: 'tenant',
               weeksCount: normalizedWeeks,
               amountPaid: estimatedPriceUsd,
+              licensedAgents: reqLicensedAgents,
               paymentMethod: 'saldo_prepago',
               reference: 'AUTO-SALDO',
               notes: notes || 'Auto-renovación instantánea descontada del saldo del Call Center',
@@ -13492,6 +14137,7 @@ app.post('/api/membership/request-renewal', (req, res) => {
             ...targetTenant,
             dollarBalance: newBal,
             minuteBalance: Math.floor(newBal / rate),
+            ...(reqLicensedAgents ? { licensedAgents: reqLicensedAgents } : {}),
             membership: resAct.membership,
           };
           saveStoredTenants(tenantsList);
@@ -13499,13 +14145,12 @@ app.post('/api/membership/request-renewal', (req, res) => {
           return res.json({
             success: true,
             instantActivated: true,
-            myMembership: resolveEffectiveMembershipForUser(authUser, tenantsList, settings),
+            myMembership: resolveEffectiveMembershipForUser(authUser, tenantsList, settings, usersList),
             message: `Membresía activada al instante con tu saldo ($${estimatedPriceUsd} USD descontados).`,
           });
         }
         return res.status(400).json({ success: false, error: `Saldo insuficiente en el Call Center ($${estimatedPriceUsd} USD requeridos).` });
       } else {
-        const usersList = loadStoredUsers();
         const uIdx = usersList.findIndex((u: any) => u && String(u.id) === String(effective.targetId));
         if (uIdx >= 0 && (Number(usersList[uIdx].balance) || 0) >= estimatedPriceUsd) {
           const targetUser = usersList[uIdx];
@@ -13513,6 +14158,7 @@ app.post('/api/membership/request-renewal', (req, res) => {
             targetUser.membership,
             {
               action: planType,
+              scope: 'user',
               weeksCount: normalizedWeeks,
               amountPaid: estimatedPriceUsd,
               paymentMethod: 'saldo_prepago',
@@ -13538,7 +14184,7 @@ app.post('/api/membership/request-renewal', (req, res) => {
           return res.json({
             success: true,
             instantActivated: true,
-            myMembership: resolveEffectiveMembershipForUser(usersList[uIdx], tenantsList, settings),
+            myMembership: resolveEffectiveMembershipForUser(usersList[uIdx], tenantsList, settings, usersList),
             message: `Membresía activada al instante con tu saldo ($${estimatedPriceUsd} USD descontados).`,
           });
         }
@@ -13561,6 +14207,7 @@ app.post('/api/membership/request-renewal', (req, res) => {
       planType,
       weeksCount: normalizedWeeks,
       daysCount,
+      ...(reqLicensedAgents ? { licensedAgents: reqLicensedAgents } : {}),
       estimatedPriceUsd,
       paymentMethod: String(paymentMethod || 'transfer').slice(0, 40),
       reference: cleanRef.slice(0, 120),
@@ -13588,9 +14235,18 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
   try {
     const authUser = (req as any).authUser;
     const { requestId } = req.params;
-    const { decision, rejectionReason } = req.body || {};
+    const { decision, rejectionReason, amountPaid, licensedAgents } = req.body || {};
     if (decision !== 'approve' && decision !== 'reject') {
       return res.status(400).json({ success: false, error: 'decision debe ser "approve" o "reject".' });
+    }
+
+    const priceCheck = sanitizeOptionalUsdAmount(amountPaid);
+    if (!priceCheck.valid) {
+      return res.status(400).json({ success: false, error: priceCheck.error });
+    }
+    const agentsCheck = sanitizeOptionalAgentCount(licensedAgents);
+    if (!agentsCheck.valid) {
+      return res.status(400).json({ success: false, error: agentsCheck.error });
     }
 
     const requests = loadMembershipRequests();
@@ -13618,6 +14274,9 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
       return res.json({ success: true, request: requests[rIdx], message: 'Solicitud rechazada.' });
     }
 
+    const finalAmount = priceCheck.value !== undefined ? priceCheck.value : reqItem.estimatedPriceUsd;
+    const finalAgents = agentsCheck.value !== undefined ? agentsCheck.value : reqItem.licensedAgents;
+
     const settings = loadMembershipSettings();
     if (reqItem.targetType === 'tenant') {
       const tenantsList = loadStoredTenants();
@@ -13629,11 +14288,13 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
         tenantsList[tIdx].membership,
         {
           action: reqItem.planType,
+          scope: 'tenant',
           weeksCount: reqItem.weeksCount,
-          amountPaid: reqItem.estimatedPriceUsd,
+          amountPaid: finalAmount,
+          licensedAgents: finalAgents ?? tenantsList[tIdx].licensedAgents,
           paymentMethod: reqItem.paymentMethod,
           reference: reqItem.reference,
-          notes: `Solicitud aprobada (${reqItem.reference})`,
+          notes: `Solicitud aprobada (${reqItem.reference}) — $${finalAmount} USD`,
           requestApproved: true,
         },
         resolverName,
@@ -13642,7 +14303,12 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
       if (!resAct.ok) {
         return res.status(400).json({ success: false, error: resAct.error });
       }
-      tenantsList[tIdx] = { ...tenantsList[tIdx], membership: resAct.membership };
+      const nextLicensedAgents = resAct.membership?.licensedAgents ?? tenantsList[tIdx].licensedAgents;
+      tenantsList[tIdx] = {
+        ...tenantsList[tIdx],
+        ...(nextLicensedAgents ? { licensedAgents: nextLicensedAgents } : {}),
+        membership: resAct.membership,
+      };
       saveStoredTenants(tenantsList);
       syncMembershipToAstDb('tenant', String(tenantsList[tIdx].id), resAct.membership);
     } else {
@@ -13655,11 +14321,12 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
         usersList[uIdx].membership,
         {
           action: reqItem.planType,
+          scope: 'user',
           weeksCount: reqItem.weeksCount,
-          amountPaid: reqItem.estimatedPriceUsd,
+          amountPaid: finalAmount,
           paymentMethod: reqItem.paymentMethod,
           reference: reqItem.reference,
-          notes: `Solicitud aprobada (${reqItem.reference})`,
+          notes: `Solicitud aprobada (${reqItem.reference}) — $${finalAmount} USD`,
           requestApproved: true,
         },
         resolverName,
@@ -13677,6 +14344,8 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
     requests[rIdx] = {
       ...reqItem,
       status: 'approved',
+      approvedAmountUsd: finalAmount,
+      ...(finalAgents ? { licensedAgents: finalAgents } : {}),
       resolvedAt: nowIso,
       resolvedBy: resolverName,
     };
@@ -13685,7 +14354,7 @@ app.post('/api/membership/requests/:requestId/resolve', requireGlobalAdmin, (req
     return res.json({
       success: true,
       request: requests[rIdx],
-      message: `Solicitud aprobada y membresía activada para ${reqItem.targetName}.`,
+      message: `Solicitud aprobada ($${finalAmount} USD) y membresía activada para ${reqItem.targetName}.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });

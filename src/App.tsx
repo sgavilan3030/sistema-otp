@@ -919,7 +919,8 @@ export default function App() {
   // Call Center Tenants Handlers
   const handleAddTenant = async (
     newTenant: CallCenterTenant,
-    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean
+    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean,
+    customActivationPriceUsd?: number
   ) => {
     const resolvedMode: 'initial_month' | 'demo_1_day' | 'none' =
       activationMode === true
@@ -936,7 +937,7 @@ export default function App() {
     addLog(
       'SYSTEM',
       `Nuevo Grupo de Call Center creado: "${newTenant.name}" (Rango ${newTenant.extensionStart}-${newTenant.extensionEnd}, Contexto [${newTenant.dialplanContext}])`,
-      `Tenant: ${newTenant.code}\nExtensiones: ${newTenant.extensionStart}-${newTenant.extensionEnd}\nCarrier: ${newTenant.carrierId}\nCallerID: ${newTenant.outboundCallerId}`
+      `Tenant: ${newTenant.code}\nExtensiones: ${newTenant.extensionStart}-${newTenant.extensionEnd}\nAgentes: ${newTenant.licensedAgents || 10}\nCarrier: ${newTenant.carrierId}\nCallerID: ${newTenant.outboundCallerId}`
     );
     if (resolvedMode !== 'none' && currentUser?.role === 'admin' && !currentUser?.tenantId) {
       try {
@@ -952,6 +953,10 @@ export default function App() {
             targetType: 'tenant',
             targetId: newTenant.id,
             action: resolvedMode,
+            licensedAgents: newTenant.licensedAgents,
+            ...(typeof customActivationPriceUsd === 'number' && Number.isFinite(customActivationPriceUsd)
+              ? { amountPaid: customActivationPriceUsd }
+              : {}),
             notes:
               resolvedMode === 'demo_1_day'
                 ? 'Demo de Prueba (1 Día) activado al crear Call Center'
@@ -962,7 +967,7 @@ export default function App() {
         showToast(
           resolvedMode === 'demo_1_day'
             ? `Call Center "${newTenant.name}" creado con Demo de Prueba (1 Día) activo.`
-            : `Call Center "${newTenant.name}" creado con Membresía Principal de 1 Mes activa.`
+            : `Call Center "${newTenant.name}" creado con Plan Call Center (${newTenant.licensedAgents || 10} agentes) activo.`
         );
         return;
       } catch (_) {}
@@ -1062,6 +1067,10 @@ export default function App() {
     weekDays: 7,
     initialMonthPriceUsd: 150,
     weeklyPriceUsd: 45,
+    callCenterBasePriceUsd: 0,
+    callCenterPerAgentMonthPriceUsd: 25,
+    callCenterPerAgentWeekPriceUsd: 8,
+    defaultCallCenterAgents: 5,
     allowSelfRenewalFromBalance: false,
   });
   const [myMembership, setMyMembership] = useState<EffectiveMembershipStatus | null>(null);
@@ -1097,18 +1106,30 @@ export default function App() {
 
       if (Array.isArray(data.tenants)) {
         const memMap = new Map<string, any>(
-          data.tenants.map((t: any) => [t.id, { membership: t.membership, effectiveMembership: t.effectiveMembership }])
+          data.tenants.map((t: any) => [
+            t.id,
+            {
+              membership: t.membership,
+              effectiveMembership: t.effectiveMembership,
+              licensedAgents: t.licensedAgents,
+            },
+          ])
         );
         setTenants((prev) => {
           let changed = false;
           const next = prev.map((t) => {
             const m = memMap.get(t.id);
             if (!m) return t;
-            const prevSig = `${t.effectiveMembership?.status || ''}:${t.effectiveMembership?.expiresAt || ''}:${t.membership?.initialMonthActivated ? 1 : 0}`;
-            const nextSig = `${m.effectiveMembership?.status || ''}:${m.effectiveMembership?.expiresAt || ''}:${m.membership?.initialMonthActivated ? 1 : 0}`;
+            const prevSig = `${t.effectiveMembership?.status || ''}:${t.effectiveMembership?.expiresAt || ''}:${t.membership?.initialMonthActivated ? 1 : 0}:${t.effectiveMembership?.licensedAgents ?? t.licensedAgents ?? ''}:${t.effectiveMembership?.activeAgentsCount ?? ''}:${t.effectiveMembership?.totalPaidUsd ?? ''}:${t.effectiveMembership?.customMonthPriceUsd ?? ''}:${t.effectiveMembership?.customWeeklyPriceUsd ?? ''}:${t.effectiveMembership?.history?.length ?? 0}`;
+            const nextSig = `${m.effectiveMembership?.status || ''}:${m.effectiveMembership?.expiresAt || ''}:${m.membership?.initialMonthActivated ? 1 : 0}:${m.effectiveMembership?.licensedAgents ?? m.licensedAgents ?? ''}:${m.effectiveMembership?.activeAgentsCount ?? ''}:${m.effectiveMembership?.totalPaidUsd ?? ''}:${m.effectiveMembership?.customMonthPriceUsd ?? ''}:${m.effectiveMembership?.customWeeklyPriceUsd ?? ''}:${m.effectiveMembership?.history?.length ?? 0}`;
             if (prevSig === nextSig) return t;
             changed = true;
-            return { ...t, membership: m.membership, effectiveMembership: m.effectiveMembership };
+            return {
+              ...t,
+              ...(m.licensedAgents ? { licensedAgents: m.licensedAgents } : {}),
+              membership: m.membership,
+              effectiveMembership: m.effectiveMembership,
+            };
           });
           if (!changed) return prev;
           lastSavedTenantsJsonRef.current = serializeTenantsCore(next);
@@ -1123,8 +1144,8 @@ export default function App() {
           const next = prev.map((u) => {
             const srv = uMap.get(u.id);
             if (!srv) return u;
-            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}:${u.membership?.initialMonthActivated ? 1 : 0}`;
-            const nextSig = `${srv.effectiveMembership?.status || ''}:${srv.effectiveMembership?.expiresAt || ''}:${srv.membership?.initialMonthActivated ? 1 : 0}`;
+            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}:${u.membership?.initialMonthActivated ? 1 : 0}:${u.effectiveMembership?.totalPaidUsd ?? ''}:${u.effectiveMembership?.customMonthPriceUsd ?? ''}:${u.effectiveMembership?.customWeeklyPriceUsd ?? ''}:${u.effectiveMembership?.history?.length ?? 0}`;
+            const nextSig = `${srv.effectiveMembership?.status || ''}:${srv.effectiveMembership?.expiresAt || ''}:${srv.membership?.initialMonthActivated ? 1 : 0}:${srv.effectiveMembership?.totalPaidUsd ?? ''}:${srv.effectiveMembership?.customMonthPriceUsd ?? ''}:${srv.effectiveMembership?.customWeeklyPriceUsd ?? ''}:${srv.effectiveMembership?.history?.length ?? 0}`;
             if (prevSig === nextSig) return u;
             changed = true;
             return { ...u, membership: srv.membership, effectiveMembership: srv.effectiveMembership };
@@ -1135,8 +1156,8 @@ export default function App() {
         setUsers((prev) =>
           prev.map((u) => {
             if (u.id !== currentUserId) return u;
-            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}`;
-            const nextSig = `${data.myMembership.status || ''}:${data.myMembership.expiresAt || ''}`;
+            const prevSig = `${u.effectiveMembership?.status || ''}:${u.effectiveMembership?.expiresAt || ''}:${u.effectiveMembership?.licensedAgents ?? ''}:${u.effectiveMembership?.activeAgentsCount ?? ''}`;
+            const nextSig = `${data.myMembership.status || ''}:${data.myMembership.expiresAt || ''}:${data.myMembership.licensedAgents ?? ''}:${data.myMembership.activeAgentsCount ?? ''}`;
             if (prevSig === nextSig) return u;
             return { ...u, effectiveMembership: data.myMembership };
           })
@@ -1687,7 +1708,8 @@ export default function App() {
   // User Handlers with Auto-provisioning in Asterisk 20 PJSIP
   const handleAddUser = (
     newUser: SystemUser,
-    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean
+    activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean,
+    customActivationPriceUsd?: number
   ) => {
     const resolvedActivationMode: 'initial_month' | 'demo_1_day' | 'none' =
       activationMode === true
@@ -1737,9 +1759,18 @@ export default function App() {
           user: newUser,
           initialActivationMode: resolvedActivationMode,
           activateInitialMonth: resolvedActivationMode === 'initial_month',
+          ...(typeof customActivationPriceUsd === 'number' && Number.isFinite(customActivationPriceUsd)
+            ? { amountPaid: customActivationPriceUsd }
+            : {}),
         }),
       })
-        .then(() => {
+        .then(async (r) => {
+          const syncRes = await r.json().catch(() => ({}));
+          if (!r.ok || syncRes?.success === false) {
+            setUsers((prev) => prev.filter((u) => u.id !== newUser.id));
+            showToast(syncRes?.error || 'No se pudo crear el usuario en el servidor.', 'error');
+            return null;
+          }
           lastServerTimestampRef.current = Date.now();
           refreshMembershipOverview();
           return fetch('/api/asterisk/extensions');

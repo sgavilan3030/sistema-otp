@@ -51,7 +51,7 @@ interface SimpleEntityOption {
 
 interface TenantsTabProps {
   tenants: CallCenterTenant[];
-  onAddTenant: (tenant: CallCenterTenant, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean) => void;
+  onAddTenant: (tenant: CallCenterTenant, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean, customActivationPriceUsd?: number) => void;
   onUpdateTenant: (tenant: CallCenterTenant) => void;
   onDeleteTenant: (id: string) => void;
   onRechargeTenant: (tenantId: string, amountDollars: number, paymentMethod: 'zelle' | 'cash' | 'usdt_crypto' | 'bank_transfer' | 'credit_card', reference: string, notes?: string) => void;
@@ -199,8 +199,10 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
     assignedCallFlowMode: 'press1' as CallFlowMode,
     allowedCallFlowModes: ['press1'] as CallFlowMode[],
     allowMassCalls: false,
+    licensedAgents: 10,
   });
   const [activationModeOnCreate, setActivationModeOnCreate] = useState<'initial_month' | 'demo_1_day' | 'none'>('initial_month');
+  const [activationPriceOnCreate, setActivationPriceOnCreate] = useState<string>('');
 
   // Recharge modal form
   const [rechargeAmount, setRechargeAmount] = useState<number>(50);
@@ -281,8 +283,10 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       assignedCallFlowMode: 'press1',
       allowedCallFlowModes: ['press1'],
       allowMassCalls: false,
+      licensedAgents: 10,
     });
     setActivationModeOnCreate('initial_month');
+    setActivationPriceOnCreate('');
     setEditingTenant(null);
     setIsCreateModalOpen(true);
   };
@@ -321,6 +325,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
       assignedCallFlowMode: primaryMode,
       allowedCallFlowModes: allowedModes,
       allowMassCalls: Boolean(tenant.allowMassCalls),
+      licensedAgents: tenant.effectiveMembership?.licensedAgents ?? tenant.licensedAgents ?? 10,
     });
     setEditingTenant(tenant);
     setIsCreateModalOpen(true);
@@ -387,6 +392,7 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         assignedCallFlowMode: primaryMode,
         allowedCallFlowModes: normalizedAllowedModes,
         allowMassCalls: Boolean(formData.allowMassCalls),
+        licensedAgents: Math.max(1, Math.min(1000, Math.floor(Number(formData.licensedAgents) || 5))),
       };
       onUpdateTenant(updated);
     } else {
@@ -418,8 +424,17 @@ export const TenantsTab: React.FC<TenantsTabProps> = ({
         assignedCallFlowMode: primaryMode,
         allowedCallFlowModes: normalizedAllowedModes,
         allowMassCalls: Boolean(formData.allowMassCalls),
+        licensedAgents: Math.max(1, Math.min(1000, Math.floor(Number(formData.licensedAgents) || 5))),
       };
-      onAddTenant(newTenant, activationModeOnCreate);
+      const parsedInitPrice =
+        activationModeOnCreate === 'initial_month' && activationPriceOnCreate.trim() !== ''
+          ? Math.max(0, Number(activationPriceOnCreate))
+          : undefined;
+      onAddTenant(
+        newTenant,
+        activationModeOnCreate,
+        parsedInitPrice !== undefined && Number.isFinite(parsedInitPrice) ? parsedInitPrice : undefined
+      );
     }
 
     setIsCreateModalOpen(false);
@@ -994,41 +1009,54 @@ same => n,Hangup()
                     const mStatus = eff?.status || tenant.membership?.status || (tenant.membership?.initialMonthActivated ? 'expired' : 'pending_initial');
                     const isActiveMem = eff ? eff.isActive : mStatus === 'active';
                     const expStr = eff?.expiresAt || tenant.membership?.expiresAt;
+                    const licensedAg = eff?.licensedAgents ?? tenant.licensedAgents;
+                    const activeAg = eff?.activeAgentsCount ?? users.filter((u) => u.tenantId === tenant.id && !(u.role === 'admin' && !u.tenantId)).length;
+                    const initPrice = eff?.initialActivationPriceUsd;
                     return (
-                      <div className="bg-slate-950/90 border border-amber-500/25 rounded-xl p-2.5 mb-3 flex items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-1.5 text-slate-300">
-                          <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span className="font-semibold text-[11px]">Membresía:</span>
-                        </div>
-                        <div className="text-right">
-                          <span
-                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                              isActiveMem && eff?.isDemo
-                                ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
-                                : isActiveMem
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                      <div className="bg-slate-950/90 border border-amber-500/25 rounded-xl p-2.5 mb-3 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="font-semibold text-[11px]">Membresía:</span>
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                                isActiveMem && eff?.isDemo
+                                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                                  : isActiveMem
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                  : mStatus === 'pending_initial' || mStatus === 'unactivated'
+                                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                                  : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                              }`}
+                            >
+                              {isActiveMem
+                                ? eff?.isDemo
+                                  ? `★ DEMO (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
+                                  : `✓ Activa (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
                                 : mStatus === 'pending_initial' || mStatus === 'unactivated'
-                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                                : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
-                            }`}
-                          >
-                            {isActiveMem
-                              ? eff?.isDemo
-                                ? `★ DEMO (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
-                                : `✓ Activa (${eff?.remainingDays ?? 0}d ${eff?.remainingHours ?? 0}h)`
-                              : mStatus === 'pending_initial' || mStatus === 'unactivated'
-                              ? '1er Mes Pendiente'
-                              : mStatus === 'suspended'
-                              ? 'Suspendida'
-                              : !eff?.initialMonthActivated && eff?.demoUsed
-                              ? 'Demo Finalizado'
-                              : 'Vencida'}
+                                ? '1er Mes Pendiente'
+                                : mStatus === 'suspended'
+                                ? 'Suspendida'
+                                : !eff?.initialMonthActivated && eff?.demoUsed
+                                ? 'Demo Finalizado'
+                                : 'Vencida'}
+                            </span>
+                            {expStr && (
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                Vence: {new Date(expStr).toLocaleDateString('es-ES')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-800/70">
+                          <span className="text-indigo-300">
+                            Agentes: <strong>{activeAg}{licensedAg ? ` / ${licensedAg}` : ''}</strong>
                           </span>
-                          {expStr && (
-                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                              Vence: {new Date(expStr).toLocaleDateString('es-ES')}
-                            </div>
-                          )}
+                          <span className="text-amber-300">
+                            {typeof initPrice === 'number' ? `Activación: $${initPrice} USD` : 'Sin precio aún'}
+                          </span>
                         </div>
                       </div>
                     );
@@ -1438,8 +1466,8 @@ same => n,Hangup()
                 </div>
               </div>
 
-              {/* Financial & Concurrency */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Financial & Concurrency & Agent Limit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Saldo Inicial ($ USD)
@@ -1479,6 +1507,20 @@ same => n,Hangup()
                     value={formData.maxConcurrentCalls}
                     onChange={(e) => setFormData({ ...formData, maxConcurrentCalls: Number(e.target.value) })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-indigo-300 mb-1">
+                    Agentes del Plan Call Center
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={formData.licensedAgents}
+                    onChange={(e) => setFormData({ ...formData, licensedAgents: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+                    className="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-indigo-200 font-mono font-bold focus:outline-none focus:border-indigo-400"
                   />
                 </div>
               </div>
@@ -1759,11 +1801,27 @@ same => n,Hangup()
                       <div className="text-[10px] text-slate-400 mt-0.5">Exige 1er mes al entrar</div>
                     </button>
                   </div>
+                  {activationModeOnCreate === 'initial_month' && (
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-bold text-amber-200 mb-1">
+                        Precio de Activación 1er Mes ($ USD — A voluntad, opcional)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder={`Automático por ${formData.licensedAgents} agentes`}
+                        value={activationPriceOnCreate}
+                        onChange={(e) => setActivationPriceOnCreate(e.target.value)}
+                        className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-3 py-1.5 text-xs text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  )}
                   <p className="text-[10px] text-slate-400 leading-snug">
                     {activationModeOnCreate === 'demo_1_day'
                       ? 'El Call Center tendrá acceso completo por 1 día (24 horas) para pruebas. Al vencer el Demo, deberá activar su Membresía Principal de 1 Mes antes de renovar por semanas.'
                       : activationModeOnCreate === 'initial_month'
-                      ? 'Se activará el 1er Mes Principal (30 días), habilitando renovaciones semanales desde la pestaña Membresías.'
+                      ? 'Se activará el 1er Mes Principal (30 días) con el monto indicado (o calculado por cantidad de agentes).'
                       : 'Los usuarios de este Call Center quedarán bloqueados hasta que el Administrador active su Demo o 1er Mes.'}
                   </p>
                 </div>

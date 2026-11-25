@@ -457,11 +457,17 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
   // Hangup call
   const handleHangupCall = async (channel?: string, number?: string) => {
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel, number }),
+        body: JSON.stringify({ channel, number, all: false }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setFeedbackMsg({ text: data?.error || `No se pudo colgar el canal (HTTP ${res.status}).`, type: 'error' });
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        return;
+      }
       setLiveCalls((prev) => prev.filter((c) => c.number !== number && c.channel !== channel));
       if (webAudioListeningCallId === number) {
         if (audioPlayerRef.current) audioPlayerRef.current.pause();
@@ -471,7 +477,9 @@ export const CallSpyMonitorTab: React.FC<CallSpyMonitorTabProps> = ({
         setActiveSpySession(null);
       }
       setFeedbackMsg({ text: `Canal de llamada finalizado.`, type: 'info' });
-    } catch (_) {}
+    } catch (_) {
+      setFeedbackMsg({ text: 'Error al colgar canal en Asterisk.', type: 'error' });
+    }
     setTimeout(() => setFeedbackMsg(null), 3000);
   };
 

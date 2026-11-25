@@ -551,14 +551,27 @@ export const ManualDialerTab: React.FC<ManualDialerTabProps> = ({
 
     const seconds = callDuration;
     const finishedLead = activeCall.lead;
+    const rawNum = String(finishedLead?.number || '').trim();
+    const cleanNum = rawNum.replace(/[^0-9]/g, '');
 
-    // Send hangup to Asterisk if channel exists
-    if (activeCall.channel) {
-      fetch('/api/asterisk/call/hangup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: activeCall.channel }),
-      }).catch(() => {});
+    // Send hangup to Asterisk by both number and channel
+    if (activeCall.channel || cleanNum) {
+      try {
+        const res = await fetch('/api/asterisk/call/hangup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channel: activeCall.channel,
+            number: cleanNum || rawNum,
+            destination: cleanNum || rawNum,
+            all: false,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setDialError(data?.error || `No se pudo colgar la llamada en Asterisk (HTTP ${res.status}).`);
+        }
+      } catch (_) {}
     }
 
     setActiveCall(null);

@@ -592,11 +592,16 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
 
   const handleHangupTestCall = async () => {
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: activeTestCall?.number }),
+        body: JSON.stringify({ number: activeTestCall?.number, all: false }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setCallFeedback({ text: data?.error || `No se pudo colgar la llamada de prueba (HTTP ${res.status}).`, type: 'error' });
+        return;
+      }
     } catch (_) {}
     setActiveTestCall((prev) => (prev ? { ...prev, isActive: false, status: 'ended' } : null));
   };

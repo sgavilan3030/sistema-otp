@@ -2774,27 +2774,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsHangingUp(true);
     const numToHangup = activeCall?.number || targetNumber.trim();
     const cleanNum = numToHangup.replace(/[^0-9]/g, '');
+    const hasSpecificTarget = Boolean(cleanNum || numToHangup || activeCall?.channel);
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channel: activeCall?.channel,
           number: cleanNum || numToHangup,
           destination: cleanNum || numToHangup,
-          all: true,
+          all: !hasSpecificTarget,
         }),
       });
-      await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
-    } catch (e) {
-    } finally {
-      setIsHangingUp(false);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setLaunchFeedback({
+          text: data?.error || `No se pudo colgar la llamada (HTTP ${res.status}).`,
+          type: 'error',
+        });
+        return;
+      }
+      if (isSuperAdmin) {
+        await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+      }
       setIsLaunching(false);
       setActiveCall(null);
       setLaunchFeedback({
         text: '✓ Llamada colgada y canal Asterisk liberado con éxito.',
         type: 'success',
       });
+    } catch (e: any) {
+      setLaunchFeedback({
+        text: e?.message || 'Error de red al intentar colgar la llamada.',
+        type: 'error',
+      });
+    } finally {
+      setIsHangingUp(false);
     }
   };
 
@@ -3032,13 +3047,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     massCancelRef.current = true;
     setIsMassRunning(false);
     setMassActiveNumber(null);
-    // Immediately cancel and hangup all calls and pending retries
+    // Immediately cancel and hangup all scoped calls and pending retries
     fetch('/api/asterisk/call/hangup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ all: true }),
     }).catch(() => {});
-    fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+    if (isSuperAdmin) {
+      fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+    }
   };
 
   // Hangup all active mass campaign calls in Asterisk
@@ -3048,12 +3065,22 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsMassRunning(false);
     setMassActiveNumber(null);
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true }),
       });
-      await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setLaunchFeedback({
+          text: data?.error || `No se pudieron colgar las llamadas activas (HTTP ${res.status}).`,
+          type: 'error',
+        });
+        return;
+      }
+      if (isSuperAdmin) {
+        await fetch('/api/asterisk/call/purge-zombies', { method: 'POST' }).catch(() => {});
+      }
       setMassLog((prev) =>
         prev.map((item) =>
           item.status === 'calling' || item.status === 'in_line' || item.status === 'on_hold' || item.status === 'queued'
@@ -3070,11 +3097,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   // Hangup a specific mass campaign call
   const handleHangupSpecificMassCall = async (num: string, chan?: string) => {
     try {
-      await fetch('/api/asterisk/call/hangup', {
+      const res = await fetch('/api/asterisk/call/hangup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ number: num, channel: chan, all: false }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setLaunchFeedback({
+          text: data?.error || `Error al colgar ${num} (HTTP ${res.status}).`,
+          type: 'error',
+        });
+        return;
+      }
       setMassLog((prev) =>
         prev.map((item) =>
           item.number === num

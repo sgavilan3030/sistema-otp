@@ -47,7 +47,7 @@ interface UsersTabProps {
   currentUserId: string;
   currentUser?: SystemUser;
   onSwitchUser: (userId: string) => void;
-  onAddUser: (user: SystemUser, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean) => void;
+  onAddUser: (user: SystemUser, activationMode?: 'initial_month' | 'demo_1_day' | 'none' | boolean, customActivationPriceUsd?: number) => void;
   onUpdateUser: (user: SystemUser) => void;
   onDeleteUser: (userId: string) => void;
   onAddExtension?: (ext: PjsipExtension, skipRemoteSync?: boolean) => void;
@@ -99,6 +99,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [formActivationMode, setFormActivationMode] = useState<'initial_month' | 'demo_1_day' | 'none'>('initial_month');
+  const [formActivationPriceStr, setFormActivationPriceStr] = useState<string>('');
 
   // Real active IVR scripts/entities list (loaded ONLY from Admin's active scripts)
   const readLocalActiveEntities = useCallback((): { id: string; name: string; subtitle?: string }[] => {
@@ -376,6 +377,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setFormAssignedCallFlowMode('press1');
     setFormAllowedCallFlowModes(['press1']);
     setFormActivationMode('initial_month');
+    setFormActivationPriceStr('');
     // Standalone non-Call-Center clients default to next free 2001+ extension
     const nextClientExt = getNextClientExtension2001();
     setSelectedExts([nextClientExt]);
@@ -566,10 +568,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({
         ? formActivationMode
         : 'none';
 
+    const parsedCustomInitPrice =
+      resolvedActivationMode === 'initial_month' && formActivationPriceStr.trim() !== ''
+        ? Math.max(0, Number(formActivationPriceStr))
+        : undefined;
+
     if (editingUser) {
       onUpdateUser(userObj);
     } else {
-      onAddUser(userObj, resolvedActivationMode);
+      onAddUser(
+        userObj,
+        resolvedActivationMode,
+        parsedCustomInitPrice !== undefined && Number.isFinite(parsedCustomInitPrice) ? parsedCustomInitPrice : undefined
+      );
     }
 
     // Server (/api/users/sync-sip) creates missing assigned extensions atomically and App.tsx refreshes /api/asterisk/extensions.
@@ -1573,14 +1584,32 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   ))}
                 </select>
 
-                {formTenantId ? (
-                  <div className="p-2.5 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-200 flex items-start gap-2">
-                    <Shield className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold">Partición Activa para este Administrador / Agente:</span> Perteneciente al Call Center <strong className="text-white font-mono">{tenants.find((t) => t.id === formTenantId)?.name || formTenantId}</strong>. Sus audios, guiones y registros OTP no se cruzarán con otros grupos.
+                {formTenantId ? (() => {
+                  const selT = tenants.find((t) => t.id === formTenantId);
+                  const usedSeats = users.filter((u) => u.tenantId === formTenantId && !(u.role === 'admin' && !u.tenantId)).length;
+                  const maxSeats = selT?.effectiveMembership?.licensedAgents ?? selT?.licensedAgents;
+                  const alreadyInTenant = Boolean(editingUser && editingUser.tenantId === formTenantId);
+                  const isFull = Boolean(maxSeats && maxSeats > 0 && !alreadyInTenant && usedSeats >= maxSeats);
+                  return (
+                    <div className={`p-2.5 rounded border text-[11px] flex items-start gap-2 ${
+                      isFull
+                        ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                        : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-200'
+                    }`}>
+                      <Shield className={`w-4 h-4 shrink-0 mt-0.5 ${isFull ? 'text-rose-400' : 'text-indigo-400'}`} />
+                      <div>
+                        <span className="font-bold">Partición Activa para este Administrador / Agente:</span> Perteneciente al Call Center{' '}
+                        <strong className="text-white font-mono">{selT?.name || formTenantId}</strong>.
+                        {maxSeats ? (
+                          <span className="block mt-0.5 font-mono">
+                            Cupo de agentes: <strong>{usedSeats} / {maxSeats}</strong>
+                            {isFull ? ' — Límite alcanzado: amplía agentes en Membresías para agregar más.' : ''}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <p className="text-[10px] text-slate-400">
                     💡 Sin Call Center: Ideal para Clientes Individuales (extensión 2001+) o Super Administrador Global.
                   </p>
@@ -1996,11 +2025,27 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                       <div className="text-[10px] text-slate-400 mt-0.5">Exige 1er mes al entrar</div>
                     </button>
                   </div>
+                  {formActivationMode === 'initial_month' && (
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-bold text-amber-200 mb-1">
+                        Precio de Activación 1er Mes ($ USD — A voluntad, opcional)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="Automático según tarifa global (o escribe tu precio)"
+                        value={formActivationPriceStr}
+                        onChange={(e) => setFormActivationPriceStr(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-amber-500/40 text-amber-300 font-mono font-bold text-xs focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  )}
                   <p className="text-[10px] text-slate-400 leading-snug">
                     {formActivationMode === 'demo_1_day'
                       ? 'El cliente nuevo podrá probar el sistema durante 1 día (24h). Al terminar el Demo, deberá activar su 1er Mes Principal (30d) para continuar y desbloquear renovaciones semanales.'
                       : formActivationMode === 'initial_month'
-                      ? 'Se activará la Membresía Principal de 1 Mes (30 días), permitiendo futuras renovaciones por semana.'
+                      ? 'Se activará la Membresía Principal de 1 Mes (30 días) con el monto indicado y quedará registrado en su historial de precios.'
                       : 'El cliente quedará en espera hasta que el Administrador active su Demo o 1er Mes obligatorio.'}
                   </p>
                 </div>
