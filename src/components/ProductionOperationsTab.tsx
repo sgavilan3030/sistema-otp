@@ -644,13 +644,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         const uId = activeUser?.id || 'user-admin';
         const uName = activeUser?.username || 'admin';
         const entitiesToPush = overrides?.campaignEntities ?? campaignEntities;
-        const workspace = {
-          campaignEntities: entitiesToPush,
+        const workspace: Record<string, any> = {
           selectedService: overrides?.selectedService ?? selectedService,
           dialingCampaigns: overrides?.dialingCampaigns ?? dialingCampaigns,
           selectedCampaignId: overrides?.selectedCampaignId ?? selectedCampaignId,
           callFlowMode: overrides?.callFlowMode ?? callFlowMode,
         };
+        if (isSuperAdmin) {
+          workspace.campaignEntities = entitiesToPush;
+        }
         if (isSuperAdmin && Array.isArray(entitiesToPush) && entitiesToPush.length > 0) {
           fetch('/api/app/master-entities', {
             method: 'POST',
@@ -764,7 +766,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         isIvrWsHydratedRef.current = true;
 
         if (Array.isArray(ws.campaignEntities)) {
-          if (Array.isArray(data.assignedEntityIds)) {
+          if (!isSuperAdmin) {
+            // Para usuarios no-SuperAdmin, usar estrictamente la lista hidratada desde el servidor (evita audios viejos en localStorage)
+            setCampaignEntities(ws.campaignEntities);
+            try {
+              localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(ws.campaignEntities));
+            } catch (_) {}
+          } else if (Array.isArray(data.assignedEntityIds)) {
             setCampaignEntities((prev) => {
               const map = new Map<string, CampaignEntity>();
               for (const e of [...prev, ...ws.campaignEntities]) {
@@ -818,13 +826,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         }, 400);
       } else {
         if (Array.isArray(data.assignedEntities) && data.assignedEntities.length > 0) {
-          setCampaignEntities((prev) => {
-            const map = new Map<string, CampaignEntity>();
-            for (const e of [...prev, ...data.assignedEntities]) {
-              if (e?.id) map.set(e.id, e);
-            }
-            return Array.from(map.values());
-          });
+          if (!isSuperAdmin) {
+            setCampaignEntities(data.assignedEntities);
+            try {
+              localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(data.assignedEntities));
+            } catch (_) {}
+          } else {
+            setCampaignEntities((prev) => {
+              const map = new Map<string, CampaignEntity>();
+              for (const e of [...prev, ...data.assignedEntities]) {
+                if (e?.id) map.set(e.id, e);
+              }
+              return Array.from(map.values());
+            });
+          }
         }
         isIvrWsHydratedRef.current = true;
         // Bootstrap server with existing local config on first run if Super Admin already customized this browser
@@ -1114,7 +1129,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
   };
 
-  // Derived campaign audio configurations for backward compatibility
+  // Derived campaign audio configurations prioritizing active/visible entities
   const campaignAudios: Record<string, CampaignAudioConfig> = (campaignEntities || []).reduce((acc, ent) => {
     if (ent && ent.id) {
       acc[ent.id] = {
@@ -1129,19 +1144,23 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return acc;
   }, {} as Record<string, CampaignAudioConfig>);
 
-  // Ensure 'service' and 'bank' aliases always exist to prevent undefined errors
-  if (!campaignAudios['service']) {
-    campaignAudios['service'] = { ...safeDefaultAudioConfig };
-  }
-  if (!campaignAudios['bank']) {
-    campaignAudios['bank'] = campaignAudios['service'];
-  }
-
-  // Safe accessor helper that never returns undefined
+  // Safe accessor helper that never returns undefined (respects active/assigned entities for non-SuperAdmin)
   const getServiceAudios = (key?: string): CampaignAudioConfig => {
+    const activeList = (!isSuperAdmin && visibleCampaignEntities.length > 0)
+      ? visibleCampaignEntities
+      : (campaignEntities || []);
+    const matched = (key ? activeList.find((e) => e.id === key) : undefined) || activeList[0];
+    if (matched) {
+      return {
+        introAudioPath: matched.introAudioPath || safeDefaultAudioConfig.introAudioPath,
+        promptAudioPath: matched.promptAudioPath || safeDefaultAudioConfig.promptAudioPath,
+        agentAudioPath: matched.agentAudioPath || safeDefaultAudioConfig.agentAudioPath,
+        successAudioPath: matched.successAudioPath || safeDefaultAudioConfig.successAudioPath,
+        cancelCodeAudioPath: matched.cancelCodeAudioPath || safeDefaultAudioConfig.cancelCodeAudioPath,
+        otpVerifyWaitAudioPath: matched.otpVerifyWaitAudioPath || safeDefaultAudioConfig.otpVerifyWaitAudioPath,
+      };
+    }
     if (key && campaignAudios[key]) return campaignAudios[key];
-    if (campaignAudios['service']) return campaignAudios['service'];
-    if (campaignAudios['bank']) return campaignAudios['bank'];
     const first = Object.values(campaignAudios)[0];
     return first || safeDefaultAudioConfig;
   };
@@ -1717,19 +1736,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [isSuperAdmin, adminAllowedCallFlowModes, adminAssignedCallFlowMode, callFlowMode]);
 
-  // Asegurar que la entidad seleccionada pertenezca estrictamente a los guiones asignados al Call Center
+  // Asegurar que la entidad seleccionada pertenezca estrictamente a los guiones activos y asignados al usuario/Call Center
   useEffect(() => {
-    if (!Array.isArray(effectiveAssignedEntityIds)) return;
+    if (isSuperAdmin) return;
     if (visibleCampaignEntities.length > 0 && !visibleCampaignEntities.some((e) => e.id === selectedService)) {
       const firstValid = visibleCampaignEntities[0];
       setSelectedService(firstValid.id);
       try {
         localStorage.setItem('prod_selected_service_v3', firstValid.id);
       } catch (_) {}
-    } else if (visibleCampaignEntities.length === 0 && selectedService !== '') {
+    } else if (Array.isArray(effectiveAssignedEntityIds) && visibleCampaignEntities.length === 0 && selectedService !== '') {
       setSelectedService('');
     }
-  }, [effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
+  }, [isSuperAdmin, effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
 
   const defaultAssignedCarrier = React.useMemo(() => {
     const userCarrierRef = activeUser?.carrierId || activeUser?.assignedCarrierId;
@@ -2191,8 +2210,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     } catch (e) {}
   };
 
-  // Cargar configuración de audios persistida desde Asterisk AstDB al inicializar la pestaña
+  // Cargar configuración de audios persistida desde Asterisk AstDB solo para Super Admin (los clientes usan masterEntities desde servidor)
   useEffect(() => {
+    if (!canEditEntityCatalog) return;
     const fetchAsteriskAudioConfig = async () => {
       try {
         const res = await fetch('/api/asterisk/audio/config');
@@ -2226,7 +2246,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     };
 
     fetchAsteriskAudioConfig();
-  }, []);
+  }, [canEditEntityCatalog]);
 
   // Sync OTP records from centralized App.tsx telemetry without duplicate polling requests
   useEffect(() => {
@@ -2626,8 +2646,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     if (!silent) setAudioSyncFeedback(null);
     try {
       const currentAudios = getServiceAudios(selectedService);
-      // 1. Sync Audios to AstDB
-      await fetch('/api/asterisk/audio/sync-defaults', {
+      const selectedEntObj = (visibleCampaignEntities.length > 0 ? visibleCampaignEntities : campaignEntities).find((e) => e.id === selectedService);
+      const targetAgent = agentExtension || userAssignedExt || '1001';
+      // 1. Sync Audios to AstDB scoped to this agent & Call Center
+      const syncRes = await fetch('/api/asterisk/audio/sync-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2638,33 +2660,44 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           agent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
+          holdMusic: selectedEntObj?.holdMusicAudioPath || 'default',
           destination: targetNumber.trim() || '8888',
+          agentId: targetAgent,
+          tenantId: resolvedWorkspaceTenantId || undefined,
+          isAdmin: isSuperAdmin,
+          isSuperAdmin,
         }),
       });
+      const syncData = await syncRes.json().catch(() => ({ success: syncRes.ok }));
 
-      // 2. Perform Full Dialplan, PJSIP & Hot Reload directly into /etc/asterisk/
-      const res = await fetch('/api/asterisk/sync/extensions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          extensions,
-          carriers,
-          audioIntro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
-          audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
-          audioWait: 'custom/un_momento_validando_informacion',
-          audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
-          audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
-          audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
-          audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-        }),
-      });
+      // 2. Perform Full Dialplan, PJSIP & Hot Reload only for Admin users
+      if (isAdmin || isSuperAdmin) {
+        const res = await fetch('/api/asterisk/sync/extensions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            extensions,
+            carriers,
+            audioIntro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
+            audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
+            audioWait: 'custom/un_momento_validando_informacion',
+            audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
+            audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
+            audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
+            audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
+          }),
+        });
 
-      const data = await res.json();
-      if (data.success && !silent) {
-        setAudioSyncFeedback('✓ Asterisk sincronizado al 100%: Dialplan, Audios y PJSIP recargados.');
+        const data = await res.json();
+        if (data.success && !silent) {
+          setAudioSyncFeedback('✓ Asterisk sincronizado al 100%: Dialplan, Audios y PJSIP recargados.');
+          setTimeout(() => setAudioSyncFeedback(null), 5000);
+        } else if (!data.success && !silent) {
+          setAudioSyncFeedback('Aviso: ' + (data.error || 'No se pudo sincronizar'));
+        }
+      } else if (syncData?.success && !silent) {
+        setAudioSyncFeedback('✓ Audios del IVR sincronizados correctamente para tu usuario.');
         setTimeout(() => setAudioSyncFeedback(null), 5000);
-      } else if (!data.success && !silent) {
-        setAudioSyncFeedback('Aviso: ' + (data.error || 'No se pudo sincronizar'));
       }
     } catch (e: any) {
       if (!silent) setAudioSyncFeedback('Error al sincronizar con Asterisk.');
@@ -2705,6 +2738,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           tenantExtensions: tenantScopedExtensions,
           isAdmin: isSuperAdmin,
           isSuperAdmin,
+          entityId: selectedService,
+          service: serviceLabel,
           callerId: effectiveCallerIdNum,
           callerIdNum: effectiveCallerIdNum,
           callerIdName: effectiveCallerIdName,
@@ -2721,7 +2756,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioSuccess: currentAudios.successAudioPath,
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: campaignEntities.find((e) => e.id === selectedService)?.holdMusicAudioPath || 'default',
+          holdMusic: (visibleCampaignEntities.length > 0 ? visibleCampaignEntities : campaignEntities).find((e) => e.id === selectedService)?.holdMusicAudioPath || 'default',
         }),
       });
 
@@ -2967,7 +3002,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       setMassLog((prev) => [initialItem, ...prev.filter((item) => item.number !== num)]);
 
       try {
-        const currentAudios = campaignEntities.find((e) => e.id === selectedService) || campaignEntities[0];
+        const massPool = (!isSuperAdmin && visibleCampaignEntities.length > 0) ? visibleCampaignEntities : campaignEntities;
+        const selectedMassEnt = massPool.find((e) => e.id === selectedService) || massPool[0];
+        const currentAudios = getServiceAudios(selectedMassEnt?.id || selectedService);
         const payloadBody = JSON.stringify({
           destination: num,
           carrier: effectiveSelectedCarrier,
@@ -2978,6 +3015,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           isAdmin: isSuperAdmin,
           isSuperAdmin,
           isMassCampaign: true,
+          entityId: selectedMassEnt?.id || selectedService,
+          service: selectedMassEnt?.name || serviceLabel,
           callerId: outboundCid,
           callerIdNum: outboundCid,
           callerIdName: outboundCid ? String(activeCarrierObj?.outboundCallerName || '').trim() : '',
@@ -2991,7 +3030,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioSuccess: currentAudios.successAudioPath,
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
-          holdMusic: currentAudios.holdMusicAudioPath || 'default',
+          holdMusic: selectedMassEnt?.holdMusicAudioPath || 'default',
         });
 
         let res = await fetch('/api/asterisk/call/originate', {

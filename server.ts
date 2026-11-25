@@ -4508,7 +4508,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(__IVR_AGENT_EXTEN=\${IF($["\${CONFIG_8888_AGENT}" != ""]?\${CONFIG_8888_AGENT}:\${CALLING_USER})})\n`;
   dialplanContent += ` same => n,Set(DB(last_agent_call/\${CALLING_USER})=\${CALLING_USER})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
-  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${IF($["\${DB(ivr_vars/default_action)}" != ""]?\${DB(ivr_vars/default_action)}:ivr-press1)})\n`;
+  dialplanContent += ` same => n,Set(DEFAULT_ACTION=\${DB(ivr_vars/tenant_\${TENANT_ID}_action)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DEFAULT_ACTION}" = ""]?Set(DEFAULT_ACTION=\${DB(ivr_vars/agent_\${CALLING_USER}_action)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DEFAULT_ACTION}" = ""]?Set(DEFAULT_ACTION=\${DB(ivr_vars/default_action)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${DEFAULT_ACTION}" = ""]?Set(DEFAULT_ACTION=ivr-press1))\n`;
   dialplanContent += ` same => n,Goto(\${DEFAULT_ACTION},s,1)\n\n`;
 
   dialplanContent += `; Extensiones de prueba de Eco de audio (*43, *8888, 8880)\n`;
@@ -5089,11 +5092,20 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${FINAL_AGENT}_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${CALLING_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/8888_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/global_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.ulaw)} = 0]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
@@ -5263,10 +5275,37 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_PROMPT=\${STRREPLACE(IVR_PROMPT,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_PROMPT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_PROMPT}.ulaw)} = 0]?Set(IVR_PROMPT=custom/solicitar_codigo_otp))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.ulaw)} = 0]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.ulaw)} = 0]?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.ulaw)} = 0]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.ulaw)} = 0]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(IVR_INVALID=\${STRREPLACE(IVR_INVALID,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INVALID=\${STRREPLACE(IVR_INVALID,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INVALID=\${STRREPLACE(IVR_INVALID,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INVALID}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INVALID}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INVALID}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INVALID}.ulaw)} = 0]?Set(IVR_INVALID=custom/opcion_invalida))\n`;
   dialplanContent += ` same => n,NoOp(Audios Destino \${TARGET_DEST}: Intro=\${IVR_INTRO}, Prompt=\${IVR_PROMPT}, Wait=\${IVR_WAIT}, Fail=\${IVR_FAILURE})\n`;
 
   dialplanContent += ` same => n,NoOp(=== [IVR] Reproduciendo Audio de Bienvenida interactivo: \${IVR_INTRO} ===)\n`;
@@ -5331,8 +5370,9 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(CONNECTEDLINE(num,i)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(name,i)=\${TARGET_DEST})\n`;
   dialplanContent += ` same => n,Set(CONNECTEDLINE(all,i)="\${TARGET_DEST}" <\${TARGET_DEST}>)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} (Cliente: \${TARGET_DEST}) ===)\n`;
-  dialplanContent += ` same => n,Dial(PJSIP/\${FINAL_AGENT},60,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
+  dialplanContent += ` same => n,Set(DIAL_AGENTS=\${IF($["\${FINAL_AGENT}" = "ringall" | "\${FINAL_AGENT}" = "all" | "\${FINAL_AGENT}" = "hunt"]?\${GLOBAL_RINGALL_EXTENSIONS}:PJSIP/\${STRREPLACE(FINAL_AGENT,&,&PJSIP/)})})\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR] RECONECTANDO LLAMADA CON EL ASESOR EN EXTENSION \${FINAL_AGENT} -> \${DIAL_AGENTS} (Cliente: \${TARGET_DEST}) ===)\n`;
+  dialplanContent += ` same => n,Dial(\${DIAL_AGENTS},60,Ttb(sub-audio-quality^s^1(\${TARGET_DEST}))U(sub-record-picked-agent^\${TARGET_DEST}^\${CALLERID(num)}))\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
   dialplanContent += ` same => n(otp_rejected_retry),NoOp(=== [IVR] TOKEN INVALIDO DETECTADO -> SOLICITANDO NUEVO CODIGO AUTOMATICAMENTE ===)\n`;
@@ -5373,11 +5413,17 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Wait(0.4)\n`;
   dialplanContent += ` same => n,Set(IVR_AGENT=\${CALL_AGENT})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_AGENT=\${DB(ivr_vars/tenant_\${TENANT_ID}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${FINAL_AGENT}_agent)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/\${TARGET_DEST}_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=\${DB(ivr_vars/default_agent)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_AGENT}" = ""]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.ulaw)} = 0]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
   dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != ""]?\${IVR_AGENT_EXTEN}:\${DB(ivr_vars/\${TARGET_DEST}_agent_exten)})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=\${DB(ivr_vars/global_agent_exten)}))\n`;
@@ -5453,13 +5499,15 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(skip_amd_dpb),Wait(0.3)\n`;
   dialplanContent += ` same => n(ivr_ready_dpb),Set(DB(call_status/\${TARGET_DEST})=playing_audio)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=playing_audio&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
-  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n,Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_PROMPT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${CALL_INTRO}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = "" & "\${TENANT_ID}" != ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/8888_intro)}))\n`;
@@ -5512,14 +5560,19 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Analizando llamada Audio+Agent hacia \${TARGET_DEST} ===)\n`;
   dialplanContent += ` same => n,AMD(2000,1500,800,4500,100,50,4,256,5000)\n`;
   dialplanContent += ` same => n,NoOp(=== [AMD-DETECTION] Destino: \${TARGET_DEST} | AMDSTATUS=\${AMDSTATUS} | AMDCAUSE=\${AMDCAUSE} ===)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" = "INITIALSILENCE"]?amd_silence_human_ata)\n`;
   dialplanContent += ` same => n,GotoIf($["\${AMDSTATUS}" = "MACHINE"]?amd_machine_ata)\n`;
-  dialplanContent += ` same => n,Goto(ivr_ready_ata)\n`;
+  dialplanContent += ` same => n,Goto(amd_ok_ata)\n`;
+  dialplanContent += ` same => n(amd_silence_human_ata),NoOp(=== [AMD-SILENCIO-INICIAL] Silencio inicial (\${AMDCAUSE}) permitido en Audio+Agent ===)\n`;
+  dialplanContent += ` same => n(amd_ok_ata),Goto(ivr_ready_ata)\n`;
   dialplanContent += ` same => n(skip_amd_ata),Wait(0.3)\n`;
-  dialplanContent += ` same => n(ivr_ready_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
+  dialplanContent += ` same => n(ivr_ready_ata),Set(FINAL_AGENT=\${IF($["\${IVR_AGENT_EXTEN}" != "" & "\${IVR_AGENT_EXTEN}" != "ringall" & "\${IVR_AGENT_EXTEN}" != "all"]?\${IVR_AGENT_EXTEN}:\${CALLING_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($["\${FINAL_AGENT}" = ""]?Set(FINAL_AGENT=1001))\n`;
   dialplanContent += ` same => n,Set(PLAY_AUDIO=\${CALL_INTRO})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${CALL_PROMPT}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = "" & "\${TENANT_ID}" != ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${PLAY_AUDIO}" = ""]?Set(PLAY_AUDIO=\${DB(ivr_vars/8888_intro)}))\n`;
@@ -5566,7 +5619,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Hangup()\n`;
   dialplanContent += `exten => h,1,NoOp(=== [1-CLICK AUDIO+AGENT HANGUP] Canal: \${CHANNEL} | Causa: \${HANGUPCAUSE} | AMD=\${AMDSTATUS} ===)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | "\${AMDSTATUS}" = "MACHINE"]?h_keep_machine_ata)\n`;
+  dialplanContent += ` same => n,GotoIf($["\${DB(call_status/\${TARGET_NUM})}" = "machine_detected" | $["\${AMDSTATUS}" = "MACHINE" & "\${AMDCAUSE:0:14}" != "INITIALSILENCE"]]?h_keep_machine_ata)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=ended)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=ended&cause=\${URIENCODE(\${HANGUPCAUSE})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n(h_keep_machine_ata),NoOp()\n\n`;
@@ -5612,29 +5665,46 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${CALLING_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${CALL_CANCEL_WAIT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_cancel_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_cancel_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_cancel_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_cancel_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/8888_cancel_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=\${DB(ivr_vars/default_cancel_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_WAIT}" = ""]?Set(IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion))\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${CALL_PROMPT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/tenant_\${TENANT_ID}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/8888_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=\${DB(ivr_vars/default_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_CANCEL_PROMPT}" = ""]?Set(IVR_CANCEL_PROMPT=custom/digite_codigo_cancelacion))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${CALL_WAIT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${CALL_SUCCESS})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/tenant_\${TENANT_ID}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/agent_\${FINAL_AGENT}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/agent_\${CALLING_AGENT}_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/operacion_cancelada_exito))\n`;
   dialplanContent += ` same => n,Set(IVR_FAILURE=\${DB(ivr_vars/agent_\${FINAL_AGENT}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/agent_\${CALLING_AGENT}_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
@@ -5642,13 +5712,36 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_WAIT=\${STRREPLACE(IVR_CANCEL_WAIT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_CANCEL_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_CANCEL_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_CANCEL_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_CANCEL_WAIT}.ulaw)} = 0]?Set(IVR_CANCEL_WAIT=custom/enviando_codigo_cancelacion))\n`;
   dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_CANCEL_PROMPT=\${STRREPLACE(IVR_CANCEL_PROMPT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_CANCEL_PROMPT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_CANCEL_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_CANCEL_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_CANCEL_PROMPT}.ulaw)} = 0]?Set(IVR_CANCEL_PROMPT=custom/digite_codigo_cancelacion))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.ulaw)} = 0]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.ulaw)} = 0]?Set(IVR_SUCCESS=custom/operacion_cancelada_exito))\n`;
   dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.ulaw)} = 0]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(INTRO_TRIES=0)\n`;
   dialplanContent += ` same => n(menu),Set(INTRO_TRIES=$[\${INTRO_TRIES} + 1])\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1-CANCEL] Reproduciendo saludo (\${INTRO_TRIES}/2): \${IVR_INTRO} ===)\n`;
@@ -5797,29 +5890,46 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${FINAL_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${CALLING_AGENT}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${CALLING_AGENT}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/\${TARGET_DEST}_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/8888_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/default_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/global_intro)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${GLOBAL_DEFAULT_INTRO}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${CALL_OTP_VERIFY_WAIT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_otp_verify_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_otp_verify_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/\${TARGET_DEST}_otp_verify_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/8888_otp_verify_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=\${DB(ivr_vars/default_otp_verify_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_VERIFY_WAIT}" = ""]?Set(IVR_OTP_VERIFY_WAIT=custom/enviando_codigo_verificacion))\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${CALL_PROMPT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/tenant_\${TENANT_ID}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/\${TARGET_DEST}_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/8888_prompt)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=\${DB(ivr_vars/default_prompt)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_OTP_PROMPT}" = ""]?Set(IVR_OTP_PROMPT=custom/digite_codigo_verificacion))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${CALL_WAIT})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_WAIT=\${DB(ivr_vars/tenant_\${TENANT_ID}_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/agent_\${FINAL_AGENT}_wait)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/agent_\${CALLING_AGENT}_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=\${DB(ivr_vars/default_wait)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_WAIT}" = ""]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${CALL_SUCCESS})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/tenant_\${TENANT_ID}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/agent_\${FINAL_AGENT}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/agent_\${CALLING_AGENT}_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/\${TARGET_DEST}_success)}))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=\${DB(ivr_vars/default_success)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_SUCCESS}" = ""]?Set(IVR_SUCCESS=custom/otp_validado_exito))\n`;
   dialplanContent += ` same => n,Set(IVR_FAILURE=\${DB(ivr_vars/agent_\${FINAL_AGENT}_failure)})\n`;
+  dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/agent_\${CALLING_AGENT}_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
@@ -5827,13 +5937,36 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
   dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_VERIFY_WAIT=\${STRREPLACE(IVR_OTP_VERIFY_WAIT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_VERIFY_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_VERIFY_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_VERIFY_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_VERIFY_WAIT}.ulaw)} = 0]?Set(IVR_OTP_VERIFY_WAIT=custom/enviando_codigo_verificacion))\n`;
   dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/es/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/en/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_PROMPT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_PROMPT}.ulaw)} = 0]?Set(IVR_OTP_PROMPT=custom/digite_codigo_verificacion))\n`;
   dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.ulaw)} = 0]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
   dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.ulaw)} = 0]?Set(IVR_SUCCESS=custom/otp_validado_exito))\n`;
   dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.ulaw,)})\n`;
+  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,custom/custom/,custom/)})\n`;
+  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.ulaw)} = 0]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
   dialplanContent += ` same => n,Set(INTRO_TRIES=0)\n`;
   dialplanContent += ` same => n(menu),Set(INTRO_TRIES=$[\${INTRO_TRIES} + 1])\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Reproduciendo saludo (\${INTRO_TRIES}/2): \${IVR_INTRO} ===)\n`;
@@ -7850,23 +7983,67 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       astDbCommands.push(`database put ivr_vars ${formattedDest}_cid_name ""`);
     }
 
+    const singleAgentExts = (effectiveAgentExten && effectiveAgentExten !== 'ringall' && effectiveAgentExten !== 'all')
+      ? effectiveAgentExten.split('&').map((s: string) => s.trim()).filter(Boolean)
+      : [];
+
     if (cleanCarrier && cleanCarrier !== 'auto' && cleanCarrier !== 'pool') {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_carrier "${cleanCarrier}"`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_carrier "${cleanCarrier}"`);
-      if (agentExten && agentExten !== 'ringall' && agentExten !== 'all') {
-        astDbCommands.push(`database put user_carrier ${agentExten} "${cleanCarrier}"`);
+      for (const ext of singleAgentExts) {
+        astDbCommands.push(`database put user_carrier ${ext} "${cleanCarrier}"`);
       }
     } else {
       astDbCommands.push(`database put ivr_vars ${cleanDest}_carrier ""`);
       astDbCommands.push(`database put ivr_vars ${formattedDest}_carrier ""`);
     }
 
-    const cleanIntro = (audioIntro || '').trim().replace(/\.wav$/i, '');
-    const cleanPrompt = (audioPrompt || '').trim().replace(/\.wav$/i, '');
-    const cleanAgent = (audioAgent || '').trim().replace(/\.wav$/i, '');
-    const cleanSuccess = (audioSuccess || '').trim().replace(/\.wav$/i, '');
-    const cleanCancelWait = (req.body.audioCancelWait || req.body.cancelWait || '').trim().replace(/\.wav$/i, '');
-    const cleanOtpVerifyWait = (req.body.audioOtpVerifyWait || req.body.otpVerifyWait || '').trim().replace(/\.wav$/i, '');
+    // Fallback entity resolution from server master catalog if client omitted or sent empty audio paths
+    let fallbackEntity: any = null;
+    try {
+      const masterEntities = getMasterEntitiesFromDisk(authUser);
+      const reqEntId = String(req.body.entityId || req.body.selectedService || req.body.service || '').trim();
+      const userAssigned: string[] | null = Array.isArray(authUser?.assignedEntityIds) ? authUser.assignedEntityIds.map(String) : null;
+      const tenantAssigned: string[] | null = Array.isArray(tenantResolution.tenant?.assignedEntityIds) ? tenantResolution.tenant.assignedEntityIds.map(String) : null;
+      const scopedMaster = masterEntities.filter((e: any) => {
+        if (!e || e.isActive === false) return false;
+        if (callerIsSuperAdmin) return true;
+        if (userAssigned && !userAssigned.includes(String(e.id))) return false;
+        if (tenantAssigned && !tenantAssigned.includes(String(e.id))) return false;
+        return true;
+      });
+      fallbackEntity = scopedMaster.find((e: any) => e.id === reqEntId || e.name === reqEntId) || scopedMaster[0] || masterEntities[0] || null;
+    } catch (_) {}
+
+    const reqIntroRaw = String(audioIntro || req.body.intro || fallbackEntity?.introAudioPath || '').trim();
+    const reqPromptRaw = String(audioPrompt || req.body.prompt || fallbackEntity?.promptAudioPath || '').trim();
+    const reqAgentRaw = String(audioAgent || req.body.agentAudio || fallbackEntity?.agentAudioPath || '').trim();
+    const reqSuccessRaw = String(audioSuccess || req.body.success || fallbackEntity?.successAudioPath || '').trim();
+    const reqWaitRaw = String(req.body.wait || fallbackEntity?.waitAudioPath || '').trim();
+    const reqCancelWaitRaw = String(req.body.audioCancelWait || req.body.cancelWait || fallbackEntity?.cancelCodeAudioPath || '').trim();
+    const reqOtpVerifyWaitRaw = String(req.body.audioOtpVerifyWait || req.body.otpVerifyWait || fallbackEntity?.otpVerifyWaitAudioPath || '').trim();
+
+    const defaultIntroFallback = (enforcedMode === 'cancel_code' || enforcedMode === 'otp_press1')
+      ? 'custom/bienvenida_press1'
+      : 'custom/bienvenida_corporativa';
+    const defaultPromptFallback = (enforcedMode === 'cancel_code')
+      ? 'custom/digite_codigo_cancelacion'
+      : (enforcedMode === 'otp_press1')
+      ? 'custom/digite_codigo_verificacion'
+      : 'custom/solicitar_codigo_otp';
+    const defaultSuccessFallback = (enforcedMode === 'cancel_code')
+      ? 'custom/operacion_cancelada_exito'
+      : (enforcedMode === 'otp_press1')
+      ? 'custom/otp_validado_exito'
+      : 'custom/operacion_bloqueada_exito';
+
+    const cleanIntro = resolveVerifiedAsteriskSoundPath(reqIntroRaw, defaultIntroFallback);
+    const cleanPrompt = resolveVerifiedAsteriskSoundPath(reqPromptRaw, defaultPromptFallback);
+    const cleanAgent = resolveVerifiedAsteriskSoundPath(reqAgentRaw, 'custom/conectar_asesor');
+    const cleanSuccess = resolveVerifiedAsteriskSoundPath(reqSuccessRaw, defaultSuccessFallback);
+    const cleanWait = resolveVerifiedAsteriskSoundPath(reqWaitRaw, 'custom/un_momento_validando_informacion');
+    const cleanCancelWait = resolveVerifiedAsteriskSoundPath(reqCancelWaitRaw, 'custom/enviando_codigo_cancelacion');
+    const cleanOtpVerifyWait = resolveVerifiedAsteriskSoundPath(reqOtpVerifyWaitRaw, 'custom/enviando_codigo_verificacion');
     const clean10Ast = cleanDest.length === 11 && cleanDest.startsWith('1') ? cleanDest.substring(1) : cleanDest;
 
     // Reset any stale otp_status for this destination so a fresh call starts pending
@@ -7876,53 +8053,25 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       astDbCommands.push(`database put otp_status "1${clean10Ast}" "pending"`);
     }
 
-    if (cleanIntro) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_intro "${cleanIntro}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_intro "${cleanIntro}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_intro "${cleanIntro}"`);
-        astDbCommands.push(`database put ivr_vars default_intro "${cleanIntro}"`);
-      }
+    const dbKeyPrefixTargets = [cleanDest, formattedDest];
+    if (tenantResolution.tenant?.id) {
+      dbKeyPrefixTargets.push(`tenant_${String(tenantResolution.tenant.id).trim()}`);
     }
-    if (cleanPrompt) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_prompt "${cleanPrompt}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_prompt "${cleanPrompt}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_prompt "${cleanPrompt}"`);
-        astDbCommands.push(`database put ivr_vars default_prompt "${cleanPrompt}"`);
-      }
+    if (singleAgentExts[0]) {
+      dbKeyPrefixTargets.push(`agent_${singleAgentExts[0]}`);
     }
-    if (cleanAgent) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_agent "${cleanAgent}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_agent "${cleanAgent}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_agent "${cleanAgent}"`);
-        astDbCommands.push(`database put ivr_vars default_agent "${cleanAgent}"`);
-      }
+    if (cleanDest === '8888' && callerIsSuperAdmin && !tenantResolution.tenant?.id) {
+      dbKeyPrefixTargets.push('8888', 'default');
     }
-    if (cleanSuccess) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_success "${cleanSuccess}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_success "${cleanSuccess}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_success "${cleanSuccess}"`);
-        astDbCommands.push(`database put ivr_vars default_success "${cleanSuccess}"`);
-      }
-    }
-    if (cleanCancelWait) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_cancel_wait "${cleanCancelWait}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_cancel_wait "${cleanCancelWait}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_cancel_wait "${cleanCancelWait}"`);
-        astDbCommands.push(`database put ivr_vars default_cancel_wait "${cleanCancelWait}"`);
-      }
-    }
-    if (cleanOtpVerifyWait) {
-      astDbCommands.push(`database put ivr_vars ${cleanDest}_otp_verify_wait "${cleanOtpVerifyWait}"`);
-      astDbCommands.push(`database put ivr_vars ${formattedDest}_otp_verify_wait "${cleanOtpVerifyWait}"`);
-      if (cleanDest === '8888') {
-        astDbCommands.push(`database put ivr_vars 8888_otp_verify_wait "${cleanOtpVerifyWait}"`);
-        astDbCommands.push(`database put ivr_vars default_otp_verify_wait "${cleanOtpVerifyWait}"`);
-      }
+
+    for (const prefix of Array.from(new Set(dbKeyPrefixTargets.filter(Boolean)))) {
+      if (cleanIntro) astDbCommands.push(`database put ivr_vars ${prefix}_intro "${cleanIntro}"`);
+      if (cleanPrompt) astDbCommands.push(`database put ivr_vars ${prefix}_prompt "${cleanPrompt}"`);
+      if (cleanWait) astDbCommands.push(`database put ivr_vars ${prefix}_wait "${cleanWait}"`);
+      if (cleanAgent) astDbCommands.push(`database put ivr_vars ${prefix}_agent "${cleanAgent}"`);
+      if (cleanSuccess) astDbCommands.push(`database put ivr_vars ${prefix}_success "${cleanSuccess}"`);
+      if (cleanCancelWait) astDbCommands.push(`database put ivr_vars ${prefix}_cancel_wait "${cleanCancelWait}"`);
+      if (cleanOtpVerifyWait) astDbCommands.push(`database put ivr_vars ${prefix}_otp_verify_wait "${cleanOtpVerifyWait}"`);
     }
 
     const rawHoldMusic = (req.body.holdMusic || req.body.audioHold || '').trim().replace(/\.wav$/i, '');
@@ -7942,9 +8091,12 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       }
     }
 
-    // Batch sync AstDB variables in background without blocking originate
-    for (const c of astDbCommands) {
-      executeAsteriskCommand(c).catch(() => {});
+    // Sync AstDB variables right before originating (bounded 250ms wait prevents race conditions without stalling)
+    if (hasLocalAsterisk && astDbCommands.length > 0) {
+      await Promise.race([
+        Promise.all(astDbCommands.map((c) => executeAsteriskCommand(c).catch(() => ''))),
+        new Promise((resolve) => setTimeout(resolve, 250)),
+      ]);
     }
 
     // Ensure Asterisk PJSIP configuration has standard transports and valid AORs ready before dialing
@@ -8028,11 +8180,11 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
           ? `"${effectiveCidName || effectiveCidNum}" <${effectiveCidNum}>`
           : `"Sistema Web" <${callerLabelExt}>`);
     const effectiveAmdEnabled = (typeof req.body.amdEnabled === 'boolean') ? req.body.amdEnabled : isAmdEnabled;
-    const retryCallAgent = cleanAgent || (req.body.agentAudio ? String(req.body.agentAudio).trim().replace(/\.wav$/i, '') : '');
-    const retryCallIntro = cleanIntro || (req.body.intro ? String(req.body.intro).trim().replace(/\.wav$/i, '') : '');
-    const retryCallPrompt = cleanPrompt || (req.body.prompt ? String(req.body.prompt).trim().replace(/\.wav$/i, '') : '');
-    const retryCallWait = req.body.wait ? String(req.body.wait).trim().replace(/\.wav$/i, '') : '';
-    const retryCallSuccess = cleanSuccess || (req.body.success ? String(req.body.success).trim().replace(/\.wav$/i, '') : '');
+    const retryCallAgent = cleanAgent;
+    const retryCallIntro = cleanIntro;
+    const retryCallPrompt = cleanPrompt;
+    const retryCallWait = cleanWait;
+    const retryCallSuccess = cleanSuccess;
     const retryHoldMusic = holdMusic || '';
 
     if (shouldAutoRetry) {
@@ -8063,6 +8215,7 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       callRetryAttempts.set(formattedDest, 1);
     }
 
+    const primaryCallingAgent = singleAgentExts[0] || callerLabelExt || '1001';
     const originateVars: Record<string, string> = {
       TARGET_DEST: cleanDest,
       CALL_DEST: cleanDest,
@@ -8077,8 +8230,8 @@ app.post('/api/asterisk/call/originate', requireActiveMembership, async (req, re
       __AMD_ENABLED: effectiveAmdEnabled ? '1' : '0',
       IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
       __IVR_AGENT_EXTEN: effectiveAgentExten || 'ringall',
-      CALLING_AGENT: effectiveAgentExten || '1001',
-      __CALLING_AGENT: effectiveAgentExten || '1001',
+      CALLING_AGENT: primaryCallingAgent,
+      __CALLING_AGENT: primaryCallingAgent,
       ...(retryCallIntro ? { CALL_INTRO: retryCallIntro, __CALL_INTRO: retryCallIntro } : {}),
       ...(retryCallPrompt ? { CALL_PROMPT: retryCallPrompt, __CALL_PROMPT: retryCallPrompt } : {}),
       ...(retryCallWait ? { CALL_WAIT: retryCallWait, __CALL_WAIT: retryCallWait } : {}),
@@ -8303,10 +8456,13 @@ app.post('/api/asterisk/audio/upload', requireActiveMembership, express.json({ l
     };
 
     const mirrorUploadedWav = (srcWav: string) => {
+      try { fs.chmodSync(srcWav, 0o644); } catch (_) {}
       for (const dstDir of ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']) {
         try {
           if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true, mode: 0o755 });
-          fs.copyFileSync(srcWav, path.join(dstDir, targetWavName));
+          const dstWav = path.join(dstDir, targetWavName);
+          fs.copyFileSync(srcWav, dstWav);
+          try { fs.chmodSync(dstWav, 0o644); } catch (_) {}
         } catch (_) {}
       }
       ensureNativeUlawFromWav(srcWav, ['/var/lib/asterisk/sounds/es/custom', '/var/lib/asterisk/sounds/en/custom', '/var/lib/asterisk/sounds']);
@@ -8643,6 +8799,40 @@ function sanitizeAsteriskSoundPath(rawPath: string | undefined, fallback = 'cust
     .replace(/^(?:custom\/)+/i, 'custom/')
     .replace(/[^a-zA-Z0-9_\/\-]/g, '');
   return cleaned || fallback;
+}
+
+function asteriskSoundFileExistsOnDisk(cleanRelPath: string): boolean {
+  if (!cleanRelPath || !fs.existsSync('/var/lib/asterisk/sounds')) return true;
+  const normalized = cleanRelPath.replace(/^\/+/, '');
+  const baseNoCustom = normalized.replace(/^custom\//, '');
+  const dirsToCheck = [
+    '/var/lib/asterisk/sounds',
+    '/var/lib/asterisk/sounds/es',
+    '/var/lib/asterisk/sounds/en',
+  ];
+  for (const dir of dirsToCheck) {
+    for (const ext of ['.ulaw', '.wav', '.gsm']) {
+      if (fs.existsSync(path.join(dir, `${normalized}${ext}`))) return true;
+    }
+  }
+  if (SOUNDS_CUSTOM_DIR) {
+    for (const ext of ['.ulaw', '.wav', '.gsm']) {
+      if (fs.existsSync(path.join(SOUNDS_CUSTOM_DIR, `${baseNoCustom}${ext}`))) return true;
+    }
+  }
+  return false;
+}
+
+function resolveVerifiedAsteriskSoundPath(rawPath: string | undefined, fallback: string): string {
+  const cleanFallback = sanitizeAsteriskSoundPath(fallback, 'custom/bienvenida_corporativa');
+  const candidate = sanitizeAsteriskSoundPath(rawPath, cleanFallback);
+  if (asteriskSoundFileExistsOnDisk(candidate)) {
+    return candidate;
+  }
+  if (asteriskSoundFileExistsOnDisk(cleanFallback)) {
+    return cleanFallback;
+  }
+  return candidate;
 }
 
 async function syncOtpExtensionsToAstDb(listInput?: any[]) {
@@ -9715,16 +9905,13 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     const userWsPath = getIvrWorkspacePath(userId, username, tenantId);
     if (fs.existsSync(userWsPath)) {
       const ws = JSON.parse(fs.readFileSync(userWsPath, 'utf8'));
-      if (Array.isArray(assignedEntityIds)) {
+      if (!isSuperAdminReq) {
+        // Siempre hidratar definiciones/audios actualizados desde masterEntities para usuarios no-SuperAdmin
         ws.campaignEntities = filterEntitiesForScope(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
         const validIds = ws.campaignEntities.map((e: any) => e.id);
-        if (ws.selectedService && !validIds.includes(ws.selectedService)) {
+        if (!ws.selectedService || !validIds.includes(ws.selectedService)) {
           ws.selectedService = validIds[0] || '';
         }
-      } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
-        ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
-      }
-      if (!isSuperAdminReq) {
         const currentMode = normalizeCallFlowMode(ws.callFlowMode);
         if (!planScope.allowedModes.includes(currentMode)) {
           ws.callFlowMode = planScope.assignedMode;
@@ -9743,16 +9930,12 @@ app.get('/api/app/ivr-workspace', (req, res) => {
     }
     if (fs.existsSync(IVR_WORKSPACE_FILE)) {
       const ws = JSON.parse(fs.readFileSync(IVR_WORKSPACE_FILE, 'utf8'));
-      if (Array.isArray(assignedEntityIds)) {
+      if (!isSuperAdminReq) {
         ws.campaignEntities = filterEntitiesForScope(Array.isArray(ws.campaignEntities) ? ws.campaignEntities : []);
         const validIds = ws.campaignEntities.map((e: any) => e.id);
-        if (ws.selectedService && !validIds.includes(ws.selectedService)) {
+        if (!ws.selectedService || !validIds.includes(ws.selectedService)) {
           ws.selectedService = validIds[0] || '';
         }
-      } else if (!isSuperAdminReq && Array.isArray(ws.campaignEntities)) {
-        ws.campaignEntities = ws.campaignEntities.filter((e: any) => e && e.id && e.isActive !== false);
-      }
-      if (!isSuperAdminReq) {
         ws.callFlowMode = planScope.assignedMode;
       }
       return res.json({
@@ -9808,6 +9991,8 @@ app.post('/api/app/ivr-workspace', requireActiveMembership, (req, res) => {
       const planScope = resolveClientDialingPlanScope(authUser, matchedTenant);
       const reqFlow = normalizeCallFlowMode(safeWorkspace.callFlowMode);
       safeWorkspace.callFlowMode = planScope.allowedModes.includes(reqFlow) ? reqFlow : planScope.assignedMode;
+      // Los usuarios no-SuperAdmin no pueden sobreescribir el catálogo de guiones del Call Center desde caché local
+      delete safeWorkspace.campaignEntities;
     }
     if (!fs.existsSync(USER_CONFIGS_DIR)) {
       fs.mkdirSync(USER_CONFIGS_DIR, { recursive: true, mode: 0o750 });
@@ -9932,15 +10117,14 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
       saveManualAudioLocks(manualAudioLocks);
     }
 
-    const cleanVal = (v: any) => String(v || '').trim().replace(/^"|"$/g, '');
-    const cleanIntro = cleanVal(intro);
-    const cleanPrompt = cleanVal(prompt);
-    const cleanWait = cleanVal(wait);
-    const cleanSuccess = cleanVal(success);
-    const cleanAgent = cleanVal(agent);
-    const cleanCancelWait = cleanVal(cancelWait);
-    const cleanOtpVerifyWait = cleanVal(otpVerifyWait);
-    const cleanMoh = cleanVal(holdMusic);
+    const cleanIntro = resolveVerifiedAsteriskSoundPath(intro, 'custom/bienvenida_corporativa');
+    const cleanPrompt = resolveVerifiedAsteriskSoundPath(prompt, 'custom/solicitar_codigo_otp');
+    const cleanWait = resolveVerifiedAsteriskSoundPath(wait, 'custom/un_momento_validando_informacion');
+    const cleanSuccess = resolveVerifiedAsteriskSoundPath(success, 'custom/operacion_bloqueada_exito');
+    const cleanAgent = resolveVerifiedAsteriskSoundPath(agent, 'custom/conectar_asesor');
+    const cleanCancelWait = resolveVerifiedAsteriskSoundPath(cancelWait, 'custom/enviando_codigo_cancelacion');
+    const cleanOtpVerifyWait = resolveVerifiedAsteriskSoundPath(otpVerifyWait, 'custom/enviando_codigo_verificacion');
+    const cleanMoh = String(holdMusic || '').trim().replace(/^"|"$/g, '');
     const normalizedMoh = cleanMoh
       ? (LEGACY_CUSTOM_HOLD_PATHS.has(cleanMoh) ? 'default' : cleanMoh)
       : '';
@@ -9948,20 +10132,46 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
     const primaryTargets = new Set<string>();
     const secondaryTargets = new Set<string>();
 
-    // 1. Tenant-isolated target (guarantees zero cross-talk between Call Centers)
+    // 1. Tenant-isolated target + all extensions in that Call Center
     if (scopedTenantId) {
       const cleanTenantId = String(scopedTenantId).trim().replace(/[^0-9a-zA-Z_-]/g, '');
       if (cleanTenantId) {
         primaryTargets.add(`tenant_${cleanTenantId}`);
+        try {
+          const tObj = loadStoredTenants().find((t: any) => t && t.id === cleanTenantId);
+          if (tObj) {
+            const tStart = Number(tObj.extensionStart);
+            const tEnd = Number(tObj.extensionEnd);
+            const exts = (lastSyncedExtensions.length > 0 ? lastSyncedExtensions : loadStoredExtensions());
+            for (const e of exts) {
+              const extNum = parseInt(String(e?.extension || e?.id || '').trim(), 10);
+              if (!isNaN(extNum) && !isNaN(tStart) && !isNaN(tEnd) && extNum >= tStart && extNum <= tEnd) {
+                primaryTargets.add(`agent_${extNum}`);
+                primaryTargets.add(String(extNum));
+              }
+            }
+          }
+        } catch (_) {}
       }
     }
 
-    // 2. Agent-specific targets (skip shared placeholders like 'ringall' or 'all')
+    // 2. Agent-specific targets (supports multi-extension "2001&2002" cleanly, skips ringall/all placeholders)
     if (agentId && String(agentId).trim() !== 'ringall' && String(agentId).trim() !== 'all') {
-      const cleanAgentId = String(agentId).trim().replace(/[^0-9a-zA-Z_]/g, '');
-      if (cleanAgentId) {
-        primaryTargets.add(`agent_${cleanAgentId}`);
-        primaryTargets.add(cleanAgentId);
+      for (const part of String(agentId).split('&')) {
+        const cleanAgentId = part.trim().replace(/[^0-9a-zA-Z_]/g, '');
+        if (cleanAgentId && cleanAgentId !== 'ringall' && cleanAgentId !== 'all') {
+          primaryTargets.add(`agent_${cleanAgentId}`);
+          primaryTargets.add(cleanAgentId);
+        }
+      }
+    }
+    if (Array.isArray(authUser?.assignedExtensions)) {
+      for (const ext of authUser.assignedExtensions) {
+        const cleanExt = String(ext || '').trim().replace(/[^0-9a-zA-Z_]/g, '');
+        if (cleanExt) {
+          primaryTargets.add(`agent_${cleanExt}`);
+          primaryTargets.add(cleanExt);
+        }
       }
     }
 
@@ -10062,6 +10272,10 @@ app.post('/api/asterisk/audio/sync-defaults', async (req, res) => {
 // Endpoint to retrieve active audio configuration from Asterisk AstDB
 app.get('/api/asterisk/audio/config', async (req, res) => {
   try {
+    const authUser = (req as any).authUser;
+    const scopedTenantId = isGlobalAdminUser(authUser)
+      ? String(req.query.tenantId || '').trim()
+      : String(authUser?.tenantId || '').trim();
     const stdout = await executeAsteriskCommand('database show ivr_vars');
     const audios: Record<string, string> = {};
     if (stdout) {
@@ -10076,15 +10290,16 @@ app.get('/api/asterisk/audio/config', async (req, res) => {
         }
       }
     }
+    const tPrefix = scopedTenantId ? `tenant_${scopedTenantId}_` : '';
 
     res.json({
       success: true,
       audios: {
-        intro: audios['default_intro'] || audios['8888_intro'] || audios['global_intro'] || 'custom/banrearreglado',
-        prompt: audios['default_prompt'] || audios['8888_prompt'] || audios['global_prompt'] || 'custom/solicitar_codigo_otp',
-        wait: audios['default_wait'] || audios['8888_wait'] || audios['global_wait'] || 'custom/un_momento_validando_informacion',
-        success: audios['default_success'] || audios['8888_success'] || audios['global_success'] || 'custom/operacion_bloqueada_exito',
-        agent: audios['default_agent'] || audios['8888_agent'] || audios['global_agent'] || 'custom/conectar_asesor',
+        intro: (tPrefix && audios[`${tPrefix}intro`]) || audios['default_intro'] || audios['8888_intro'] || audios['global_intro'] || 'custom/bienvenida_corporativa',
+        prompt: (tPrefix && audios[`${tPrefix}prompt`]) || audios['default_prompt'] || audios['8888_prompt'] || audios['global_prompt'] || 'custom/solicitar_codigo_otp',
+        wait: (tPrefix && audios[`${tPrefix}wait`]) || audios['default_wait'] || audios['8888_wait'] || audios['global_wait'] || 'custom/un_momento_validando_informacion',
+        success: (tPrefix && audios[`${tPrefix}success`]) || audios['default_success'] || audios['8888_success'] || audios['global_success'] || 'custom/operacion_bloqueada_exito',
+        agent: (tPrefix && audios[`${tPrefix}agent`]) || audios['default_agent'] || audios['8888_agent'] || audios['global_agent'] || 'custom/conectar_asesor',
       },
       allKeys: audios,
     });
