@@ -1854,7 +1854,14 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                             className="rounded border-slate-700 text-sky-500 focus:ring-sky-500 bg-slate-950"
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold truncate">{ent.name}</div>
+                            <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                              <span className="truncate">{ent.name}</span>
+                              {ent.flowScope === 'otp_press1' && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shrink-0">
+                                  OTP Auto
+                                </span>
+                              )}
+                            </div>
                             {ent.subtitle && <div className="text-[10px] text-slate-400 truncate">{ent.subtitle}</div>}
                             {blockedByTenant && (
                               <div className="text-[9px] text-amber-400">No activo en su Call Center</div>

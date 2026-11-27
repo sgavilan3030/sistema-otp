@@ -441,6 +441,7 @@ export interface CampaignEntity {
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
   isActive?: boolean;        // Si es false, está inactivo/deshabilitado y no se muestra para asignar a Call Centers ni Usuarios
+  flowScope?: 'all' | 'otp_press1'; // 'otp_press1' = guión independiente exclusivo para Press-1 + OTP Automático
   campaignId?: string;       // Campaña vinculada por defecto
   campaignName?: string;     // Nombre de la campaña vinculada
 }

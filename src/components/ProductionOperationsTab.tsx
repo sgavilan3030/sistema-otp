@@ -94,6 +94,7 @@ export interface CampaignEntity {
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
   isActive?: boolean;        // Si es false, está inactivo y no aparece para asignar a Call Centers ni Usuarios
+  flowScope?: 'all' | 'otp_press1'; // 'otp_press1' = guión independiente exclusivo para Press-1 + OTP Automático
   campaignId?: string;       // ID de la campaña de marcación vinculada
   campaignName?: string;     // Nombre de la campaña de marcación vinculada
 }
@@ -244,10 +245,21 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return 'cancel_code';
   });
 
+  const [showGeneralInOtpAuto, setShowGeneralInOtpAuto] = useState(false);
+
   const setCallFlowMode = (mode: CallFlowMode) => {
     if (!isSuperAdmin && !allowedFlowModesRef.current.includes(mode)) {
       return;
     }
+    try {
+      if (selectedService) {
+        if (callFlowMode === 'otp_press1') {
+          localStorage.setItem('prod_selected_service_otp_auto', selectedService);
+        } else {
+          localStorage.setItem('prod_selected_service_general', selectedService);
+        }
+      }
+    } catch (_) {}
     setCallFlowModeState(mode);
     try {
       localStorage.setItem('ast20_call_flow_mode', mode);
@@ -468,6 +480,25 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       successAudioPath: 'custom/operacion_bloqueada_exito',
       holdMusicAudioPath: 'default',
       isActive: false,
+    },
+    {
+      id: 'otp_auto_default',
+      name: 'OTP Auto - Verificación',
+      subtitle: 'Press-1 + OTP Automático',
+      icon: 'lock',
+      color: 'cyan',
+      defaultCallerName: '',
+      defaultCallerNum: '',
+      introAudioPath: 'custom/bienvenida_corporativa',
+      otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
+      promptAudioPath: 'custom/prompt_otp_6_digitos',
+      waitAudioPath: 'custom/un_momento_validando_informacion',
+      agentAudioPath: 'custom/conectar_asesor',
+      successAudioPath: 'custom/operacion_bloqueada_exito',
+      failureAudioPath: 'custom/token_invalido_reintente',
+      holdMusicAudioPath: 'default',
+      flowScope: 'otp_press1',
+      isActive: true,
     },
   ];
 
@@ -1293,8 +1324,17 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     setIsEntityModalOpen(false);
     setEditingEntity(null);
 
+    const shouldAutoSelectNewOtpAuto = !exists && normalizedEntity.flowScope === 'otp_press1' && callFlowMode === 'otp_press1';
+    if (shouldAutoSelectNewOtpAuto) {
+      setSelectedService(normalizedEntity.id);
+      try {
+        localStorage.setItem('prod_selected_service_otp_auto', normalizedEntity.id);
+        localStorage.setItem('prod_selected_service_v3', normalizedEntity.id);
+      } catch (_) {}
+    }
+
     // Apply caller ID only if explicitly synced (provider assigns CallerID by default)
-    if (selectedService === normalizedEntity.id) {
+    if (selectedService === normalizedEntity.id || shouldAutoSelectNewOtpAuto) {
 
       // Auto-sync audios to AstDB
       try {
@@ -1328,6 +1368,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     try {
       localStorage.setItem('prod_selected_service_' + targetAgent, entity.id);
       localStorage.setItem('prod_selected_service_v3', entity.id);
+      if (entity.flowScope === 'otp_press1') {
+        localStorage.setItem('prod_selected_service_otp_auto', entity.id);
+      } else {
+        localStorage.setItem('prod_selected_service_general', entity.id);
+      }
     } catch (_) {}
 
     // Auto-sync to AstDB isolated to Call Center & agent (never overwrites global/other Call Centers)
@@ -1358,23 +1403,26 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
   };
 
   // Add new entity
-  const handleAddNewEntity = () => {
+  const handleAddNewEntity = (forcedScope?: 'all' | 'otp_press1') => {
     if (!canEditEntityCatalog) {
       setAudioSyncFeedback('🔒 Solo el Super Administrador puede crear nuevos guiones en el IVR.');
       setTimeout(() => setAudioSyncFeedback(null), 3500);
       return;
     }
-    const newId = 'custom_' + Date.now();
+    const targetScope: 'all' | 'otp_press1' =
+      forcedScope || (callFlowMode === 'otp_press1' ? 'otp_press1' : 'all');
+    const isOtpAuto = targetScope === 'otp_press1';
+    const newId = (isOtpAuto ? 'otp_auto_' : 'custom_') + Date.now();
     const newEntity: CampaignEntity = {
       id: newId,
-      name: 'Nueva Campaña / Servicio',
-      subtitle: 'Atención al Cliente',
-      icon: 'building',
-      color: 'emerald',
+      name: isOtpAuto ? 'Nuevo Guión OTP Automático' : 'Nueva Campaña / Servicio',
+      subtitle: isOtpAuto ? 'Press-1 + OTP Automático' : 'Atención al Cliente',
+      icon: isOtpAuto ? 'lock' : 'building',
+      color: isOtpAuto ? 'cyan' : 'emerald',
       defaultCallerName: 'SERVICIO AL CLIENTE',
       defaultCallerNum: '',
       introAudioPath: 'custom/bienvenida_corporativa',
-      promptAudioPath: 'custom/solicitar_codigo_otp',
+      promptAudioPath: isOtpAuto ? 'custom/prompt_otp_6_digitos' : 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
       waitAudioPath: 'custom/un_momento_validando_informacion',
@@ -1382,6 +1430,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
       otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
       holdMusicAudioPath: 'default',
+      flowScope: targetScope,
       isActive: true,
     };
     setEditingEntity(newEntity);
@@ -1676,6 +1725,28 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     return activeOnes.filter((ent) => effectiveAssignedEntityIds.includes(ent.id));
   }, [isSuperAdmin, campaignEntities, effectiveAssignedEntityIds]);
 
+  // Separar guiones exclusivos de Press-1 + OTP Automático de los guiones generales (protege Press-1 Asesor y demás modos)
+  const dedicatedOtpAutoEntities = React.useMemo(
+    () => visibleCampaignEntities.filter((ent) => ent.flowScope === 'otp_press1'),
+    [visibleCampaignEntities]
+  );
+
+  const generalModeEntities = React.useMemo(
+    () => visibleCampaignEntities.filter((ent) => ent.flowScope !== 'otp_press1'),
+    [visibleCampaignEntities]
+  );
+
+  const modeFilteredEntities = React.useMemo(() => {
+    if (callFlowMode === 'otp_press1') {
+      if (dedicatedOtpAutoEntities.length > 0 && !showGeneralInOtpAuto) {
+        return dedicatedOtpAutoEntities;
+      }
+      return visibleCampaignEntities;
+    }
+    // En Press-1 Asesor y demás modos, ocultar guiones exclusivos de OTP Auto para evitar mezclas
+    return generalModeEntities.length > 0 ? generalModeEntities : visibleCampaignEntities;
+  }, [callFlowMode, visibleCampaignEntities, dedicatedOtpAutoEntities, generalModeEntities, showGeneralInOtpAuto]);
+
   const canEditEntityCatalog = isSuperAdmin || (isAdmin && !userTenant);
 
   // Centro de Llamadas Masivas: solo disponible para Super Administrador o clientes habilitados explícitamente por el Administrador
@@ -1753,19 +1824,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     }
   }, [isSuperAdmin, adminAllowedCallFlowModes, adminAssignedCallFlowMode, callFlowMode]);
 
-  // Asegurar que la entidad seleccionada pertenezca estrictamente a los guiones activos y asignados al usuario/Call Center
+  // Asegurar que la entidad seleccionada pertenezca estrictamente al modo activo y a los guiones asignados
   useEffect(() => {
-    if (isSuperAdmin) return;
-    if (visibleCampaignEntities.length > 0 && !visibleCampaignEntities.some((e) => e.id === selectedService)) {
-      const firstValid = visibleCampaignEntities[0];
-      setSelectedService(firstValid.id);
+    if (modeFilteredEntities.length > 0 && !modeFilteredEntities.some((e) => e.id === selectedService)) {
+      let targetEntity = modeFilteredEntities[0];
       try {
-        localStorage.setItem('prod_selected_service_v3', firstValid.id);
+        const memKey = callFlowMode === 'otp_press1' ? 'prod_selected_service_otp_auto' : 'prod_selected_service_general';
+        const remembered = localStorage.getItem(memKey);
+        const match = remembered ? modeFilteredEntities.find((e) => e.id === remembered) : undefined;
+        if (match) targetEntity = match;
       } catch (_) {}
-    } else if (Array.isArray(effectiveAssignedEntityIds) && visibleCampaignEntities.length === 0 && selectedService !== '') {
+      setSelectedService(targetEntity.id);
+      try {
+        localStorage.setItem('prod_selected_service_v3', targetEntity.id);
+      } catch (_) {}
+    } else if (!isSuperAdmin && Array.isArray(effectiveAssignedEntityIds) && visibleCampaignEntities.length === 0 && selectedService !== '') {
       setSelectedService('');
     }
-  }, [isSuperAdmin, effectiveAssignedEntityIds, visibleCampaignEntities, selectedService]);
+  }, [isSuperAdmin, callFlowMode, effectiveAssignedEntityIds, visibleCampaignEntities.length, modeFilteredEntities, selectedService]);
 
   const defaultAssignedCarrier = React.useMemo(() => {
     const userCarrierRef = activeUser?.carrierId || activeUser?.assignedCarrierId;
@@ -3672,6 +3748,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 ? 'Press-1'
                 : callFlowMode === 'cancel_code'
                 ? 'Press-1 + Cancelación'
+                : callFlowMode === 'otp_press1'
+                ? 'Press-1 + OTP Auto'
                 : 'Híbrido'}
             </span>
           </button>
@@ -4617,9 +4695,19 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <div>
                     <div className="flex items-center gap-2">
                       <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                        <Building2 className="w-4 h-4 text-emerald-400" />
-                        <span>Guión / Entidad a Simular en el IVR</span>
+                        <Building2 className={`w-4 h-4 ${callFlowMode === 'otp_press1' ? 'text-cyan-400' : 'text-emerald-400'}`} />
+                        <span>
+                          {callFlowMode === 'otp_press1'
+                            ? 'Guiones Independientes: Press-1 + OTP Auto'
+                            : 'Guión / Entidad a Simular en el IVR'}
+                        </span>
                       </label>
+                      {callFlowMode === 'otp_press1' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          <Zap className="w-3 h-3 text-cyan-400" />
+                          <span>Exclusivos OTP Auto</span>
+                        </span>
+                      )}
                       {campaignEntities.find((e) => e.id === selectedService)?.isLocked ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                           <Lock className="w-3 h-3 text-amber-400" />
@@ -4681,12 +4769,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         </span>
                         <button
                           type="button"
-                          onClick={handleAddNewEntity}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm"
-                          title="Crear un nuevo guión con audios personalizados"
+                          onClick={() => handleAddNewEntity(callFlowMode === 'otp_press1' ? 'otp_press1' : 'all')}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all shadow-sm ${
+                            callFlowMode === 'otp_press1'
+                              ? 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border-cyan-500/40'
+                              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          }`}
+                          title={
+                            callFlowMode === 'otp_press1'
+                              ? 'Crear un guión exclusivo para Press-1 + OTP Automático (solo 6 audios)'
+                              : 'Crear un nuevo guión con audios personalizados'
+                          }
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>+ Nuevo Guión</span>
+                          <span>{callFlowMode === 'otp_press1' ? '+ Nuevo Guión OTP Auto' : '+ Nuevo Guión'}</span>
                         </button>
                         <button
                           type="button"
@@ -4751,6 +4847,42 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                 </div>
 
+                {callFlowMode === 'otp_press1' && (
+                  <div className="p-3 rounded-xl bg-cyan-950/25 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="text-cyan-200/95">
+                      {dedicatedOtpAutoEntities.length > 0 ? (
+                        <span>
+                          Mostrando tus <strong>{dedicatedOtpAutoEntities.length}</strong> guión(es) independientes de <strong>Press-1 + OTP Automático</strong> (separados de Press-1 Asesor).
+                        </span>
+                      ) : (
+                        <span>
+                          Aún no tienes un guión exclusivo para <strong>Press-1 + OTP Automático</strong>. Créalo para editar solo sus 6 audios sin mezclar con otros modos.
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {dedicatedOtpAutoEntities.length > 0 && generalModeEntities.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowGeneralInOtpAuto((v) => !v)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer"
+                        >
+                          {showGeneralInOtpAuto ? 'Ocultar generales' : `Ver también generales (${generalModeEntities.length})`}
+                        </button>
+                      )}
+                      {canEditEntityCatalog && dedicatedOtpAutoEntities.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddNewEntity('otp_press1')}
+                          className="px-3 py-1 rounded-lg text-[11px] font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow cursor-pointer"
+                        >
+                          + Crear Guión OTP Auto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {visibleCampaignEntities.length === 0 ? (
                   <div className="p-5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
@@ -4763,7 +4895,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                 ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {visibleCampaignEntities.map((ent) => {
+                  {modeFilteredEntities.map((ent) => {
                     const isSelected = selectedService === ent.id;
                     const isEntityActive = ent.isActive !== false;
                     const renderIcon = () => {
@@ -4953,38 +5085,77 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
                         {/* Badges de audios asignados a esta entidad */}
                         <div className="space-y-1 text-[10px] font-mono bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
-                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
-                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
-                              <Volume2 className="w-2.5 h-2.5 text-emerald-400" /> Saludo:
-                            </span>
-                            <span className="text-emerald-300 truncate font-semibold" title={ent.introAudioPath}>
-                              {cleanIntro}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
-                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
-                              <PhoneForwarded className="w-2.5 h-2.5 text-sky-400" /> Asesor (1):
-                            </span>
-                            <span className="text-sky-300 truncate font-semibold" title={ent.agentAudioPath}>
-                              {cleanAgent}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
-                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
-                              <KeyRound className="w-2.5 h-2.5 text-purple-400" /> OTP:
-                            </span>
-                            <span className="text-purple-300 truncate font-semibold" title={ent.promptAudioPath}>
-                              {cleanPrompt}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
-                            <span className="flex items-center gap-1 text-slate-300 shrink-0">
-                              <Music className="w-2.5 h-2.5 text-amber-400" /> Hold MOH:
-                            </span>
-                            <span className="text-amber-300 truncate font-semibold" title={ent.holdMusicAudioPath || 'default'}>
-                              {(!ent.holdMusicAudioPath || ent.holdMusicAudioPath === 'default') ? 'Asterisk Default' : ent.holdMusicAudioPath.replace(/^custom\//, '')}
-                            </span>
-                          </div>
+                          {ent.flowScope === 'otp_press1' ? (
+                            <>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <Volume2 className="w-2.5 h-2.5 text-emerald-400" /> 1. Saludo:
+                                </span>
+                                <span className="text-emerald-300 truncate font-semibold" title={ent.introAudioPath}>
+                                  {cleanIntro}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <Zap className="w-2.5 h-2.5 text-cyan-400" /> 2. Al Marcar 1:
+                                </span>
+                                <span className="text-cyan-300 truncate font-semibold" title={ent.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}>
+                                  {(ent.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion').replace(/^custom\//, '')}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <KeyRound className="w-2.5 h-2.5 text-purple-400" /> 3. Pedir OTP:
+                                </span>
+                                <span className="text-purple-300 truncate font-semibold" title={ent.promptAudioPath}>
+                                  {cleanPrompt}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <AlertCircle className="w-2.5 h-2.5 text-rose-400" /> 6. Inválido:
+                                </span>
+                                <span className="text-rose-300 truncate font-semibold" title={ent.failureAudioPath || 'custom/token_invalido_reintente'}>
+                                  {(ent.failureAudioPath || 'custom/token_invalido_reintente').replace(/^custom\//, '')}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <Volume2 className="w-2.5 h-2.5 text-emerald-400" /> Saludo:
+                                </span>
+                                <span className="text-emerald-300 truncate font-semibold" title={ent.introAudioPath}>
+                                  {cleanIntro}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <PhoneForwarded className="w-2.5 h-2.5 text-sky-400" /> Asesor (1):
+                                </span>
+                                <span className="text-sky-300 truncate font-semibold" title={ent.agentAudioPath}>
+                                  {cleanAgent}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <KeyRound className="w-2.5 h-2.5 text-purple-400" /> OTP:
+                                </span>
+                                <span className="text-purple-300 truncate font-semibold" title={ent.promptAudioPath}>
+                                  {cleanPrompt}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <Music className="w-2.5 h-2.5 text-amber-400" /> Hold MOH:
+                                </span>
+                                <span className="text-amber-300 truncate font-semibold" title={ent.holdMusicAudioPath || 'default'}>
+                                  {(!ent.holdMusicAudioPath || ent.holdMusicAudioPath === 'default') ? 'Asterisk Default' : ent.holdMusicAudioPath.replace(/^custom\//, '')}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
 
                         {/* Campaña Asociada y Estado */}
@@ -5400,15 +5571,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   <select
                     value={selectedService}
                     onChange={(e) => setSelectedService(e.target.value as ServiceCampaignKey)}
-                    disabled={isMassRunning || visibleCampaignEntities.length === 0}
+                    disabled={isMassRunning || modeFilteredEntities.length === 0}
                     className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-sky-400 font-bold focus:outline-none"
                   >
-                    {visibleCampaignEntities.length === 0 ? (
+                    {modeFilteredEntities.length === 0 ? (
                       <option value="">Sin guiones asignados</option>
                     ) : (
-                      visibleCampaignEntities.map((ent) => (
+                      modeFilteredEntities.map((ent) => (
                         <option key={ent.id} value={ent.id}>
-                          {ent.name} ({ent.subtitle})
+                          {ent.flowScope === 'otp_press1' ? '[OTP Auto] ' : ''}{ent.name} ({ent.subtitle})
                         </option>
                       ))
                     )}
@@ -5794,6 +5965,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         ? 'Modo Press-1 Activo'
                         : callFlowMode === 'cancel_code'
                         ? 'Modo Press-1 + Cancelación Activo'
+                        : callFlowMode === 'otp_press1'
+                        ? 'Modo Press-1 + OTP Auto Activo'
                         : 'Modo Híbrido Activo'}
                     </span>
                   </h3>
@@ -5847,7 +6020,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Opción Principal: Press-1 + Código de Cancelación */}
               <button
                 type="button"
@@ -5864,18 +6037,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                   {callFlowMode === 'cancel_code' ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-950">
-                      PRINCIPAL ACTIVO
+                      ACTIVO
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-amber-400 font-bold">PRINCIPAL</span>
+                    <span className="text-[10px] font-mono text-amber-400 font-bold">Modo 1</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">1. Press-1 + Código Cancelación</div>
+                <div className="text-sm font-bold text-white">1. Press-1 + Cancelación</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Al marcar 1 reproduce: <em>"Un momento por favor, le estamos enviando un código de cancelación"</em>, te <strong>avisa al instante</strong> para que envíes el código y espera a que confirmes para pedirle que lo digite.
+                  Al marcar 1 reproduce aviso, te <strong>avisa al instante</strong> para que envíes el código y espera tu confirmación.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-amber-400/95 font-mono">
-                  ✓ Alerta en vivo + Envío guiado + Válido/Inválido
+                  ✓ Alerta en vivo + Envío guiado
                 </div>
               </button>
 
@@ -5895,7 +6068,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                   {callFlowMode === 'otp' ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500 text-slate-950">
-                      SELECCIONADO
+                      ACTIVO
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono text-slate-500">Modo 2</span>
@@ -5903,10 +6076,10 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
                 <div className="text-sm font-bold text-white">2. Capturar Código OTP</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Reproduce la locución de verificación y solicita al cliente ingresar su código de confirmación o clave OTP de 4 o 6 dígitos en el teclado.
+                  Reproduce la locución de verificación y solicita al cliente ingresar su código OTP en el teclado.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-emerald-400/90 font-mono">
-                  ✓ Reflejo inmediato en pantalla en tiempo real
+                  ✓ Reflejo inmediato en pantalla
                 </div>
               </button>
 
@@ -5926,18 +6099,18 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                   {callFlowMode === 'press1' ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-400 text-slate-950">
-                      SELECCIONADO
+                      ACTIVO
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono text-slate-500">Modo 3</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">3. Press-1 (Transferir a Softphone)</div>
+                <div className="text-sm font-bold text-white">3. Press-1 (Asesor)</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Advierte sobre una transacción no autorizada y le indica al cliente: <em>"Presione 1 para comunicarse con un asesor"</em>.
+                  Advierte sobre una transacción y le indica: <em>"Presione 1 para comunicarse con un asesor"</em>.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-sky-400/90 font-mono">
-                  ✓ Timbra directo en Extensión {agentExtension} (X-Lite / MicroSIP)
+                  ✓ Timbra directo en Ext. {agentExtension}
                 </div>
               </button>
 
@@ -5957,18 +6130,49 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </div>
                   {callFlowMode === 'hybrid' ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-400 text-slate-950">
-                      SELECCIONADO
+                      ACTIVO
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono text-slate-500">Modo 4</span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-white">4. Híbrido Completo (OTP + Asesor)</div>
+                <div className="text-sm font-bold text-white">4. Híbrido (OTP + Asesor)</div>
                 <div className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  Pide el token de seguridad. Si el cliente ingresa el código se captura; si presiona 1 o solicita asesor, transfiere la llamada.
+                  Pide el token de seguridad o transfiere con un asesor si el cliente presiona 1.
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-purple-400/90 font-mono">
                   ✓ Máxima flexibilidad operativa
+                </div>
+              </button>
+
+              {/* Opción 5: Press-1 + OTP Automático */}
+              <button
+                type="button"
+                onClick={() => setCallFlowMode('otp_press1')}
+                className={`p-5 rounded-2xl border text-left transition-all relative ${
+                  callFlowMode === 'otp_press1'
+                    ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-400/70'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white hover:border-cyan-500/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  {callFlowMode === 'otp_press1' ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-400 text-slate-950">
+                      ACTIVO
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">Modo 5</span>
+                  )}
+                </div>
+                <div className="text-sm font-bold text-white">5. Press-1 + OTP Auto</div>
+                <div className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Al marcar 1 pide el OTP <strong>automáticamente</strong> sin botones extra y valida <strong>Válido/Inválido</strong>.
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-cyan-400/95 font-mono">
+                  ✓ Guiones propios (6 audios)
                 </div>
               </button>
             </div>
@@ -5994,7 +6198,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 2</div>
                 <div className="text-xs font-bold text-white mt-1">Descolgado & Saludo</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  El cliente contesta. Asterisk ejecuta <code className="text-slate-300">Answer()</code> y reproduce la Alerta de <code className="text-emerald-300">{serviceLabel}</code>.
+                  El cliente contesta. Asterisk ejecuta <code className="text-slate-300">Answer()</code> y reproduce el Saludo de <code className="text-emerald-300">{serviceLabel}</code>.
                 </div>
               </div>
 
@@ -6007,6 +6211,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? 'Opción Press 1'
                     : callFlowMode === 'cancel_code'
                     ? 'Press-1 → Enviando Código'
+                    : callFlowMode === 'otp_press1'
+                    ? 'Press-1 → Pide OTP Auto'
                     : 'Menú Dual OTP/Asesor'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
@@ -6016,6 +6222,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     ? `Si presiona 1, ejecuta Dial(PJSIP/${agentExtension}) para conectar con tu softphone.`
                     : callFlowMode === 'cancel_code'
                     ? 'Si marca 1, reproduce "Un momento por favor, le estamos enviando un código de cancelación" y solicita los dígitos.'
+                    : callFlowMode === 'otp_press1'
+                    ? 'Al marcar 1 reproduce "Le estamos enviando su código..." y pasa directo a pedir el OTP sin pulsar ningún botón.'
                     : `Captura el código OTP ingresado o transfiere a la ${agentExtension} si presiona 1.`}
                 </div>
               </div>
@@ -6025,15 +6233,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-xs font-bold text-white mt-1">
                   {callFlowMode === 'press1'
                     ? 'Conversación en Vivo'
-                    : callFlowMode === 'cancel_code'
-                    ? 'Decisión Agente (Válido/Inválido)'
+                    : callFlowMode === 'cancel_code' || callFlowMode === 'otp_press1'
+                    ? 'Decisión (Válido/Inválido)'
                     : 'Procesamiento OTP'}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
                   {callFlowMode === 'press1'
                     ? `El operador toma la llamada en el softphone registrado (Extensión ${agentExtension}).`
-                    : callFlowMode === 'cancel_code'
-                    ? 'El agente ve el código en tiempo real y presiona CÓDIGO VÁLIDO o CÓDIGO INVÁLIDO (si es inválido pide reintento).'
+                    : callFlowMode === 'cancel_code' || callFlowMode === 'otp_press1'
+                    ? 'Dice "Un momento, estamos validando su información" y tú decides en pantalla Válido o Inválido (si es inválido pide reintentar).'
                     : 'Asterisk reproduce la locución de "Un momento validando su información".'}
                 </div>
               </div>
@@ -6042,8 +6250,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 <div className="text-[10px] font-mono text-emerald-400 font-bold">PASO 5</div>
                 <div className="text-xs font-bold text-white mt-1">Confirmación & Cierre</div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  {callFlowMode === 'cancel_code'
-                    ? 'Si es Válido reproduce "Código validado, operación cancelada con éxito" y cierra la llamada.'
+                  {callFlowMode === 'cancel_code' || callFlowMode === 'otp_press1'
+                    ? 'Si es Válido reproduce el audio de éxito configurado y finaliza la llamada limpiamente.'
                     : 'Reproduce la locución de éxito ("Operación bloqueada con éxito") y finaliza la llamada.'}
                 </div>
               </div>
@@ -6052,30 +6260,285 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
           {/* Configuración Completa de Locuciones con Espacio Amplio */}
           <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
-                <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Volume2 className="w-5 h-5 text-emerald-400" />
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 flex-wrap">
+                  <Volume2 className={`w-5 h-5 ${callFlowMode === 'otp_press1' ? 'text-cyan-400' : 'text-emerald-400'}`} />
                   <span>2. Locuciones y Audios Pregrabados ({serviceLabel})</span>
+                  {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1') && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 normal-case">
+                      Vista Simple: 6 Audios Press-1 + OTP Auto
+                    </span>
+                  )}
                 </h4>
-                <p className="text-xs text-slate-400">
-                  Prueba, asigna o sube los audios que Asterisk reproducirá en cada etapa de la llamada.
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1')
+                    ? 'Configura en orden exacto (1 al 6) los únicos 6 audios que usa este guión de Press-1 + OTP Automático.'
+                    : 'Prueba, asigna o sube los audios que Asterisk reproducirá en cada etapa de la llamada.'}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickUploadSlot('introAudioPath');
-                  setIsQuickUploadOpen(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all self-start sm:self-auto shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Subir o Grabar Nuevo Audio</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                <select
+                  value={selectedService}
+                  onChange={(e) => {
+                    const found = campaignEntities.find((ent) => ent.id === e.target.value);
+                    if (found) handleSelectEntity(found);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-cyan-500"
+                  title="Cambiar guión que estás editando"
+                >
+                  {modeFilteredEntities.map((ent) => (
+                    <option key={ent.id} value={ent.id}>
+                      {ent.flowScope === 'otp_press1' ? '[OTP Auto] ' : ''}{ent.name}
+                    </option>
+                  ))}
+                </select>
+
+                {canEditEntityCatalog && callFlowMode === 'otp_press1' && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddNewEntity('otp_press1')}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 transition-all shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Nuevo Guión OTP Auto</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickUploadSlot('introAudioPath');
+                    setIsQuickUploadOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all shadow-sm cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Subir o Grabar Nuevo Audio</span>
+                </button>
+              </div>
             </div>
 
+            {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1') ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Saludo Inicial */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span>1. Saludo Inicial (Pide marcar 1)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).introAudioPath, 'intro')}
+                      disabled={!getServiceAudios(selectedService).introAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'intro' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'intro' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).introAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  >
+                    <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).introAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                    placeholder="ej: custom/bienvenida_corporativa"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 2. Al Marcar 1 (Enviando código) */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-cyan-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                      <span>2. Al Marcar 1 ("Le estamos enviando su código...")</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'otp_verify_wait')}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'otp_verify_wait' ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'otp_verify_wait' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                  >
+                    <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
+                    placeholder="ej: custom/enviando_codigo_verificacion"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 3. Solicitar Código OTP */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-purple-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-purple-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                      <span>3. Pedir Digitar el Código OTP</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).promptAudioPath, 'prompt')}
+                      disabled={!getServiceAudios(selectedService).promptAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'prompt' ? <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'prompt' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).promptAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                  >
+                    <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos [RECOMENDADO]</option>
+                    <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
+                    <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).promptAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                    placeholder="ej: custom/prompt_otp_6_digitos"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 4. Validando Información */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-indigo-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-indigo-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                      <span>4. Validando Información (Espera Decisión)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion', 'wait_slot')}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'wait_slot' ? <Pause className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'wait_slot' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                  >
+                    <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                    placeholder="ej: custom/un_momento_validando_informacion"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 5. Código Válido / Éxito */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span>5. Código Válido / Éxito Final</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).successAudioPath, 'success')}
+                      disabled={!getServiceAudios(selectedService).successAudioPath}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'success' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'success' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).successAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  >
+                    <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito (Predeterminado)</option>
+                    <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).successAudioPath}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                    placeholder="ej: custom/operacion_bloqueada_exito"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 6. Código Inválido / Reintentar */}
+                <div className="p-4 rounded-xl bg-slate-900 border border-rose-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-rose-200 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                      <span>6. Código Inválido / Reintento</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente', 'failure_slot')}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    >
+                      {playingAudioKey === 'failure_slot' ? <Pause className="w-3.5 h-3.5 text-rose-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                      <span>{playingAudioKey === 'failure_slot' ? 'Pausar' : 'Escuchar'}</span>
+                    </button>
+                  </div>
+                  <select
+                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  >
+                    <option value="custom/token_invalido_reintente">custom/token_invalido_reintente (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                    placeholder="ej: custom/token_invalido_reintente"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Slot 1: Audio de Bienvenida / Alerta de Fraude */}
               <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
@@ -6553,6 +7016,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
 
             </div>
+            )}
           </div>
 
           {/* Configuración de Extensión de Softphone y Terminal VPS */}
@@ -6685,14 +7149,27 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   onChange={(e) => setQuickUploadSlot(e.target.value as keyof CampaignAudioConfig)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
                 >
-                  <option value="introAudioPath">1. Saludo / Alerta Inicial</option>
-                  <option value="otpVerifyWaitAudioPath">2. Press-1 + OTP Auto: Al Marcar 1 (Enviando Código)</option>
-                  <option value="promptAudioPath">3. Solicitud de Código OTP (Digite su código)</option>
-                  <option value="waitAudioPath">4. Validando Información (Espera)</option>
-                  <option value="successAudioPath">5. Confirmación / Éxito OTP (Válido)</option>
-                  <option value="failureAudioPath">6. Código Inválido / Reintento</option>
-                  <option value="agentAudioPath">7. Pre-Transferencia Press-1 (Asesor)</option>
-                  <option value="cancelCodeAudioPath">8. Enviando Código Cancelación (Modo 4)</option>
+                  {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1') ? (
+                    <>
+                      <option value="introAudioPath">1. Saludo Inicial (Pide marcar 1)</option>
+                      <option value="otpVerifyWaitAudioPath">2. Al Marcar 1 (Enviando Código)</option>
+                      <option value="promptAudioPath">3. Pedir Digitar el Código OTP</option>
+                      <option value="waitAudioPath">4. Validando Información (Espera)</option>
+                      <option value="successAudioPath">5. Código Válido / Éxito Final</option>
+                      <option value="failureAudioPath">6. Código Inválido / Reintento</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="introAudioPath">1. Saludo / Alerta Inicial</option>
+                      <option value="otpVerifyWaitAudioPath">2. Press-1 + OTP Auto: Al Marcar 1 (Enviando Código)</option>
+                      <option value="promptAudioPath">3. Solicitud de Código OTP (Digite su código)</option>
+                      <option value="waitAudioPath">4. Validando Información (Espera)</option>
+                      <option value="successAudioPath">5. Confirmación / Éxito OTP (Válido)</option>
+                      <option value="failureAudioPath">6. Código Inválido / Reintento</option>
+                      <option value="agentAudioPath">7. Pre-Transferencia Press-1 (Asesor)</option>
+                      <option value="cancelCodeAudioPath">8. Enviando Código Cancelación (Modo 4)</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -6925,6 +7402,46 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   </select>
                 </div>
 
+                {/* Tipo de Guión: General vs Exclusivo Press-1 + OTP Automático */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/30 space-y-2">
+                  <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Tipo de Guión (Dónde se usa)</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={!isAdmin}
+                      onClick={() => setEditingEntity({ ...editingEntity, flowScope: 'all' })}
+                      className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer disabled:opacity-60 ${
+                        editingEntity.flowScope !== 'otp_press1'
+                          ? 'bg-emerald-500/15 border-emerald-400 text-white font-bold'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div>General (Todos los modos)</div>
+                      <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                        Para Press-1 Asesor, OTP, Híbrido y Cancelación
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!isAdmin}
+                      onClick={() => setEditingEntity({ ...editingEntity, flowScope: 'otp_press1' })}
+                      className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer disabled:opacity-60 ${
+                        editingEntity.flowScope === 'otp_press1'
+                          ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div>Exclusivo: Press-1 + OTP Automático</div>
+                      <div className="text-[10px] font-normal text-cyan-300/80 mt-0.5">
+                        Guión independiente (solo sus 6 audios del 1 al 6)
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Estado Activo / Inactivo para asignación a Call Centers y Usuarios */}
                 <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30">
                   <div className="flex items-center gap-2.5">
@@ -6994,15 +7511,249 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
-              {/* Bloque 2: Asignación de los 4 Audios */}
+              {/* Bloque 2: Asignación de Audios */}
               <div className="space-y-3 pt-3 border-t border-slate-800">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>2. Locuciones Pregrabadas Asignadas a este Guión</span>
+                    <Volume2 className={`w-3.5 h-3.5 ${editingEntity.flowScope === 'otp_press1' ? 'text-cyan-400' : 'text-emerald-400'}`} />
+                    <span>
+                      {editingEntity.flowScope === 'otp_press1'
+                        ? '2. Los 6 Audios de Press-1 + OTP Automático (En Orden)'
+                        : '2. Locuciones Pregrabadas Asignadas a este Guión'}
+                    </span>
                   </h4>
                   <span className="text-[11px] text-slate-400">Escucha con Play antes de guardar</span>
                 </div>
+
+                {editingEntity.flowScope === 'otp_press1' ? (
+                  <div className="space-y-3">
+                    {/* 1. Saludo Inicial */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-emerald-300">1. Saludo Inicial (Pide marcar 1)</div>
+                          <div className="text-[11px] text-slate-400">Se escucha al contestar la llamada e invita a marcar 1.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.introAudioPath, 'modal_intro')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_intro' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.introAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.introAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. Al Marcar 1 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-cyan-300">2. Al Marcar 1 ("Le estamos enviando su código...")</div>
+                          <div className="text-[11px] text-slate-400">Suena justo cuando el cliente presiona 1.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'modal_otp_verify_wait')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_otp_verify_wait' ? <Pause className="w-4 h-4 text-cyan-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, otpVerifyWaitAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, otpVerifyWaitAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3. Pedir Código OTP */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-purple-500/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-purple-300">3. Pedir Digitar el Código OTP</div>
+                          <div className="text-[11px] text-slate-400">Le indica al cliente que digite su código y termine con #.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.promptAudioPath, 'modal_prompt')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_prompt' ? <Pause className="w-4 h-4 text-purple-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.promptAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos</option>
+                          <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
+                          <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.promptAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 4. Validando Información */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-indigo-300">4. Validando Información ("Un momento, estamos validando...")</div>
+                          <div className="text-[11px] text-slate-400">Suena mientras decides en pantalla Válido o Inválido.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion', 'modal_wait')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_wait' ? <Pause className="w-4 h-4 text-indigo-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 5. Código Válido / Éxito */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-emerald-300">5. Código Válido / Éxito Final</div>
+                          <div className="text-[11px] text-slate-400">Suena cuando presionas Código Válido antes de colgar.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.successAudioPath, 'modal_success')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_success' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.successAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
+                          <option value="auth-thankyou">auth-thankyou</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.successAudioPath}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 6. Código Inválido / Reintento */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-rose-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-rose-300">6. Código Inválido / Reintento</div>
+                          <div className="text-[11px] text-slate-400">Suena cuando presionas Inválido para que vuelva a digitar el código.</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(editingEntity.failureAudioPath || 'custom/token_invalido_reintente', 'modal_failure')}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          {playingAudioKey === 'modal_failure' ? <Pause className="w-4 h-4 text-rose-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                        >
+                          <option value="custom/token_invalido_reintente">custom/token_invalido_reintente</option>
+                          {audios.map((a) => (
+                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
+                          onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
+                          disabled={!isAdmin}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
 
                 {/* 1. Saludo / Alerta Inicial */}
                 <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
@@ -7392,6 +8143,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     </div>
                   </div>
                 </div>
+                  </>
+                )}
               </div>
             </div>
 
