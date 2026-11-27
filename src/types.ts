@@ -119,6 +119,7 @@ export type AudioRole =
   | 'agent_transfer'
   | 'press1_invalid'
   | 'otp_welcome'
+  | 'otp_verify_wait'
   | 'otp_wait'
   | 'otp_success'
   | 'otp_failure'
@@ -131,6 +132,7 @@ export interface ActiveAudioAssignments {
   agent_transfer: string;
   press1_invalid: string;
   otp_welcome: string;
+  otp_verify_wait?: string;
   otp_wait: string;
   otp_success: string;
   otp_failure: string;
@@ -160,6 +162,7 @@ export interface AudioPrompt {
     | 'press1_invalid'
     | 'agent_transfer'
     | 'otp_welcome'
+    | 'otp_verify_wait'
     | 'otp_wait'
     | 'otp_success'
     | 'otp_failure'
@@ -433,7 +436,8 @@ export interface CampaignEntity {
   cancelCodeAudioPath?: string; // Audio al marcar 1: "Un momento por favor, le estamos enviando un código de cancelación"
   otpVerifyWaitAudioPath?: string; // Audio al marcar 1 (IVR Captura OTP): "Un momento por favor, le estamos enviando su código de verificación"
   successAudioPath: string;  // Validación Exitosa
-  waitAudioPath?: string;    // Espera
+  waitAudioPath?: string;    // Validación en curso ("Un momento, estamos validando su información")
+  failureAudioPath?: string; // Código inválido / reintento ("El código ingresado es inválido, reintente")
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
   isLocked?: boolean;        // Bloqueo manual: previene sobreescritura por sincronización automática
   isActive?: boolean;        // Si es false, está inactivo/deshabilitado y no se muestra para asignar a Call Centers ni Usuarios

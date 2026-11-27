@@ -1172,8 +1172,12 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                 const isPressed1 = call.status === 'pressed_1';
                 const isAskingCancelCode = call.status === 'asking_cancel_code' || call.status === 'asking_otp';
                 const isCancelCode = call.mode === 'cancel_code';
-                const isOtpValid = call.status === 'otp_valid' || call.otpStatus === 'valid';
-                const isOtpInvalid = call.status === 'otp_invalid' || call.otpStatus === 'invalid';
+                const isOtpValid =
+                  call.otpStatus === 'valid' ||
+                  (call.status === 'otp_valid' && call.otpStatus !== 'pending' && call.otpStatus !== 'invalid');
+                const isOtpInvalid =
+                  call.otpStatus === 'invalid' ||
+                  (call.status === 'otp_invalid' && call.otpStatus !== 'pending' && call.otpStatus !== 'valid');
                 const isIvr = call.status === 'in_ivr' || isPressed1 || isAskingCancelCode || isOtpValid || isOtpInvalid;
                 const hasInlineOtp =
                   call.mode === 'otp_press1' ||

