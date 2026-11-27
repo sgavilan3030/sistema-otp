@@ -1917,8 +1917,15 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
     // Aislamiento estricto por extensiones asignadas (aplica incluso si el usuario es admin con extensión asignada)
     if (assignedExts.length > 0) {
       filtered = filtered.filter((r: any) => {
+        if (r.userId && u?.id && r.userId === u.id) return true;
         const recAgent = r.agent ? String(r.agent).trim() : '';
-        if (recAgent) return assignedExts.includes(recAgent);
+        if (recAgent && recAgent !== 'ringall' && recAgent !== 'all') {
+          const parts = recAgent.split('&').map((p: string) => p.trim()).filter(Boolean);
+          if (parts.some((p: string) => assignedExts.includes(p))) return true;
+        }
+        if ((!recAgent || recAgent === 'ringall' || recAgent === 'all') && u?.tenantId && r.tenantId === u.tenantId) {
+          return true;
+        }
         const recNum = r.number ? String(r.number).trim() : '';
         return recNum ? assignedExts.includes(recNum) : false;
       });
@@ -1928,15 +1935,20 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     // Detectar si hay un código nuevo para alertar exclusivamente a este agente
     if (filtered.length > 0) {
-      const newest = filtered[0];
+      const currentCall = activeCallRef.current;
+      const normLast10 = (v?: string) => String(v || '').replace(/[^0-9]/g, '').slice(-10);
+      const activeNum10 = currentCall?.isActive ? normLast10(currentCall.number) : '';
+      const matchedForActive = activeNum10.length >= 7
+        ? filtered.find((r: any) => normLast10(r.number) === activeNum10 && r.status === 'pending') ||
+          filtered.find((r: any) => normLast10(r.number) === activeNum10)
+        : undefined;
+      const newest = matchedForActive || filtered[0];
       const recordKey = `${newest.id}_${newest.otp}_${newest.status}`;
 
       const isDecided =
         newest.status === 'valid' ||
         newest.status === 'invalid' ||
-        validRecordIdsRef.current.has(newest.id) ||
-        (newest.otp && validRecordIdsRef.current.has(newest.otp)) ||
-        (newest.number && validRecordIdsRef.current.has(newest.number));
+        validRecordIdsRef.current.has(newest.id);
 
       if (isDecided) {
         setActiveCall((prev) => {
@@ -2053,9 +2065,6 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
 
     if (status === 'valid') {
       if (effectiveId) validRecordIdsRef.current.add(effectiveId);
-      if (otp) validRecordIdsRef.current.add(otp);
-      if (effectiveNumber) validRecordIdsRef.current.add(effectiveNumber);
-      if (num) validRecordIdsRef.current.add(num);
 
       // Quitar del HUD de llamada activa la sección de dígitos en tiempo real
       if (activeCall) {
@@ -2407,10 +2416,28 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               callState.status !== 'machine' &&
               callState.status !== 'machine_detected');
 
-          // 1. Detección en vivo de cuando el cliente presiona la tecla 1
-          if (callState.status === 'pressed_1' || (isPress1Event && callState.status !== 'transferred' && callState.status !== 'talking')) {
+          // 1. Detección en vivo de código OTP capturado o tecla 1 presionada
+          if (callState.status === 'otp_captured' || (callState.capturedOtp && callState.otpStatus === 'pending')) {
+            setActiveCall((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: 'otp_captured',
+                    capturedOtp: callState.capturedOtp || prev.capturedOtp,
+                    otpStatus: (callState.otpStatus as any) || prev.otpStatus || 'pending',
+                    mode: (callState.mode as CallFlowMode) || prev.mode,
+                    agent: callState.agent || prev.agent,
+                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                    channel: callState.channel || prev.channel,
+                  }
+                : null
+            );
+          } else if (callState.status === 'pressed_1' || (isPress1Event && callState.status !== 'transferred' && callState.status !== 'talking')) {
             setActiveCall((prev) => {
               if (!prev) return null;
+              if (prev.capturedOtp && prev.otpStatus === 'pending') {
+                return prev;
+              }
               if (!prev.pressed1Detected && prev.status !== 'pressed_1') {
                 playPress1Chime();
               }
@@ -2426,32 +2453,37 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               };
             });
           } else if (callState.status === 'asking_cancel_code') {
-            setActiveCall((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status: 'asking_cancel_code',
-                    mode: (callState.mode as CallFlowMode) || prev.mode,
-                    validationNote:
-                      '🎙️ El IVR le está solicitando al cliente que digite el código de cancelación...',
-                    duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
-                    channel: callState.channel || prev.channel,
-                  }
-                : null
-            );
-          } else if (callState.status === 'cancel_valid') {
+            setActiveCall((prev) => {
+              if (!prev) return null;
+              if (prev.capturedOtp && prev.otpStatus === 'pending') {
+                return prev;
+              }
+              return {
+                ...prev,
+                status: 'asking_cancel_code',
+                mode: (callState.mode as CallFlowMode) || prev.mode,
+                validationNote:
+                  '🎙️ El IVR le está solicitando al cliente que digite el código de cancelación...',
+                duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
+                channel: callState.channel || prev.channel,
+              };
+            });
+          } else if (callState.status === 'cancel_valid' || callState.status === 'otp_valid') {
             setActiveCall((prev) =>
               prev
                 ? {
                     ...prev,
                     otpStatus: 'valid',
                     cancelDecision: 'valid',
-                    validationNote: '✓ Código de cancelación confirmado como VÁLIDO. Reproduciendo confirmación al cliente...',
+                    validationNote:
+                      callState.status === 'otp_valid'
+                        ? '✓ Código de verificación confirmado como VÁLIDO. Reproduciendo confirmación al cliente...'
+                        : '✓ Código de cancelación confirmado como VÁLIDO. Reproduciendo confirmación al cliente...',
                     duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
                   }
                 : null
             );
-          } else if (callState.status === 'cancel_invalid') {
+          } else if (callState.status === 'cancel_invalid' || callState.status === 'otp_invalid') {
             setActiveCall((prev) =>
               prev
                 ? {
