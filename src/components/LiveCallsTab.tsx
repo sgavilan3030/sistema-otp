@@ -607,6 +607,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       c.status !== 'in_ivr' &&
       c.status !== 'pressed_1' &&
       c.status !== 'asking_cancel_code' &&
+      c.status !== 'asking_otp' &&
       c.status !== 'otp_valid' &&
       c.status !== 'otp_invalid'
     )
@@ -614,7 +615,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
     if (
       filterStatus === 'otp_pending' &&
       !(c.capturedOtp && c.otpStatus === 'pending') &&
-      !((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code'))
+      !((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code' || c.status === 'asking_otp'))
     )
       return false;
     if (filterStatus === 'ringing' && c.status !== 'ringing' && c.status !== 'dialing') return false;
@@ -638,6 +639,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
       c.status === 'in_ivr' ||
       c.status === 'pressed_1' ||
       c.status === 'asking_cancel_code' ||
+      c.status === 'asking_otp' ||
       c.status === 'otp_valid' ||
       c.status === 'otp_invalid'
   ).length;
@@ -646,7 +648,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
   const pendingCallsOtpCount = liveCalls.filter(
     (c) =>
       (c.capturedOtp && c.otpStatus === 'pending') ||
-      ((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code'))
+      ((c.mode === 'otp_press1' || c.mode === 'cancel_code') && (c.status === 'pressed_1' || c.status === 'asking_cancel_code' || c.status === 'asking_otp'))
   ).length;
   const avgDuration =
     activeCount > 0
@@ -1168,7 +1170,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                 const isHold = !!call.isOnHold || call.status === 'on_hold';
                 const isTalking = (call.status === 'talking' || call.status === 'transferred') && !isHold;
                 const isPressed1 = call.status === 'pressed_1';
-                const isAskingCancelCode = call.status === 'asking_cancel_code';
+                const isAskingCancelCode = call.status === 'asking_cancel_code' || call.status === 'asking_otp';
                 const isCancelCode = call.mode === 'cancel_code';
                 const isOtpValid = call.status === 'otp_valid' || call.otpStatus === 'valid';
                 const isOtpInvalid = call.status === 'otp_invalid' || call.otpStatus === 'invalid';
@@ -1457,7 +1459,9 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
                             <span className="flex items-center gap-2">
                               <Volume2 className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
                               <span>
-                                Solicitando al cliente digitar el código de cancelación en su teclado — Esperando dígitos...
+                                {call.status === 'asking_otp' || call.mode === 'otp_press1'
+                                  ? 'Solicitando al cliente digitar el código OTP en su teclado — Esperando dígitos...'
+                                  : 'Solicitando al cliente digitar el código de cancelación en su teclado — Esperando dígitos...'}
                               </span>
                             </span>
                             <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] shrink-0 font-bold">

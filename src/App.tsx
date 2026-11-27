@@ -347,6 +347,7 @@ export default function App() {
                 (c.digit === '1' &&
                   !!c.pressed1At &&
                   c.status !== 'asking_cancel_code' &&
+                  c.status !== 'asking_otp' &&
                   c.status !== 'cancel_valid' &&
                   c.status !== 'cancel_invalid' &&
                   c.status !== 'otp_valid' &&
@@ -376,9 +377,13 @@ export default function App() {
           }
           if (activeU?.role !== 'admin' && assignedExts.length > 0) {
             recs = recs.filter((r: any) => {
+              if (r.userId && activeU?.id && String(r.userId) === String(activeU.id)) return true;
               const recAgent = r.agent ? String(r.agent).trim() : '';
-              if (recAgent) {
+              if (recAgent && recAgent !== 'ringall' && recAgent !== 'all') {
                 return recAgent.split('&').some((ext: string) => assignedExts.includes(ext.trim()));
+              }
+              if ((!recAgent || recAgent === 'ringall' || recAgent === 'all') && activeU?.tenantId && r.tenantId === activeU.tenantId) {
+                return true;
               }
               const recNum = r.number ? String(r.number).trim() : '';
               return recNum ? assignedExts.includes(recNum) : false;
@@ -2446,6 +2451,7 @@ export default function App() {
             (c.digit === '1' &&
               !!c.pressed1At &&
               c.status !== 'asking_cancel_code' &&
+              c.status !== 'asking_otp' &&
               c.status !== 'cancel_valid' &&
               c.status !== 'cancel_invalid' &&
               c.status !== 'otp_valid' &&

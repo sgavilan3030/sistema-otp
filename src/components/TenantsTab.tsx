@@ -39,7 +39,8 @@ const CALL_FLOW_MODE_OPTIONS: { id: CallFlowMode; label: string; desc: string }[
   { id: 'otp', label: '1. Captura OTP', desc: 'Solicita código OTP al contestar' },
   { id: 'press1', label: '2. Press-1 (Asesor)', desc: 'Al marcar 1 transfiere a Softphone' },
   { id: 'hybrid', label: '3. Híbrido (OTP + Asesor)', desc: 'OTP automático o Press-1' },
-  { id: 'cancel_code', label: '4. Código de Cancelación', desc: 'Marca 1 → Envía código + Válido/Inválido' },
+  { id: 'cancel_code', label: '4. Código de Cancelación', desc: 'Marca 1 → Botón enviar + Válido/Inválido' },
+  { id: 'otp_press1', label: '5. Press-1 + OTP Automático', desc: 'Marca 1 → Pide OTP directo + Válido/Inválido' },
 ];
 
 interface SimpleEntityOption {
