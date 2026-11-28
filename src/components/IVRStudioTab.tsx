@@ -1280,7 +1280,7 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             <button
               type="button"
               onClick={async () => {
-                const waitPath = currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion';
+                const agentOpt1Path = currentSelectedEntity?.agentAudioPath || 'custom/conectar_asesor';
                 try {
                   localStorage.setItem('ast20_call_flow_mode', 'otp_press1');
                   await fetch('/api/asterisk/action/set-default', {
@@ -1293,8 +1293,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       intro: currentSelectedEntity?.introAudioPath || 'custom/bienvenida_press1',
+                      agentAudio: agentOpt1Path,
                       prompt: currentSelectedEntity?.promptAudioPath || 'custom/digite_codigo_verificacion',
-                      otpVerifyWait: waitPath,
+                      wait: currentSelectedEntity?.waitAudioPath || 'custom/un_momento_validando_informacion',
+                      success: currentSelectedEntity?.successAudioPath || 'custom/operacion_bloqueada_exito',
+                      failure: currentSelectedEntity?.failureAudioPath || 'custom/token_invalido_reintente',
                       agentId: userExtension,
                       isManualSave: true,
                       isAdmin,
@@ -1320,12 +1323,12 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                 <Volume2 className="w-4 h-4 text-cyan-400" />
-                <span>Audio de Espera al Presionar 1:</span>
+                <span>2. Transferencia a Asesor (Opción 1 - "Un momento por favor..."):</span>
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => speakText('Un momento por favor, le estamos enviando su código de verificación.', 'ivr-otp-verify-tts')}
+                  onClick={() => speakText('Un momento por favor, estamos transfiriendo su llamada.', 'ivr-otp-verify-tts')}
                   className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Volume2 className="w-3 h-3" />
@@ -1333,35 +1336,35 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTogglePlayHoldMusic(currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion')}
+                  onClick={() => handleTogglePlayHoldMusic(currentSelectedEntity?.agentAudioPath || 'custom/conectar_asesor')}
                   className="px-2.5 py-1 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
-                  {playingHoldMusicPath === (currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion') ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                  {playingHoldMusicPath === (currentSelectedEntity?.agentAudioPath || 'custom/conectar_asesor') ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                   <span>Escuchar WAV</span>
                 </button>
               </div>
             </div>
 
             <div className="p-2.5 rounded-lg bg-slate-900 border border-cyan-500/20 text-xs text-slate-200 italic">
-              "Un momento por favor, le estamos enviando su código de verificación."
+              "Un momento por favor..." (Suena al marcar 1 antes de pedir el código OTP)
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] text-slate-400 mb-1">Audio asignado al Guión ({currentSelectedEntity?.name}):</label>
                 <select
-                  value={currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                  value={currentSelectedEntity?.agentAudioPath || 'custom/conectar_asesor'}
                   onChange={(e) => {
                     const val = e.target.value;
                     setEntities((prev) => {
-                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, otpVerifyWaitAudioPath: val } : ent);
+                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, agentAudioPath: val } : ent);
                       try { localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next)); } catch (_) {}
                       return next;
                     });
                   }}
                   className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
                 >
-                  <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion (Predeterminado)</option>
+                  <option value="custom/conectar_asesor">custom/conectar_asesor (Predeterminado)</option>
                   {audios.map((a) => (
                     <option key={a.id} value={a.asteriskPath}>
                       {a.name} ({a.asteriskPath})
@@ -1373,11 +1376,11 @@ export const IVRStudioTab: React.FC<IVRStudioTabProps> = ({
                 <label className="block text-[11px] text-slate-400 mb-1">Ruta física en Asterisk:</label>
                 <input
                   type="text"
-                  value={currentSelectedEntity?.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
+                  value={currentSelectedEntity?.agentAudioPath || 'custom/conectar_asesor'}
                   onChange={(e) => {
                     const val = e.target.value;
                     setEntities((prev) => {
-                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, otpVerifyWaitAudioPath: val } : ent);
+                      const next = prev.map((ent) => ent.id === currentSelectedEntity.id ? { ...ent, agentAudioPath: val } : ent);
                       try { localStorage.setItem('prod_campaign_entities_v3', JSON.stringify(next)); } catch (_) {}
                       return next;
                     });

