@@ -5935,9 +5935,14 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_DEST})=waiting_press1)\n`;
   dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_DEST})}&status=in_ivr&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,UserEvent(CallAnswered,Number=\${TARGET_DEST},Context=ivr-otp-verify,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=1)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=6)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=240)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=5)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=18)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=360)\n`;
+  dialplanContent += ` same => n,Set(TARGET_DIGITS=\${FILTER(0-9,\${TARGET_DEST})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_10=\${IF($[\${LEN(\${TARGET_DIGITS})} = 11 & "\${TARGET_DIGITS:0:1}" = "1"]?\${TARGET_DIGITS:1}:\${TARGET_DIGITS})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_11=\${IF($[\${LEN(\${TARGET_10})} = 10]?1\${TARGET_10}:\${TARGET_10})})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_10=\${TARGET_10})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_11=\${TARGET_11})\n`;
   dialplanContent += ` same => n,Set(IVR_INTRO=\${CALL_INTRO})\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = "" & "\${TENANT_ID}" != ""]?Set(IVR_INTRO=\${DB(ivr_vars/tenant_\${TENANT_ID}_intro)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_INTRO}" = ""]?Set(IVR_INTRO=\${DB(ivr_vars/agent_\${FINAL_AGENT}_intro)}))\n`;
@@ -5998,55 +6003,38 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/8888_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=\${DB(ivr_vars/default_failure)}))\n`;
   dialplanContent += ` same => n,ExecIf($["\${IVR_FAILURE}" = ""]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_INTRO=\${STRREPLACE(IVR_INTRO,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_INTRO}.ulaw)} = 0]?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_AGENT=\${STRREPLACE(IVR_AGENT,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_AGENT}.ulaw)} = 0]?Set(IVR_AGENT=custom/conectar_asesor))\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_OTP_PROMPT=\${STRREPLACE(IVR_OTP_PROMPT,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_PROMPT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_OTP_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_PROMPT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_OTP_PROMPT}.ulaw)} = 0]?Set(IVR_OTP_PROMPT=custom/digite_codigo_verificacion))\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_WAIT=\${STRREPLACE(IVR_WAIT,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_WAIT}.ulaw)} = 0]?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_SUCCESS=\${STRREPLACE(IVR_SUCCESS,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_SUCCESS}.ulaw)} = 0]?Set(IVR_SUCCESS=custom/otp_validado_exito))\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.wav,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,.ulaw,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/es/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/en/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/var/lib/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,/usr/share/asterisk/sounds/,)})\n`;
-  dialplanContent += ` same => n,Set(IVR_FAILURE=\${STRREPLACE(IVR_FAILURE,custom/custom/,custom/)})\n`;
-  dialplanContent += ` same => n,ExecIf($[\${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${IVR_FAILURE}.ulaw)} = 0]?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
+  const soundCleanExpr = (v: string) =>
+    ` same => n,Set(${v}=\${STRREPLACE(${v},.wav,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},.ulaw,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},/var/lib/asterisk/sounds/es/,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},/var/lib/asterisk/sounds/en/,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},/var/lib/asterisk/sounds/,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},/usr/share/asterisk/sounds/,)})\n` +
+    ` same => n,Set(${v}=\${STRREPLACE(${v},custom/custom/,custom/)})\n`;
+  const soundStatCheck = (v: string) =>
+    `[\${STAT(e,/var/lib/asterisk/sounds/\${${v}}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${${v}}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/\${${v}}.gsm)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${${v}}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/es/\${${v}}.ulaw)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/en/\${${v}}.wav)} = 0 & \${STAT(e,/var/lib/asterisk/sounds/en/\${${v}}.ulaw)} = 0]`;
+  dialplanContent += soundCleanExpr('IVR_INTRO');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_INTRO')}?Set(IVR_INTRO=custom/bienvenida_press1))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_INTRO')}?Set(IVR_INTRO=custom/bienvenida_corporativa))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_INTRO')}?Set(IVR_INTRO=beep))\n`;
+  dialplanContent += soundCleanExpr('IVR_AGENT');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_AGENT')}?Set(IVR_AGENT=custom/conectar_asesor))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_AGENT')}?Set(IVR_AGENT=beep))\n`;
+  dialplanContent += soundCleanExpr('IVR_OTP_PROMPT');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_OTP_PROMPT')}?Set(IVR_OTP_PROMPT=custom/digite_codigo_verificacion))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_OTP_PROMPT')}?Set(IVR_OTP_PROMPT=custom/solicitar_codigo_otp))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_OTP_PROMPT')}?Set(IVR_OTP_PROMPT=beep))\n`;
+  dialplanContent += soundCleanExpr('IVR_WAIT');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_WAIT')}?Set(IVR_WAIT=custom/un_momento_validando_informacion))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_WAIT')}?Set(IVR_WAIT=beep))\n`;
+  dialplanContent += soundCleanExpr('IVR_SUCCESS');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_SUCCESS')}?Set(IVR_SUCCESS=custom/otp_validado_exito))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_SUCCESS')}?Set(IVR_SUCCESS=custom/operacion_bloqueada_exito))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_SUCCESS')}?Set(IVR_SUCCESS=beep))\n`;
+  dialplanContent += soundCleanExpr('IVR_FAILURE');
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_FAILURE')}?Set(IVR_FAILURE=custom/token_invalido_reintente))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_FAILURE')}?Set(IVR_FAILURE=beeperr))\n`;
+  dialplanContent += ` same => n,ExecIf($${soundStatCheck('IVR_FAILURE')}?Set(IVR_FAILURE=beep))\n`;
   dialplanContent += ` same => n,Set(INTRO_TRIES=0)\n`;
   dialplanContent += ` same => n(menu),Set(INTRO_TRIES=$[\${INTRO_TRIES} + 1])\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Reproduciendo saludo (\${INTRO_TRIES}/2): \${IVR_INTRO} ===)\n`;
@@ -6063,44 +6051,52 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n(no_retry_amd_otp_v),NoOp(=== [AMD RETRY OMITIDO] Reintento no autorizado o llamada finalizada ===)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
 
-  dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE "UN MOMENTO POR FAVOR, LE ESTAMOS ENVIANDO SU CODIGO DE VERIFICACION" -> CAPTURA Y VALIDACION EN LIVECALLSTAB\n`;
+  dialplanContent += `; CLIENTE PRESIONA 1 -> REPRODUCE AUDIO OPCION 1 -> SOLICITA OTP -> ESPERA DECISION VALIDO/INVALIDO DEL OPERADOR\n`;
   dialplanContent += `exten => 1,1,NoOp(=== [IVR-OTP-VERIFY] DIGITO 1 DETECTADO -> ENVIANDO CODIGO DE VERIFICACION ===)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(digit)=3)\n`;
-  dialplanContent += ` same => n,Set(TIMEOUT(response)=12)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=5)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=18)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(absolute)=360)\n`;
   dialplanContent += ` same => n,Set(TARGET_NUM=\${IF($["\${TARGET_NUM}" != ""]?\${TARGET_NUM}:\${IF($["\${CUSTOMER_NUM}" != ""]?\${CUSTOMER_NUM}:\${IF($["\${TARGET_DEST}" != ""]?\${TARGET_DEST}:\${IF($["\${CALL_DEST}" != ""]?\${CALL_DEST}:\${CALLERID(num)})})})})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_DIGITS=\${FILTER(0-9,\${TARGET_NUM})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_10=\${IF($[\${LEN(\${TARGET_DIGITS})} = 11 & "\${TARGET_DIGITS:0:1}" = "1"]?\${TARGET_DIGITS:1}:\${TARGET_DIGITS})})\n`;
+  dialplanContent += ` same => n,Set(TARGET_11=\${IF($[\${LEN(\${TARGET_10})} = 10]?1\${TARGET_10}:\${TARGET_10})})\n`;
   dialplanContent += ` same => n,Set(__TARGET_NUM=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__TARGET_DEST=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__CALL_DEST=\${TARGET_NUM})\n`;
   dialplanContent += ` same => n,Set(__CUSTOMER_NUM=\${TARGET_NUM})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_10=\${TARGET_10})\n`;
+  dialplanContent += ` same => n,Set(__TARGET_11=\${TARGET_11})\n`;
   dialplanContent += ` same => n,Set(CID_DIGITS=\${FILTER(0-9,\${CALLERID(num)})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=pressed_1)\n`;
   dialplanContent += ` same => n,Set(DB(call_digit/\${TARGET_NUM})=1)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10}_\${FINAL_AGENT})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,UserEvent(Press1Detected,Number=\${TARGET_NUM},Digit=1,Mode=otp_press1,Channel=\${CHANNEL})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -m 1 -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=pressed_1&digit=1&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Reproduciendo Opcion 1 (Transferencia a Asesor): \${IVR_AGENT} ===)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_AGENT})\n`;
   dialplanContent += ` same => n,Wait(0.2)\n`;
-  dialplanContent += ` same => n,Set(PRE_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
-  dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "valid"]?otp_verify_approved)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${PRE_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=asking_otp)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_otp&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -m 1 -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=asking_otp&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Set(OTP_V_RETRIES=0)\n`;
   dialplanContent += ` same => n,Set(OTP_INVALID_LOOPS=0)\n`;
   dialplanContent += ` same => n,Set(OTP_PROMPT_FILE=\${IVR_OTP_PROMPT})\n`;
   dialplanContent += ` same => n(ask_otp_verify),Set(OTP_V_RETRIES=$[\${OTP_V_RETRIES} + 1])\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(digit)=5)\n`;
+  dialplanContent += ` same => n,Set(TIMEOUT(response)=18)\n`;
   dialplanContent += ` same => n,Set(USER_DIGITS=)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Solicitando codigo OTP (\${OTP_V_RETRIES}/3) con audio: \${OTP_PROMPT_FILE} ===)\n`;
-  dialplanContent += ` same => n,Read(USER_DIGITS,\${OTP_PROMPT_FILE},10,,1,12)\n`;
+  dialplanContent += ` same => n,Read(USER_DIGITS,\${OTP_PROMPT_FILE},10,,1,18)\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Resultado Read: READSTATUS=\${READSTATUS} | USER_DIGITS=\${USER_DIGITS} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${USER_DIGITS}" != ""]?otp_verify_captured)\n`;
   dialplanContent += ` same => n,Set(MID_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${DB(otp_status/\${TARGET_NUM})})})})\n`;
   dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "valid"]?otp_verify_approved)\n`;
-  dialplanContent += ` same => n,GotoIf($["\${MID_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
   dialplanContent += ` same => n,Set(OTP_PROMPT_FILE=\${IVR_OTP_PROMPT})\n`;
   dialplanContent += ` same => n,GotoIf($[\${OTP_V_RETRIES} < 3]?ask_otp_verify)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
@@ -6111,6 +6107,10 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_captures/\${TARGET_NUM})=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10}_\${FINAL_AGENT})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != "" & "\${CALLERID(num)}" != "\${TARGET_NUM}"]?Set(DB(otp_agent/\${CALLERID(num)})=\${FINAL_AGENT}))\n`;
@@ -6120,48 +6120,64 @@ export function generateCleanDialplanConf(
   dialplanContent += ` same => n,Set(DB(otp_last_capture)=\${USER_DIGITS})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_captured)\n`;
   dialplanContent += ` same => n,UserEvent(OTPCaptured,Number=\${TARGET_NUM},Digits=\${USER_DIGITS},Status=pending,Mode=otp_press1,Agent=\${FINAL_AGENT})\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_NUM})}&callerid=\${URIENCODE(\${CALLERID(num)})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenantId=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&service=IVR%20Captura%20OTP&channel=\${URIENCODE(\${CHANNEL})}&status=pending" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -m 1 -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/otp/capture?number=\${URIENCODE(\${TARGET_NUM})}&callerid=\${URIENCODE(\${CALLERID(num)})}&otp=\${URIENCODE(\${USER_DIGITS})}&agent=\${URIENCODE(\${FINAL_AGENT})}&tenantId=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&service=IVR%20Captura%20OTP&channel=\${URIENCODE(\${CHANNEL})}&status=pending")\n`;
   dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Reproduciendo audio de validacion en curso: \${IVR_WAIT} ===)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_WAIT})\n`;
-  dialplanContent += ` same => n,Wait(0.5)\n`;
+  dialplanContent += ` same => n,Wait(0.3)\n`;
   dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
   dialplanContent += ` same => n(wait_otp_verify_decision),Set(WAIT_LOOP=$[\${WAIT_LOOP} + 1])\n`;
   dialplanContent += ` same => n,Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})})\n`;
   dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_NUM})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_10}_\${FINAL_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_10})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_11}_\${FINAL_AGENT})}))\n`;
+  dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${TARGET_11})}))\n`;
   dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${CID_DIGITS})}))\n`;
   dialplanContent += ` same => n,ExecIf($[$["\${RAW_OV_STATUS}" = ""] | $["\${RAW_OV_STATUS}" = "pending"]]?Set(RAW_OV_STATUS=\${DB(otp_status/\${USER_DIGITS})}))\n`;
   dialplanContent += ` same => n,Set(CURRENT_STATUS=\${TOLOWER(\${FILTER(abcdefghijklmnopqrstuvwxyz,\${RAW_OV_STATUS})})})\n`;
-  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Esperando decision agente \${WAIT_LOOP}/90 - Estado: \${CURRENT_STATUS} ===)\n`;
+  dialplanContent += ` same => n,NoOp(=== [IVR-OTP-VERIFY] Esperando decision operador \${WAIT_LOOP}/120 - Estado: \${CURRENT_STATUS} ===)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "valid"]?otp_verify_approved)\n`;
   dialplanContent += ` same => n,GotoIf($["\${CURRENT_STATUS}" = "invalid"]?otp_verify_rejected)\n`;
-  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 90]?otp_verify_timeout)\n`;
+  dialplanContent += ` same => n,GotoIf($[\${WAIT_LOOP} >= 120]?otp_verify_timeout)\n`;
   dialplanContent += ` same => n,Wait(1)\n`;
   dialplanContent += ` same => n,Goto(wait_otp_verify_decision)\n\n`;
-  dialplanContent += ` same => n(otp_verify_approved),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP VALIDADO POR AGENTE ===)\n`;
+  dialplanContent += ` same => n(otp_verify_approved),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP VALIDADO POR OPERADOR ===)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=done)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=done)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10})=done))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10}_\${FINAL_AGENT})=done))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11})=done))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11}_\${FINAL_AGENT})=done))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS})=done))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${USER_DIGITS}" != ""]?Set(DB(otp_status/\${USER_DIGITS})=done))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${USER_DIGITS}" != ""]?Set(TMP_DEL=\${DB_DELETE(otp_status/\${USER_DIGITS})}))\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_valid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_valid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -m 1 -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_valid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Playback(\${IVR_SUCCESS})\n`;
   dialplanContent += ` same => n,Wait(0.5)\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
-  dialplanContent += ` same => n(otp_verify_rejected),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP RECHAZADO POR AGENTE -> REINTENTANDO ===)\n`;
+  dialplanContent += ` same => n(otp_verify_rejected),NoOp(=== [IVR-OTP-VERIFY] CODIGO OTP RECHAZADO POR OPERADOR -> REINTENTANDO ===)\n`;
   dialplanContent += ` same => n,Set(OTP_INVALID_LOOPS=$[\${OTP_INVALID_LOOPS} + 1])\n`;
   dialplanContent += ` same => n,GotoIf($[\${OTP_INVALID_LOOPS} > 5]?otp_verify_timeout)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM})=pending)\n`;
   dialplanContent += ` same => n,Set(DB(otp_status/\${TARGET_NUM}_\${FINAL_AGENT})=pending)\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_10}" != ""]?Set(DB(otp_status/\${TARGET_10}_\${FINAL_AGENT})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${TARGET_11}" != ""]?Set(DB(otp_status/\${TARGET_11}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CID_DIGITS}" != ""]?Set(DB(otp_status/\${CID_DIGITS}_\${FINAL_AGENT})=pending))\n`;
   dialplanContent += ` same => n,ExecIf($["\${CALLERID(num)}" != ""]?Set(DB(otp_status/\${CALLERID(num)})=pending))\n`;
-  dialplanContent += ` same => n,ExecIf($["\${USER_DIGITS}" != ""]?Set(DB(otp_status/\${USER_DIGITS})=pending))\n`;
+  dialplanContent += ` same => n,ExecIf($["\${USER_DIGITS}" != ""]?Set(TMP_DEL=\${DB_DELETE(otp_status/\${USER_DIGITS})}))\n`;
+  dialplanContent += ` same => n,NoOp(\${DB_DELETE(otp_codes/\${TARGET_NUM})})\n`;
+  dialplanContent += ` same => n,NoOp(\${DB_DELETE(otp_captures/\${TARGET_NUM})})\n`;
   dialplanContent += ` same => n,Set(OTP_V_RETRIES=0)\n`;
-  dialplanContent += ` same => n,Set(OTP_PROMPT_FILE=\${IVR_FAILURE})\n`;
+  dialplanContent += ` same => n,Set(WAIT_LOOP=0)\n`;
+  dialplanContent += ` same => n,Set(OTP_PROMPT_FILE=\${IF($["\${IVR_FAILURE}" != "" & "\${IVR_FAILURE}" != "\${IVR_OTP_PROMPT}" & "\${IVR_FAILURE}" != "beep"]?\${IVR_FAILURE}&\${IVR_OTP_PROMPT}:\${IVR_OTP_PROMPT})})\n`;
   dialplanContent += ` same => n,Set(DB(call_status/\${TARGET_NUM})=otp_invalid)\n`;
-  dialplanContent += ` same => n,System(curl -s -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_invalid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
+  dialplanContent += ` same => n,System(curl -s -m 1 -H "X-Internal-Webhook-Key: ${INTERNAL_WEBHOOK_KEY}" "http://127.0.0.1:3000/api/asterisk/call/status/update?number=\${URIENCODE(\${TARGET_NUM})}&status=otp_invalid&mode=otp_press1&agent=\${URIENCODE(\${FINAL_AGENT})}&tenant=\${URIENCODE(\${TENANT_ID})}&userid=\${URIENCODE(\${CALL_USER_ID})}&channel=\${URIENCODE(\${CHANNEL})}" &)\n`;
   dialplanContent += ` same => n,Goto(ask_otp_verify)\n\n`;
-  dialplanContent += ` same => n(otp_verify_timeout),Playback(custom/intentos_superados)\n`;
+  dialplanContent += ` same => n(otp_verify_timeout),NoOp(=== [IVR-OTP-VERIFY] Tiempo limite o intentos superados ===)\n`;
+  dialplanContent += ` same => n,Playback(\${IVR_FAILURE})\n`;
   dialplanContent += ` same => n,Hangup()\n\n`;
   dialplanContent += `exten => i,1,NoOp(=== [IVR-OTP-VERIFY] Tecla no valida (\${EXTEN}) -> Esperando tecla 1 ===)\n`;
   dialplanContent += ` same => n,Goto(s,menu)\n`;
@@ -10824,7 +10840,7 @@ let lastAstDbSyncTime = 0;
 let isSyncingAstDb = false;
 
 // Endpoint to receive OTP captures from Asterisk curl (GET or POST) or AMI
-app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) => {
+app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, async (req, res) => {
   const number = req.body?.number || req.query?.number;
   const callerid = req.body?.callerid || req.query?.callerid;
   const otp = req.body?.otp || req.query?.otp;
@@ -10959,20 +10975,31 @@ app.all('/api/asterisk/otp/capture', requireInternalOrGlobalAdmin, (req, res) =>
 
     console.log(`[PRODUCCIÓN] ⭐ ¡NUEVO CÓDIGO OTP CAPTURADO!: [${cleanOtp}] - Tel: ${cleanNumber} (Ext: ${exten || 'IVR'}, Agente: ${record.agent || 'pendiente'}, Call Center Tenant: ${record.tenantId || 'Global'})`);
 
-    // Synchronize to Asterisk AstDB in background across normalized phone keys + OTP key
+    // Synchronize to Asterisk AstDB cleanly before responding (bounded 400ms wait avoids race with operator click)
     const numKeys = Array.from(new Set([rawNumber, cleanNumber, clean10, clean10.length === 10 ? `1${clean10}` : ''].filter(Boolean)));
+    const captureDbWrites: Promise<any>[] = [];
     for (const nk of numKeys) {
-      executeAsteriskCommand(`database put otp_codes "${nk}" "${cleanOtp}"`).catch(() => {});
-      executeAsteriskCommand(`database put otp_status "${nk}" "${cleanStatus}"`).catch(() => {});
+      captureDbWrites.push(
+        executeAsteriskCommand(`database put otp_codes "${nk}" "${cleanOtp}"`).catch(() => {}),
+        executeAsteriskCommand(`database put otp_status "${nk}" "${cleanStatus}"`).catch(() => {})
+      );
       if (record.agent) {
-        executeAsteriskCommand(`database put otp_agent "${nk}" "${record.agent}"`).catch(() => {});
-        executeAsteriskCommand(`database put otp_status "${nk}_${record.agent}" "${cleanStatus}"`).catch(() => {});
-        executeAsteriskCommand(`database put last_picked_agent "${nk}" "${record.agent}"`).catch(() => {});
-        executeAsteriskCommand(`database put last_agent_call "${nk}" "${record.agent}"`).catch(() => {});
+        captureDbWrites.push(
+          executeAsteriskCommand(`database put otp_agent "${nk}" "${record.agent}"`).catch(() => {}),
+          executeAsteriskCommand(`database put otp_status "${nk}_${record.agent}" "${cleanStatus}"`).catch(() => {}),
+          executeAsteriskCommand(`database put last_picked_agent "${nk}" "${record.agent}"`).catch(() => {}),
+          executeAsteriskCommand(`database put last_agent_call "${nk}" "${record.agent}"`).catch(() => {})
+        );
       }
     }
     if (cleanOtp) {
-      executeAsteriskCommand(`database put otp_status "${cleanOtp}" "${cleanStatus}"`).catch(() => {});
+      captureDbWrites.push(executeAsteriskCommand(`database put otp_status "${cleanOtp}" "${cleanStatus}"`).catch(() => {}));
+    }
+    if (hasLocalAsterisk && captureDbWrites.length > 0) {
+      await Promise.race([
+        Promise.all(captureDbWrites),
+        new Promise((resolve) => setTimeout(resolve, 400)),
+      ]);
     }
   }
   res.json({ success: true, count: capturedOtpHistory.length, records: capturedOtpHistory.slice(0, 10) });
@@ -11117,6 +11144,9 @@ app.post('/api/asterisk/otp/decision', requireActiveMembership, async (req, res)
       if (activeMemCall) {
         activeMemCall.cancelDecision = status;
         (activeMemCall as any).otpStatus = status;
+        if (status === 'invalid') {
+          delete (activeMemCall as any).capturedOtp;
+        }
         if (status === 'invalid' && activeMemCall.status !== 'ended') {
           activeMemCall.status = activeMemCall.mode === 'cancel_code' ? 'cancel_invalid' : 'otp_invalid';
         } else if (status === 'valid' && activeMemCall.status !== 'ended') {
@@ -12447,7 +12477,16 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
       }
 
       const matchedOtp = findMatchingOtp(call.number, effectiveAgent);
-      const effectiveOtpStatus: 'pending' | 'valid' | 'invalid' | undefined = matchedOtp
+      const isAwaitingRetryOtp =
+        (call.status === 'otp_invalid' ||
+          call.status === 'cancel_invalid' ||
+          call.status === 'asking_otp' ||
+          call.status === 'asking_cancel_code') &&
+        matchedOtp?.status === 'invalid';
+      const visibleOtp = isAwaitingRetryOtp ? undefined : matchedOtp?.otp;
+      const effectiveOtpStatus: 'pending' | 'valid' | 'invalid' | undefined = isAwaitingRetryOtp
+        ? 'invalid'
+        : matchedOtp
         ? matchedOtp.status
         : (call.status === 'otp_valid' || call.cancelDecision === 'valid')
         ? 'valid'
@@ -12510,9 +12549,9 @@ app.get('/api/asterisk/live/calls', async (req, res) => {
         mode: call.mode,
         tenantId: call.tenantId,
         userId: call.userId,
-        capturedOtp: matchedOtp?.otp,
+        capturedOtp: visibleOtp,
         otpStatus: effectiveOtpStatus,
-        otpRecordId: matchedOtp?.id,
+        otpRecordId: isAwaitingRetryOtp ? undefined : matchedOtp?.id,
         otpService: matchedOtp?.service,
         otpTimestamp: matchedOtp?.timestamp,
       });

@@ -471,6 +471,7 @@ export const LiveCallsTab: React.FC<LiveCallsTabProps> = ({
           return {
             ...c,
             otpStatus: decision,
+            capturedOtp: decision === 'invalid' ? undefined : c.capturedOtp,
             status: decision === 'valid' ? 'otp_valid' : 'otp_invalid',
             statusText:
               decision === 'valid'

